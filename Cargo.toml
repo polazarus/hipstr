@@ -1,0 +1,29 @@
+[package]
+name = "hipstr"
+version = "0.1.0"
+authors = ["Polazarus <polazarus@users.noreply.github.com>"]
+description = """Another immutable string: zero-cost static,
+    inline representation for small strings, reference counting,
+    and owned (but shared) slicing"""
+repository = "https://github.com/polazarus/hipstr"
+keywords = ["string", "arc-string", "refcount"]
+categories = ["memory-management", "data-structures"]
+license = "MIT OR Apache-2.0"
+edition = "2021"
+
+[features]
+unstable = []
+
+[[bench]]
+name = "competition"
+harness = false
+
+[dev-dependencies]
+arcstr = "1.1.5"
+fastrand = "1.9.0"
+flexstr = "0.9.2"
+imstr = "0.2.0"
+serde_test = "1.0.163"
+
+[dependencies]
+serde = { version = "1.0.163", optional = true }

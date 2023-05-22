@@ -1,0 +1,16 @@
+{
+    "cSpell.words": [
+        "clonable",
+        "decr",
+        "hipbyt",
+        "hipstr",
+        "miri",
+        "nonoverlapping",
+        "powi",
+        "repr",
+        "stddev",
+        "uninit"
+    ],
+    "rust-analyzer.check.features": "all",
+    "rust-analyzer.cargo.features": "all"
+}
