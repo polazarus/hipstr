@@ -887,9 +887,17 @@ mod tests {
         let a = HipByt::from(v);
         let v = a.into_vec().unwrap();
         assert_eq!(p, v.as_ptr());
+        assert_eq!(10, v.len());
 
-        let a = HipByt::from(v);
+        let a = HipByt::from(v.clone());
         let _b = a.clone();
+        assert!(a.into_vec().is_err());
+
+        let a = HipByt::from(v).slice(0..5);
+        let v = a.into_vec().unwrap();
+        assert_eq!(v.len(), 5);
+
+        let a = HipByt::from(v).slice(1..5);
         assert!(a.into_vec().is_err());
     }
 
