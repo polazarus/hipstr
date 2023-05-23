@@ -459,10 +459,7 @@ impl<B: AllocatedBackend> Raw<B> {
     #[inline]
     pub fn into_vec(mut self) -> Result<Vec<u8>, Self> {
         if let Some(allocated) = self.take_allocated() {
-            match allocated.try_into_vec() {
-                Ok(vec) => Ok(vec),
-                Err(allocated) => Err(Self { allocated }),
-            }
+            allocated.try_into_vec().map_err(|allocated| Self { allocated })
         } else {
             Err(self)
         }

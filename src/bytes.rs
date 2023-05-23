@@ -332,6 +332,11 @@ where
     }
 
     /// Converts `self` into a [`Vec`] without clone or allocation if possible.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err(self)` if it is impossible to take ownership of the vector
+    /// backing this `HipByt`.
     #[inline]
     pub fn into_vec(self) -> Result<Vec<u8>, Self> {
         self.0.into_vec().map_err(Self)
@@ -530,18 +535,17 @@ where
     B: AllocatedBackend,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use SliceErrorKind::*;
         match self.kind {
-            StartGreaterThanEnd => {
+            SliceErrorKind::StartGreaterThanEnd => {
                 write!(f, "range starts at {} but ends at {}", self.start, self.end)
             }
-            StartOutOfBounds => write!(
+            SliceErrorKind::StartOutOfBounds => write!(
                 f,
                 "range start index {} out of bounds for slice of length {}",
                 self.start,
                 self.bytes.len()
             ),
-            EndOutOfBounds => {
+            SliceErrorKind::EndOutOfBounds => {
                 write!(
                     f,
                     "range end index {} out of bounds for slice of length {}",

@@ -3,7 +3,6 @@
 use std::rc::Rc;
 use std::sync::Arc;
 
-/// _Unsafe_ trait for allocated backend.
 #[cfg(feature = "unstable")]
 pub use private::AllocatedBackend;
 
@@ -23,11 +22,20 @@ pub type Local = Rc<Vec<u8>>;
 /// Shared (thread-safe) reference counted backend.
 pub type ThreadSafe = Arc<Vec<u8>>;
 
-pub(crate) mod private {
+pub mod private {
     use std::mem::{align_of, ManuallyDrop};
     use std::rc::Rc;
     use std::sync::Arc;
 
+    /// _Unsafe_ trait for reference counted allocated backend.
+    ///
+    /// # Safety
+    ///
+    /// This trait is unsafe because it requires lots of difficult invariants.
+    ///
+    /// * must be pointer sized
+    /// * the [`RawPointer`][AllocatedBackend::RawPointer] too
+    /// * the type should have the `Sync` and `Send` needed
     pub unsafe trait AllocatedBackend {
         /// Should be pointer sized! (and not a fat pointer)
         type RawPointer: Copy + Sized;
@@ -52,20 +60,20 @@ pub(crate) mod private {
         type RawPointer = *const Vec<u8>;
         #[inline]
         fn new_raw(v: Vec<u8>) -> Self::RawPointer {
-            Arc::into_raw(Arc::new(v))
+            Self::into_raw(Self::new(v))
         }
         #[inline]
         unsafe fn increment_count(raw: Self::RawPointer) {
-            unsafe { Arc::increment_strong_count(raw) };
+            unsafe { Self::increment_strong_count(raw) };
         }
         #[inline]
         unsafe fn decrement_count(raw: Self::RawPointer) {
-            unsafe { Arc::decrement_strong_count(raw) };
+            unsafe { Self::decrement_strong_count(raw) };
         }
         #[inline]
         unsafe fn is_unique(raw: Self::RawPointer) -> bool {
-            let arc = ManuallyDrop::new(unsafe { Arc::from_raw(raw) });
-            Arc::weak_count(&arc) == 0 && Arc::strong_count(&arc) == 1
+            let arc = ManuallyDrop::new(unsafe { Self::from_raw(raw) });
+            Self::weak_count(&arc) == 0 && Self::strong_count(&arc) == 1
         }
         #[inline]
         unsafe fn vec_ref<'a>(raw: Self::RawPointer) -> &'a Vec<u8> {
@@ -73,7 +81,7 @@ pub(crate) mod private {
         }
         #[inline]
         unsafe fn try_unwrap(raw: Self::RawPointer) -> Result<Vec<u8>, Self::RawPointer> {
-            Arc::try_unwrap(unsafe { Arc::from_raw(raw) }).map_err(Arc::into_raw)
+            Self::try_unwrap(unsafe { Self::from_raw(raw) }).map_err(Self::into_raw)
         }
         #[inline]
         fn is_valid(raw: Self::RawPointer) -> bool {
@@ -85,20 +93,20 @@ pub(crate) mod private {
         type RawPointer = *const Vec<u8>;
         #[inline]
         fn new_raw(v: Vec<u8>) -> Self::RawPointer {
-            Rc::into_raw(Rc::new(v))
+            Self::into_raw(Self::new(v))
         }
         #[inline]
         unsafe fn increment_count(raw: Self::RawPointer) {
-            unsafe { Rc::increment_strong_count(raw) };
+            unsafe { Self::increment_strong_count(raw) };
         }
         #[inline]
         unsafe fn decrement_count(raw: Self::RawPointer) {
-            unsafe { Rc::decrement_strong_count(raw) };
+            unsafe { Self::decrement_strong_count(raw) };
         }
         #[inline]
         unsafe fn is_unique(raw: Self::RawPointer) -> bool {
-            let arc = ManuallyDrop::new(unsafe { Rc::from_raw(raw) });
-            Rc::weak_count(&arc) == 0 && Rc::strong_count(&arc) == 1
+            let arc = ManuallyDrop::new(unsafe { Self::from_raw(raw) });
+            Self::weak_count(&arc) == 0 && Self::strong_count(&arc) == 1
         }
         #[inline]
         unsafe fn vec_ref<'a>(raw: Self::RawPointer) -> &'a Vec<u8> {
@@ -106,7 +114,7 @@ pub(crate) mod private {
         }
         #[inline]
         unsafe fn try_unwrap(raw: Self::RawPointer) -> Result<Vec<u8>, Self::RawPointer> {
-            Rc::try_unwrap(unsafe { Rc::from_raw(raw) }).map_err(Rc::into_raw)
+            Self::try_unwrap(unsafe { Self::from_raw(raw) }).map_err(Self::into_raw)
         }
         #[inline]
         fn is_valid(raw: Self::RawPointer) -> bool {

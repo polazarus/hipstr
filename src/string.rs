@@ -252,6 +252,7 @@ where
     ///
     /// assert_eq!(&[104, 101, 108, 108, 111][..], &b[..]);
     /// ```
+    #[allow(clippy::missing_const_for_fn)]  // cannot const it for now, clippy bug
     #[must_use]
     pub fn into_bytes(self) -> HipByt<B> {
         self.0
@@ -532,6 +533,11 @@ where
     }
 
     /// Converts `self` into a [`String`] without clone or allocation if possible.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err(self)` if it is impossible to take ownership of the string
+    /// backing this `HipStr`.
     #[inline]
     pub fn into_string(self) -> Result<String, Self> {
         self.0
@@ -589,7 +595,7 @@ where
 {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.as_str().hash(state)
+        self.as_str().hash(state);
     }
 }
 
@@ -726,29 +732,28 @@ where
     B: AllocatedBackend,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use SliceErrorKind::*;
         match self.kind {
-            StartGreaterThanEnd => write!(
+            SliceErrorKind::StartGreaterThanEnd => write!(
                 f,
                 "range starts at {} but ends at {} when slicing `{}`",
                 self.start, self.end, self.string
             ),
-            StartOutOfBounds => write!(
+            SliceErrorKind::StartOutOfBounds => write!(
                 f,
                 "range start index {} is out of bounds of `{}`",
                 self.start, self.string
             ),
-            EndOutOfBounds => write!(
+            SliceErrorKind::EndOutOfBounds => write!(
                 f,
                 "range end index {} is out of bounds of `{}`",
                 self.end, self.string
             ),
-            StartNotACharBoundary => write!(
+            SliceErrorKind::StartNotACharBoundary => write!(
                 f,
                 "range start index {} is not a char boundary of `{}`",
                 self.start, self.string
             ),
-            EndNotACharBoundary => write!(
+            SliceErrorKind::EndNotACharBoundary => write!(
                 f,
                 "range end index {} is not a char boundary of `{}`",
                 self.end, self.string
@@ -857,6 +862,7 @@ where
     ///
     /// assert_eq!(bytes, value.unwrap_err().into_bytes());
     /// ```
+    #[allow(clippy::missing_const_for_fn)] // cannot const it for now, clippy bug
     #[must_use]
     pub fn into_bytes(self) -> HipByt<B> {
         self.bytes
