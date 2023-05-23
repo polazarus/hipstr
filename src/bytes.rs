@@ -423,13 +423,6 @@ pub enum SliceErrorKind {
     EndOutOfBounds,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct RangeError {
-    pub(crate) kind: SliceErrorKind,
-    pub(crate) start: usize,
-    pub(crate) end: usize,
-}
-
 /// Normalizes any [`RangeBounds`] to a [`Range`].
 pub(crate) fn simplify_range(
     range: impl RangeBounds<usize>,
