@@ -6,6 +6,7 @@ use std::fmt;
 use std::hash::Hash;
 use std::ops::{Deref, Range, RangeBounds};
 use std::str::Utf8Error;
+use std::string::FromUtf16Error;
 
 use crate::bytes::{simplify_range, HipByt, SliceErrorKind as ByteSliceErrorKind};
 use crate::{AllocatedBackend, ThreadSafe};
@@ -252,7 +253,7 @@ where
     ///
     /// assert_eq!(&[104, 101, 108, 108, 111][..], &b[..]);
     /// ```
-    #[allow(clippy::missing_const_for_fn)]  // cannot const it for now, clippy bug
+    #[allow(clippy::missing_const_for_fn)] // cannot const it for now, clippy bug
     #[must_use]
     pub fn into_bytes(self) -> HipByt<B> {
         self.0
@@ -359,6 +360,55 @@ where
         } else {
             Ok(Self(self.0.slice_unchecked(range)))
         }
+    }
+
+    /// Decodes a UTF-16–encoded vector `v` into a `HipStr`, returning [`Err`]
+    /// if `v` contains any invalid data.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// # use hipstr::HipStr;
+    /// // 𝄞music
+    /// let v = &[0xD834, 0xDD1E, 0x006d, 0x0075,
+    ///           0x0073, 0x0069, 0x0063];
+    /// assert_eq!(HipStr::from("𝄞music"),
+    ///            HipStr::from_utf16(v).unwrap());
+    ///
+    /// // 𝄞mu<invalid>ic
+    /// let v = &[0xD834, 0xDD1E, 0x006d, 0x0075,
+    ///           0xD800, 0x0069, 0x0063];
+    /// assert!(HipStr::from_utf16(v).is_err());
+    /// ```
+    #[inline]
+    pub fn from_utf16(v: &[u16]) -> Result<Self, FromUtf16Error> {
+        String::from_utf16(v).map(Into::into)
+    }
+
+    /// Decodes a UTF-16–encoded slice `v` into a `HipStr`, replacing
+    /// invalid data with [the replacement character (`U+FFFD`)][U+FFFD].
+    ///
+    /// [U+FFFD]: core::char::REPLACEMENT_CHARACTER
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// // 𝄞mus<invalid>ic<invalid>
+    /// let v = &[0xD834, 0xDD1E, 0x006d, 0x0075,
+    ///           0x0073, 0xDD1E, 0x0069, 0x0063,
+    ///           0xD834];
+    ///
+    /// assert_eq!(String::from("𝄞mus\u{FFFD}ic\u{FFFD}"),
+    ///            String::from_utf16_lossy(v));
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn from_utf16_lossy(v: &[u16]) -> Self {
+        String::from_utf16_lossy(v).into()
     }
 
     /// Converts a [`HipByt`] to a `HipStr` without checking that the
