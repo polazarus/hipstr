@@ -278,7 +278,17 @@ impl<B: AllocatedBackend> Allocated<B> {
 
     #[inline]
     fn try_into_vec(self) -> Result<Vec<u8>, Self> {
-        unsafe { B::try_unwrap(self.owner) }.map_err(|owner| Self { owner, ..self })
+        let ptr = unsafe { B::vec_ref(self.owner) }.as_ptr();
+        if self.ptr != ptr {
+            return Err(self);
+        }
+
+        unsafe { B::try_unwrap(self.owner) }
+            .map_err(|owner| Self { owner, ..self })
+            .map(|mut v| {
+                v.truncate(self.len);
+                v
+            })
     }
 }
 
@@ -439,6 +449,18 @@ impl<B: AllocatedBackend> Raw<B> {
         }
     }
 
+    // #[inline]
+    // pub fn mutate(&mut self) -> RefMut<'a> {
+    //     if let Some(allocated) = self.take_allocated() {
+    //         let owner = allocated.into_owner();
+    //         RefMut { dest: self, owner }
+    //     } else {
+    //         let owner = B::from_vec(Vec::from(self.as_slice()));
+    //         *self = Self::empty();
+    //         RefMut { dest: self, owner }
+    //     }
+    // }
+
     #[inline]
     pub const fn inline_capacity() -> usize {
         Inline::capacity()
@@ -459,12 +481,15 @@ impl<B: AllocatedBackend> Raw<B> {
     #[inline]
     pub fn into_vec(mut self) -> Result<Vec<u8>, Self> {
         if let Some(allocated) = self.take_allocated() {
-            allocated.try_into_vec().map_err(|allocated| Self { allocated })
+            allocated
+                .try_into_vec()
+                .map_err(|allocated| Self { allocated })
         } else {
             Err(self)
         }
     }
 
+    #[inline]
     fn take_allocated(&mut self) -> Option<Allocated<B>> {
         if self.is_allocated() {
             let old = ManuallyDrop::new(std::mem::replace(self, Self::empty()));
