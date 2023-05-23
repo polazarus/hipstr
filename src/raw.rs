@@ -2,6 +2,7 @@
 
 use std::mem::{size_of, ManuallyDrop, MaybeUninit};
 use std::ops::Range;
+use std::panic::{UnwindSafe, RefUnwindSafe};
 
 use crate::{Backend, ThreadSafe};
 
@@ -169,6 +170,12 @@ impl<B: Backend> Clone for Allocated<B> {
 unsafe impl<B: Backend + Sync> Sync for Allocated<B> {}
 
 unsafe impl<B: Backend + Send> Send for Allocated<B> {}
+
+impl<B: Backend + Unpin> Unpin for Allocated<B> {}
+
+impl<B: Backend + UnwindSafe> UnwindSafe for Allocated<B> {}
+
+impl<B: Backend + RefUnwindSafe> RefUnwindSafe for Allocated<B> {}
 
 impl<B: Backend> Allocated<B> {
     const _ASSERTS: () = {
