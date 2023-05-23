@@ -119,38 +119,46 @@ pub mod private {
         }
 
         #[inline]
+        fn try_unwrap(self) -> Result<Vec<u8>, Self> {
+            Self::try_unwrap(self)
+        }
+
+        #[inline]
         fn into_raw(self) -> Self::RawPointer {
             Self::into_raw(self)
         }
 
         #[inline]
         unsafe fn from_raw(raw: Self::RawPointer) -> Self {
+            // SAFETY: the raw pointer should correspond to an Arc<Vec<u8>>
             unsafe { Self::from_raw(raw) }
         }
 
         #[inline]
         unsafe fn raw_increment_count(raw: Self::RawPointer) {
+            // SAFETY: the raw pointer should correspond to an Arc<Vec<u8>>
             unsafe { Self::increment_strong_count(raw) };
         }
 
         #[inline]
         unsafe fn raw_decrement_count(raw: Self::RawPointer) {
+            // SAFETY: the raw pointer should correspond to an Arc<Vec<u8>>
             unsafe { Self::decrement_strong_count(raw) };
         }
 
         #[inline]
         unsafe fn raw_is_unique(raw: Self::RawPointer) -> bool {
+            // SAFETY: the raw pointer should correspond to an Arc<Vec<u8>>
             let arc = ManuallyDrop::new(unsafe { Self::from_raw(raw) });
             Self::weak_count(&arc) == 0 && Self::strong_count(&arc) == 1
         }
+
         #[inline]
         unsafe fn raw_as_vec<'a>(raw: Self::RawPointer) -> &'a Vec<u8> {
+            // SAFETY: the raw pointer should be to a valid Vec<u8>
             unsafe { &*raw }
         }
-        #[inline]
-        fn try_unwrap(self) -> Result<Vec<u8>, Self> {
-            Self::try_unwrap(self)
-        }
+
         #[inline]
         fn raw_is_valid(raw: Self::RawPointer) -> bool {
             !raw.is_null() && raw.align_offset(align_of::<Self::RawPointer>()) == 0
@@ -177,26 +185,32 @@ pub mod private {
 
         #[inline]
         unsafe fn from_raw(raw: Self::RawPointer) -> Self {
+            // SAFETY: the raw pointer should correspond to a Rc<Vec<u8>>
             unsafe { Self::from_raw(raw) }
         }
 
         #[inline]
         unsafe fn raw_increment_count(raw: Self::RawPointer) {
-            // SAFETY: the raw pointer should be to a Rc<Vec<u8>>
+            // SAFETY: the raw pointer should correspond to a Rc<Vec<u8>>
             unsafe { Self::increment_strong_count(raw) };
         }
+
         #[inline]
         unsafe fn raw_decrement_count(raw: Self::RawPointer) {
-            // SAFETY: the raw pointer should be to a Rc<Vec<u8>>
+            // SAFETY: the raw pointer should correspond to a Rc<Vec<u8>>
             unsafe { Self::decrement_strong_count(raw) };
         }
+
         #[inline]
         unsafe fn raw_is_unique(raw: Self::RawPointer) -> bool {
+            // SAFETY: the raw pointer should correspond to a Rc<Vec<u8>>
             let arc = ManuallyDrop::new(unsafe { Self::from_raw(raw) });
             Self::weak_count(&arc) == 0 && Self::strong_count(&arc) == 1
         }
+
         #[inline]
         unsafe fn raw_as_vec<'a>(raw: Self::RawPointer) -> &'a Vec<u8> {
+            // SAFETY: the raw pointer should be to a valid Vec<u8>
             unsafe { &*raw }
         }
         #[inline]
