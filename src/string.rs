@@ -9,7 +9,7 @@ use std::str::Utf8Error;
 use std::string::FromUtf16Error;
 
 use crate::bytes::{simplify_range, HipByt, SliceErrorKind as ByteSliceErrorKind};
-use crate::{AllocatedBackend, ThreadSafe};
+use crate::{Backend, ThreadSafe};
 
 mod cmp;
 mod convert;
@@ -57,11 +57,11 @@ mod serde;
 #[repr(transparent)]
 pub struct HipStr<B = ThreadSafe>(HipByt<B>)
 where
-    B: AllocatedBackend;
+    B: Backend;
 
 impl<B> HipStr<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     /// Creates an empty `HipStr`.
     ///
@@ -599,7 +599,7 @@ where
 
 impl<B> Clone for HipStr<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn clone(&self) -> Self {
@@ -609,7 +609,7 @@ where
 
 impl<B> Default for HipStr<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn default() -> Self {
@@ -619,7 +619,7 @@ where
 
 impl<B> Deref for HipStr<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     type Target = str;
 
@@ -631,7 +631,7 @@ where
 
 impl<B> Borrow<str> for HipStr<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn borrow(&self) -> &str {
@@ -641,7 +641,7 @@ where
 
 impl<B> Hash for HipStr<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
@@ -653,7 +653,7 @@ where
 
 impl<B> fmt::Debug for HipStr<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -663,7 +663,7 @@ where
 
 impl<B> fmt::Display for HipStr<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -696,7 +696,7 @@ pub enum SliceErrorKind {
 #[derive(PartialEq, Eq, Clone)]
 pub struct SliceError<'a, B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     kind: SliceErrorKind,
     start: usize,
@@ -706,7 +706,7 @@ where
 
 impl<'a, B> SliceError<'a, B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     const fn new(
         kind: ByteSliceErrorKind,
@@ -765,7 +765,7 @@ where
 
 impl<'a, B> fmt::Debug for SliceError<'a, B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SliceError")
@@ -779,7 +779,7 @@ where
 
 impl<'a, B> fmt::Display for SliceError<'a, B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.kind {
@@ -812,7 +812,7 @@ where
     }
 }
 
-impl<'a, B> Error for SliceError<'a, B> where B: AllocatedBackend {}
+impl<'a, B> Error for SliceError<'a, B> where B: Backend {}
 
 /// A possible error value when converting a [`HipStr`] from a [`HipByt`].
 ///
@@ -851,7 +851,7 @@ impl<'a, B> Error for SliceError<'a, B> where B: AllocatedBackend {}
 #[derive(PartialEq, Eq, Clone)]
 pub struct FromUtf8Error<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     pub(super) bytes: HipByt<B>,
     pub(super) error: Utf8Error,
@@ -859,7 +859,7 @@ where
 
 impl<B> fmt::Debug for FromUtf8Error<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("FromUtf8Error")
@@ -871,7 +871,7 @@ where
 
 impl<B> FromUtf8Error<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     /// Returns a slice of [`u8`]s bytes that were attempted to convert to a `HipStr`.
     ///
@@ -950,14 +950,14 @@ where
 
 impl<B> fmt::Display for FromUtf8Error<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(&self.error, f)
     }
 }
 
-impl<B> Error for FromUtf8Error<B> where B: AllocatedBackend {}
+impl<B> Error for FromUtf8Error<B> where B: Backend {}
 
 #[cfg(test)]
 mod tests {

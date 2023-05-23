@@ -3,16 +3,16 @@
 use std::borrow::Cow;
 
 use super::HipByt;
-use crate::AllocatedBackend;
+use crate::Backend;
 
 // Equality
 
-impl<B> Eq for HipByt<B> where B: AllocatedBackend {}
+impl<B> Eq for HipByt<B> where B: Backend {}
 
 impl<B1, B2> PartialEq<HipByt<B1>> for HipByt<B2>
 where
-    B1: AllocatedBackend,
-    B2: AllocatedBackend,
+    B1: Backend,
+    B2: Backend,
 {
     #[inline]
     fn eq(&self, other: &HipByt<B1>) -> bool {
@@ -22,7 +22,7 @@ where
 
 impl<B> PartialEq<[u8]> for HipByt<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn eq(&self, other: &[u8]) -> bool {
@@ -32,7 +32,7 @@ where
 
 impl<B> PartialEq<HipByt<B>> for [u8]
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn eq(&self, other: &HipByt<B>) -> bool {
@@ -42,7 +42,7 @@ where
 
 impl<'a, B> PartialEq<&'a [u8]> for HipByt<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn eq(&self, other: &&'a [u8]) -> bool {
@@ -52,7 +52,7 @@ where
 
 impl<'a, B> PartialEq<HipByt<B>> for &'a [u8]
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn eq(&self, other: &HipByt<B>) -> bool {
@@ -62,7 +62,7 @@ where
 
 impl<B> PartialEq<Vec<u8>> for HipByt<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn eq(&self, other: &Vec<u8>) -> bool {
@@ -72,7 +72,7 @@ where
 
 impl<B> PartialEq<HipByt<B>> for Vec<u8>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn eq(&self, other: &HipByt<B>) -> bool {
@@ -82,7 +82,7 @@ where
 
 impl<B> PartialEq<Box<[u8]>> for HipByt<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn eq(&self, other: &Box<[u8]>) -> bool {
@@ -92,7 +92,7 @@ where
 
 impl<B> PartialEq<HipByt<B>> for Box<[u8]>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn eq(&self, other: &HipByt<B>) -> bool {
@@ -102,7 +102,7 @@ where
 
 impl<'a, B> PartialEq<Cow<'a, [u8]>> for HipByt<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn eq(&self, other: &Cow<'a, [u8]>) -> bool {
@@ -112,7 +112,7 @@ where
 
 impl<'a, B> PartialEq<HipByt<B>> for Cow<'a, [u8]>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn eq(&self, other: &HipByt<B>) -> bool {
@@ -122,7 +122,7 @@ where
 
 impl<B, const N: usize> PartialEq<[u8; N]> for HipByt<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn eq(&self, other: &[u8; N]) -> bool {
@@ -132,7 +132,7 @@ where
 
 impl<B, const N: usize> PartialEq<HipByt<B>> for [u8; N]
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn eq(&self, other: &HipByt<B>) -> bool {
@@ -142,7 +142,7 @@ where
 
 impl<'a, B, const N: usize> PartialEq<&'a [u8; N]> for HipByt<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn eq(&self, other: &&'a [u8; N]) -> bool {
@@ -152,7 +152,7 @@ where
 
 impl<'a, B, const N: usize> PartialEq<HipByt<B>> for &'a [u8; N]
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn eq(&self, other: &HipByt<B>) -> bool {
@@ -164,7 +164,7 @@ where
 
 impl<B> Ord for HipByt<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
@@ -174,7 +174,7 @@ where
 
 impl<B> PartialOrd for HipByt<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {

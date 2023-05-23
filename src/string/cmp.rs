@@ -3,16 +3,16 @@
 use std::borrow::Cow;
 
 use super::HipStr;
-use crate::AllocatedBackend;
+use crate::Backend;
 
 // Equality
 
-impl<B> Eq for HipStr<B> where B: AllocatedBackend {}
+impl<B> Eq for HipStr<B> where B: Backend {}
 
 impl<B1, B2> PartialEq<HipStr<B1>> for HipStr<B2>
 where
-    B1: AllocatedBackend,
-    B2: AllocatedBackend,
+    B1: Backend,
+    B2: Backend,
 {
     #[inline]
     fn eq(&self, other: &HipStr<B1>) -> bool {
@@ -22,7 +22,7 @@ where
 
 impl<B> PartialEq<str> for HipStr<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn eq(&self, other: &str) -> bool {
@@ -32,7 +32,7 @@ where
 
 impl<B> PartialEq<HipStr<B>> for str
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn eq(&self, other: &HipStr<B>) -> bool {
@@ -42,7 +42,7 @@ where
 
 impl<'a, B> PartialEq<&'a str> for HipStr<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn eq(&self, other: &&'a str) -> bool {
@@ -52,7 +52,7 @@ where
 
 impl<'a, B> PartialEq<HipStr<B>> for &'a str
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn eq(&self, other: &HipStr<B>) -> bool {
@@ -62,7 +62,7 @@ where
 
 impl<B> PartialEq<String> for HipStr<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn eq(&self, other: &String) -> bool {
@@ -72,7 +72,7 @@ where
 
 impl<B> PartialEq<HipStr<B>> for String
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn eq(&self, other: &HipStr<B>) -> bool {
@@ -82,7 +82,7 @@ where
 
 impl<B> PartialEq<Box<str>> for HipStr<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn eq(&self, other: &Box<str>) -> bool {
@@ -92,7 +92,7 @@ where
 
 impl<B> PartialEq<HipStr<B>> for Box<str>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn eq(&self, other: &HipStr<B>) -> bool {
@@ -102,7 +102,7 @@ where
 
 impl<'a, B> PartialEq<Cow<'a, str>> for HipStr<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn eq(&self, other: &Cow<'a, str>) -> bool {
@@ -112,7 +112,7 @@ where
 
 impl<'a, B> PartialEq<HipStr<B>> for Cow<'a, str>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn eq(&self, other: &HipStr<B>) -> bool {
@@ -122,7 +122,7 @@ where
 
 impl<B> Ord for HipStr<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.as_str().cmp(other.as_str())
@@ -131,7 +131,7 @@ where
 
 impl<B> PartialOrd for HipStr<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         self.as_str().partial_cmp(other.as_str())

@@ -7,7 +7,7 @@ use std::hash::Hash;
 use std::ops::{Bound, Deref, Range, RangeBounds};
 
 use super::raw::Raw;
-use crate::{AllocatedBackend, ThreadSafe};
+use crate::{Backend, ThreadSafe};
 
 mod cmp;
 mod convert;
@@ -53,11 +53,11 @@ mod serde;
 #[repr(transparent)]
 pub struct HipByt<B = ThreadSafe>(pub(crate) Raw<B>)
 where
-    B: AllocatedBackend;
+    B: Backend;
 
 impl<B> HipByt<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     /// Creates an empty `HipByt`.
     ///
@@ -322,9 +322,12 @@ where
     /// ```
     /// # use hipstr::HipByt;
     /// let mut vec: Vec<u8> = Vec::with_capacity(10);
-    /// vec.push(42);
+    /// vec.extend_from_slice(&[1, 2, 3]);
     /// let bytes = HipByt::from(vec);
     /// assert_eq!(bytes.capacity(), 10);
+    ///
+    /// let half = bytes.slice(0..2);
+    /// assert_eq!(bytes.capacity(), 10); // same backend, same capacity
     /// ```
     #[inline]
     pub fn capacity(&self) -> usize {
@@ -345,7 +348,7 @@ where
 
 impl<B> Clone for HipByt<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn clone(&self) -> Self {
@@ -355,7 +358,7 @@ where
 
 impl<B> Default for HipByt<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn default() -> Self {
@@ -365,7 +368,7 @@ where
 
 impl<B> Deref for HipByt<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     type Target = [u8];
 
@@ -377,7 +380,7 @@ where
 
 impl<B> Borrow<[u8]> for HipByt<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn borrow(&self) -> &[u8] {
@@ -387,7 +390,7 @@ where
 
 impl<B> Hash for HipByt<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
@@ -399,7 +402,7 @@ where
 
 impl<B> fmt::Debug for HipByt<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -459,7 +462,7 @@ pub(crate) fn simplify_range(
 #[derive(PartialEq, Eq, Clone)]
 pub struct SliceError<'a, B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     kind: SliceErrorKind,
     start: usize,
@@ -469,7 +472,7 @@ where
 
 impl<'a, B> SliceError<'a, B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     const fn new(kind: SliceErrorKind, start: usize, end: usize, bytes: &'a HipByt<B>) -> Self {
         Self {
@@ -518,7 +521,7 @@ where
 
 impl<'a, B> fmt::Debug for SliceError<'a, B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SliceError")
@@ -532,7 +535,7 @@ where
 
 impl<'a, B> fmt::Display for SliceError<'a, B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.kind {
@@ -557,7 +560,7 @@ where
     }
 }
 
-impl<'a, B> Error for SliceError<'a, B> where B: AllocatedBackend {}
+impl<'a, B> Error for SliceError<'a, B> where B: Backend {}
 
 #[cfg(test)]
 mod tests {
@@ -913,5 +916,8 @@ mod tests {
         v.extend_from_slice(b"abc");
         let a = HipByt::from(v);
         assert_eq!(a.capacity(), 42);
+
+        let b = a.slice(1..);
+        assert_eq!(b.capacity(), 42);
     }
 }

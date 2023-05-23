@@ -3,7 +3,7 @@
 use std::mem::{size_of, ManuallyDrop, MaybeUninit};
 use std::ops::Range;
 
-use crate::{AllocatedBackend, ThreadSafe};
+use crate::{Backend, ThreadSafe};
 
 /// Maximal byte capacity of an inline [`HipStr`](super::HipStr) or [`HipByt`](super::HipByt).
 ///
@@ -150,7 +150,7 @@ impl Inline {
 #[cfg(target_endian = "big")]
 #[derive(Copy)]
 #[repr(C)]
-struct Allocated<B: AllocatedBackend> {
+struct Allocated<B: Backend> {
     ptr: *const u8,
     len: usize,
     owner: B::RawPointer,
@@ -158,25 +158,25 @@ struct Allocated<B: AllocatedBackend> {
 
 #[cfg(target_endian = "little")]
 #[repr(C)]
-struct Allocated<B: AllocatedBackend> {
+struct Allocated<B: Backend> {
     owner: B::RawPointer,
     ptr: *const u8,
     len: usize,
 }
 
-impl<B: AllocatedBackend> Copy for Allocated<B> {}
+impl<B: Backend> Copy for Allocated<B> {}
 
-impl<B: AllocatedBackend> Clone for Allocated<B> {
+impl<B: Backend> Clone for Allocated<B> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-unsafe impl<B: AllocatedBackend + Sync> Sync for Allocated<B> {}
+unsafe impl<B: Backend + Sync> Sync for Allocated<B> {}
 
-unsafe impl<B: AllocatedBackend + Send> Send for Allocated<B> {}
+unsafe impl<B: Backend + Send> Send for Allocated<B> {}
 
-impl<B: AllocatedBackend> Allocated<B> {
+impl<B: Backend> Allocated<B> {
     const _ASSERTS: () = {
         assert!(size_of::<B::RawPointer>() == size_of::<usize>());
     };
@@ -188,7 +188,7 @@ impl<B: AllocatedBackend> Allocated<B> {
     fn new(v: Vec<u8>) -> Self {
         let ptr = v.as_ptr();
         let len = v.len();
-        let owner = B::new_raw(v);
+        let owner = B::into_raw(B::new(v));
 
         #[allow(clippy::inconsistent_struct_constructor)]
         Self { ptr, len, owner }
@@ -220,7 +220,7 @@ impl<B: AllocatedBackend> Allocated<B> {
         );
 
         // SAFETY: if this reference is unique, no one else can "see" the string
-        if unsafe { B::is_unique(self.owner) } {
+        if unsafe { B::raw_is_unique(self.owner) } {
             Some(unsafe { std::slice::from_raw_parts_mut(self.ptr as *mut u8, self.len) })
         } else {
             None
@@ -231,7 +231,6 @@ impl<B: AllocatedBackend> Allocated<B> {
     #[inline]
     fn slice(&self, range: Range<usize>) -> Self {
         debug_assert!(self.is_valid(), "Inline::slice on invalid representation");
-        debug_assert!(self.is_valid());
         assert!(range.start <= self.len);
         assert!(range.end <= self.len);
         self.incr_ref_count();
@@ -243,20 +242,14 @@ impl<B: AllocatedBackend> Allocated<B> {
         }
     }
 
-    /// Gets a reference to the vector.
-    fn vec_ref(&self) -> &Vec<u8> {
-        unsafe { B::vec_ref(self.owner) }
-    }
-
     /// Increments the reference count.
     #[inline]
     fn incr_ref_count(&self) {
         debug_assert!(
             self.is_valid(),
-            "Inline::incr_ref_count on invalid representation"
+            "Allocated::incr_ref_count on invalid representation"
         );
-        debug_assert!(self.is_valid());
-        unsafe { B::increment_count(self.owner) };
+        unsafe { B::raw_increment_count(self.owner) };
     }
 
     /// Decrements the reference count.
@@ -264,26 +257,35 @@ impl<B: AllocatedBackend> Allocated<B> {
     fn decr_ref_count(self) {
         debug_assert!(
             self.is_valid(),
-            "Inline::decr_ref_count on invalid representation"
+            "Allocated::decr_ref_count on invalid representation"
         );
-        debug_assert!(self.is_valid());
-        unsafe { B::decrement_count(self.owner) };
+        unsafe { B::raw_decrement_count(self.owner) };
     }
 
     /// Return `true` iff this representation is valid.
     #[inline]
     fn is_valid(&self) -> bool {
-        B::is_valid(self.owner)
+        B::raw_is_valid(self.owner)
+    }
+
+    #[inline]
+    fn owner_vec(&self) -> &Vec<u8> {
+        unsafe { B::raw_as_vec(self.owner) }
     }
 
     #[inline]
     fn try_into_vec(self) -> Result<Vec<u8>, Self> {
-        let ptr = unsafe { B::vec_ref(self.owner) }.as_ptr();
+        debug_assert!(
+            self.is_valid(),
+            "Allocated::try_into_vec on invalid representation"
+        );
+
+        let ptr = self.owner_vec().as_ptr();
         if self.ptr != ptr {
+            // the starts differ, cannot truncate
             return Err(self);
         }
-
-        unsafe { B::try_unwrap(self.owner) }
+        unsafe { B::raw_try_unwrap(self.owner) }
             .map_err(|owner| Self { owner, ..self })
             .map(|mut v| {
                 v.truncate(self.len);
@@ -294,19 +296,19 @@ impl<B: AllocatedBackend> Allocated<B> {
 
 /// Raw immutable byte sequence.
 #[repr(C)]
-pub union Raw<B: AllocatedBackend> {
+pub union Raw<B: Backend> {
     inline: Inline,
     allocated: Allocated<B>,
     static_: Static,
 }
 
-enum RawSplit<'a, B: AllocatedBackend> {
+enum RawSplit<'a, B: Backend> {
     Inline(&'a Inline),
     Allocated(&'a Allocated<B>),
     Static(&'a Static),
 }
 
-impl<B: AllocatedBackend> Raw<B> {
+impl<B: Backend> Raw<B> {
     const _ASSERTS: () = {
         assert!(size_of::<Inline>() == size_of::<Allocated<B>>());
         assert!(size_of::<Inline>() == size_of::<Static>());
@@ -474,7 +476,7 @@ impl<B: AllocatedBackend> Raw<B> {
             // provide something to simplify the API
             self.len()
         } else {
-            unsafe { &self.allocated }.vec_ref().capacity()
+            unsafe { &self.allocated }.owner_vec().capacity()
         }
     }
 
@@ -500,7 +502,7 @@ impl<B: AllocatedBackend> Raw<B> {
     }
 }
 
-impl<B: AllocatedBackend> Drop for Raw<B> {
+impl<B: Backend> Drop for Raw<B> {
     #[inline]
     fn drop(&mut self) {
         // Formally drops this `Raw` decreasing the ref count if needed
@@ -510,7 +512,7 @@ impl<B: AllocatedBackend> Drop for Raw<B> {
     }
 }
 
-impl<B: AllocatedBackend> Clone for Raw<B> {
+impl<B: Backend> Clone for Raw<B> {
     fn clone(&self) -> Self {
         // Duplicates this `Raw` increasing the ref count if needed.
         match self.split() {

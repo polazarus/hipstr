@@ -2,11 +2,11 @@ use serde::de::Visitor;
 use serde::{Deserialize, Serialize};
 
 use super::HipByt;
-use crate::AllocatedBackend;
+use crate::Backend;
 
 impl<B> Serialize for HipByt<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -61,7 +61,7 @@ impl<'de> Visitor<'de> for BytesVisitor {
 
 impl<'de, B> Deserialize<'de> for HipByt<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where

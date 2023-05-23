@@ -1,11 +1,11 @@
 use serde::{Deserialize, Serialize};
 
 use super::HipStr;
-use crate::AllocatedBackend;
+use crate::Backend;
 
 impl<B> Serialize for HipStr<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -17,7 +17,7 @@ where
 
 impl<'de, B> Deserialize<'de> for HipStr<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where

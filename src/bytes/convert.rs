@@ -4,11 +4,11 @@ use std::borrow::Cow;
 
 use super::HipByt;
 use crate::raw::Raw;
-use crate::AllocatedBackend;
+use crate::Backend;
 
 impl<B> AsRef<[u8]> for HipByt<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn as_ref(&self) -> &[u8] {
@@ -20,7 +20,7 @@ where
 
 impl<B> From<&[u8]> for HipByt<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn from(value: &[u8]) -> Self {
@@ -30,7 +30,7 @@ where
 
 impl<B, const N: usize> From<&[u8; N]> for HipByt<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn from(value: &[u8; N]) -> Self {
@@ -40,7 +40,7 @@ where
 
 impl<B> From<Box<[u8]>> for HipByt<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn from(value: Box<[u8]>) -> Self {
@@ -50,7 +50,7 @@ where
 
 impl<B> From<Vec<u8>> for HipByt<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn from(value: Vec<u8>) -> Self {
@@ -60,7 +60,7 @@ where
 
 impl<'a, B> From<Cow<'a, [u8]>> for HipByt<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn from(value: Cow<'a, [u8]>) -> Self {
@@ -73,7 +73,7 @@ where
 
 impl<B> From<HipByt<B>> for Vec<u8>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn from(value: HipByt<B>) -> Self {

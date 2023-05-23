@@ -4,11 +4,11 @@ use std::borrow::Cow;
 
 use super::HipStr;
 use crate::bytes::HipByt;
-use crate::AllocatedBackend;
+use crate::Backend;
 
 impl<B> AsRef<str> for HipStr<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn as_ref(&self) -> &str {
@@ -20,7 +20,7 @@ where
 
 impl<B> From<&str> for HipStr<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn from(value: &str) -> Self {
@@ -30,7 +30,7 @@ where
 
 impl<B> From<Box<str>> for HipStr<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn from(value: Box<str>) -> Self {
@@ -40,7 +40,7 @@ where
 
 impl<B> From<String> for HipStr<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn from(value: String) -> Self {
@@ -50,7 +50,7 @@ where
 
 impl<'a, B> From<Cow<'a, str>> for HipStr<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn from(value: Cow<'a, str>) -> Self {
@@ -63,7 +63,7 @@ where
 
 impl<B> From<HipStr<B>> for String
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn from(value: HipStr<B>) -> Self {
@@ -75,7 +75,7 @@ where
 
 impl<B> From<HipStr<B>> for HipByt<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn from(value: HipStr<B>) -> Self {
@@ -85,7 +85,7 @@ where
 
 impl<B> From<HipStr<B>> for Vec<u8>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     #[inline]
     fn from(value: HipStr<B>) -> Self {
@@ -97,7 +97,7 @@ where
 
 impl<B> TryFrom<HipByt<B>> for HipStr<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     type Error = super::FromUtf8Error<B>;
 
@@ -109,7 +109,7 @@ where
 
 impl<'a, B> TryFrom<&'a HipByt<B>> for HipStr<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     type Error = super::FromUtf8Error<B>;
 
@@ -121,7 +121,7 @@ where
 
 impl<'a, B> TryFrom<&'a [u8]> for HipStr<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     type Error = std::str::Utf8Error;
 
@@ -133,7 +133,7 @@ where
 
 impl<B> TryFrom<Vec<u8>> for HipStr<B>
 where
-    B: AllocatedBackend,
+    B: Backend,
 {
     type Error = std::string::FromUtf8Error;
 

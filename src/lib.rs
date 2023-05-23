@@ -32,7 +32,7 @@ pub mod bytes;
 mod raw;
 pub mod string;
 
-pub use backend::{AllocatedBackend, Local, ThreadSafe};
+pub use backend::{Backend, Local, ThreadSafe};
 
 /// Thread-safe shared byte sequence.
 pub type HipByt = bytes::HipByt<ThreadSafe>;
