@@ -362,8 +362,13 @@ where
         }
     }
 
-    /// Decodes a UTF-16–encoded vector `v` into a `HipStr`, returning [`Err`]
-    /// if `v` contains any invalid data.
+    /// Decodes a UTF-16–encoded vector `v` into a `HipStr`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`FromUtf16Error`] if `v` contains any invalid data.
+    ///
+    /// [`FromUtf16Error`]: std::string::FromUtf16Error
     ///
     /// # Examples
     ///
@@ -821,7 +826,6 @@ impl<'a, B> Error for SliceError<'a, B> where B: Backend {}
 /// [`into_bytes`] method will give back the byte vector that was used in the
 /// conversion attempt.
 ///
-/// [`HipByt`]: hypstr::bytes::hypByt
 /// [`from_utf8`]: HipStr::from_utf8
 /// [`into_bytes`]: FromUtf8Error::into_bytes
 ///
