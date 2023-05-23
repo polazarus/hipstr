@@ -15,7 +15,6 @@ pub const INLINE_CAPACITY: usize = size_of::<Allocated<ThreadSafe>>() - 1;
 /// Warning!
 /// For big-endian platform, the reserved word is **after** the data.
 /// For little-endian platform, the reserved word is **before** the data.
-
 #[derive(Clone, Copy)]
 #[repr(C)]
 struct Static {
@@ -147,21 +146,16 @@ impl Inline {
     }
 }
 
-#[cfg(target_endian = "big")]
-#[derive(Copy)]
 #[repr(C)]
 struct Allocated<B: Backend> {
-    ptr: *const u8,
-    len: usize,
+    #[cfg(target_endian = "little")]
     owner: B::RawPointer,
-}
 
-#[cfg(target_endian = "little")]
-#[repr(C)]
-struct Allocated<B: Backend> {
-    owner: B::RawPointer,
     ptr: *const u8,
     len: usize,
+
+    #[cfg(target_endian = "big")]
+    owner: B::RawPointer,
 }
 
 impl<B: Backend> Copy for Allocated<B> {}
