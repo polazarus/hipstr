@@ -100,6 +100,7 @@ pub mod private {
         /// # Safety
         ///
         /// The raw pointer should be one corresponding to a valid backend.
+        #[inline]
         unsafe fn raw_try_unwrap(raw: Self::RawPointer) -> Result<Vec<u8>, Self::RawPointer> {
             let backend = unsafe { Self::from_raw(raw) };
             backend.try_unwrap().map_err(Self::into_raw)

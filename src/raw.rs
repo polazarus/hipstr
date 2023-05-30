@@ -81,15 +81,15 @@ struct Inline {
 impl Inline {
     /// Creates a new `Inline` string by copying a byte slice.
     #[inline]
-    fn new(s: &[u8]) -> Self {
-        let len = s.len();
+    fn new(sl: &[u8]) -> Self {
+        let len = sl.len();
         debug_assert!(len != 0);
         assert!(len <= INLINE_CAPACITY);
 
         let mut data: [MaybeUninit<u8>; INLINE_CAPACITY];
         unsafe {
             data = MaybeUninit::uninit().assume_init();
-            std::ptr::copy_nonoverlapping(s.as_ptr(), data.as_mut_ptr().cast(), len);
+            std::ptr::copy_nonoverlapping(sl.as_ptr(), data.as_mut_ptr().cast(), len);
         }
 
         #[allow(clippy::cast_possible_truncation)]
@@ -232,6 +232,7 @@ impl<B: Backend> Allocated<B> {
     #[inline]
     fn slice(&self, range: Range<usize>) -> Self {
         debug_assert!(self.is_valid(), "Inline::slice on invalid representation");
+
         assert!(range.start <= self.len);
         assert!(range.end <= self.len);
         self.incr_ref_count();
@@ -422,22 +423,28 @@ impl<B: Backend> Raw<B> {
         }
     }
 
+    #[inline]
     pub fn slice(&self, range: Range<usize>) -> Self {
         if range.is_empty() {
-            return Self::from_static(b"");
+            return Self::empty();
         }
 
         match self.split() {
             RawSplit::Inline(inline) => {
-                assert!(range.len() < inline.len());
+                debug_assert!(range.len() < inline.len());
+                let inline = Inline::new(&inline.as_slice()[range]);
+                Self { inline }
+            }
+            RawSplit::Static(static_) => {
+                let sl = &static_.slice[range];
                 Self {
-                    inline: Inline::new(&inline.as_slice()[range]),
+                    static_: Static::new(sl),
                 }
             }
-            RawSplit::Static(static_) => Self::from_static(&static_.slice[range]),
-            RawSplit::Allocated(allocated) => Self {
-                allocated: allocated.slice(range),
-            },
+            RawSplit::Allocated(allocated) => {
+                let allocated = allocated.slice(range);
+                Self { allocated }
+            }
         }
     }
 
