@@ -1,7 +1,7 @@
 //! Raw shared sequence of bytes
 
 use std::mem::{size_of, ManuallyDrop, MaybeUninit};
-use std::ops::{Deref, DerefMut, Range};
+use std::ops::Range;
 use std::panic::{RefUnwindSafe, UnwindSafe};
 
 use crate::{Backend, ThreadSafe};
@@ -460,16 +460,16 @@ impl<B: Backend> Raw<B> {
     }
 
     #[inline]
-    pub fn mutate(&mut self) -> RefMut<B> {
+    pub fn take_vec(&mut self) -> Vec<u8> {
         if self.is_allocated() {
             if let Ok(owned) = unsafe { &self.allocated }.try_into_vec() {
                 let _ = ManuallyDrop::new(std::mem::replace(self, Self::empty()));
-                return RefMut { dest: self, owned };
+                return owned;
             }
         }
         let owned = Vec::from(self.as_slice());
         *self = Self::empty();
-        RefMut { dest: self, owned }
+        owned
     }
 
     #[inline]
@@ -532,42 +532,5 @@ impl<B: Backend> Clone for Raw<B> {
                 Self { allocated }
             }
         }
-    }
-}
-
-pub struct RefMut<'a, B>
-where
-    B: Backend,
-{
-    dest: &'a mut Raw<B>,
-    owned: Vec<u8>,
-}
-
-impl<'a, B> Drop for RefMut<'a, B>
-where
-    B: Backend,
-{
-    fn drop(&mut self) {
-        let v = std::mem::take(&mut self.owned);
-        *self.dest = Raw::from_vec(v);
-    }
-}
-
-impl<'a, B> Deref for RefMut<'a, B>
-where
-    B: Backend,
-{
-    type Target = Vec<u8>;
-    fn deref(&self) -> &Self::Target {
-        &self.owned
-    }
-}
-
-impl<'a, B> DerefMut for RefMut<'a, B>
-where
-    B: Backend,
-{
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.owned
     }
 }

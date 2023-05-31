@@ -4,7 +4,7 @@ use std::borrow::{Borrow, Cow};
 use std::error::Error;
 use std::fmt;
 use std::hash::Hash;
-use std::ops::{Deref, Range, RangeBounds};
+use std::ops::{Deref, DerefMut, Range, RangeBounds};
 use std::str::Utf8Error;
 use std::string::FromUtf16Error;
 
@@ -600,6 +600,22 @@ where
             .map(|v| unsafe { String::from_utf8_unchecked(v) })
             .map_err(Self)
     }
+
+    /// Returns a mutable handle to the underlying [`String`].
+    ///
+    /// This operation may reallocate a new string if either:
+    ///
+    /// - the representation is not an allocated buffer (inline array or static borrow),
+    /// - the underlying buffer is shared.
+    #[inline]
+    #[must_use]
+    pub fn mutate(&mut self) -> RefMut<B> {
+        let owned = unsafe { String::from_utf8_unchecked(self.0.take_vec()) };
+        RefMut {
+            result: self,
+            owned,
+        }
+    }
 }
 
 impl<B> Clone for HipStr<B>
@@ -963,6 +979,44 @@ where
 
 impl<B> Error for FromUtf8Error<B> where B: Backend {}
 
+/// A wrapper type for a mutably borrowed [`String`] out of a [`HipStr`].
+pub struct RefMut<'a, B>
+where
+    B: Backend,
+{
+    result: &'a mut HipStr<B>,
+    owned: String,
+}
+
+impl<'a, B> Drop for RefMut<'a, B>
+where
+    B: Backend,
+{
+    fn drop(&mut self) {
+        let owned = std::mem::take(&mut self.owned);
+        *self.result = HipStr::from(owned);
+    }
+}
+
+impl<'a, B> Deref for RefMut<'a, B>
+where
+    B: Backend,
+{
+    type Target = String;
+    fn deref(&self) -> &Self::Target {
+        &self.owned
+    }
+}
+
+impl<'a, B> DerefMut for RefMut<'a, B>
+where
+    B: Backend,
+{
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.owned
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
@@ -1296,5 +1350,53 @@ mod tests {
         v.push_str("abc");
         let a = HipStr::from(v);
         assert_eq!(a.capacity(), 42);
+    }
+
+    #[test]
+    fn test_mutate() {
+        {
+            // static
+            let mut a = HipStr::from_static("abc");
+            assert!(a.is_static(), "a should be static");
+            a.mutate().push_str("def");
+            assert!(a.is_allocated(), "a should be allocated at the end");
+            assert_eq!(a, "abcdef", "should be modified");
+        }
+
+        {
+            // inline
+            let mut a = HipStr::from("abc");
+            assert!(a.is_inline(), "a should be inline at the start");
+            a.mutate().push_str("def");
+            assert!(a.is_allocated(), "a should be allocated at the end");
+            assert_eq!(a, "abcdef", "should be modified");
+        }
+
+        {
+            // allocated, unique with enough capacity
+            let mut v = String::with_capacity(6);
+            v.push_str("abc");
+            let p = v.as_ptr();
+            let mut a = HipStr::from(v);
+            assert!(a.is_allocated(), "should be allocated at the start");
+            a.mutate().push_str("def");
+            assert!(a.is_allocated(), "should be allocated at the end");
+            assert_eq!(a, "abcdef", "should be modified");
+            assert_eq!(a.as_ptr(), p, "should have same backend vector");
+        }
+
+        {
+            // allocated, shared
+            let mut v = String::with_capacity(6);
+            v.push_str("abc");
+            let mut a = HipStr::from(v);
+            assert!(a.is_allocated(), "a should be allocated at the start");
+            let b = a.clone();
+            a.mutate().push_str("def");
+            assert!(a.is_allocated(), "a should be allocated at the end");
+            assert_eq!(a, "abcdef", "a should be modified");
+            assert_eq!(b, "abc", "b should not be modified");
+            assert_ne!(a.as_ptr(), b.as_ptr(), "different backend vector");
+        }
     }
 }

@@ -4,10 +4,9 @@ use std::borrow::Borrow;
 use std::error::Error;
 use std::fmt;
 use std::hash::Hash;
-use std::ops::{Bound, Deref, Range, RangeBounds};
+use std::ops::{Bound, Deref, DerefMut, Range, RangeBounds};
 
 use super::raw::Raw;
-pub use super::raw::RefMut;
 use crate::{Backend, ThreadSafe};
 
 mod cmp;
@@ -350,12 +349,20 @@ where
     ///
     /// This operation may reallocate a new vector if either:
     ///
-    /// - the representation is not an allocated buffer (inline array or static borrow)
+    /// - the representation is not an allocated buffer (inline array or static borrow),
     /// - the underlying buffer is shared.
     #[inline]
     #[must_use]
     pub fn mutate(&mut self) -> RefMut<B> {
-        self.0.mutate()
+        let owned = self.0.take_vec();
+        RefMut {
+            result: self,
+            owned,
+        }
+    }
+
+    pub(crate) fn take_vec(&mut self) -> Vec<u8> {
+        self.0.take_vec()
     }
 }
 
@@ -567,6 +574,44 @@ where
 }
 
 impl<'a, B> Error for SliceError<'a, B> where B: Backend {}
+
+/// A wrapper type for a mutably borrowed vector out of a [`HipByt`].
+pub struct RefMut<'a, B>
+where
+    B: Backend,
+{
+    result: &'a mut HipByt<B>,
+    owned: Vec<u8>,
+}
+
+impl<'a, B> Drop for RefMut<'a, B>
+where
+    B: Backend,
+{
+    fn drop(&mut self) {
+        let owned = std::mem::take(&mut self.owned);
+        *self.result = HipByt::from(owned);
+    }
+}
+
+impl<'a, B> Deref for RefMut<'a, B>
+where
+    B: Backend,
+{
+    type Target = Vec<u8>;
+    fn deref(&self) -> &Self::Target {
+        &self.owned
+    }
+}
+
+impl<'a, B> DerefMut for RefMut<'a, B>
+where
+    B: Backend,
+{
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.owned
+    }
+}
 
 #[cfg(test)]
 mod tests {
