@@ -7,6 +7,7 @@ use std::hash::Hash;
 use std::ops::{Bound, Deref, Range, RangeBounds};
 
 use super::raw::Raw;
+pub use super::raw::RefMut;
 use crate::{Backend, ThreadSafe};
 
 mod cmp;
@@ -884,48 +885,78 @@ mod tests {
 
     #[test]
     fn test_into_vec() {
-        let a = HipByt::from_static(b"abc");
-        assert!(a.into_vec().is_err()); // static
+        {
+            // static
+            let a = HipByt::from_static(b"abc");
+            assert!(a.into_vec().is_err());
+        }
 
-        let a = HipByt::from(b"abc");
-        assert!(a.into_vec().is_err()); // inline
+        {
+            // inline
+            let a = HipByt::from(b"abc");
+            assert!(a.into_vec().is_err());
+        }
 
         let v = vec![42; 10];
-        let p = v.as_ptr();
-        let a = HipByt::from(v);
-        let v = a.into_vec().unwrap();
-        assert_eq!(p, v.as_ptr());
-        assert_eq!(10, v.len());
+        {
+            // allocated, unique
+            let v = v.clone();
+            let p = v.as_ptr();
+            let a = HipByt::from(v);
+            let v = a.into_vec().unwrap();
+            assert_eq!(p, v.as_ptr());
+            assert_eq!(10, v.len());
+        }
 
-        let a = HipByt::from(v.clone());
-        let _b = a.clone();
-        assert!(a.into_vec().is_err());
+        {
+            // allocated, shared
+            let a = HipByt::from(v.clone());
+            let _b = a.clone();
+            assert!(a.into_vec().is_err());
+        }
 
-        let a = HipByt::from(v).slice(0..5);
-        let v = a.into_vec().unwrap();
-        assert_eq!(v.len(), 5);
+        {
+            // allocated, unique, sliced at start
+            let v = v.clone();
+            let p = v.as_ptr();
+            let a = HipByt::from(v).slice(0..5);
+            let v = a.into_vec().unwrap();
+            assert_eq!(v.len(), 5);
+            assert_eq!(v.as_ptr(), p);
+        }
 
-        let a = HipByt::from(v).slice(1..5);
-        assert!(a.into_vec().is_err());
+        {
+            // allocated, unique, sliced at start
+            let a = HipByt::from(v).slice(1..5);
+            assert!(a.into_vec().is_err());
+        }
     }
 
     #[test]
     fn test_capacity() {
-        let a = HipByt::from_static(b"abc");
-        assert_eq!(a.capacity(), a.len());
+        {
+            // static
+            let a = HipByt::from_static(b"abc");
+            assert_eq!(a.capacity(), a.len());
+        }
 
-        let a = HipByt::from(b"abc");
-        assert_eq!(a.capacity(), HipByt::inline_capacity());
+        {
+            // inline
+            let a = HipByt::from(b"abc");
+            assert_eq!(a.capacity(), HipByt::inline_capacity());
+        }
 
-        let mut v = Vec::with_capacity(42);
-        v.extend_from_slice(b"abc");
-        let a = HipByt::from(v);
-        assert_eq!(a.capacity(), 42);
+        {
+            // allocated
+            let mut v = Vec::with_capacity(42);
+            v.extend_from_slice(b"abc");
+            let a = HipByt::from(v);
+            assert_eq!(a.capacity(), 42);
 
-        let b = a.slice(1..);
-        assert_eq!(b.capacity(), 42);
+            let b = a.slice(1..);
+            assert_eq!(b.capacity(), 42);
+        }
     }
-}
 
     #[test]
     fn test_mutate() {
