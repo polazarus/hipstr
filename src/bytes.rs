@@ -344,6 +344,18 @@ where
     pub fn into_vec(self) -> Result<Vec<u8>, Self> {
         self.0.into_vec().map_err(Self)
     }
+
+    /// Returns a mutable handle to the underlying [`Vec`].
+    ///
+    /// This operation may reallocate a new vector if either:
+    ///
+    /// - the representation is not an allocated buffer (inline array or static borrow)
+    /// - the underlying buffer is shared.
+    #[inline]
+    #[must_use]
+    pub fn mutate(&mut self) -> RefMut<B> {
+        self.0.mutate()
+    }
 }
 
 impl<B> Clone for HipByt<B>
@@ -912,5 +924,54 @@ mod tests {
 
         let b = a.slice(1..);
         assert_eq!(b.capacity(), 42);
+    }
+}
+
+    #[test]
+    fn test_mutate() {
+        {
+            // static
+            let mut a = HipByt::from_static(b"abc");
+            assert!(a.is_static(), "a should be static");
+            a.mutate().extend_from_slice(b"def");
+            assert!(a.is_allocated(), "a should be allocated at the end");
+            assert_eq!(a, b"abcdef", "should be modified");
+        }
+
+        {
+            // inline
+            let mut a = HipByt::from(b"abc");
+            assert!(a.is_inline(), "a should be inline at the start");
+            a.mutate().extend_from_slice(b"def");
+            assert!(a.is_allocated(), "a should be allocated at the end");
+            assert_eq!(a, b"abcdef", "should be modified");
+        }
+
+        {
+            // allocated, unique with enough capacity
+            let mut v = Vec::with_capacity(6);
+            v.extend_from_slice(b"abc");
+            let p = v.as_ptr();
+            let mut a = HipByt::from(v);
+            assert!(a.is_allocated(), "should be allocated at the start");
+            a.mutate().extend_from_slice(b"def");
+            assert!(a.is_allocated(), "should be allocated at the end");
+            assert_eq!(a, b"abcdef", "should be modified");
+            assert_eq!(a.as_ptr(), p, "should have same backend vector");
+        }
+
+        {
+            // allocated, shared
+            let mut v = Vec::with_capacity(6);
+            v.extend_from_slice(b"abc");
+            let mut a = HipByt::from(v);
+            assert!(a.is_allocated(), "a should be allocated at the start");
+            let b = a.clone();
+            a.mutate().extend_from_slice(b"def");
+            assert!(a.is_allocated(), "a should be allocated at the end");
+            assert_eq!(a, b"abcdef", "a should be modified");
+            assert_eq!(b, b"abc", "b should not be modified");
+            assert_ne!(a.as_ptr(), b.as_ptr(), "different backend vector");
+        }
     }
 }
