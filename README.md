@@ -23,19 +23,19 @@ let _user = greetings.slice(6..): // no copy
 ## ✏️ Features
 
 * `serde`: serialization/deserialization support with `serde` crate
-* `unstable`: exposes internal trait that may change at any moment
+* `unstable`: exposes internal `Backend` trait that may change at any moment
 
 ## ☣️ Unsafety in Hipstr
 
-This crate use `unsafe` extensively. 🤷
+This crate uses `unsafe` extensively. 🤷
 
 It exploits a 1-bit alignment niche in pointer existing on most platform (I think all Rustc supported platform) to distinguish the inline representation from the other representations.
 
-To make things safer, Rust is tested (but for now mostly on x86_64) and tested under Miri (MIR interpreter).
+To make things safer, Rust is tested thoroughly on multiple platforms, normally and with Miri (MIR interpreter).
 
 ## 🧪 Testing
 
-### ☔ Coverage
+### :☔ Coverage
 
 This crate has near full line coverage:
 
@@ -43,6 +43,17 @@ This crate has near full line coverage:
 cargo llvm-cov --all-features --html
 # or
 cargo tarpaulin --all-features --out html --engine llvm
+```
+
+### 🖥️ Cross-platform testing
+
+With [`cross`](https://github.com/cross-rs/cross):
+
+```bash
+cross test --target mips-unknown-linux-gnu          # 32-bit BE
+cross test --target mips64-unknown-linux-gnuabi64   # 64-bit BE
+cross test --target i686-unknown-linux-gnu          # 32-bit LE
+cross test --target x86_64-unknown-linux-gnu        # 64-bit LE
 ```
 
 ### 🔍 Miri
@@ -58,11 +69,21 @@ for SEED in $(seq 0 10); do
 done
 ```
 
+To check with different word size and endianness:
+
+```bash
+# Big endian, 64-bit
+cargo +nightly miri test  --target mips64-unknown-linux-gnuabi64
+# Little endian, 32-bit
+cargo +nightly miri test  --target i686-unknown-linux-gnu
+```
+
 ## 📦 Similar crates
 
-* `arcstr`, no inline repr, otherwise very similar except that their `Substr` are heavy and they uses a custom `Arc`.
-* `flexstr`, no slice, very similar but use an `Arc<str>` instead of an `Arc<String>` remove one level of indirection
-* `imstr`: no inline repr, otherwise very similar
+* [`arcstr`](https://github.com/thomcc/arcstr), no inline repr, otherwise very similar except that their slice are heavy (with dedicated `Substr` type) and they uses a custom `Arc`.
+* [`flexstr`](https://github.com/nu11ptr/flexstr), no slice, very similar but use an `Arc<str>` instead of an `Arc<String>` (remove level of indirection but use fat pointers).
+* [`imstr`](https://github.com/xfbs/imstr): no inline repr, otherwise very similar
+* many more
 
 ## 🚀 TODOs
 
