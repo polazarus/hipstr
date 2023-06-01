@@ -1,13 +1,15 @@
-# `HipStr`
+# `hipstr`
 
 [![Rust](https://github.com/polazarus/hipstr/actions/workflows/basic.yml/badge.svg)](https://github.com/polazarus/hipstr/actions/workflows/basic.yml)
 
-Yet another string:
+Yet another string for Rust 🦀
 
-* no copy literal via `from_static` (a `const`ructor!)
-* no alloc small string (23 bytes on 64-bit platform)
-* no copy owned slice
-* and bytes too!
+* no copy **literal wrapping** via `from_static` (a `const`ructor!)
+* no alloc **small strings** (23 bytes on 64-bit platform)
+* no copy **owned slices**
+* **zero dependency**
+
+And **bytes** too!
 
 ## ⚡ Examples
 
@@ -27,17 +29,20 @@ let _user = greetings.slice(6..): // no copy
 * `serde`: serialization/deserialization support with `serde` crate
 * `unstable`: exposes internal `Backend` trait that may change at any moment
 
-## ☣️ Unsafety in Hipstr
+## ☣️ Safety of `hipstr`
 
 This crate uses `unsafe` extensively. 🤷
 
-It exploits a 1-bit alignment niche in pointer existing on most platform (I think all Rustc supported platform) to distinguish the inline representation from the other representations.
+It exploits a 1-bit alignment niche in pointer existing on most platform
+(I think all Rustc supported platform) to distinguish the inline representation
+from the other representations.
 
-To make things safer, Rust is tested thoroughly on multiple platforms, normally and with Miri (MIR interpreter).
+To make things safer, Rust is tested thoroughly on multiple platforms, normally
+and with Miri (MIR interpreter).
 
 ## 🧪 Testing
 
-### :☔ Coverage
+### ☔ Coverage
 
 This crate has near full line coverage:
 
@@ -82,10 +87,14 @@ cargo +nightly miri test  --target i686-unknown-linux-gnu
 
 ## 📦 Similar crates
 
-* [`arcstr`](https://github.com/thomcc/arcstr), no inline repr, otherwise very similar except that their slice are heavy (with dedicated `Substr` type) and they uses a custom `Arc`.
-* [`flexstr`](https://github.com/nu11ptr/flexstr), no slice, very similar but use an `Arc<str>` instead of an `Arc<String>` (remove level of indirection but use fat pointers).
-* [`imstr`](https://github.com/xfbs/imstr): no inline repr, otherwise very similar
-* many more
+* [`arcstr`](https://github.com/thomcc/arcstr): no inline repr, heavy slice (with dedicated `Substr` type) and custom `Arc`.
+* [`flexstr`](https://github.com/nu11ptr/flexstr): no slice, very similar but use an `Arc<str>` instead of an `Arc<String>` (remove level of indirection but use fat pointers).
+* [`imstr`](https://github.com/xfbs/imstr): no inline repr, otherwise very similar.
+* and many more.
+
+In short, `HipStr`, one string type to rule them all…
+
+[![How standards proliferate](https://imgs.xkcd.com/comics/standards.png)](https://xkcd.com/927/)
 
 ## 🚀 TODOs
 
