@@ -10,9 +10,15 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  dev:
+  build:
     strategy:
       matrix:
+        toolchain:
+          - stable
+          - nightly
+        profile:
+          - dev
+          - release
         os:
           - ubuntu-latest
           - windows-latest
@@ -22,24 +28,16 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
+
+    - uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: ${{matrix.toolchain}}
+
+    - name: Show version
+      run: cargo version
+
     - name: Build
-      run: cargo build --verbose
+      run: cargo build --verbose --profile ${{matrix.profile}}
+
     - name: Run tests
-      run: cargo test --verbose
-
-  release:
-    strategy:
-      matrix:
-        os:
-          - ubuntu-latest
-          - windows-latest
-          - macos-latest
-
-    runs-on: ${{matrix.os}}
-
-    steps:
-    - uses: actions/checkout@v3
-    - name: Build
-      run: cargo build --verbose --release
-    - name: Run tests
-      run: cargo test --verbose --release
+      run: cargo test --verbose --profile ${{matrix.profile}}
