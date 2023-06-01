@@ -1,12 +1,14 @@
-//! Raw shared sequence of bytes
+//! Raw shared sequence of bytes, direct backing of [`HipByt`][hipstr::HipByt].
+//!
+//! Provides only the core features for the sequence of bytes.
 
-use std::mem::{size_of, ManuallyDrop};
+use std::mem::{replace, size_of, ManuallyDrop, forget};
 use std::ops::Range;
 
 use allocated::Allocated;
 use static_::Static;
 
-use crate::{Backend, ThreadSafe};
+use crate::Backend;
 
 mod allocated;
 mod inline;
@@ -15,9 +17,7 @@ mod static_;
 type Inline = inline::Inline<INLINE_CAPACITY>;
 
 /// Maximal byte capacity of an inline [`HipStr`](super::HipStr) or [`HipByt`](super::HipByt).
-///
-/// *Unstable!* name and access path may change with backend evolution.
-pub const INLINE_CAPACITY: usize = size_of::<Allocated<ThreadSafe>>() - 1;
+const INLINE_CAPACITY: usize = size_of::<Static>() - 1;
 
 /// Raw immutable byte sequence.
 #[repr(C)]
@@ -37,7 +37,7 @@ impl<B: Backend> Raw<B> {
     const _ASSERTS: () = {
         assert!(size_of::<Inline>() == size_of::<Allocated<B>>());
         assert!(size_of::<Inline>() == size_of::<Static>());
-        assert!(size_of::<*mut Vec<u8>>() == size_of::<usize>());
+        assert!(size_of::<B::RawPointer>() == size_of::<usize>());
     };
 
     /// Creates a new empty `Raw`.
@@ -84,12 +84,14 @@ impl<B: Backend> Raw<B> {
     /// Splits this raw into its possible representation.
     #[inline]
     const fn split(&self) -> RawSplit<B> {
-        // SAFETY: type invariant, see is_inline & is_static
         if self.is_inline() {
+            // SAFETY: representation checked, see is_inline
             RawSplit::Inline(unsafe { &self.inline })
         } else if self.is_static() {
+            // SAFETY: representation checked, see is_static
             RawSplit::Static(unsafe { &self.static_ })
         } else {
+            // SAFETY: representation checked, see is_static, is_inline and is_allocated
             debug_assert!(self.is_allocated());
             RawSplit::Allocated(unsafe { &self.allocated })
         }
@@ -121,7 +123,9 @@ impl<B: Backend> Raw<B> {
     #[inline]
     pub fn into_static(self) -> Result<&'static [u8], Self> {
         if self.is_static() {
+            // NO LEAK: no drop needed for static repr
             let this = ManuallyDrop::new(self);
+            // SAFETY: representation is checked before
             Ok(unsafe { &this.static_ }.as_slice())
         } else {
             Err(self)
@@ -174,8 +178,10 @@ impl<B: Backend> Raw<B> {
     #[inline]
     pub fn as_mut_slice(&mut self) -> Option<&mut [u8]> {
         if self.is_inline() {
+            // SAFETY: representation is checked
             Some(unsafe { &mut self.inline }.as_mut_slice())
         } else if self.is_allocated() {
+            // SAFETY: representation is checked
             unsafe { &mut self.allocated }.as_mut_slice()
         } else {
             None
@@ -185,8 +191,12 @@ impl<B: Backend> Raw<B> {
     #[inline]
     pub fn take_vec(&mut self) -> Vec<u8> {
         if self.is_allocated() {
-            if let Ok(owned) = unsafe { &self.allocated }.try_into_vec() {
-                let _ = ManuallyDrop::new(std::mem::replace(self, Self::empty()));
+            // SAFETY: representation is checked, copy without ownership
+            let allocated = unsafe { self.allocated };
+            if let Ok(owned) = allocated.try_into_vec() {
+                // SAFETY: ownership is taken, replace with empty
+                // and forget old value (otherwise double drop!!)
+                forget(replace(self, Self::empty()));
                 return owned;
             }
         }
@@ -202,13 +212,10 @@ impl<B: Backend> Raw<B> {
 
     #[inline]
     pub fn capacity(&self) -> usize {
-        if self.is_inline() {
-            Self::inline_capacity()
-        } else if self.is_static() {
-            // provide something to simplify the API
-            self.len()
-        } else {
-            unsafe { &self.allocated }.owner_vec().capacity()
+        match self.split() {
+            RawSplit::Inline(_) => Self::inline_capacity(),
+            RawSplit::Static(static_) => static_.len(), // provide something to simplify the API
+            RawSplit::Allocated(allocated) => allocated.owner_vec().capacity(),
         }
     }
 
@@ -226,7 +233,10 @@ impl<B: Backend> Raw<B> {
     #[inline]
     fn take_allocated(&mut self) -> Option<Allocated<B>> {
         if self.is_allocated() {
-            let old = ManuallyDrop::new(std::mem::replace(self, Self::empty()));
+            // SAFETY: take ownership of the allocated
+            // the old value should not be dropped
+            let old = ManuallyDrop::new(replace(self, Self::empty()));
+            // SAFETY: representation is checked above
             Some(unsafe { old.allocated })
         } else {
             None
