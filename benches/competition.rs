@@ -91,13 +91,13 @@ where
             timing.checked_div(batch).unwrap().as_secs_f64()
         })
         .collect();
-    let samples = &samples[5_000..];
+    let samples = &samples[1_000..];
     let (count, av, stddev) = average_stddev(samples.iter().copied());
     let (new_count, av_no_outliers) = average(
         samples
             .iter()
             .copied()
-            .filter(|e| (e - av).abs() < 0.5 * stddev),
+            .filter(|e| (e - av).abs() < 2. * stddev),
     );
 
     println!(
