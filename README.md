@@ -1,5 +1,7 @@
 # `HipStr`
 
+[![Rust](https://github.com/polazarus/hipstr/actions/workflows/basic.yml/badge.svg)](https://github.com/polazarus/hipstr/actions/workflows/basic.yml)
+
 Yet another string:
 
 * no copy literal via `from_static` (a `const`ructor!)
