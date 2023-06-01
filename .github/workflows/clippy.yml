@@ -22,7 +22,7 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Install Rust toolchain
-        uses: dtolnay/toolchain@stable
+        uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
 
