@@ -1,4 +1,4 @@
-name: Rust MIRI
+name: Miri
 
 on:
   push:
@@ -10,20 +10,8 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+  tests:
 
-    runs-on: ubuntu-latest
-
-    steps:
-    - uses: actions/checkout@v3
-    - name: Setup MIRI
-      run: |
-        rustup toolchain add nightly
-        rustup +nightly component add miri
-    - name: Run tests under MIRI
-      run: cargo +nightly miri test --verbose
-
-  cross:
     runs-on: ubuntu-latest
 
     strategy:
@@ -35,10 +23,12 @@ jobs:
           - x86_64-unknown-linux-gnu
 
     steps:
-      - uses: actions/checkout@v3
-      - name: Setup MIRI
-        run: |
-          rustup toolchain add nightly
-          rustup +nightly component add miri
-      - name: Run tests under MIRI
-        run: cargo +nightly miri test --verbose --target ${{matrix.platform}}
+    - uses: actions/checkout@v3
+
+    - name: Setup toolchain with Miri
+      uses: dtolnay/rust-toolchain@nightly
+      with:
+        components: miri
+
+    - name: Run tests under Miri
+      run: cargo +nightly miri test --verbose --target ${{matrix.platform}}
