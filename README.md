@@ -1,6 +1,10 @@
 # `hipstr`
 
 [![Rust](https://github.com/polazarus/hipstr/actions/workflows/basic.yml/badge.svg)](https://github.com/polazarus/hipstr/actions/workflows/basic.yml)
+[![Clippy](https://github.com/polazarus/hipstr/actions/workflows/clippy.yml/badge.svg)](https://github.com/polazarus/hipstr/actions/workflows/clippy.yml)
+[![Miri](https://github.com/polazarus/hipstr/actions/workflows/miri.yml/badge.svg)](https://github.com/polazarus/hipstr/actions/workflows/miri.yml)
+[![Docs](https://img.shields.io/docsrs/hipstr)](https://docs.rs/hipstr)
+![MIT OR Apache-2.0](https://img.shields.io/crates/l/hipstr)
 
 Yet another string for Rust 🦀
 
@@ -105,4 +109,4 @@ In short, `HipStr`, one string type to rule them all…
 For now, just me PoLazarus 👻 \
 Help welcome! 🚨
 
-MIT + APACHE
+MIT + Apache
