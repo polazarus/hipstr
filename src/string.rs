@@ -607,6 +607,19 @@ where
     ///
     /// - the representation is not an allocated buffer (inline array or static borrow),
     /// - the underlying buffer is shared.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use hipstr::HipStr;
+    /// let mut s = HipStr::from_static("abc");
+    /// {
+    ///     let mut r = s.mutate();
+    ///     r.push_str("def");
+    ///     assert_eq!(r.as_str(), "abcdef");
+    /// }
+    /// assert_eq!(s, "abcdef");
+    /// ```
     #[inline]
     #[must_use]
     pub fn mutate(&mut self) -> RefMut<B> {
