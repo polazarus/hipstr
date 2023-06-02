@@ -2,7 +2,7 @@
 //!
 //! Provides only the core features for the sequence of bytes.
 
-use std::mem::{replace, size_of, ManuallyDrop, forget};
+use std::mem::{forget, replace, size_of, ManuallyDrop};
 use std::ops::Range;
 
 use allocated::Allocated;

@@ -1,7 +1,8 @@
-use std::{panic::{UnwindSafe, RefUnwindSafe}, mem::size_of, ops::Range};
+use std::mem::size_of;
+use std::ops::Range;
+use std::panic::{RefUnwindSafe, UnwindSafe};
 
 use crate::Backend;
-
 
 #[repr(C)]
 pub struct Allocated<B: Backend> {
