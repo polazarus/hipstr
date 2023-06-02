@@ -1,4 +1,4 @@
-//! Raw shared sequence of bytes, direct backing of [`HipByt`][hipstr::HipByt].
+//! Raw shared sequence of bytes, direct backing of [`HipByt`][super::HipByt].
 //!
 //! Provides only the core features for the sequence of bytes.
 

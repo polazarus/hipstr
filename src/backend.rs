@@ -34,7 +34,7 @@ pub mod private {
     /// This trait is unsafe because it requires lots of difficult invariants.
     ///
     /// * must be pointer sized
-    /// * the [`RawPointer`][AllocatedBackend::RawPointer] too
+    /// * the [`RawPointer`][Backend::RawPointer] too
     /// * the type should have the `Sync` and `Send` needed
     pub unsafe trait Backend: Sized {
         /// Should be pointer sized! (and not a fat pointer)
