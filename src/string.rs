@@ -629,6 +629,36 @@ where
             owned,
         }
     }
+
+    /// Transforms to the inline representation, returning a new inline `HipStr`
+    /// and consuming this `HipStr`.
+    ///
+    /// # Errors
+    ///
+    /// Returns the original `HipStr` if it cannot be inlined, i.e.,
+    /// if the length greater than [`HipStr::inline_capacity()`].
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use hipstr::HipStr;
+    /// let s = "A".repeat(42);
+    /// let mut h = HipStr::from(s);
+    /// assert!(h.is_allocated());
+    /// assert!(!h.is_inline());
+    /// assert!(h.inline().is_err());
+    ///
+    /// let s = "abc".to_string();
+    /// let h = HipStr::from(s);
+    /// assert!(h.is_allocated());
+    /// assert!(!h.is_inline());
+    /// let h = h.inline().unwrap();
+    /// assert!(h.is_inline());
+    /// ```
+    #[inline]
+    pub fn inline(self) -> Result<Self, Self> {
+        self.0.inline().map(Self).map_err(Self)
+    }
 }
 
 impl<B> Clone for HipStr<B>

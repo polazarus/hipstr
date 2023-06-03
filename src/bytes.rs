@@ -377,6 +377,36 @@ where
     pub(crate) fn take_vec(&mut self) -> Vec<u8> {
         self.0.take_vec()
     }
+
+    /// Transforms to the inline representation, returning a new inline `HipByt`
+    /// and consuming this `HipByt`.
+    ///
+    /// # Errors
+    ///
+    /// Returns the original `HipByt` if it cannot be inlined, i.e.,
+    /// if the length greater than [`HipByt::inline_capacity()`].
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use hipstr::HipByt;
+    /// let v = vec![42; 42];
+    /// let mut b = HipByt::from(v);
+    /// assert!(b.is_allocated());
+    /// assert!(!b.is_inline());
+    /// assert!(b.inline().is_err());
+    ///
+    /// let v = b"abc".to_vec();
+    /// let b = HipByt::from(v);
+    /// assert!(b.is_allocated());
+    /// assert!(!b.is_inline());
+    /// let b = b.inline().unwrap();
+    /// assert!(b.is_inline());
+    /// ```
+    #[inline]
+    pub fn inline(self) -> Result<Self, Self> {
+        self.0.inline().map(Self).map_err(Self)
+    }
 }
 
 impl<B> Clone for HipByt<B>

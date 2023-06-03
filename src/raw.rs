@@ -242,6 +242,20 @@ impl<B: Backend> Raw<B> {
             None
         }
     }
+
+    #[inline]
+    pub fn inline(self) -> Result<Self, Self> {
+        if self.is_inline() {
+            Ok(self)
+        } else if self.len() <= Self::inline_capacity() {
+            let new = Self {
+                inline: Inline::new(self.as_slice()),
+            };
+            Ok(new)
+        } else {
+            Err(self)
+        }
+    }
 }
 
 impl<B: Backend> Drop for Raw<B> {
