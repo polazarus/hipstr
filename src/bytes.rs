@@ -15,7 +15,7 @@ mod convert;
 #[cfg(feature = "serde")]
 mod serde;
 
-/// Cheaply cloneable, sliceable, and mostly-immutable, byte string..
+/// Cheaply clonable, sliceable, and mostly-immutable, byte string.
 ///
 /// # Examples
 ///
