@@ -66,3 +66,38 @@ jobs:
         env:
           RUSTDOCFLAGS: -D warnings
         run: cargo doc --no-deps --document-private-items
+
+  msrv:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Detect MSRV
+        run: |
+          rust_version=$(grep rust-version Cargo.toml | cut -d'"' -f2)
+          echo "rust_version=$rust_version" >> $GITHUB_ENV
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.rust_version }}
+
+      - name: Build
+        run: cargo build --verbose --release
+
+      - name: Run tests
+        run: cargo test --verbose --release
+
+  minimal-versions:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: dtolnay/rust-toolchain@nightly
+
+      - name: Build
+        run: cargo build --verbose --release -Z minimal-versions
+
+      - name: Run tests
+        run: cargo test --verbose --release -Z minimal-versions

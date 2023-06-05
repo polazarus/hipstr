@@ -28,4 +28,4 @@ imstr = "0.2.0"
 serde_test = "1.0.163"
 
 [dependencies]
-serde = { version = "1.0.163", optional = true }
+serde = { version = "1.0", optional = true }
