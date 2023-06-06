@@ -70,10 +70,13 @@ jobs:
   msrv:
     runs-on: ubuntu-latest
 
+    env:
+      rust_version: ""
+
     steps:
       - uses: actions/checkout@v3
 
-      - name: Detect MSRV
+      - name: Get MSRV from Cargo
         run: |
           rust_version=$(grep rust-version Cargo.toml | cut -d'"' -f2)
           echo "rust_version=$rust_version" >> $GITHUB_ENV
@@ -101,3 +104,6 @@ jobs:
 
       - name: Run tests
         run: cargo test --verbose --release -Z minimal-versions
+
+      - name: Show dependence tree
+        run: cargo tree
