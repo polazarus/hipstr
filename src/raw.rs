@@ -182,10 +182,32 @@ impl<B: Backend> Raw<B> {
             Some(unsafe { &mut self.inline }.as_mut_slice())
         } else if self.is_allocated() {
             // SAFETY: representation is checked
-            unsafe { &mut self.allocated }.as_mut_slice()
+            unsafe { self.allocated.mut_slice() }
         } else {
             None
         }
+    }
+
+    #[inline]
+    pub fn to_mut_slice(&mut self) -> &mut [u8] {
+        let copy = if self.is_inline() {
+            // SAFETY: representation is checked
+            return unsafe { &mut self.inline }.as_mut_slice();
+        } else if self.is_allocated() {
+            // SAFETY: representation is checked and data stay allocated for the lifetime of self
+            if let Some(slice) = unsafe { self.allocated.mut_slice() } {
+                return slice;
+            }
+            // SAFETY: representation is checked
+            let allocated = unsafe { self.allocated };
+            Self::from_slice(allocated.as_slice())
+        } else {
+            // SAFETY: representation is checked
+            let static_ = unsafe { self.static_ };
+            Self::from_slice(static_.as_slice())
+        };
+        *self = copy;
+        self.as_mut_slice().unwrap()
     }
 
     #[inline]

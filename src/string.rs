@@ -17,7 +17,7 @@ mod convert;
 #[cfg(feature = "serde")]
 mod serde;
 
-/// Cheaply clonable, sliceable, and mostly-immutable, string.
+/// Smart string, i.e. cheaply clonable and sliceable string.
 ///
 /// Internally used the same representations as [`HipByt`].
 ///
@@ -296,6 +296,28 @@ where
         self.0.as_mut_slice().map(|slice|
                 // SAFETY: type invariant
                 unsafe { std::str::from_utf8_unchecked_mut(slice) })
+    }
+
+    /// Extracts a mutable string slice of the entire `HipStr` changing the
+    /// representation (and thus _potentially reallocating_) if the current
+    /// representation cannot be mutated.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// # use hipstr::HipStr;
+    /// let mut s = HipStr::from_static("foo");
+    /// let slice = s.to_mut_str();
+    /// slice.make_ascii_uppercase();
+    /// assert_eq!("FOO", slice);
+    /// ```
+    #[must_use]
+    pub fn to_mut_str(&mut self) -> &mut str {
+        let slice = self.0.to_mut_slice();
+        // SAFETY: type invariant
+        unsafe { std::str::from_utf8_unchecked_mut(slice) }
     }
 
     /// Extracts a slice as its own `HipStr`.
@@ -661,6 +683,7 @@ where
     }
 }
 
+// Manual implementation needed to remove trait bound on B::RawPointer.
 impl<B> Clone for HipStr<B>
 where
     B: Backend,
@@ -671,6 +694,7 @@ where
     }
 }
 
+// Manual implementation needed to remove trait bound on B::RawPointer.
 impl<B> Default for HipStr<B>
 where
     B: Backend,
@@ -1246,6 +1270,42 @@ mod tests {
         assert!(b.starts_with("b"));
         assert_eq!(b.as_mut_str(), None);
         let _ = a.as_str();
+    }
+
+    #[test]
+    fn test_to_mut_str() {
+        {
+            // static
+            let mut a = HipStr::from_static("abc");
+            assert!(a.is_static());
+            assert_eq!(a.to_mut_str(), "abc".to_string().as_mut_str());
+            assert!(a.is_inline());
+        }
+
+        {
+            // inline
+            let mut a = HipStr::from("abc");
+            assert!(a.is_inline());
+            assert_eq!(a.to_mut_str(), "abc".to_string().as_mut_str());
+            assert!(a.is_inline());
+        }
+
+        {
+            // heap
+            let mut a = HipStr::from("a".repeat(42).as_str());
+            assert!(a.is_allocated());
+            {
+                let sl = a.to_mut_str();
+                assert_eq!(sl, "a".repeat(42).as_mut_str());
+                sl.make_ascii_uppercase();
+            }
+
+            let mut b = a.clone();
+            assert_eq!(b, "A".repeat(42));
+            let _ = b.to_mut_str();
+            assert_ne!(b.as_ptr(), a.as_ptr());
+            assert!(b.is_allocated());
+        }
     }
 
     #[test]

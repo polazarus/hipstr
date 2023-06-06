@@ -71,7 +71,7 @@ impl<B: Backend> Allocated<B> {
 
     /// Returns a mutable slice if possible (unique non-static reference).
     #[inline]
-    pub fn as_mut_slice(&mut self) -> Option<&mut [u8]> {
+    pub unsafe fn mut_slice<'a>(self) -> Option<&'a mut [u8]> {
         debug_assert!(
             self.is_valid(),
             "Inline::as_mut_slice on invalid representation"

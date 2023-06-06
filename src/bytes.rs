@@ -15,7 +15,7 @@ mod convert;
 #[cfg(feature = "serde")]
 mod serde;
 
-/// Cheaply clonable, sliceable, and mostly-immutable, byte string.
+/// Smart bytes, i.e. cheaply clonable and sliceable byte string.
 ///
 /// # Examples
 ///
@@ -254,6 +254,25 @@ where
     #[must_use]
     pub fn as_mut_slice(&mut self) -> Option<&mut [u8]> {
         self.0.as_mut_slice()
+    }
+
+    /// Extracts a mutable slice of the entire `HipByt` changing the
+    /// representation (and thus _potentially reallocating_) if the current
+    /// representation cannot be mutated.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// # use hipstr::HipByt;
+    /// let mut s = HipByt::from_static(b"foo");
+    /// let slice = s.to_mut_slice(); // change the representation to inline
+    /// slice.copy_from_slice(b"bar");
+    /// assert_eq!(b"bar", slice);
+    /// ```
+    pub fn to_mut_slice(&mut self) -> &mut [u8] {
+        self.0.to_mut_slice()
     }
 
     /// Extracts a slice as its own `HipByt`.
@@ -865,6 +884,35 @@ mod tests {
         assert_eq!(b[0], 43);
         assert_eq!(b.as_mut_slice(), None);
         let _ = a.as_slice();
+    }
+
+    #[test]
+    fn test_to_mut_slice() {
+        // static
+        let mut a = HipByt::from_static(b"abc");
+        assert!(a.is_static());
+        assert_eq!(a.to_mut_slice(), b"abc".to_vec().as_mut_slice());
+        assert!(a.is_inline());
+
+        // inline
+        let mut a = HipByt::from([42; 3].as_slice());
+        assert!(a.is_inline());
+        assert_eq!(a.to_mut_slice(), [42; 3].as_mut_slice());
+        assert!(a.is_inline());
+
+        // heap
+        let mut a = HipByt::from([42; 42].as_slice());
+        assert!(a.is_allocated());
+        {
+            let sl = a.to_mut_slice();
+            assert_eq!(sl, [42; 42].as_mut_slice());
+            sl[0] = 43;
+        }
+        let mut b = a.clone();
+        assert_eq!(b[0], 43);
+        let _ = b.to_mut_slice();
+        assert!(b.is_allocated());
+        assert_ne!(b.as_ptr(), a.as_ptr());
     }
 
     #[test]
