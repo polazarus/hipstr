@@ -24,8 +24,8 @@ jobs:
           - windows-latest
           - macos-latest
         features:
-          - ''
-          - 'unstable,serde'
+          - ""
+          - "--all-features"
 
     runs-on: ${{matrix.os}}
 
@@ -40,10 +40,10 @@ jobs:
       run: cargo version
 
     - name: Build
-      run: cargo build --verbose --profile ${{matrix.profile}} --features "${{matrix.features}}"
+      run: cargo build --verbose --profile ${{matrix.profile}} ${{matrix.features}}
 
     - name: Run tests
-      run: cargo test --verbose --profile ${{matrix.profile}} --features "${{matrix.features}}"
+      run: cargo test --verbose --profile ${{matrix.profile}} ${{matrix.features}}
 
   fmt:
     runs-on: ubuntu-latest
