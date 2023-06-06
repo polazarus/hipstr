@@ -31,4 +31,4 @@ jobs:
         components: miri
 
     - name: Run tests under Miri
-      run: cargo +nightly miri test --verbose --target ${{matrix.platform}}
+      run: cargo +nightly miri test --verbose --target ${{matrix.platform}} --all-features
