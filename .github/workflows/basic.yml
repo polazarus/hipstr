@@ -23,6 +23,9 @@ jobs:
           - ubuntu-latest
           - windows-latest
           - macos-latest
+        features:
+          - ''
+          - 'unstable,serde'
 
     runs-on: ${{matrix.os}}
 
@@ -37,10 +40,10 @@ jobs:
       run: cargo version
 
     - name: Build
-      run: cargo build --verbose --profile ${{matrix.profile}}
+      run: cargo build --verbose --profile ${{matrix.profile}} --features "${{matrix.features}}"
 
     - name: Run tests
-      run: cargo test --verbose --profile ${{matrix.profile}}
+      run: cargo test --verbose --profile ${{matrix.profile}} --features "${{matrix.features}}"
 
   fmt:
     runs-on: ubuntu-latest
@@ -62,7 +65,12 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Check documentation
+      - name: Check documentation (all-features)
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --no-deps --document-private-items --all-features
+
+      - name: Check documentation (minimal)
         env:
           RUSTDOCFLAGS: -D warnings
         run: cargo doc --no-deps --document-private-items
@@ -86,10 +94,10 @@ jobs:
           toolchain: ${{ env.rust_version }}
 
       - name: Build
-        run: cargo build --verbose --release
+        run: cargo build --verbose --release --all-features
 
       - name: Run tests
-        run: cargo test --verbose --release
+        run: cargo test --verbose --release --all-features
 
   minimal-versions:
     runs-on: ubuntu-latest
@@ -100,10 +108,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@nightly
 
       - name: Build
-        run: cargo build --verbose --release -Z minimal-versions
+        run: cargo build --verbose --release -Z minimal-versions --all-features
 
       - name: Run tests
-        run: cargo test --verbose --release -Z minimal-versions
+        run: cargo test --verbose --release -Z minimal-versions --all-features
 
       - name: Show dependence tree
         run: cargo tree
