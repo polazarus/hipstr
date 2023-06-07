@@ -37,7 +37,7 @@ let _user = greetings.slice(6..): // no copy
 
 This crate uses `unsafe` extensively. 🤷
 
-It exploits a 1-bit alignment niche in pointer existing on most platform
+It exploits a 1-bit alignment niche in pointers existing on most platform
 (I think all Rustc supported platform) to distinguish the inline representation
 from the other representations.
 
@@ -84,15 +84,15 @@ To check with different word size and endianness:
 
 ```bash
 # Big endian, 64-bit
-cargo +nightly miri test  --target mips64-unknown-linux-gnuabi64
+cargo +nightly miri test --target mips64-unknown-linux-gnuabi64
 # Little endian, 32-bit
-cargo +nightly miri test  --target i686-unknown-linux-gnu
+cargo +nightly miri test --target i686-unknown-linux-gnu
 ```
 
 ## 📦 Similar crates
 
 * [`arcstr`](https://github.com/thomcc/arcstr): no inline repr, heavy slice (with dedicated `Substr` type) and custom `Arc`.
-* [`flexstr`](https://github.com/nu11ptr/flexstr): no slice, very similar but use an `Arc<str>` instead of an `Arc<String>` (remove level of indirection but use fat pointers).
+* [`flexstr`](https://github.com/nu11ptr/flexstr): no slice, very similar but use an `Arc<str>` instead of an `Arc<String>` (remove one level of indirection but use fat pointers).
 * [`imstr`](https://github.com/xfbs/imstr): no inline repr, otherwise very similar.
 * and many more.
 

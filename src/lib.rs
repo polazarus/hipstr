@@ -31,7 +31,7 @@
 //! - [`HipStr<B>`](crate::string::HipStr) \
 //!   a replacement for both `String` and `str`
 //!
-//! where `B` is a backend among `ThreadSafe` (`Arc<Vec<u8>>`) and `ThreadSafe` (`Rc<Vec<u8>>`)
+//! where `B` is a backend among `ThreadSafe` ([`Arc<Vec<u8>>`](std::sync::Arc)) and `Local` ([`Rc<Vec<u8>>`](std::rc::Rc))
 //!
 //! The crate root provides aliases with `B` fixed to `ThreadSafe`.
 //!
@@ -44,17 +44,17 @@
 //! - Inline sequence (up to [`HipByt::inline_capacity()`])
 //! - Shared reference (cheaply clonable) _and slice_ (sliceable)
 //!
-//! The shared reference can be [`Local`] ([`std::rc::Rc`]) or [`ThreadSafe`] ([`std::sync::Arc`]).
-//! The default aliases in the root of the library use [`ThreadSafe`].
+//! The shared reference can be [`Local`] or [`ThreadSafe`].
+//! Default aliases in the root of the library use [`ThreadSafe`].
 //!
 //! # Platform Support
 //!
-//! This crate is only supported on platform where:
+//! This crate is only supported on platforms where:
 //!
 //! - pointers have the same memory size has `usize`
-//! - the pointer alignment requirement is strictly greater than 1
+//! - pointer alignment requirement is strictly greater than 1
 //!
-//! For now, most common architectures are like so. However, `hipstr` will not
+//! For now, most common architectures are like that. However, `hipstr` will not
 //! work on new and future architectures relying on large tagged pointers
 //! (e.g. CHERI 128-bit pointers).
 
