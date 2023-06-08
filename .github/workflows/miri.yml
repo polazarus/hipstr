@@ -1,4 +1,4 @@
-name: Miri
+name: miri
 
 on:
   push:
