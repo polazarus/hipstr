@@ -9,7 +9,7 @@
 
 Yet another string for Rust 🦀
 
-* no copy **literal wrapping** via `from_static` (a `const`ructor!)
+* no copy **literal wrapping** via `from_static` (a `const` constructor)
 * no alloc **small strings** (23 bytes on 64-bit platform)
 * no copy **owned slices**
 * **zero dependency**
@@ -31,25 +31,25 @@ let _user = greetings.slice(6..): // no copy
 
 ## ✏️ Features
 
-* `serde`: serialization/deserialization support with `serde` crate
+* `serde`: provides serialization/deserialization support with `serde` crate
 * `unstable`: exposes internal `Backend` trait that may change at any moment
 
 ## ☣️ Safety of `hipstr`
 
 This crate uses `unsafe` extensively. 🤷
 
-It exploits a 1-bit alignment niche in pointers existing on most platform
-(I think all Rustc supported platform) to distinguish the inline representation
+It exploits the 1-bit alignment niche in pointers existing on most platforms
+(I think all Rustc supported platforms) to distinguish the inline representation
 from the other representations.
 
 To make things safer, Rust is tested thoroughly on multiple platforms, normally
-and with Miri (MIR interpreter).
+and with [Miri] (the MIR interpreter).
 
 ## 🧪 Testing
 
 ### ☔ Coverage
 
-This crate has near full line coverage:
+This crate has **near full line coverage**:
 
 ```bash
 cargo llvm-cov --all-features --html
@@ -57,13 +57,13 @@ cargo llvm-cov --all-features --html
 cargo tarpaulin --all-features --out html --engine llvm
 ```
 
-Check out the current coverage on [Codecov](https://app.codecov.io/gh/polazarus/hipstr):
+Check out the current coverage on [Codecov]:
 
 ![Coverage grid](https://codecov.io/gh/polazarus/hipstr/branch/main/graphs/tree.svg?token=Z7YUHB4YUD)
 
 ### 🖥️ Cross-platform testing
 
-With [`cross`](https://github.com/cross-rs/cross):
+You can easily run the test on various platforms with [`cross`]:
 
 ```bash
 cross test --target mips-unknown-linux-gnu          # 32-bit BE
@@ -72,7 +72,7 @@ cross test --target i686-unknown-linux-gnu          # 32-bit LE
 cross test --target x86_64-unknown-linux-gnu        # 64-bit LE
 ```
 
-### 🔍 Miri
+### 🔍 [Miri]
 
 This crate runs successfully with Miri:
 
@@ -94,11 +94,19 @@ cargo +nightly miri test --target mips64-unknown-linux-gnuabi64
 cargo +nightly miri test --target i686-unknown-linux-gnu
 ```
 
+[Codecov]: https://app.codecov.io/gh/polazarus/hipstr
+[`cross`]: https://github.com/cross-rs/cross
+[Miri]: https://github.com/rust-lang/miri
+
 ## 📦 Similar crates
 
-* [`arcstr`](https://github.com/thomcc/arcstr): no inline repr, heavy slice (with dedicated `Substr` type) and custom `Arc`.
-* [`flexstr`](https://github.com/nu11ptr/flexstr): no slice, very similar but use an `Arc<str>` instead of an `Arc<String>` (remove one level of indirection but use fat pointers).
-* [`imstr`](https://github.com/xfbs/imstr): no inline repr, otherwise very similar.
+* [`arcstr`](https://github.com/thomcc/arcstr): no inline repr, heavy slice
+  (with dedicated substring type) and custom `Arc`.
+* [`flexstr`](https://github.com/nu11ptr/flexstr): no slice, very similar
+  but use an `Arc<str>` instead of an `Arc<String>` (remove one level of
+  indirection but use fat pointers).
+* [`imstr`](https://github.com/xfbs/imstr): no inline repr, otherwise very
+  similar.
 * and many more.
 
 In short, `HipStr`, one string type to rule them all…

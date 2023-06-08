@@ -1,16 +1,28 @@
 {
     "cSpell.words": [
+        "alloc",
+        "arcstr",
+        "clippy",
         "clonable",
+        "codecov",
         "decr",
         "endianness",
+        "FFFD",
+        "flexstr",
+        "gnuabi",
         "hipbyt",
         "hipstr",
+        "imstr",
         "miri",
+        "MIRIFLAGS",
         "nonoverlapping",
         "powi",
         "repr",
+        "rustc",
+        "serde",
         "stddev",
-        "uninit"
+        "uninit",
+        "Zmiri"
     ],
     "rust-analyzer.check.features": "all",
     "rust-analyzer.cargo.features": "all"
