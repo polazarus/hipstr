@@ -3,6 +3,7 @@
 [![Rust](https://github.com/polazarus/hipstr/actions/workflows/basic.yml/badge.svg)](https://github.com/polazarus/hipstr/actions/workflows/basic.yml)
 [![Clippy](https://github.com/polazarus/hipstr/actions/workflows/clippy.yml/badge.svg)](https://github.com/polazarus/hipstr/actions/workflows/clippy.yml)
 [![Miri](https://github.com/polazarus/hipstr/actions/workflows/miri.yml/badge.svg)](https://github.com/polazarus/hipstr/actions/workflows/miri.yml)
+[![codecov](https://codecov.io/gh/polazarus/hipstr/branch/main/graph/badge.svg?token=Z7YUHB4YUD)](https://codecov.io/gh/polazarus/hipstr)
 [![Docs](https://img.shields.io/docsrs/hipstr)](https://docs.rs/hipstr)
 ![MIT OR Apache-2.0](https://img.shields.io/crates/l/hipstr)
 
@@ -55,6 +56,10 @@ cargo llvm-cov --all-features --html
 # or
 cargo tarpaulin --all-features --out html --engine llvm
 ```
+
+Check out the current coverage on [Codecov](https://app.codecov.io/gh/polazarus/hipstr):
+
+![Coverage grid](https://codecov.io/gh/polazarus/hipstr/branch/main/graphs/tree.svg?token=Z7YUHB4YUD)
 
 ### 🖥️ Cross-platform testing
 
