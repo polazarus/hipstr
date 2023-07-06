@@ -1,6 +1,6 @@
 [package]
 name = "hipstr"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Polazarus <polazarus@users.noreply.github.com>"]
 description = """Another immutable string: zero-cost static,
     inline representation for small strings, reference counting,
