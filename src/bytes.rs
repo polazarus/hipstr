@@ -921,6 +921,8 @@ mod tests {
         let s = HipByt::from(&v[..]);
         let sl = s.slice(0..10);
         assert_eq!(&sl, &v[0..10]);
+        let sl = s.slice(..);
+        assert_eq!(&sl, &v[..]);
 
         let v: Vec<_> = (0..42).collect();
         let s = HipByt::from(&v[..]);

@@ -158,7 +158,7 @@ impl<B: Backend> Raw<B> {
 
         match self.split() {
             RawSplit::Inline(inline) => {
-                debug_assert!(range.len() < inline.len());
+                debug_assert!(range.len() <= inline.len());
                 let inline = Inline::new(&inline.as_slice()[range]);
                 Self { inline }
             }
