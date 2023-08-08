@@ -220,7 +220,7 @@ mod tests {
 
     #[test]
     fn test_ord() {
-        let h1 = HipByt::with_borrow(b"abc");
+        let h1 = HipByt::borrowed(b"abc");
         let h2 = HipByt::from(b"abd");
 
         assert_eq!(h1.partial_cmp(&h1), Some(Ordering::Equal));

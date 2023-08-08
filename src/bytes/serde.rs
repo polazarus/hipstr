@@ -101,7 +101,7 @@ where
     where
         E: serde::de::Error,
     {
-        Ok(HipByt::with_borrow(v))
+        Ok(HipByt::borrowed(v))
     }
 
     fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>

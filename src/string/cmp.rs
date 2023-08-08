@@ -171,7 +171,7 @@ mod tests {
 
     #[test]
     fn test_ord() {
-        let h1 = HipStr::with_borrow("abc");
+        let h1 = HipStr::borrowed("abc");
         let h2 = HipStr::from("abd");
 
         assert_eq!(h1.partial_cmp(&h1), Some(Ordering::Equal));

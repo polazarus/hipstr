@@ -27,10 +27,10 @@ pub union Raw<'borrow, B: Backend> {
     borrowed: Borrowed<'borrow>,
 }
 
-enum RawSplit<'borrow, 'a, B: Backend> {
+enum RawSplit<'a, 'borrow, B: Backend> {
     Inline(&'a Inline),
     Allocated(&'a Allocated<B>),
-    Static(&'a Borrowed<'borrow>),
+    Borrowed(&'a Borrowed<'borrow>),
 }
 
 impl<'borrow, B: Backend> Raw<'borrow, B> {
@@ -50,7 +50,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
 
     /// Creates a new `Raw` from a static slice.
     #[inline]
-    pub const fn with_borrow(bytes: &'static [u8]) -> Self {
+    pub const fn borrowed(bytes: &'borrow [u8]) -> Self {
         Self {
             borrowed: Borrowed::new(bytes),
         }
@@ -83,13 +83,13 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
 
     /// Splits this raw into its possible representation.
     #[inline]
-    const fn split(&self) -> RawSplit<B> {
+    const fn split(&self) -> RawSplit<'_, 'borrow, B> {
         if self.is_inline() {
             // SAFETY: representation checked, see is_inline
             RawSplit::Inline(unsafe { &self.inline })
         } else if self.is_static() {
             // SAFETY: representation checked, see is_static
-            RawSplit::Static(unsafe { &self.borrowed })
+            RawSplit::Borrowed(unsafe { &self.borrowed })
         } else {
             // SAFETY: representation checked, see is_static, is_inline and is_allocated
             debug_assert!(self.is_allocated());
@@ -121,7 +121,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
     }
 
     #[inline]
-    pub fn into_static(self) -> Result<&'static [u8], Self> {
+    pub fn into_borrowed(self) -> Result<&'borrow [u8], Self> {
         if self.is_static() {
             // NO LEAK: no drop needed for static repr
             let this = ManuallyDrop::new(self);
@@ -137,7 +137,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
         match self.split() {
             RawSplit::Inline(inline) => inline.len(),
             RawSplit::Allocated(heap) => heap.len(),
-            RawSplit::Static(static_) => static_.len(),
+            RawSplit::Borrowed(borrowed) => borrowed.len(),
         }
     }
 
@@ -146,7 +146,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
         match self.split() {
             RawSplit::Inline(inline) => inline.as_slice(),
             RawSplit::Allocated(heap) => heap.as_slice(),
-            RawSplit::Static(static_) => static_.as_slice(),
+            RawSplit::Borrowed(borrowed) => borrowed.as_slice(),
         }
     }
 
@@ -162,7 +162,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
                 let inline = Inline::new(&inline.as_slice()[range]);
                 Self { inline }
             }
-            RawSplit::Static(static_) => {
+            RawSplit::Borrowed(static_) => {
                 let sl = &static_.as_slice()[range];
                 Self {
                     borrowed: Borrowed::new(sl),
@@ -236,7 +236,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
     pub fn capacity(&self) -> usize {
         match self.split() {
             RawSplit::Inline(_) => Self::inline_capacity(),
-            RawSplit::Static(static_) => static_.len(), // provide something to simplify the API
+            RawSplit::Borrowed(borrowed) => borrowed.len(), // provide something to simplify the API
             RawSplit::Allocated(allocated) => allocated.owner_vec().capacity(),
         }
     }
@@ -295,7 +295,7 @@ impl<'borrow, B: Backend> Clone for Raw<'borrow, B> {
         // Duplicates this `Raw` increasing the ref count if needed.
         match self.split() {
             RawSplit::Inline(&inline) => Self { inline },
-            RawSplit::Static(&static_) => Self { borrowed: static_ },
+            RawSplit::Borrowed(&borrowed) => Self { borrowed },
             RawSplit::Allocated(&allocated) => {
                 allocated.incr_ref_count();
                 Self { allocated }

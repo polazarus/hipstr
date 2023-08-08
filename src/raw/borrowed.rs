@@ -33,7 +33,7 @@ impl<'borrow> Borrowed<'borrow> {
     }
 
     #[inline]
-    pub const fn as_slice(&self) -> &'static [u8] {
+    pub const fn as_slice(&self) -> &'borrow [u8] {
         debug_assert!(
             self.is_valid(),
             "Static::as_slice on an invalid representation"

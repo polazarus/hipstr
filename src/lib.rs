@@ -12,7 +12,7 @@
 //! ```rust
 //! use hipstr::HipStr;
 //!
-//! let simple_greetings = HipStr::from_static("Hello world");
+//! let simple_greetings = HipStr::borrowed("Hello world");
 //! let clone = simple_greetings.clone(); // no copy
 //! std::thread::spawn(move || { println!("{}", clone); });
 //!

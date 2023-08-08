@@ -55,7 +55,7 @@ where
     #[inline]
     fn from(value: Cow<'borrow, str>) -> Self {
         match value {
-            Cow::Borrowed(borrow) => Self::with_borrow(borrow),
+            Cow::Borrowed(borrow) => Self::borrowed(borrow),
             Cow::Owned(owned) => Self::from(owned),
         }
     }
@@ -78,7 +78,7 @@ where
     B: Backend,
 {
     #[inline]
-    fn from(value: HipStr<B>) -> Self {
+    fn from(value: HipStr<'borrow, B>) -> Self {
         value.0
     }
 }
@@ -114,7 +114,7 @@ where
     type Error = super::FromUtf8Error<'borrow, B>;
 
     #[inline]
-    fn try_from(value: &'a HipByt<B>) -> Result<Self, Self::Error> {
+    fn try_from(value: &'a HipByt<'borrow, B>) -> Result<Self, Self::Error> {
         Self::from_utf8(value.clone())
     }
 }

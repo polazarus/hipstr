@@ -36,18 +36,18 @@ mod serde;
 /// let world = HipByt::from(vec);
 /// ```
 ///
-/// For literals, you can also use the more efficient constructor [`HipByt::from_static`]:
+/// To borrow a string slice, you can also use the no-copy constructor [`HipByt::borrowed`]:
 ///
 /// ```
 /// # use hipstr::HipByt;
-/// let hello = HipByt::from_static(b"Hello, world!");
+/// let hello = HipByt::borrowed(b"Hello, world!");
 /// ```
 ///
 /// # Representations
 ///
 /// `HipByt` has three possible internal representations:
 ///
-/// * static borrow
+/// * borrow
 /// * inline string
 /// * shared heap allocated string
 #[repr(transparent)]
@@ -85,12 +85,12 @@ where
     ///
     /// ```
     /// # use hipstr::HipByt;
-    /// let b = HipByt::with_borrow(b"hello\0");
+    /// let b = HipByt::borrowed(b"hello\0");
     /// assert_eq!(b.len(), 6);
     /// ```
     #[must_use]
-    pub const fn with_borrow(bytes: &'borrow [u8]) -> Self {
-        Self(Raw::with_borrow(bytes))
+    pub const fn borrowed(bytes: &'borrow [u8]) -> Self {
+        Self(Raw::borrowed(bytes))
     }
 
     /// Returns `true` if this `HipByt` uses the inline representation, `false` otherwise.
@@ -101,7 +101,7 @@ where
     ///
     /// ```
     /// # use hipstr::HipByt;
-    /// let s = HipByt::from_static(b"hello");
+    /// let s = HipByt::borrowed(b"hello");
     /// assert!(!s.is_inline());
     ///
     /// let s = HipByt::from(b"hello");
@@ -124,7 +124,7 @@ where
     ///
     /// ```
     /// # use hipstr::HipByt;
-    /// let s = HipByt::from_static(b"hello");
+    /// let s = HipByt::borrowed(b"hello");
     /// assert!(s.is_static());
     ///
     /// let s = HipByt::from(b"hello");
@@ -175,14 +175,14 @@ where
     /// ```
     /// # use hipstr::HipByt;
     /// static SEQ: &[u8] = &[1 ,2, 3];
-    /// let s = HipByt::from_static(SEQ);
-    /// let c = s.into_static();
+    /// let s = HipByt::borrowed(SEQ);
+    /// let c = s.into_borrowed();
     /// assert_eq!(c, Ok(SEQ));
     /// assert!(std::ptr::eq(SEQ, c.unwrap()));
     /// ```
     #[inline]
-    pub fn into_static(self) -> Result<&'static [u8], Self> {
-        self.0.into_static().map_err(Self)
+    pub fn into_borrowed(self) -> Result<&'borrow [u8], Self> {
+        self.0.into_borrowed().map_err(Self)
     }
 
     /// Returns the length of this `HipByt`.
@@ -193,7 +193,7 @@ where
     ///
     /// ```
     /// # use hipstr::HipByt;
-    /// let a = HipByt::from_static(b"\xDE\xAD\xBE\xEF");
+    /// let a = HipByt::borrowed(b"\xDE\xAD\xBE\xEF");
     /// assert_eq!(a.len(), 4);
     /// ```
     #[inline]
@@ -212,7 +212,7 @@ where
     /// let a = HipByt::new();
     /// assert!(a.is_empty());
     ///
-    /// let b = HipByt::from_static(b"ab");
+    /// let b = HipByt::borrowed(b"ab");
     /// assert!(!b.is_empty());
     /// ```
     #[inline]
@@ -266,7 +266,7 @@ where
     ///
     /// ```
     /// # use hipstr::HipByt;
-    /// let mut s = HipByt::from_static(b"foo");
+    /// let mut s = HipByt::borrowed(b"foo");
     /// let slice = s.to_mut_slice(); // change the representation to inline
     /// slice.copy_from_slice(b"bar");
     /// assert_eq!(b"bar", slice);
@@ -375,7 +375,7 @@ where
     ///
     /// ```rust
     /// # use hipstr::HipByt;
-    /// let mut s = HipByt::from_static(b"abc");
+    /// let mut s = HipByt::borrowed(b"abc");
     /// {
     ///     let mut r = s.mutate();
     ///     r.extend_from_slice(b"def");
@@ -385,7 +385,7 @@ where
     /// ```
     #[inline]
     #[must_use]
-    pub fn mutate(&mut self) -> RefMut<B> {
+    pub fn mutate(&mut self) -> RefMut<'_, 'borrow, B> {
         let owned = self.0.take_vec();
         RefMut {
             result: self,
@@ -425,6 +425,24 @@ where
     #[inline]
     pub fn inline(self) -> Result<Self, Self> {
         self.0.inline().map(Self).map_err(Self)
+    }
+}
+
+impl<B: Backend> HipByt<'static, B> {
+    /// Creates a new `HipByt` from a static slice without copying the slice.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// # use hipstr::HipByt;
+    /// let b = HipByt::from_static(b"hello\0");
+    /// assert_eq!(b.len(), 6);
+    /// ```
+    #[must_use]
+    pub const fn from_static(bytes: &'static [u8]) -> Self {
+        Self::borrowed(bytes)
     }
 }
 
@@ -728,11 +746,11 @@ mod tests {
     }
 
     #[test]
-    fn test_from_static() {
+    fn test_borrowed() {
         static V: &[u8] = &[42; 1024];
 
         for size in [0, 1, INLINE_CAPACITY, INLINE_CAPACITY + 1, 256, 1024] {
-            let bytes = HipByt::with_borrow(&V[..size]);
+            let bytes = HipByt::borrowed(&V[..size]);
             assert!(!bytes.is_inline());
             assert!(bytes.is_static());
             assert!(!bytes.is_allocated());
@@ -758,7 +776,7 @@ mod tests {
     fn test_as_slice() {
         // static
         {
-            let a = HipByt::with_borrow(b"abc");
+            let a = HipByt::borrowed(b"abc");
             assert!(a.is_static());
             assert!(!a.is_inline());
             assert!(!a.is_allocated());
@@ -787,7 +805,7 @@ mod tests {
         // static
         {
             let s: &'static [u8] = b"abc";
-            let a = HipByt::with_borrow(s);
+            let a = HipByt::borrowed(s);
             assert!(a.is_static());
             let b = a.clone();
             drop(a);
@@ -848,24 +866,24 @@ mod tests {
     #[test]
     fn test_into_static() {
         // static
-        let a = HipByt::with_borrow(b"abc");
-        assert_eq!(a.into_static(), Ok(b"abc".as_slice()));
+        let a = HipByt::borrowed(b"abc");
+        assert_eq!(a.into_borrowed(), Ok(b"abc".as_slice()));
 
         // inline
         let a = HipByt::from(b"abc".as_slice());
         let b = a.clone();
-        assert_eq!(a.into_static(), Err(b));
+        assert_eq!(a.into_borrowed(), Err(b));
 
         // heap
         let a = HipByt::from([42; 42].as_slice());
         let b = a.clone();
-        assert_eq!(a.into_static(), Err(b));
+        assert_eq!(a.into_borrowed(), Err(b));
     }
 
     #[test]
     fn test_as_mut_slice() {
         // static
-        let mut a = HipByt::with_borrow(b"abc");
+        let mut a = HipByt::borrowed(b"abc");
         assert_eq!(a.as_mut_slice(), None);
 
         // inline
@@ -889,7 +907,7 @@ mod tests {
     #[test]
     fn test_to_mut_slice() {
         // static
-        let mut a = HipByt::with_borrow(b"abc");
+        let mut a = HipByt::borrowed(b"abc");
         assert!(a.is_static());
         assert_eq!(a.to_mut_slice(), b"abc".to_vec().as_mut_slice());
         assert!(a.is_inline());
@@ -943,27 +961,27 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_slice_panic_start() {
-        let a = HipByt::with_borrow(b"abc");
+        let a = HipByt::borrowed(b"abc");
         let _b = a.slice(4..);
     }
 
     #[test]
     #[should_panic]
     fn test_slice_panic_end() {
-        let a = HipByt::with_borrow(b"abc");
+        let a = HipByt::borrowed(b"abc");
         let _b = a.slice(..5);
     }
 
     #[test]
     #[should_panic]
     fn test_slice_panic_mixed() {
-        let a = HipByt::with_borrow(b"abc");
+        let a = HipByt::borrowed(b"abc");
         let _b = a.slice(3..2);
     }
 
     #[test]
     fn test_try_slice() {
-        let a = HipByt::with_borrow(b"abcdef");
+        let a = HipByt::borrowed(b"abcdef");
 
         let e = a.try_slice(7..).unwrap_err();
         assert_eq!(e.kind(), SliceErrorKind::StartOutOfBounds);
@@ -1025,7 +1043,7 @@ mod tests {
     fn test_into_vec() {
         {
             // static
-            let a = HipByt::with_borrow(b"abc");
+            let a = HipByt::borrowed(b"abc");
             assert!(a.into_vec().is_err());
         }
 
@@ -1074,7 +1092,7 @@ mod tests {
     fn test_capacity() {
         {
             // static
-            let a = HipByt::with_borrow(b"abc");
+            let a = HipByt::borrowed(b"abc");
             assert_eq!(a.capacity(), a.len());
         }
 
@@ -1100,7 +1118,7 @@ mod tests {
     fn test_mutate() {
         {
             // static
-            let mut a = HipByt::with_borrow(b"abc");
+            let mut a = HipByt::borrowed(b"abc");
             assert!(a.is_static(), "a should be static");
             a.mutate().extend_from_slice(b"def");
             assert!(a.is_allocated(), "a should be allocated at the end");

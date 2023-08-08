@@ -65,7 +65,7 @@ where
     #[inline]
     fn from(value: Cow<'borrow, [u8]>) -> Self {
         match value {
-            Cow::Borrowed(borrow) => Self::with_borrow(borrow),
+            Cow::Borrowed(borrow) => Self::borrowed(borrow),
             Cow::Owned(owned) => Self::from(owned),
         }
     }
@@ -91,7 +91,7 @@ where
 mod tests {
     use std::borrow::Cow;
 
-    use crate::HipByt;
+    use crate::{HipByt, ThreadSafe};
 
     #[test]
     fn test_as_ref() {
@@ -124,10 +124,11 @@ mod tests {
         assert_eq!(fv.as_slice(), &a);
         assert!(std::ptr::eq(fv.as_ptr(), ptr_b));
 
-        let fc1 = HipByt::from(c1);
+        type H<'a> = crate::bytes::HipByt<'a, ThreadSafe>;
+        let fc1 = H::from(c1);
         assert_eq!(fc1.as_slice(), &a);
 
-        let fc2 = HipByt::from(c2);
+        let fc2 = H::from(c2);
         assert_eq!(fc2.as_slice(), &a);
         assert!(std::ptr::eq(fc2.as_ptr(), ptr_c2));
     }
