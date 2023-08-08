@@ -1,10 +1,12 @@
+use std::marker::PhantomData;
+
 use serde::de::Visitor;
 use serde::{Deserialize, Serialize};
 
 use super::HipByt;
 use crate::Backend;
 
-impl<B> Serialize for HipByt<B>
+impl<'borrow, B> Serialize for HipByt<'borrow, B>
 where
     B: Backend,
 {
@@ -59,7 +61,7 @@ impl<'de> Visitor<'de> for BytesVisitor {
     }
 }
 
-impl<'de, B> Deserialize<'de> for HipByt<B>
+impl<'de, 'borrow, B> Deserialize<'de> for HipByt<'borrow, B>
 where
     B: Backend,
 {
@@ -70,6 +72,71 @@ where
         let v = deserializer.deserialize_byte_buf(BytesVisitor)?;
         Ok(Self::from(v))
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct BorrowingByteVisitor<B>(PhantomData<B>);
+
+impl<'de, B> Visitor<'de> for BorrowingByteVisitor<B>
+where
+    B: Backend,
+{
+    type Value = HipByt<'de, B>;
+
+    fn visit_byte_buf<E>(self, v: Vec<u8>) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(v.into())
+    }
+
+    fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(v.into())
+    }
+
+    fn visit_borrowed_bytes<E>(self, v: &'de [u8]) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(HipByt::with_borrow(v))
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+    where
+        A: serde::de::SeqAccess<'de>,
+    {
+        let mut v = seq.size_hint().map_or_else(Vec::new, Vec::with_capacity);
+        while let Some(e) = seq.next_element()? {
+            v.push(e);
+        }
+        Ok(v.into())
+    }
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(formatter, "bytes")
+    }
+}
+
+/// Deserializes a `HipByt` as a borrow if possible.
+///
+/// ```rust
+/// use hipstr::bytes::HipByt;
+/// use hipstr::Local;
+/// #[derive(serde::Deserialize)]
+/// struct MyStruct<'a> {
+///     #[serde(borrow, deserialize_with = "hipstr::bytes::serde::borrowing_deserialize")]
+///     field: HipByt<'a, Local>,
+/// }
+/// ```
+pub fn borrowing_deserialize<'de, D, B>(deserializer: D) -> Result<HipByt<'de, B>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    B: Backend,
+{
+    deserializer.deserialize_byte_buf(BorrowingByteVisitor(PhantomData))
 }
 
 #[cfg(test)]

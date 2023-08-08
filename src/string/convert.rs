@@ -6,7 +6,7 @@ use super::HipStr;
 use crate::bytes::HipByt;
 use crate::Backend;
 
-impl<B> AsRef<str> for HipStr<B>
+impl<'borrow, B> AsRef<str> for HipStr<'borrow, B>
 where
     B: Backend,
 {
@@ -18,7 +18,7 @@ where
 
 // Infallible conversions
 
-impl<B> From<&str> for HipStr<B>
+impl<'borrow, B> From<&str> for HipStr<'borrow, B>
 where
     B: Backend,
 {
@@ -28,7 +28,7 @@ where
     }
 }
 
-impl<B> From<Box<str>> for HipStr<B>
+impl<'borrow, B> From<Box<str>> for HipStr<'borrow, B>
 where
     B: Backend,
 {
@@ -38,7 +38,7 @@ where
     }
 }
 
-impl<B> From<String> for HipStr<B>
+impl<'borrow, B> From<String> for HipStr<'borrow, B>
 where
     B: Backend,
 {
@@ -48,20 +48,20 @@ where
     }
 }
 
-impl<'a, B> From<Cow<'a, str>> for HipStr<B>
+impl<'borrow, B> From<Cow<'borrow, str>> for HipStr<'borrow, B>
 where
     B: Backend,
 {
     #[inline]
-    fn from(value: Cow<'a, str>) -> Self {
+    fn from(value: Cow<'borrow, str>) -> Self {
         match value {
-            Cow::Borrowed(borrow) => Self::from(borrow),
+            Cow::Borrowed(borrow) => Self::with_borrow(borrow),
             Cow::Owned(owned) => Self::from(owned),
         }
     }
 }
 
-impl<B> From<HipStr<B>> for String
+impl<'borrow, B> From<HipStr<'borrow, B>> for String
 where
     B: Backend,
 {
@@ -73,7 +73,7 @@ where
     }
 }
 
-impl<B> From<HipStr<B>> for HipByt<B>
+impl<'borrow, B> From<HipStr<'borrow, B>> for HipByt<'borrow, B>
 where
     B: Backend,
 {
@@ -83,7 +83,7 @@ where
     }
 }
 
-impl<B> From<HipStr<B>> for Vec<u8>
+impl<'borrow, B> From<HipStr<'borrow, B>> for Vec<u8>
 where
     B: Backend,
 {
@@ -95,23 +95,23 @@ where
 
 // Fallible conversions
 
-impl<B> TryFrom<HipByt<B>> for HipStr<B>
+impl<'borrow, B> TryFrom<HipByt<'borrow, B>> for HipStr<'borrow, B>
 where
     B: Backend,
 {
-    type Error = super::FromUtf8Error<B>;
+    type Error = super::FromUtf8Error<'borrow, B>;
 
     #[inline]
-    fn try_from(value: HipByt<B>) -> Result<Self, Self::Error> {
+    fn try_from(value: HipByt<'borrow, B>) -> Result<Self, Self::Error> {
         Self::from_utf8(value)
     }
 }
 
-impl<'a, B> TryFrom<&'a HipByt<B>> for HipStr<B>
+impl<'a, 'borrow, B> TryFrom<&'a HipByt<'borrow, B>> for HipStr<'borrow, B>
 where
     B: Backend,
 {
-    type Error = super::FromUtf8Error<B>;
+    type Error = super::FromUtf8Error<'borrow, B>;
 
     #[inline]
     fn try_from(value: &'a HipByt<B>) -> Result<Self, Self::Error> {
@@ -119,7 +119,7 @@ where
     }
 }
 
-impl<'a, B> TryFrom<&'a [u8]> for HipStr<B>
+impl<'a, 'borrow, B> TryFrom<&'a [u8]> for HipStr<'borrow, B>
 where
     B: Backend,
 {
@@ -131,7 +131,7 @@ where
     }
 }
 
-impl<B> TryFrom<Vec<u8>> for HipStr<B>
+impl<'borrow, B> TryFrom<Vec<u8>> for HipStr<'borrow, B>
 where
     B: Backend,
 {

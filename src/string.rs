@@ -9,7 +9,7 @@ use std::str::Utf8Error;
 use std::string::FromUtf16Error;
 
 use crate::bytes::{simplify_range, HipByt, SliceErrorKind as ByteSliceErrorKind};
-use crate::{Backend, ThreadSafe};
+use crate::Backend;
 
 mod cmp;
 mod convert;
@@ -55,11 +55,11 @@ mod serde;
 /// * inline string
 /// * shared heap allocated string
 #[repr(transparent)]
-pub struct HipStr<B = ThreadSafe>(HipByt<B>)
+pub struct HipStr<'borrow, B>(HipByt<'borrow, B>)
 where
     B: Backend;
 
-impl<B> HipStr<B>
+impl<'borrow, B> HipStr<'borrow, B>
 where
     B: Backend,
 {
@@ -93,8 +93,8 @@ where
     /// assert_eq!(s.len(), 5);
     /// ```
     #[must_use]
-    pub const fn from_static(value: &'static str) -> Self {
-        Self(HipByt::from_static(value.as_bytes()))
+    pub const fn with_borrow(value: &'static str) -> Self {
+        Self(HipByt::with_borrow(value.as_bytes()))
     }
 
     /// Returns `true` if this `HipStr` uses the inline representation, `false` otherwise.
@@ -255,7 +255,7 @@ where
     /// ```
     #[allow(clippy::missing_const_for_fn)] // cannot const it for now, clippy bug
     #[must_use]
-    pub fn into_bytes(self) -> HipByt<B> {
+    pub fn into_bytes(self) -> HipByt<'borrow, B> {
         self.0
     }
 
@@ -684,7 +684,7 @@ where
 }
 
 // Manual implementation needed to remove trait bound on B::RawPointer.
-impl<B> Clone for HipStr<B>
+impl<'borrow, B> Clone for HipStr<'borrow, B>
 where
     B: Backend,
 {
@@ -695,7 +695,7 @@ where
 }
 
 // Manual implementation needed to remove trait bound on B::RawPointer.
-impl<B> Default for HipStr<B>
+impl<'borrow, B> Default for HipStr<'borrow, B>
 where
     B: Backend,
 {
@@ -705,7 +705,7 @@ where
     }
 }
 
-impl<B> Deref for HipStr<B>
+impl<'borrow, B> Deref for HipStr<'borrow, B>
 where
     B: Backend,
 {
@@ -717,7 +717,7 @@ where
     }
 }
 
-impl<B> Borrow<str> for HipStr<B>
+impl<'borrow, B> Borrow<str> for HipStr<'borrow, B>
 where
     B: Backend,
 {
@@ -727,7 +727,7 @@ where
     }
 }
 
-impl<B> Hash for HipStr<B>
+impl<'borrow, B> Hash for HipStr<'borrow, B>
 where
     B: Backend,
 {
@@ -739,7 +739,7 @@ where
 
 // Formatting
 
-impl<B> fmt::Debug for HipStr<B>
+impl<'borrow, B> fmt::Debug for HipStr<'borrow, B>
 where
     B: Backend,
 {
@@ -749,7 +749,7 @@ where
     }
 }
 
-impl<B> fmt::Display for HipStr<B>
+impl<'borrow, B> fmt::Display for HipStr<'borrow, B>
 where
     B: Backend,
 {
@@ -782,17 +782,17 @@ pub enum SliceErrorKind {
 ///
 /// This type is the error type for [`HipStr::try_slice`].
 #[derive(PartialEq, Eq, Clone)]
-pub struct SliceError<'a, B>
+pub struct SliceError<'a, 'borrow, B>
 where
     B: Backend,
 {
     kind: SliceErrorKind,
     start: usize,
     end: usize,
-    string: &'a HipStr<B>,
+    string: &'a HipStr<'borrow, B>,
 }
 
-impl<'a, B> SliceError<'a, B>
+impl<'a, 'borrow, B> SliceError<'a, 'borrow, B>
 where
     B: Backend,
 {
@@ -846,12 +846,12 @@ where
     /// Returns a reference to the source `HipByt` to slice.
     #[inline]
     #[must_use]
-    pub const fn source(&self) -> &HipStr<B> {
+    pub const fn source(&self) -> &HipStr<'borrow, B> {
         self.string
     }
 }
 
-impl<'a, B> fmt::Debug for SliceError<'a, B>
+impl<'a, 'borrow, B> fmt::Debug for SliceError<'a, 'borrow, B>
 where
     B: Backend,
 {
@@ -865,7 +865,7 @@ where
     }
 }
 
-impl<'a, B> fmt::Display for SliceError<'a, B>
+impl<'a, 'borrow, B> fmt::Display for SliceError<'a, 'borrow, B>
 where
     B: Backend,
 {
@@ -900,7 +900,7 @@ where
     }
 }
 
-impl<'a, B> Error for SliceError<'a, B> where B: Backend {}
+impl<'a, 'borrow, B> Error for SliceError<'a, 'borrow, B> where B: Backend {}
 
 /// A possible error value when converting a [`HipStr`] from a [`HipByt`].
 ///
@@ -936,15 +936,15 @@ impl<'a, B> Error for SliceError<'a, B> where B: Backend {}
 /// assert_eq!(vec![0, 159], value.unwrap_err().into_bytes());
 /// ```
 #[derive(PartialEq, Eq, Clone)]
-pub struct FromUtf8Error<B>
+pub struct FromUtf8Error<'borrow, B>
 where
     B: Backend,
 {
-    pub(super) bytes: HipByt<B>,
+    pub(super) bytes: HipByt<'borrow, B>,
     pub(super) error: Utf8Error,
 }
 
-impl<B> fmt::Debug for FromUtf8Error<B>
+impl<'borrow, B> fmt::Debug for FromUtf8Error<'borrow, B>
 where
     B: Backend,
 {
@@ -956,7 +956,7 @@ where
     }
 }
 
-impl<B> FromUtf8Error<B>
+impl<'borrow, B> FromUtf8Error<'borrow, B>
 where
     B: Backend,
 {
@@ -1001,7 +1001,7 @@ where
     /// ```
     #[allow(clippy::missing_const_for_fn)] // cannot const it for now, clippy bug
     #[must_use]
-    pub fn into_bytes(self) -> HipByt<B> {
+    pub fn into_bytes(self) -> HipByt<'borrow, B> {
         self.bytes
     }
 
@@ -1035,7 +1035,7 @@ where
     }
 }
 
-impl<B> fmt::Display for FromUtf8Error<B>
+impl<'borrow, B> fmt::Display for FromUtf8Error<'borrow, B>
 where
     B: Backend,
 {
@@ -1044,18 +1044,18 @@ where
     }
 }
 
-impl<B> Error for FromUtf8Error<B> where B: Backend {}
+impl<'borrow, B> Error for FromUtf8Error<'borrow, B> where B: Backend {}
 
 /// A wrapper type for a mutably borrowed [`String`] out of a [`HipStr`].
-pub struct RefMut<'a, B>
+pub struct RefMut<'a, 'borrow, B>
 where
     B: Backend,
 {
-    result: &'a mut HipStr<B>,
+    result: &'a mut HipStr<'borrow, B>,
     owned: String,
 }
 
-impl<'a, B> Drop for RefMut<'a, B>
+impl<'a, 'borrow, B> Drop for RefMut<'a, 'borrow, B>
 where
     B: Backend,
 {
@@ -1065,7 +1065,7 @@ where
     }
 }
 
-impl<'a, B> Deref for RefMut<'a, B>
+impl<'a, 'borrow, B> Deref for RefMut<'a, 'borrow, B>
 where
     B: Backend,
 {
@@ -1075,7 +1075,7 @@ where
     }
 }
 
-impl<'a, B> DerefMut for RefMut<'a, B>
+impl<'a, 'borrow, B> DerefMut for RefMut<'a, 'borrow, B>
 where
     B: Backend,
 {
@@ -1117,7 +1117,7 @@ mod tests {
     #[test]
     fn test_fmt() {
         let source = "Rust \u{1F980}";
-        let a = HipStr::from_static(source);
+        let a = HipStr::with_borrow(source);
         assert_eq!(format!("{}", a), source);
         assert_eq!(format!("{:?}", a), format!("{:?}", source),);
     }
@@ -1136,7 +1136,7 @@ mod tests {
     #[test]
     fn test_from_static() {
         let s = "0123456789";
-        let string = HipStr::from_static(s);
+        let string = HipStr::with_borrow(s);
         assert!(string.is_static());
         assert!(!string.is_inline());
         assert_eq!(string.len(), s.len());
@@ -1161,7 +1161,7 @@ mod tests {
     fn test_as_slice() {
         // static
         {
-            let a = HipStr::from_static("abc");
+            let a = HipStr::with_borrow("abc");
             assert!(a.is_static());
             assert!(!a.is_inline());
             assert!(!a.is_allocated());
@@ -1191,7 +1191,7 @@ mod tests {
         // static
         {
             let s: &'static str = "abc";
-            let a = HipStr::from_static(s);
+            let a = HipStr::with_borrow(s);
             assert!(a.is_static());
             let b = a.clone();
             drop(a);
@@ -1224,7 +1224,7 @@ mod tests {
     #[test]
     fn test_into_static() {
         // static
-        let a = HipStr::from_static("abc");
+        let a = HipStr::with_borrow("abc");
         assert_eq!(a.into_static(), Ok("abc"));
 
         // inline
@@ -1249,7 +1249,7 @@ mod tests {
     #[test]
     fn test_as_mut_str() {
         // static
-        let mut a = HipStr::from_static("abc");
+        let mut a = HipStr::with_borrow("abc");
         assert_eq!(a.as_mut_str(), None);
 
         // inline
@@ -1276,7 +1276,7 @@ mod tests {
     fn test_to_mut_str() {
         {
             // static
-            let mut a = HipStr::from_static("abc");
+            let mut a = HipStr::with_borrow("abc");
             assert!(a.is_static());
             assert_eq!(a.to_mut_str(), "abc".to_string().as_mut_str());
             assert!(a.is_inline());
@@ -1334,41 +1334,41 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_slice_panic_start() {
-        let a = HipStr::from_static("abc");
+        let a = HipStr::with_borrow("abc");
         let _b = a.slice(4..=4);
     }
 
     #[test]
     #[should_panic]
     fn test_slice_panic_end() {
-        let a = HipStr::from_static("abc");
+        let a = HipStr::with_borrow("abc");
         let _b = a.slice(0..5);
     }
 
     #[test]
     #[should_panic]
     fn test_slice_panic_mixed() {
-        let a = HipStr::from_static("abc");
+        let a = HipStr::with_borrow("abc");
         let _b = a.slice(3..2);
     }
 
     #[test]
     #[should_panic]
     fn test_slice_panic_start_char_boundary() {
-        let a = HipStr::from_static("\u{1F980}");
+        let a = HipStr::with_borrow("\u{1F980}");
         let _b = a.slice(1..);
     }
 
     #[test]
     #[should_panic]
     fn test_slice_panic_end_char_boundary() {
-        let a = HipStr::from_static("\u{1F980}");
+        let a = HipStr::with_borrow("\u{1F980}");
         let _b = a.slice(0..2);
     }
 
     #[test]
     fn test_try_slice() {
-        let a = HipStr::from_static("Rust \u{1F980}");
+        let a = HipStr::with_borrow("Rust \u{1F980}");
 
         let err = a.try_slice(10..).unwrap_err();
         assert_eq!(err.kind(), SliceErrorKind::StartOutOfBounds);
@@ -1412,7 +1412,7 @@ mod tests {
 
     #[test]
     fn test_from_utf8() {
-        let bytes = HipByt::from_static(b"abc\x80");
+        let bytes = HipByt::with_borrow(b"abc\x80");
         let err = HipStr::from_utf8(bytes.clone()).unwrap_err();
         assert!(std::ptr::eq(err.as_bytes(), bytes.as_slice()));
         assert_eq!(err.utf8_error().valid_up_to(), 3);
@@ -1432,7 +1432,7 @@ mod tests {
 
     #[test]
     fn test_from_utf8_lossy() {
-        let bytes = HipByt::from_static(b"abc\x80");
+        let bytes = HipByt::with_borrow(b"abc\x80");
         let string = HipStr::from_utf8_lossy(bytes.clone());
         assert!(string.len() > bytes.len());
 
@@ -1443,7 +1443,7 @@ mod tests {
 
     #[test]
     fn test_capacity() {
-        let a = HipStr::from_static("abc");
+        let a = HipStr::with_borrow("abc");
         assert_eq!(a.capacity(), a.len());
 
         let a = HipStr::from("abc");
@@ -1459,7 +1459,7 @@ mod tests {
     fn test_mutate() {
         {
             // static
-            let mut a = HipStr::from_static("abc");
+            let mut a = HipStr::with_borrow("abc");
             assert!(a.is_static(), "a should be static");
             a.mutate().push_str("def");
             assert!(a.is_allocated(), "a should be allocated at the end");

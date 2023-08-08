@@ -5,19 +5,19 @@
 /// For little-endian platform, the reserved word is **before** the data.
 #[derive(Clone, Copy)]
 #[repr(C)]
-pub struct Static {
+pub struct Borrowed<'borrow> {
     #[cfg(target_endian = "little")]
     reserved: usize,
 
-    slice: &'static [u8],
+    slice: &'borrow [u8],
 
     #[cfg(target_endian = "big")]
     reserved: usize,
 }
 
-impl Static {
+impl<'borrow> Borrowed<'borrow> {
     #[inline]
-    pub const fn new(slice: &'static [u8]) -> Self {
+    pub const fn new(slice: &'borrow [u8]) -> Self {
         Self { slice, reserved: 0 }
     }
 

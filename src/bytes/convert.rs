@@ -6,7 +6,7 @@ use super::HipByt;
 use crate::raw::Raw;
 use crate::Backend;
 
-impl<B> AsRef<[u8]> for HipByt<B>
+impl<'borrow, B> AsRef<[u8]> for HipByt<'borrow, B>
 where
     B: Backend,
 {
@@ -18,7 +18,7 @@ where
 
 // Infallible conversions
 
-impl<B> From<&[u8]> for HipByt<B>
+impl<'borrow, B> From<&[u8]> for HipByt<'borrow, B>
 where
     B: Backend,
 {
@@ -28,7 +28,7 @@ where
     }
 }
 
-impl<B, const N: usize> From<&[u8; N]> for HipByt<B>
+impl<'borrow, B, const N: usize> From<&[u8; N]> for HipByt<'borrow, B>
 where
     B: Backend,
 {
@@ -38,7 +38,7 @@ where
     }
 }
 
-impl<B> From<Box<[u8]>> for HipByt<B>
+impl<'borrow, B> From<Box<[u8]>> for HipByt<'borrow, B>
 where
     B: Backend,
 {
@@ -48,7 +48,7 @@ where
     }
 }
 
-impl<B> From<Vec<u8>> for HipByt<B>
+impl<'borrow, B> From<Vec<u8>> for HipByt<'borrow, B>
 where
     B: Backend,
 {
@@ -58,20 +58,20 @@ where
     }
 }
 
-impl<'a, B> From<Cow<'a, [u8]>> for HipByt<B>
+impl<'borrow, B> From<Cow<'borrow, [u8]>> for HipByt<'borrow, B>
 where
     B: Backend,
 {
     #[inline]
-    fn from(value: Cow<'a, [u8]>) -> Self {
+    fn from(value: Cow<'borrow, [u8]>) -> Self {
         match value {
-            Cow::Borrowed(borrow) => Self::from(borrow),
+            Cow::Borrowed(borrow) => Self::with_borrow(borrow),
             Cow::Owned(owned) => Self::from(owned),
         }
     }
 }
 
-impl<B> From<HipByt<B>> for Vec<u8>
+impl<'borrow, B> From<HipByt<'borrow, B>> for Vec<u8>
 where
     B: Backend,
 {

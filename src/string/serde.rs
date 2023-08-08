@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use super::HipStr;
 use crate::Backend;
 
-impl<B> Serialize for HipStr<B>
+impl<'borrow, B> Serialize for HipStr<'borrow, B>
 where
     B: Backend,
 {
@@ -15,7 +15,7 @@ where
     }
 }
 
-impl<'de, B> Deserialize<'de> for HipStr<B>
+impl<'de, 'borrow, B> Deserialize<'de> for HipStr<'borrow, B>
 where
     B: Backend,
 {
