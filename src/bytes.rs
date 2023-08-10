@@ -77,7 +77,7 @@ where
         Self(Raw::empty())
     }
 
-    /// Creates a new `HipByt` from a static slice without copying the slice.
+    /// Creates a new `HipByt` from a borrowed slice without copying the slice.
     ///
     /// # Examples
     ///
@@ -116,7 +116,7 @@ where
         self.0.is_inline()
     }
 
-    /// Returns `true` if this `HipByt` is a static slice borrow,.`false` otherwise.
+    /// Returns `true` if this `HipByt` is a slice borrow, `false` otherwise.
     ///
     /// # Examples
     ///
@@ -125,18 +125,18 @@ where
     /// ```
     /// # use hipstr::HipByt;
     /// let s = HipByt::borrowed(b"hello");
-    /// assert!(s.is_static());
+    /// assert!(s.is_borrowed());
     ///
     /// let s = HipByt::from(b"hello");
-    /// assert!(!s.is_static());
+    /// assert!(!s.is_borrowed());
     ///
     /// let s = HipByt::from(b"hello".repeat(10));
-    /// assert!(!s.is_static());
+    /// assert!(!s.is_borrowed());
     /// ```
     #[inline]
     #[must_use]
-    pub const fn is_static(&self) -> bool {
-        self.0.is_static()
+    pub const fn is_borrowed(&self) -> bool {
+        self.0.is_borrowed()
     }
 
     /// Returns `true` if this `HipByt` is a shared heap-allocated byte sequence, `false` otherwise.
@@ -147,7 +147,7 @@ where
     ///
     /// ```
     /// # use hipstr::HipByt;
-    /// let s = HipByt::from_static(b"hello");
+    /// let s = HipByt::borrowed(b"hello");
     /// assert!(!s.is_allocated());
     ///
     /// let s = HipByt::from(b"hello");
@@ -162,11 +162,11 @@ where
         self.0.is_allocated()
     }
 
-    /// Converts `self` into a static slice if this `HipByt` is backed by a static borrow.
+    /// Converts `self` into a borrowed slice if this `HipByt` is backed by a borrow.
     ///
     /// # Errors
     ///
-    /// Returns `Err(self)` if this `HipByt` is not a static borrow.
+    /// Returns `Err(self)` if this `HipByt` is not a borrow.
     ///
     /// # Examples
     ///
@@ -430,6 +430,8 @@ where
 
 impl<B: Backend> HipByt<'static, B> {
     /// Creates a new `HipByt` from a static slice without copying the slice.
+    ///
+    /// Handy shortcut to make a `HipByt<'static, _>`.
     ///
     /// # Examples
     ///
@@ -739,7 +741,7 @@ mod tests {
         let v = vec![42; 10];
         let bytes = HipByt::from(v);
         assert!(!bytes.is_inline());
-        assert!(!bytes.is_static());
+        assert!(!bytes.is_borrowed());
         assert!(bytes.is_allocated());
         assert_eq!(bytes.len(), 10);
         assert_eq!(bytes.as_slice(), [42; 10]);
@@ -752,7 +754,7 @@ mod tests {
         for size in [0, 1, INLINE_CAPACITY, INLINE_CAPACITY + 1, 256, 1024] {
             let bytes = HipByt::borrowed(&V[..size]);
             assert!(!bytes.is_inline());
-            assert!(bytes.is_static());
+            assert!(bytes.is_borrowed());
             assert!(!bytes.is_allocated());
             assert_eq!(bytes.len(), size);
             assert_eq!(bytes.as_ptr(), V.as_ptr());
@@ -767,7 +769,7 @@ mod tests {
             let bytes = HipByt::from(&V[..size]);
             assert_eq!(size > 0 && size <= INLINE_CAPACITY, bytes.is_inline());
             assert_eq!(size > INLINE_CAPACITY, bytes.is_allocated());
-            assert!(size == 0 || !bytes.is_static());
+            assert!(size == 0 || !bytes.is_borrowed());
             assert_eq!(bytes.len(), size);
         }
     }
@@ -777,7 +779,7 @@ mod tests {
         // static
         {
             let a = HipByt::borrowed(b"abc");
-            assert!(a.is_static());
+            assert!(a.is_borrowed());
             assert!(!a.is_inline());
             assert!(!a.is_allocated());
             assert_eq!(a.as_slice(), b"abc");
@@ -785,7 +787,7 @@ mod tests {
         // inline
         {
             let a = HipByt::from(b"abc".as_slice());
-            assert!(!a.is_static());
+            assert!(!a.is_borrowed());
             assert!(a.is_inline());
             assert!(!a.is_allocated());
             assert_eq!(a.as_slice(), b"abc");
@@ -793,7 +795,7 @@ mod tests {
         // allocated
         {
             let a = HipByt::from(vec![42; 42]);
-            assert!(!a.is_static());
+            assert!(!a.is_borrowed());
             assert!(!a.is_inline());
             assert!(a.is_allocated());
             assert_eq!(a.as_slice(), [42; 42]);
@@ -806,7 +808,7 @@ mod tests {
         {
             let s: &'static [u8] = b"abc";
             let a = HipByt::borrowed(s);
-            assert!(a.is_static());
+            assert!(a.is_borrowed());
             let b = a.clone();
             drop(a);
             assert_eq!(b.as_slice(), s);
@@ -908,7 +910,7 @@ mod tests {
     fn test_to_mut_slice() {
         // static
         let mut a = HipByt::borrowed(b"abc");
-        assert!(a.is_static());
+        assert!(a.is_borrowed());
         assert_eq!(a.to_mut_slice(), b"abc".to_vec().as_mut_slice());
         assert!(a.is_inline());
 
@@ -1032,11 +1034,11 @@ mod tests {
         // should normalize slice to static
         let source1 = HipByt::from(vec![1, 2, 3]);
         let empty_slice1 = source1.slice(0..0);
-        assert!(empty_slice1.is_static());
+        assert!(empty_slice1.is_borrowed());
 
         let source2 = HipByt::from(&[1, 2, 3]);
         let empty_slice2 = source2.slice(0..0);
-        assert!(empty_slice2.is_static());
+        assert!(empty_slice2.is_borrowed());
     }
 
     #[test]
@@ -1119,7 +1121,7 @@ mod tests {
         {
             // static
             let mut a = HipByt::borrowed(b"abc");
-            assert!(a.is_static(), "a should be static");
+            assert!(a.is_borrowed(), "a should be static");
             a.mutate().extend_from_slice(b"def");
             assert!(a.is_allocated(), "a should be allocated at the end");
             assert_eq!(a, b"abcdef", "should be modified");

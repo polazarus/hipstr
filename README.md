@@ -9,8 +9,8 @@
 
 Yet another string for Rust 🦀
 
-* no copy **literal wrapping** via `from_static` (a `const` constructor)
-* no alloc **small strings** (23 bytes on 64-bit platform)
+* no copy **borrow** via `borrowed` (a `const` constructor) or `from_static`
+* no alloc **small strings** (_23 bytes_ on 64-bit platform)
 * no copy **owned slices**
 * **zero dependency**
 

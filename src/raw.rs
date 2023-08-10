@@ -87,11 +87,11 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
         if self.is_inline() {
             // SAFETY: representation checked, see is_inline
             RawSplit::Inline(unsafe { &self.inline })
-        } else if self.is_static() {
-            // SAFETY: representation checked, see is_static
+        } else if self.is_borrowed() {
+            // SAFETY: representation checked, see is_borrowed
             RawSplit::Borrowed(unsafe { &self.borrowed })
         } else {
-            // SAFETY: representation checked, see is_static, is_inline and is_allocated
+            // SAFETY: representation checked, see is_borrowed, is_inline and is_allocated
             debug_assert!(self.is_allocated());
             RawSplit::Allocated(unsafe { &self.allocated })
         }
@@ -105,7 +105,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
     }
 
     #[inline]
-    pub const fn is_static(&self) -> bool {
+    pub const fn is_borrowed(&self) -> bool {
         // SAFETY:
         // * If self is inline, the shifted length plus one is in reserved and will be non null.
         // * If self is allocated, the reinterpretation of the owner will be non null too.
@@ -117,13 +117,13 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
 
     #[inline]
     pub const fn is_allocated(&self) -> bool {
-        !self.is_inline() && !self.is_static()
+        !self.is_inline() && !self.is_borrowed()
     }
 
     #[inline]
     pub fn into_borrowed(self) -> Result<&'borrow [u8], Self> {
-        if self.is_static() {
-            // NO LEAK: no drop needed for static repr
+        if self.is_borrowed() {
+            // NO LEAK: no drop needed for borrow repr
             let this = ManuallyDrop::new(self);
             // SAFETY: representation is checked before
             Ok(unsafe { &this.borrowed }.as_slice())
@@ -162,8 +162,8 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
                 let inline = Inline::new(&inline.as_slice()[range]);
                 Self { inline }
             }
-            RawSplit::Borrowed(static_) => {
-                let sl = &static_.as_slice()[range];
+            RawSplit::Borrowed(borrowed) => {
+                let sl = &borrowed.as_slice()[range];
                 Self {
                     borrowed: Borrowed::new(sl),
                 }

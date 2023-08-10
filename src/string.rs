@@ -130,18 +130,18 @@ where
     /// ```
     /// # use hipstr::HipStr;
     /// let s = HipStr::borrowed("hello");
-    /// assert!(s.is_static());
+    /// assert!(s.is_borrowed());
     ///
     /// let s = HipStr::from("hello");
-    /// assert!(!s.is_static());
+    /// assert!(!s.is_borrowed());
     ///
     /// let s = HipStr::from("hello".repeat(10));
-    /// assert!(!s.is_static());
+    /// assert!(!s.is_borrowed());
     /// ```
     #[inline]
     #[must_use]
-    pub const fn is_static(&self) -> bool {
-        self.0.is_static()
+    pub const fn is_borrowed(&self) -> bool {
+        self.0.is_borrowed()
     }
 
     /// Returns `true` if this `HipStr` is a shared heap-allocated string, `false` otherwise.
@@ -241,7 +241,7 @@ where
     /// Converts a `HipStr` into a `HipByt`.
     ///
     /// It consumes the `HipStr` without copying the content
-    /// (if [shared][HipByt::is_allocated] or [static][HipByt::is_static]).
+    /// (if [shared][HipByt::is_allocated] or [static][HipByt::is_borrowed]).
     ///
     /// # Examples
     ///
@@ -1127,7 +1127,7 @@ mod tests {
     fn test_from_string() {
         let s = "A".repeat(42);
         let hs = HipStr::from(s.clone());
-        assert!(!hs.is_static());
+        assert!(!hs.is_borrowed());
         assert!(!hs.is_inline());
         assert!(hs.is_allocated());
         assert_eq!(hs.len(), 42);
@@ -1138,7 +1138,7 @@ mod tests {
     fn test_borrowed() {
         let s = "0123456789";
         let string = HipStr::borrowed(s);
-        assert!(string.is_static());
+        assert!(string.is_borrowed());
         assert!(!string.is_inline());
         assert_eq!(string.len(), s.len());
         assert_eq!(string.as_str(), s);
@@ -1153,7 +1153,7 @@ mod tests {
         for size in [0, 1, INLINE_CAPACITY, INLINE_CAPACITY + 1, 256, 1024] {
             let string = HipStr::from(&s[..size]);
             assert_eq!(size > 0 && size <= INLINE_CAPACITY, string.is_inline());
-            assert!(size == 0 || !string.is_static());
+            assert!(size == 0 || !string.is_borrowed());
             assert_eq!(string.len(), size);
         }
     }
@@ -1163,7 +1163,7 @@ mod tests {
         // static
         {
             let a = HipStr::borrowed("abc");
-            assert!(a.is_static());
+            assert!(a.is_borrowed());
             assert!(!a.is_inline());
             assert!(!a.is_allocated());
             assert_eq!(a.as_str(), "abc");
@@ -1171,7 +1171,7 @@ mod tests {
         // inline
         {
             let a = HipStr::from("abc");
-            assert!(!a.is_static());
+            assert!(!a.is_borrowed());
             assert!(a.is_inline());
             assert!(!a.is_allocated());
             assert_eq!(a.as_str(), "abc");
@@ -1180,7 +1180,7 @@ mod tests {
         {
             let s = "A".repeat(42);
             let a = HipStr::from(s.as_str());
-            assert!(!a.is_static());
+            assert!(!a.is_borrowed());
             assert!(!a.is_inline());
             assert!(a.is_allocated());
             assert_eq!(a.as_str(), s.as_str());
@@ -1193,7 +1193,7 @@ mod tests {
         {
             let s: &'static str = "abc";
             let a = HipStr::borrowed(s);
-            assert!(a.is_static());
+            assert!(a.is_borrowed());
             let b = a.clone();
             drop(a);
             assert_eq!(b.as_str(), "abc");
@@ -1278,7 +1278,7 @@ mod tests {
         {
             // static
             let mut a = HipStr::borrowed("abc");
-            assert!(a.is_static());
+            assert!(a.is_borrowed());
             assert_eq!(a.to_mut_str(), "abc".to_string().as_mut_str());
             assert!(a.is_inline());
         }
@@ -1461,7 +1461,7 @@ mod tests {
         {
             // static
             let mut a = HipStr::borrowed("abc");
-            assert!(a.is_static(), "a should be static");
+            assert!(a.is_borrowed(), "a should be static");
             a.mutate().push_str("def");
             assert!(a.is_allocated(), "a should be allocated at the end");
             assert_eq!(a, "abcdef", "should be modified");
