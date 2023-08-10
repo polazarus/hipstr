@@ -69,13 +69,13 @@ pub mod string;
 pub use backend::{Backend, Local, ThreadSafe};
 
 /// Thread-safe shared byte sequence.
-pub type HipByt = bytes::HipByt<'static, ThreadSafe>;
+pub type HipByt<'borrow> = bytes::HipByt<'borrow, ThreadSafe>;
 
 /// Thread-safe shared string.
-pub type HipStr = string::HipStr<'static, ThreadSafe>;
+pub type HipStr<'borrow> = string::HipStr<'borrow, ThreadSafe>;
 
 /// Thread-local byte sequence.
-pub type LocalHipByt = bytes::HipByt<'static, Local>;
+pub type LocalHipByt<'borrow> = bytes::HipByt<'borrow, Local>;
 
 /// Thread-local string.
-pub type LocalHipStr = string::HipStr<'static, Local>;
+pub type LocalHipStr<'borrow> = string::HipStr<'borrow, Local>;
