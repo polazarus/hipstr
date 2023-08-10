@@ -112,7 +112,7 @@ jobs:
         run: cargo +nightly update -Zdirect-minimal-versions
 
       - name: Show dependence tree
-        run: cargo +stable tree
+        run: cargo +stable tree --all-features
 
       - name: Run tests
         run: cargo +stable test --verbose --release --all-features
