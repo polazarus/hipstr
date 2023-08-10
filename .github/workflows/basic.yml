@@ -114,7 +114,9 @@ jobs:
           cargo +nightly check
 
       - name: Show dependence tree
-        run: cargo +stable tree --all-features
+        run: |
+          cargo +nightly tree --all-features
+          cargo +stable tree --all-features
 
       - name: Run tests
         run: cargo +stable test --verbose --release --all-features
