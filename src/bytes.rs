@@ -428,10 +428,13 @@ where
     }
 }
 
-impl<B: Backend> HipByt<'static, B> {
+impl<B> HipByt<'static, B>
+where
+    B: Backend,
+{
     /// Creates a new `HipByt` from a static slice without copying the slice.
     ///
-    /// Handy shortcut to make a `HipByt<'static, _>`.
+    /// Handy shortcut to make a `HipByt<'static, _>` out of a `&'static [u8]`.
     ///
     /// # Examples
     ///
@@ -442,6 +445,7 @@ impl<B: Backend> HipByt<'static, B> {
     /// let b = HipByt::from_static(b"hello\0");
     /// assert_eq!(b.len(), 6);
     /// ```
+    #[inline]
     #[must_use]
     pub const fn from_static(bytes: &'static [u8]) -> Self {
         Self::borrowed(bytes)

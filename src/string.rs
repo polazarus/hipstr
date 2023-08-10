@@ -684,6 +684,30 @@ where
     }
 }
 
+impl<B> HipStr<'static, B>
+where
+    B: Backend,
+{
+    /// Creates a new `HipStr` from a static string slice without copying the slice.
+    ///
+    /// Handy shortcut to make a `HipStr<'static, _>` out of a `&'static str`.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// # use hipstr::HipStr;
+    /// let s = HipStr::from_static("hello");
+    /// assert_eq!(s.len(), 5);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub const fn from_static(value: &'static str) -> Self {
+        Self::borrowed(value)
+    }
+}
+
 // Manual implementation needed to remove trait bound on B::RawPointer.
 impl<'borrow, B> Clone for HipStr<'borrow, B>
 where
