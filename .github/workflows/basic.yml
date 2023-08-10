@@ -109,7 +109,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@nightly
 
       - name: Resolve dependencies
-        run: cargo +nightly update -Zdirect-minimal-versions
+        run: |
+          cargo +nightly update -Zdirect-minimal-versions
+          cargo +nightly check
 
       - name: Show dependence tree
         run: cargo +stable tree --all-features
