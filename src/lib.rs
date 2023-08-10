@@ -12,7 +12,7 @@
 //! ```rust
 //! use hipstr::HipStr;
 //!
-//! let simple_greetings = HipStr::from_static("Hello world");
+//! let simple_greetings = HipStr::borrowed("Hello world");
 //! let clone = simple_greetings.clone(); // no copy
 //! std::thread::spawn(move || { println!("{}", clone); });
 //!
@@ -69,13 +69,13 @@ pub mod string;
 pub use backend::{Backend, Local, ThreadSafe};
 
 /// Thread-safe shared byte sequence.
-pub type HipByt = bytes::HipByt<ThreadSafe>;
+pub type HipByt<'borrow> = bytes::HipByt<'borrow, ThreadSafe>;
 
 /// Thread-safe shared string.
-pub type HipStr = string::HipStr<ThreadSafe>;
+pub type HipStr<'borrow> = string::HipStr<'borrow, ThreadSafe>;
 
 /// Thread-local byte sequence.
-pub type LocalHipByt = bytes::HipByt<Local>;
+pub type LocalHipByt<'borrow> = bytes::HipByt<'borrow, Local>;
 
 /// Thread-local string.
-pub type LocalHipStr = string::HipStr<Local>;
+pub type LocalHipStr<'borrow> = string::HipStr<'borrow, Local>;

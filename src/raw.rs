@@ -6,37 +6,37 @@ use std::mem::{forget, replace, size_of, ManuallyDrop};
 use std::ops::Range;
 
 use allocated::Allocated;
-use static_::Static;
+use borrowed::Borrowed;
 
 use crate::Backend;
 
 mod allocated;
+mod borrowed;
 mod inline;
-mod static_;
 
 type Inline = inline::Inline<INLINE_CAPACITY>;
 
 /// Maximal byte capacity of an inline [`HipStr`](super::HipStr) or [`HipByt`](super::HipByt).
-const INLINE_CAPACITY: usize = size_of::<Static>() - 1;
+const INLINE_CAPACITY: usize = size_of::<Borrowed>() - 1;
 
 /// Raw immutable byte sequence.
 #[repr(C)]
-pub union Raw<B: Backend> {
+pub union Raw<'borrow, B: Backend> {
     inline: Inline,
     allocated: Allocated<B>,
-    static_: Static,
+    borrowed: Borrowed<'borrow>,
 }
 
-enum RawSplit<'a, B: Backend> {
+enum RawSplit<'a, 'borrow, B: Backend> {
     Inline(&'a Inline),
     Allocated(&'a Allocated<B>),
-    Static(&'a Static),
+    Borrowed(&'a Borrowed<'borrow>),
 }
 
-impl<B: Backend> Raw<B> {
+impl<'borrow, B: Backend> Raw<'borrow, B> {
     const _ASSERTS: () = {
         assert!(size_of::<Inline>() == size_of::<Allocated<B>>());
-        assert!(size_of::<Inline>() == size_of::<Static>());
+        assert!(size_of::<Inline>() == size_of::<Borrowed<'borrow>>());
         assert!(size_of::<B::RawPointer>() == size_of::<usize>());
     };
 
@@ -44,15 +44,15 @@ impl<B: Backend> Raw<B> {
     #[inline]
     pub const fn empty() -> Self {
         Self {
-            static_: Static::empty(),
+            borrowed: Borrowed::empty(),
         }
     }
 
     /// Creates a new `Raw` from a static slice.
     #[inline]
-    pub const fn from_static(bytes: &'static [u8]) -> Self {
+    pub const fn borrowed(bytes: &'borrow [u8]) -> Self {
         Self {
-            static_: Static::new(bytes),
+            borrowed: Borrowed::new(bytes),
         }
     }
 
@@ -83,15 +83,15 @@ impl<B: Backend> Raw<B> {
 
     /// Splits this raw into its possible representation.
     #[inline]
-    const fn split(&self) -> RawSplit<B> {
+    const fn split(&self) -> RawSplit<'_, 'borrow, B> {
         if self.is_inline() {
             // SAFETY: representation checked, see is_inline
             RawSplit::Inline(unsafe { &self.inline })
-        } else if self.is_static() {
-            // SAFETY: representation checked, see is_static
-            RawSplit::Static(unsafe { &self.static_ })
+        } else if self.is_borrowed() {
+            // SAFETY: representation checked, see is_borrowed
+            RawSplit::Borrowed(unsafe { &self.borrowed })
         } else {
-            // SAFETY: representation checked, see is_static, is_inline and is_allocated
+            // SAFETY: representation checked, see is_borrowed, is_inline and is_allocated
             debug_assert!(self.is_allocated());
             RawSplit::Allocated(unsafe { &self.allocated })
         }
@@ -105,28 +105,28 @@ impl<B: Backend> Raw<B> {
     }
 
     #[inline]
-    pub const fn is_static(&self) -> bool {
+    pub const fn is_borrowed(&self) -> bool {
         // SAFETY:
         // * If self is inline, the shifted length plus one is in reserved and will be non null.
         // * If self is allocated, the reinterpretation of the owner will be non null too.
         unsafe {
             !self.inline.is_valid() // required for miri, compiled away!
-            && self.static_.is_valid()
+            && self.borrowed.is_valid()
         }
     }
 
     #[inline]
     pub const fn is_allocated(&self) -> bool {
-        !self.is_inline() && !self.is_static()
+        !self.is_inline() && !self.is_borrowed()
     }
 
     #[inline]
-    pub fn into_static(self) -> Result<&'static [u8], Self> {
-        if self.is_static() {
-            // NO LEAK: no drop needed for static repr
+    pub fn into_borrowed(self) -> Result<&'borrow [u8], Self> {
+        if self.is_borrowed() {
+            // NO LEAK: no drop needed for borrow repr
             let this = ManuallyDrop::new(self);
             // SAFETY: representation is checked before
-            Ok(unsafe { &this.static_ }.as_slice())
+            Ok(unsafe { &this.borrowed }.as_slice())
         } else {
             Err(self)
         }
@@ -137,7 +137,7 @@ impl<B: Backend> Raw<B> {
         match self.split() {
             RawSplit::Inline(inline) => inline.len(),
             RawSplit::Allocated(heap) => heap.len(),
-            RawSplit::Static(static_) => static_.len(),
+            RawSplit::Borrowed(borrowed) => borrowed.len(),
         }
     }
 
@@ -146,7 +146,7 @@ impl<B: Backend> Raw<B> {
         match self.split() {
             RawSplit::Inline(inline) => inline.as_slice(),
             RawSplit::Allocated(heap) => heap.as_slice(),
-            RawSplit::Static(static_) => static_.as_slice(),
+            RawSplit::Borrowed(borrowed) => borrowed.as_slice(),
         }
     }
 
@@ -162,10 +162,10 @@ impl<B: Backend> Raw<B> {
                 let inline = Inline::new(&inline.as_slice()[range]);
                 Self { inline }
             }
-            RawSplit::Static(static_) => {
-                let sl = &static_.as_slice()[range];
+            RawSplit::Borrowed(borrowed) => {
+                let sl = &borrowed.as_slice()[range];
                 Self {
-                    static_: Static::new(sl),
+                    borrowed: Borrowed::new(sl),
                 }
             }
             RawSplit::Allocated(allocated) => {
@@ -203,7 +203,7 @@ impl<B: Backend> Raw<B> {
             Self::from_slice(allocated.as_slice())
         } else {
             // SAFETY: representation is checked
-            let static_ = unsafe { self.static_ };
+            let static_ = unsafe { self.borrowed };
             Self::from_slice(static_.as_slice())
         };
         *self = copy;
@@ -236,7 +236,7 @@ impl<B: Backend> Raw<B> {
     pub fn capacity(&self) -> usize {
         match self.split() {
             RawSplit::Inline(_) => Self::inline_capacity(),
-            RawSplit::Static(static_) => static_.len(), // provide something to simplify the API
+            RawSplit::Borrowed(borrowed) => borrowed.len(), // provide something to simplify the API
             RawSplit::Allocated(allocated) => allocated.owner_vec().capacity(),
         }
     }
@@ -280,7 +280,7 @@ impl<B: Backend> Raw<B> {
     }
 }
 
-impl<B: Backend> Drop for Raw<B> {
+impl<'borrow, B: Backend> Drop for Raw<'borrow, B> {
     #[inline]
     fn drop(&mut self) {
         // Formally drops this `Raw` decreasing the ref count if needed
@@ -290,12 +290,12 @@ impl<B: Backend> Drop for Raw<B> {
     }
 }
 
-impl<B: Backend> Clone for Raw<B> {
+impl<'borrow, B: Backend> Clone for Raw<'borrow, B> {
     fn clone(&self) -> Self {
         // Duplicates this `Raw` increasing the ref count if needed.
         match self.split() {
             RawSplit::Inline(&inline) => Self { inline },
-            RawSplit::Static(&static_) => Self { static_ },
+            RawSplit::Borrowed(&borrowed) => Self { borrowed },
             RawSplit::Allocated(&allocated) => {
                 allocated.incr_ref_count();
                 Self { allocated }

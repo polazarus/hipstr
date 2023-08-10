@@ -6,7 +6,7 @@ use super::HipByt;
 use crate::raw::Raw;
 use crate::Backend;
 
-impl<B> AsRef<[u8]> for HipByt<B>
+impl<'borrow, B> AsRef<[u8]> for HipByt<'borrow, B>
 where
     B: Backend,
 {
@@ -18,7 +18,7 @@ where
 
 // Infallible conversions
 
-impl<B> From<&[u8]> for HipByt<B>
+impl<'borrow, B> From<&[u8]> for HipByt<'borrow, B>
 where
     B: Backend,
 {
@@ -28,7 +28,7 @@ where
     }
 }
 
-impl<B, const N: usize> From<&[u8; N]> for HipByt<B>
+impl<'borrow, B, const N: usize> From<&[u8; N]> for HipByt<'borrow, B>
 where
     B: Backend,
 {
@@ -38,7 +38,7 @@ where
     }
 }
 
-impl<B> From<Box<[u8]>> for HipByt<B>
+impl<'borrow, B> From<Box<[u8]>> for HipByt<'borrow, B>
 where
     B: Backend,
 {
@@ -48,7 +48,7 @@ where
     }
 }
 
-impl<B> From<Vec<u8>> for HipByt<B>
+impl<'borrow, B> From<Vec<u8>> for HipByt<'borrow, B>
 where
     B: Backend,
 {
@@ -58,20 +58,20 @@ where
     }
 }
 
-impl<'a, B> From<Cow<'a, [u8]>> for HipByt<B>
+impl<'borrow, B> From<Cow<'borrow, [u8]>> for HipByt<'borrow, B>
 where
     B: Backend,
 {
     #[inline]
-    fn from(value: Cow<'a, [u8]>) -> Self {
+    fn from(value: Cow<'borrow, [u8]>) -> Self {
         match value {
-            Cow::Borrowed(borrow) => Self::from(borrow),
+            Cow::Borrowed(borrow) => Self::borrowed(borrow),
             Cow::Owned(owned) => Self::from(owned),
         }
     }
 }
 
-impl<B> From<HipByt<B>> for Vec<u8>
+impl<'borrow, B> From<HipByt<'borrow, B>> for Vec<u8>
 where
     B: Backend,
 {
@@ -91,7 +91,7 @@ where
 mod tests {
     use std::borrow::Cow;
 
-    use crate::HipByt;
+    use crate::{HipByt, ThreadSafe};
 
     #[test]
     fn test_as_ref() {
@@ -124,10 +124,11 @@ mod tests {
         assert_eq!(fv.as_slice(), &a);
         assert!(std::ptr::eq(fv.as_ptr(), ptr_b));
 
-        let fc1 = HipByt::from(c1);
+        type H<'a> = crate::bytes::HipByt<'a, ThreadSafe>;
+        let fc1 = H::from(c1);
         assert_eq!(fc1.as_slice(), &a);
 
-        let fc2 = HipByt::from(c2);
+        let fc2 = H::from(c2);
         assert_eq!(fc2.as_slice(), &a);
         assert!(std::ptr::eq(fc2.as_ptr(), ptr_c2));
     }

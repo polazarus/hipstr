@@ -7,9 +7,9 @@ use crate::Backend;
 
 // Equality
 
-impl<B> Eq for HipByt<B> where B: Backend {}
+impl<'borrow, B> Eq for HipByt<'borrow, B> where B: Backend {}
 
-impl<B1, B2> PartialEq<HipByt<B1>> for HipByt<B2>
+impl<'b1, 'b2, B1, B2> PartialEq<HipByt<'b1, B1>> for HipByt<'b2, B2>
 where
     B1: Backend,
     B2: Backend,
@@ -20,7 +20,7 @@ where
     }
 }
 
-impl<B> PartialEq<[u8]> for HipByt<B>
+impl<'borrow, B> PartialEq<[u8]> for HipByt<'borrow, B>
 where
     B: Backend,
 {
@@ -30,7 +30,7 @@ where
     }
 }
 
-impl<B> PartialEq<HipByt<B>> for [u8]
+impl<'borrow, B> PartialEq<HipByt<'borrow, B>> for [u8]
 where
     B: Backend,
 {
@@ -40,7 +40,7 @@ where
     }
 }
 
-impl<'a, B> PartialEq<&'a [u8]> for HipByt<B>
+impl<'a, 'borrow, B> PartialEq<&'a [u8]> for HipByt<'borrow, B>
 where
     B: Backend,
 {
@@ -50,7 +50,7 @@ where
     }
 }
 
-impl<'a, B> PartialEq<HipByt<B>> for &'a [u8]
+impl<'a, 'borrow, B> PartialEq<HipByt<'borrow, B>> for &'a [u8]
 where
     B: Backend,
 {
@@ -60,7 +60,7 @@ where
     }
 }
 
-impl<B> PartialEq<Vec<u8>> for HipByt<B>
+impl<'borrow, B> PartialEq<Vec<u8>> for HipByt<'borrow, B>
 where
     B: Backend,
 {
@@ -70,7 +70,7 @@ where
     }
 }
 
-impl<B> PartialEq<HipByt<B>> for Vec<u8>
+impl<'borrow, B> PartialEq<HipByt<'borrow, B>> for Vec<u8>
 where
     B: Backend,
 {
@@ -80,7 +80,7 @@ where
     }
 }
 
-impl<B> PartialEq<Box<[u8]>> for HipByt<B>
+impl<'borrow, B> PartialEq<Box<[u8]>> for HipByt<'borrow, B>
 where
     B: Backend,
 {
@@ -90,7 +90,7 @@ where
     }
 }
 
-impl<B> PartialEq<HipByt<B>> for Box<[u8]>
+impl<'borrow, B> PartialEq<HipByt<'borrow, B>> for Box<[u8]>
 where
     B: Backend,
 {
@@ -100,7 +100,7 @@ where
     }
 }
 
-impl<'a, B> PartialEq<Cow<'a, [u8]>> for HipByt<B>
+impl<'a, 'borrow, B> PartialEq<Cow<'a, [u8]>> for HipByt<'borrow, B>
 where
     B: Backend,
 {
@@ -110,7 +110,7 @@ where
     }
 }
 
-impl<'a, B> PartialEq<HipByt<B>> for Cow<'a, [u8]>
+impl<'a, 'borrow, B> PartialEq<HipByt<'borrow, B>> for Cow<'a, [u8]>
 where
     B: Backend,
 {
@@ -120,7 +120,7 @@ where
     }
 }
 
-impl<B, const N: usize> PartialEq<[u8; N]> for HipByt<B>
+impl<'borrow, B, const N: usize> PartialEq<[u8; N]> for HipByt<'borrow, B>
 where
     B: Backend,
 {
@@ -130,7 +130,7 @@ where
     }
 }
 
-impl<B, const N: usize> PartialEq<HipByt<B>> for [u8; N]
+impl<'borrow, B, const N: usize> PartialEq<HipByt<'borrow, B>> for [u8; N]
 where
     B: Backend,
 {
@@ -140,7 +140,7 @@ where
     }
 }
 
-impl<'a, B, const N: usize> PartialEq<&'a [u8; N]> for HipByt<B>
+impl<'a, 'borrow, B, const N: usize> PartialEq<&'a [u8; N]> for HipByt<'borrow, B>
 where
     B: Backend,
 {
@@ -150,7 +150,7 @@ where
     }
 }
 
-impl<'a, B, const N: usize> PartialEq<HipByt<B>> for &'a [u8; N]
+impl<'a, 'borrow, B, const N: usize> PartialEq<HipByt<'borrow, B>> for &'a [u8; N]
 where
     B: Backend,
 {
@@ -162,7 +162,7 @@ where
 
 // Order
 
-impl<B> Ord for HipByt<B>
+impl<'borrow, B> Ord for HipByt<'borrow, B>
 where
     B: Backend,
 {
@@ -172,7 +172,7 @@ where
     }
 }
 
-impl<B> PartialOrd for HipByt<B>
+impl<'borrow, B> PartialOrd for HipByt<'borrow, B>
 where
     B: Backend,
 {
@@ -220,7 +220,7 @@ mod tests {
 
     #[test]
     fn test_ord() {
-        let h1 = HipByt::from_static(b"abc");
+        let h1 = HipByt::borrowed(b"abc");
         let h2 = HipByt::from(b"abd");
 
         assert_eq!(h1.partial_cmp(&h1), Some(Ordering::Equal));

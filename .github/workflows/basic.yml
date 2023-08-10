@@ -105,17 +105,12 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - uses: dtolnay/rust-toolchain@stable
       - uses: dtolnay/rust-toolchain@nightly
+      - uses: taiki-e/install-action@cargo-hack
+      - uses: taiki-e/install-action@cargo-minimal-versions
 
-      - name: Resolve dependencies
-        run: cargo +nightly update -Zdirect-minimal-versions
-
-      - name: Show dependence tree
-        run: cargo +stable tree
-
-      - name: Run tests
-        run: cargo +stable test --verbose --release --all-features
+      - name: Check with minimal versions
+        run: cargo minimal-versions check --workspace
 
   coverage:
     runs-on: ubuntu-latest

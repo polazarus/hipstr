@@ -7,9 +7,9 @@ use crate::Backend;
 
 // Equality
 
-impl<B> Eq for HipStr<B> where B: Backend {}
+impl<'borrow, B> Eq for HipStr<'borrow, B> where B: Backend {}
 
-impl<B1, B2> PartialEq<HipStr<B1>> for HipStr<B2>
+impl<'b1, 'b2, B1, B2> PartialEq<HipStr<'b1, B1>> for HipStr<'b2, B2>
 where
     B1: Backend,
     B2: Backend,
@@ -20,7 +20,7 @@ where
     }
 }
 
-impl<B> PartialEq<str> for HipStr<B>
+impl<'borrow, B> PartialEq<str> for HipStr<'borrow, B>
 where
     B: Backend,
 {
@@ -30,7 +30,7 @@ where
     }
 }
 
-impl<B> PartialEq<HipStr<B>> for str
+impl<'borrow, B> PartialEq<HipStr<'borrow, B>> for str
 where
     B: Backend,
 {
@@ -40,7 +40,7 @@ where
     }
 }
 
-impl<'a, B> PartialEq<&'a str> for HipStr<B>
+impl<'a, 'borrow, B> PartialEq<&'a str> for HipStr<'borrow, B>
 where
     B: Backend,
 {
@@ -50,7 +50,7 @@ where
     }
 }
 
-impl<'a, B> PartialEq<HipStr<B>> for &'a str
+impl<'a, 'borrow, B> PartialEq<HipStr<'borrow, B>> for &'a str
 where
     B: Backend,
 {
@@ -60,7 +60,7 @@ where
     }
 }
 
-impl<B> PartialEq<String> for HipStr<B>
+impl<'borrow, B> PartialEq<String> for HipStr<'borrow, B>
 where
     B: Backend,
 {
@@ -70,7 +70,7 @@ where
     }
 }
 
-impl<B> PartialEq<HipStr<B>> for String
+impl<'borrow, B> PartialEq<HipStr<'borrow, B>> for String
 where
     B: Backend,
 {
@@ -80,7 +80,7 @@ where
     }
 }
 
-impl<B> PartialEq<Box<str>> for HipStr<B>
+impl<'borrow, B> PartialEq<Box<str>> for HipStr<'borrow, B>
 where
     B: Backend,
 {
@@ -90,7 +90,7 @@ where
     }
 }
 
-impl<B> PartialEq<HipStr<B>> for Box<str>
+impl<'borrow, B> PartialEq<HipStr<'borrow, B>> for Box<str>
 where
     B: Backend,
 {
@@ -100,7 +100,7 @@ where
     }
 }
 
-impl<'a, B> PartialEq<Cow<'a, str>> for HipStr<B>
+impl<'a, 'b, B> PartialEq<Cow<'a, str>> for HipStr<'b, B>
 where
     B: Backend,
 {
@@ -110,7 +110,7 @@ where
     }
 }
 
-impl<'a, B> PartialEq<HipStr<B>> for Cow<'a, str>
+impl<'a, 'b, B> PartialEq<HipStr<'a, B>> for Cow<'b, str>
 where
     B: Backend,
 {
@@ -120,7 +120,7 @@ where
     }
 }
 
-impl<B> Ord for HipStr<B>
+impl<'borrow, B> Ord for HipStr<'borrow, B>
 where
     B: Backend,
 {
@@ -129,7 +129,7 @@ where
     }
 }
 
-impl<B> PartialOrd for HipStr<B>
+impl<'borrow, B> PartialOrd for HipStr<'borrow, B>
 where
     B: Backend,
 {
@@ -171,7 +171,7 @@ mod tests {
 
     #[test]
     fn test_ord() {
-        let h1 = HipStr::from_static("abc");
+        let h1 = HipStr::borrowed("abc");
         let h2 = HipStr::from("abd");
 
         assert_eq!(h1.partial_cmp(&h1), Some(Ordering::Equal));
