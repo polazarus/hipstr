@@ -26,6 +26,7 @@ fastrand = "1.9.0"
 flexstr = "0.9.2"
 imstr = "0.2.0"
 serde_test = "1.0.163"
+serde = { version = "1.0.60", features = ["derive"] }
 
 [dependencies]
 serde = { version = "1.0.60", optional = true }

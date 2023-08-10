@@ -123,13 +123,15 @@ where
 /// Deserializes a `HipByt` as a borrow if possible.
 ///
 /// ```rust
+/// # use serde::Deserialize;
 /// use hipstr::bytes::HipByt;
 /// use hipstr::Local;
-/// #[derive(serde::Deserialize)]
+/// #[derive(Deserialize)]
 /// struct MyStruct<'a> {
 ///     #[serde(borrow, deserialize_with = "hipstr::bytes::serde::borrowing_deserialize")]
 ///     field: HipByt<'a, Local>,
 /// }
+/// # fn main() {}
 /// ```
 pub fn borrowing_deserialize<'de, D, B>(deserializer: D) -> Result<HipByt<'de, B>, D::Error>
 where

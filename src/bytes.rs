@@ -13,7 +13,7 @@ mod cmp;
 mod convert;
 
 #[cfg(feature = "serde")]
-mod serde;
+pub mod serde;
 
 /// Smart bytes, i.e. cheaply clonable and sliceable byte string.
 ///
