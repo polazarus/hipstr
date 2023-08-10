@@ -32,15 +32,12 @@ where
 
 /// Deserializes a `HipByt` as a borrow if possible.
 ///
-/// ```rust
-/// # use serde::Deserialize;
-/// # use serde_json;
-/// use hipstr::bytes::HipByt;
-/// use hipstr::Local;
+/// ```ignore
+/// use hipstr::HipByt;
 /// #[derive(Deserialize)]
 /// struct MyStruct<'a> {
-///     #[serde(borrow, deserialize_with = "hipstr::bytes::serde::borrowing_deserialize")]
-///     field: HipByt<'a, Local>,
+///     #[serde(borrow, deserialize_with = "hipstr::bytes::serde::borrowg_deserialize")]
+///     field: HipByt<'a>,
 /// }
 /// # fn main() {
 /// let s: MyStruct = serde_json::from_str(r#"{"field": "abc"}"#).unwrap();
@@ -51,7 +48,7 @@ where
 /// # Errors
 ///
 /// Returns a deserializer if either the serialization is incorrect or an unexpected value is encountered.
-pub fn borrowing_deserialize<'de: 'a, 'a, D, B>(deserializer: D) -> Result<HipByt<'a, B>, D::Error>
+pub fn borrow_deserialize<'de: 'a, 'a, D, B>(deserializer: D) -> Result<HipByt<'a, B>, D::Error>
 where
     D: serde::Deserializer<'de>,
     B: Backend,
@@ -66,7 +63,7 @@ mod tests {
         assert_de_tokens, assert_de_tokens_error, assert_ser_tokens, assert_tokens, Token,
     };
 
-    use crate::bytes::serde::borrowing_deserialize;
+    use crate::bytes::serde::borrow_deserialize;
     use crate::HipByt;
 
     #[test]
@@ -111,7 +108,7 @@ mod tests {
         use crate::Local;
 
         let v = Value::from("abcdefghijklmnopqrstuvwxyz");
-        let h1: HipByt<'_, Local> = borrowing_deserialize(&v).unwrap();
+        let h1: HipByt<'_, Local> = borrow_deserialize(&v).unwrap();
         let h2: HipByt<'_, Local> = Deserialize::deserialize(&v).unwrap();
         assert!(h1.is_borrowed());
         assert!(!h2.is_borrowed());

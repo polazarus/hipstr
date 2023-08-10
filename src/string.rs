@@ -15,7 +15,7 @@ mod cmp;
 mod convert;
 
 #[cfg(feature = "serde")]
-mod serde;
+pub mod serde;
 
 /// Smart string, i.e. cheaply clonable and sliceable string.
 ///
