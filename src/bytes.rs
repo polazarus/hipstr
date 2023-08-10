@@ -766,6 +766,24 @@ mod tests {
     }
 
     #[test]
+    fn test_from_static() {
+        fn is_static_type<T: 'static>(_: &T) {}
+
+        let s = b"abcdefghijklmnopqrstuvwxyz";
+        let bytes = HipByt::from_static(s);
+
+        // compiler check
+        is_static_type(&bytes);
+
+        assert!(bytes.is_borrowed());
+        assert!(!bytes.is_inline());
+        assert!(!bytes.is_allocated());
+        assert_eq!(bytes.len(), s.len());
+        assert_eq!(bytes.as_slice(), s);
+        assert_eq!(bytes.as_ptr(), s.as_ptr());
+    }
+
+    #[test]
     fn test_from_slice() {
         static V: &[u8] = &[42; 1024];
 

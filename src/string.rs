@@ -1170,6 +1170,24 @@ mod tests {
     }
 
     #[test]
+    fn test_from_static() {
+        fn is_static_type<T: 'static>(_: &T) {}
+
+        let s = "abcdefghijklmnopqrstuvwxyz";
+        let string = HipStr::from_static(s);
+
+        // compiler check
+        is_static_type(&string);
+
+        assert!(string.is_borrowed());
+        assert!(!string.is_inline());
+        assert!(!string.is_allocated());
+        assert_eq!(string.len(), s.len());
+        assert_eq!(string.as_str(), s);
+        assert_eq!(string.as_ptr(), s.as_ptr());
+    }
+
+    #[test]
     fn test_from_slice() {
         static V: &[u8] = &[b'a'; 1024];
         let s = std::str::from_utf8(V).unwrap();
