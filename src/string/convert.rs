@@ -233,23 +233,37 @@ mod tests {
 
     #[test]
     fn test_try_from() {
-        let slice: &[u8] = b"abc";
+        let slice: &[u8] = b"abcdefghijklmnopqrstuvwxyz";
+
+        let hb = HipByt::borrowed(slice);
+        let hs: HipStr = hb.try_into().unwrap();
+        assert_eq!(hs, "abcdefghijklmnopqrstuvwxyz");
+        assert!(hs.is_borrowed());
 
         let hb = HipByt::from(slice);
         let hs: HipStr = hb.try_into().unwrap();
-        assert_eq!(hs, "abc");
+        assert_eq!(hs, "abcdefghijklmnopqrstuvwxyz");
 
-        let hb = HipByt::from(slice);
+        let hb = HipByt::borrowed(slice);
         let hs: HipStr = (&hb).try_into().unwrap();
-        assert_eq!(hs, "abc");
+        assert_eq!(hs, "abcdefghijklmnopqrstuvwxyz");
 
         let hs: HipStr = slice.try_into().unwrap();
-        assert_eq!(hs, "abc");
+        assert_eq!(hs, "abcdefghijklmnopqrstuvwxyz");
 
         let v = b"a".repeat(42);
         let p = v.as_ptr();
         let hs: HipStr = v.try_into().unwrap();
         assert_eq!(hs, "a".repeat(42));
         assert_eq!(hs.as_ptr(), p);
+    }
+
+    #[test]
+    fn test_try_from_err() {
+        let slice: &[u8] = b"abc\x80";
+        let hb = HipByt::borrowed(slice);
+        assert!(HipStr::try_from(slice).is_err());
+        assert!(HipStr::try_from(&hb).is_err());
+        assert!(HipStr::try_from(hb).is_err());
     }
 }
