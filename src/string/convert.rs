@@ -263,6 +263,7 @@ mod tests {
         let slice: &[u8] = b"abc\x80";
         let hb = HipByt::borrowed(slice);
         assert!(HipStr::try_from(slice).is_err());
+        assert!(HipStr::try_from(slice.to_vec()).is_err());
         assert!(HipStr::try_from(&hb).is_err());
         assert!(HipStr::try_from(hb).is_err());
     }
