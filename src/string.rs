@@ -425,13 +425,14 @@ where
     /// Basic usage:
     ///
     /// ```
+    /// # use hipstr::HipStr;
     /// // 𝄞mus<invalid>ic<invalid>
     /// let v = &[0xD834, 0xDD1E, 0x006d, 0x0075,
     ///           0x0073, 0xDD1E, 0x0069, 0x0063,
     ///           0xD834];
     ///
-    /// assert_eq!(String::from("𝄞mus\u{FFFD}ic\u{FFFD}"),
-    ///            String::from_utf16_lossy(v));
+    /// assert_eq!("𝄞mus\u{FFFD}ic\u{FFFD}",
+    ///            HipStr::from_utf16_lossy(v));
     /// ```
     #[inline]
     #[must_use]
@@ -1544,5 +1545,21 @@ mod tests {
             assert_eq!(b, "abc", "b should not be modified");
             assert_ne!(a.as_ptr(), b.as_ptr(), "different backend vector");
         }
+    }
+
+    #[test]
+    fn test_from_utf16() {
+        let v = [b'a' as u16].repeat(42);
+        assert_eq!(HipStr::from_utf16(&v[0..4]).unwrap(), "a".repeat(4));
+        assert_eq!(HipStr::from_utf16(&v).unwrap(), "a".repeat(42));
+        assert!(HipStr::from_utf16(&[0xD834]).is_err());
+    }
+
+    #[test]
+    fn test_from_utf16_lossy() {
+        let v = [b'a' as u16].repeat(42);
+        assert_eq!(HipStr::from_utf16_lossy(&v[0..4]), "a".repeat(4));
+        assert_eq!(HipStr::from_utf16_lossy(&v), "a".repeat(42));
+        assert_eq!(HipStr::from_utf16_lossy(&[0xD834]), "\u{FFFD}");
     }
 }
