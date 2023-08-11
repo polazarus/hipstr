@@ -59,12 +59,19 @@ where
 
 #[cfg(test)]
 mod tests {
+    use serde::Deserialize;
     use serde_test::{
         assert_de_tokens, assert_de_tokens_error, assert_ser_tokens, assert_tokens, Token,
     };
 
-    use crate::bytes::serde::borrow_deserialize;
+    use super::borrow_deserialize;
     use crate::HipByt;
+
+    #[derive(Deserialize, Debug, PartialEq, Eq)]
+    struct MyStruct<'a> {
+        #[serde(borrow, deserialize_with = "borrow_deserialize")]
+        field: HipByt<'a>,
+    }
 
     #[test]
     fn test_serde() {
@@ -100,8 +107,7 @@ mod tests {
     }
 
     #[test]
-    fn test_serde_borrowing() {
-        use serde::de::Deserialize;
+    fn test_serde_borrow() {
         use serde_json::Value;
 
         use super::super::HipByt;
@@ -112,5 +118,99 @@ mod tests {
         let h2: HipByt<'_, Local> = Deserialize::deserialize(&v).unwrap();
         assert!(h1.is_borrowed());
         assert!(!h2.is_borrowed());
+
+        let s: MyStruct =
+            serde_json::from_str(r#"{"field": "abcdefghijklmnopqrstuvwxyz"}"#).unwrap();
+        assert!(s.field.is_borrowed());
+
+        assert_de_tokens(
+            &MyStruct {
+                field: HipByt::from(b"a"),
+            },
+            &[
+                Token::Struct {
+                    name: "MyStruct",
+                    len: 1,
+                },
+                Token::Str("field"),
+                Token::Bytes(b"a"),
+                Token::StructEnd,
+            ],
+        );
+
+        assert_de_tokens(
+            &MyStruct {
+                field: HipByt::from(b"a"),
+            },
+            &[
+                Token::Struct {
+                    name: "MyStruct",
+                    len: 1,
+                },
+                Token::Str("field"),
+                Token::BorrowedBytes(b"a"),
+                Token::StructEnd,
+            ],
+        );
+
+        assert_de_tokens(
+            &MyStruct {
+                field: HipByt::from(b"a"),
+            },
+            &[
+                Token::Struct {
+                    name: "MyStruct",
+                    len: 1,
+                },
+                Token::Str("field"),
+                Token::Str("a"),
+                Token::StructEnd,
+            ],
+        );
+
+        assert_de_tokens(
+            &MyStruct {
+                field: HipByt::from(b"a"),
+            },
+            &[
+                Token::Struct {
+                    name: "MyStruct",
+                    len: 1,
+                },
+                Token::Str("field"),
+                Token::String("a"),
+                Token::StructEnd,
+            ],
+        );
+        assert_de_tokens(
+            &MyStruct {
+                field: HipByt::from(b"a"),
+            },
+            &[
+                Token::Struct {
+                    name: "MyStruct",
+                    len: 1,
+                },
+                Token::Str("field"),
+                Token::BorrowedStr("a"),
+                Token::StructEnd,
+            ],
+        );
+    }
+
+    #[test]
+    fn test_serde_borrow_err() {
+        assert_de_tokens_error::<MyStruct>(
+            &[
+                Token::Struct {
+                    name: "MyStruct",
+                    len: 1,
+                },
+                Token::Str("field"),
+                Token::I32(0),
+                Token::StructEnd,
+            ],
+            "invalid type: integer `0`, expected a byte array",
+        );
     }
 }
