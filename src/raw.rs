@@ -51,6 +51,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
     /// Creates a new `Raw` from a static slice.
     #[inline]
     pub const fn borrowed(bytes: &'borrow [u8]) -> Self {
+        // XXX for now, borrowed do not normalize, Inline::new is not `const`
         Self {
             borrowed: Borrowed::new(bytes),
         }
@@ -59,8 +60,17 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
     /// Creates a new `Raw` from a vector.
     #[inline]
     pub fn from_vec(vec: Vec<u8>) -> Self {
-        Self {
-            allocated: Allocated::new(vec),
+        let len = vec.len();
+        if len == 0 {
+            Self::empty()
+        } else if len <= INLINE_CAPACITY {
+            Self {
+                inline: Inline::new(&vec),
+            }
+        } else {
+            Self {
+                allocated: Allocated::new(vec),
+            }
         }
     }
 
@@ -97,6 +107,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
         }
     }
 
+    /// Returns `true` if the actual representation is an inline string.
     #[inline]
     pub const fn is_inline(&self) -> bool {
         // SAFETY: if self is not inline, shifted_len corresponds to the
@@ -104,6 +115,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
         unsafe { self.inline.is_valid() }
     }
 
+    /// Returns `true` if the actual representation is a borrowed reference.
     #[inline]
     pub const fn is_borrowed(&self) -> bool {
         // SAFETY:
@@ -115,6 +127,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
         }
     }
 
+    /// Returns `true` if the actual representation is a heap-allocated string.
     #[inline]
     pub const fn is_allocated(&self) -> bool {
         !self.is_inline() && !self.is_borrowed()
@@ -156,7 +169,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
             return Self::empty();
         }
 
-        match self.split() {
+        let result = match self.split() {
             RawSplit::Inline(inline) => {
                 debug_assert!(range.len() <= inline.len());
                 let inline = Inline::new(&inline.as_slice()[range]);
@@ -169,10 +182,19 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
                 }
             }
             RawSplit::Allocated(allocated) => {
-                let allocated = allocated.slice(range);
-                Self { allocated }
+                // normalize to inline if possible
+                if range.len() <= INLINE_CAPACITY {
+                    let inline = Inline::new(&allocated.as_slice()[range]);
+                    Self { inline }
+                } else {
+                    let allocated = allocated.slice(range);
+                    Self { allocated }
+                }
             }
-        }
+        };
+
+        debug_assert!(self.is_normalized());
+        result
     }
 
     #[inline]
@@ -188,6 +210,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
         }
     }
 
+    #[allow(clippy::wrong_self_convention)]
     #[inline]
     pub fn to_mut_slice(&mut self) -> &mut [u8] {
         let copy = if self.is_inline() {
@@ -207,6 +230,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
             Self::from_slice(static_.as_slice())
         };
         *self = copy;
+        debug_assert!(self.is_normalized());
         self.as_mut_slice().unwrap()
     }
 
@@ -266,17 +290,8 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
     }
 
     #[inline]
-    pub fn inline(self) -> Result<Self, Self> {
-        if self.is_inline() {
-            Ok(self)
-        } else if self.len() <= Self::inline_capacity() {
-            let new = Self {
-                inline: Inline::new(self.as_slice()),
-            };
-            Ok(new)
-        } else {
-            Err(self)
-        }
+    pub const fn is_normalized(&self) -> bool {
+        self.is_inline() || self.is_borrowed() || self.len() > Self::inline_capacity()
     }
 }
 

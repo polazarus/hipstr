@@ -135,7 +135,7 @@ mod tests {
 
     #[test]
     fn test_into() {
-        let v = vec![1, 2, 3];
+        let v = vec![42; 42];
         let p = v.as_ptr();
         let a = HipByt::from(v);
         let v: Vec<_> = a.into();

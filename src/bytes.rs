@@ -340,13 +340,14 @@ where
     ///
     /// ```
     /// # use hipstr::HipByt;
-    /// let mut vec: Vec<u8> = Vec::with_capacity(10);
-    /// vec.extend_from_slice(&[1, 2, 3]);
+    /// let mut vec: Vec<u8> = Vec::with_capacity(42);
+    /// vec.extend(0..30);
     /// let bytes = HipByt::from(vec);
-    /// assert_eq!(bytes.capacity(), 10);
+    /// assert_eq!(bytes.len(), 30);
+    /// assert_eq!(bytes.capacity(), 42);
     ///
-    /// let half = bytes.slice(0..2);
-    /// assert_eq!(bytes.capacity(), 10); // same backend, same capacity
+    /// let start = bytes.slice(0..29);
+    /// assert_eq!(bytes.capacity(), 42); // same backend, same capacity
     /// ```
     #[inline]
     pub fn capacity(&self) -> usize {
@@ -397,34 +398,10 @@ where
         self.0.take_vec()
     }
 
-    /// Transforms to the inline representation, returning a new inline `HipByt`
-    /// and consuming this `HipByt`.
-    ///
-    /// # Errors
-    ///
-    /// Returns the original `HipByt` if it cannot be inlined, i.e.,
-    /// if the length greater than [`HipByt::inline_capacity()`].
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # use hipstr::HipByt;
-    /// let v = vec![42; 42];
-    /// let mut b = HipByt::from(v);
-    /// assert!(b.is_allocated());
-    /// assert!(!b.is_inline());
-    /// assert!(b.inline().is_err());
-    ///
-    /// let v = b"abc".to_vec();
-    /// let b = HipByt::from(v);
-    /// assert!(b.is_allocated());
-    /// assert!(!b.is_inline());
-    /// let b = b.inline().unwrap();
-    /// assert!(b.is_inline());
-    /// ```
+    #[cfg(test)]
     #[inline]
-    pub fn inline(self) -> Result<Self, Self> {
-        self.0.inline().map(Self).map_err(Self)
+    pub(crate) fn is_normalized(&self) -> bool {
+        self.0.is_normalized()
     }
 }
 
@@ -742,13 +719,21 @@ mod tests {
 
     #[test]
     fn test_from_vec() {
-        let v = vec![42; 10];
+        let v = vec![42; 42];
         let bytes = HipByt::from(v);
         assert!(!bytes.is_inline());
         assert!(!bytes.is_borrowed());
         assert!(bytes.is_allocated());
-        assert_eq!(bytes.len(), 10);
-        assert_eq!(bytes.as_slice(), [42; 10]);
+        assert_eq!(bytes.len(), 42);
+        assert_eq!(bytes.as_slice(), [42; 42]);
+
+        let v = vec![0; 3];
+        let bytes = HipByt::from(v);
+        assert!(bytes.is_inline());
+        assert!(!bytes.is_borrowed());
+        assert!(!bytes.is_allocated());
+        assert_eq!(bytes.len(), 3);
+        assert_eq!(bytes.as_slice(), [0; 3]);
     }
 
     #[test]
@@ -958,20 +943,25 @@ mod tests {
     }
 
     #[test]
-    fn test_slice() {
+    fn test_slice_inline() {
         let v: Vec<_> = (0..(INLINE_CAPACITY as u8)).collect();
         let s = HipByt::from(&v[..]);
         let sl = s.slice(0..10);
         assert_eq!(&sl, &v[0..10]);
         let sl = s.slice(..);
         assert_eq!(&sl, &v[..]);
+        assert!(sl.is_normalized());
+    }
 
+    #[test]
+    fn test_slice_borrowed() {
         let v: Vec<_> = (0..42).collect();
-        let s = HipByt::from(&v[..]);
+        let s = HipByt::borrowed(&v[..]);
 
         let sl1 = s.slice(4..30);
         assert_eq!(&sl1, &v[4..30]);
         assert_eq!(sl1.as_ptr(), s[4..30].as_ptr());
+        assert!(sl1.is_normalized());
 
         let p = s[9..12].as_ptr();
         drop(s);
@@ -980,6 +970,26 @@ mod tests {
         drop(sl1);
         assert_eq!(&sl2, &v[9..12]);
         assert_eq!(sl2.as_ptr(), p);
+        assert!(sl2.is_normalized());
+    }
+
+    #[test]
+    fn test_slice_allocated() {
+        let v: Vec<_> = (0..42).collect();
+        let s = HipByt::from(&v[..]);
+        assert!(s.is_allocated());
+
+        let sl1 = s.slice(4..30);
+        assert_eq!(&sl1, &v[4..30]);
+        assert_eq!(sl1.as_ptr(), s[4..30].as_ptr());
+        assert!(sl1.is_normalized());
+        drop(s);
+
+        let sl2 = sl1.slice(5..8);
+        drop(sl1);
+        assert_eq!(&sl2, &v[9..12]);
+        assert!(sl2.is_inline());
+        assert!(sl2.is_normalized());
     }
 
     #[test]
@@ -1041,14 +1051,11 @@ mod tests {
 
     #[test]
     fn test_empty_vec() {
-        // the vec is adopted even if it's empty
         let source = vec![];
-        let p = source.as_ptr();
         let heap_zero = HipByt::from(source);
-        assert!(heap_zero.is_allocated());
+        assert!(heap_zero.is_borrowed());
         assert_eq!(heap_zero.len(), 0);
         assert_eq!(heap_zero, b"");
-        assert_eq!(heap_zero.as_ptr(), p);
     }
 
     #[test]
@@ -1077,7 +1084,7 @@ mod tests {
             assert!(a.into_vec().is_err());
         }
 
-        let v = vec![42; 10];
+        let v = vec![42; INLINE_CAPACITY + 2];
         {
             // allocated, unique
             let v = v.clone();
@@ -1085,7 +1092,7 @@ mod tests {
             let a = HipByt::from(v);
             let v = a.into_vec().unwrap();
             assert_eq!(p, v.as_ptr());
-            assert_eq!(10, v.len());
+            assert_eq!(INLINE_CAPACITY + 2, v.len());
         }
 
         {
@@ -1099,9 +1106,9 @@ mod tests {
             // allocated, unique, sliced at start
             let v = v.clone();
             let p = v.as_ptr();
-            let a = HipByt::from(v).slice(0..5);
+            let a = HipByt::from(v).slice(0..INLINE_CAPACITY + 1);
             let v = a.into_vec().unwrap();
-            assert_eq!(v.len(), 5);
+            assert_eq!(v.len(), INLINE_CAPACITY + 1);
             assert_eq!(v.as_ptr(), p);
         }
 
@@ -1129,7 +1136,7 @@ mod tests {
         {
             // allocated
             let mut v = Vec::with_capacity(42);
-            v.extend_from_slice(b"abc");
+            v.extend_from_slice(&b"abc".repeat(10));
             let a = HipByt::from(v);
             assert_eq!(a.capacity(), 42);
 
@@ -1139,50 +1146,59 @@ mod tests {
     }
 
     #[test]
-    fn test_mutate() {
-        {
-            // static
-            let mut a = HipByt::borrowed(b"abc");
-            assert!(a.is_borrowed(), "a should be static");
-            a.mutate().extend_from_slice(b"def");
-            assert!(a.is_allocated(), "a should be allocated at the end");
-            assert_eq!(a, b"abcdef", "should be modified");
-        }
+    fn test_mutate_borrowed() {
+        let mut a = HipByt::borrowed(b"abc");
+        assert!(a.is_borrowed(), "a should be borrowed at the start");
+        a.mutate().extend_from_slice(b"def");
+        assert!(!a.is_borrowed(), "a should be borrowed at the start");
+        assert_eq!(a, b"abcdef", "should be modified");
+        assert!(a.is_normalized());
+    }
 
-        {
-            // inline
-            let mut a = HipByt::from(b"abc");
-            assert!(a.is_inline(), "a should be inline at the start");
-            a.mutate().extend_from_slice(b"def");
-            assert!(a.is_allocated(), "a should be allocated at the end");
-            assert_eq!(a, b"abcdef", "should be modified");
-        }
+    #[test]
+    fn test_mutate_inline() {
+        let mut a = HipByt::from(b"abc");
+        assert!(a.is_inline(), "a should be inline at the start");
+        a.mutate().extend_from_slice(b"def");
+        assert_eq!(a, b"abcdef", "should be modified");
+        assert!(a.is_normalized());
+    }
 
+    #[test]
+    fn test_mutate_allocated() {
         {
             // allocated, unique with enough capacity
-            let mut v = Vec::with_capacity(6);
-            v.extend_from_slice(b"abc");
+            let mut v = Vec::with_capacity(42);
+            v.extend_from_slice(b"abcdefghijklmnopqrstuvwxyz");
             let p = v.as_ptr();
             let mut a = HipByt::from(v);
             assert!(a.is_allocated(), "should be allocated at the start");
-            a.mutate().extend_from_slice(b"def");
+            a.mutate().extend_from_slice(b"0123456789");
             assert!(a.is_allocated(), "should be allocated at the end");
-            assert_eq!(a, b"abcdef", "should be modified");
+            assert_eq!(
+                a, b"abcdefghijklmnopqrstuvwxyz0123456789",
+                "a should be modified"
+            );
             assert_eq!(a.as_ptr(), p, "should have same backend vector");
+            assert!(a.is_normalized());
         }
 
         {
             // allocated, shared
-            let mut v = Vec::with_capacity(6);
-            v.extend_from_slice(b"abc");
+            let mut v = Vec::with_capacity(42);
+            v.extend_from_slice(b"abcdefghijklmnopqrstuvwxyz");
             let mut a = HipByt::from(v);
             assert!(a.is_allocated(), "a should be allocated at the start");
             let b = a.clone();
-            a.mutate().extend_from_slice(b"def");
+            a.mutate().extend_from_slice(b"0123456789");
             assert!(a.is_allocated(), "a should be allocated at the end");
-            assert_eq!(a, b"abcdef", "a should be modified");
-            assert_eq!(b, b"abc", "b should not be modified");
+            assert_eq!(
+                a, b"abcdefghijklmnopqrstuvwxyz0123456789",
+                "a should be modified"
+            );
+            assert_eq!(b, b"abcdefghijklmnopqrstuvwxyz", "b should not be modified");
             assert_ne!(a.as_ptr(), b.as_ptr(), "different backend vector");
+            assert!(a.is_normalized());
         }
     }
 }

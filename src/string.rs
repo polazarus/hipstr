@@ -601,10 +601,14 @@ where
     ///
     /// ```
     /// # use hipstr::HipStr;
-    /// let mut s: String = String::with_capacity(10);
-    /// s.push('a');
+    /// let mut s: String = String::with_capacity(42);
+    /// s.extend('a'..='z');
     /// let string = HipStr::from(s);
-    /// assert_eq!(string.capacity(), 10);
+    /// assert_eq!(string.len(), 26);
+    /// assert_eq!(string.capacity(), 42);
+    ///
+    /// let string2 = string.clone();
+    /// assert_eq!(string.capacity(), 42);
     /// ```
     #[inline]
     pub fn capacity(&self) -> usize {
@@ -652,36 +656,6 @@ where
             result: self,
             owned,
         }
-    }
-
-    /// Transforms to the inline representation, returning a new inline `HipStr`
-    /// and consuming this `HipStr`.
-    ///
-    /// # Errors
-    ///
-    /// Returns the original `HipStr` if it cannot be inlined, i.e.,
-    /// if the length greater than [`HipStr::inline_capacity()`].
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # use hipstr::HipStr;
-    /// let s = "A".repeat(42);
-    /// let mut h = HipStr::from(s);
-    /// assert!(h.is_allocated());
-    /// assert!(!h.is_inline());
-    /// assert!(h.inline().is_err());
-    ///
-    /// let s = "abc".to_string();
-    /// let h = HipStr::from(s);
-    /// assert!(h.is_allocated());
-    /// assert!(!h.is_inline());
-    /// let h = h.inline().unwrap();
-    /// assert!(h.is_inline());
-    /// ```
-    #[inline]
-    pub fn inline(self) -> Result<Self, Self> {
-        self.0.inline().map(Self).map_err(Self)
     }
 }
 
@@ -1353,14 +1327,17 @@ mod tests {
     }
 
     #[test]
-    fn test_slice() {
+    fn test_slice_inline() {
         let v = "a".repeat(INLINE_CAPACITY);
         let s = HipStr::from(&v[..]);
         let sl = s.slice(0..10);
         assert_eq!(&sl, &v[0..10]);
+    }
 
+    #[test]
+    fn test_slice_borrowed() {
         let v = "a".repeat(42);
-        let s = HipStr::from(&v[..]);
+        let s = HipStr::borrowed(&v);
 
         let sl1 = s.slice(4..30);
         assert_eq!(&sl1, &v[4..30]);
@@ -1373,6 +1350,23 @@ mod tests {
         drop(sl1);
         assert_eq!(&sl2, &v[9..12]);
         assert_eq!(sl2.as_ptr(), p);
+    }
+
+    #[test]
+    fn test_slice_allocated() {
+        let v = "a".repeat(42);
+        let s = HipStr::from(&v[..]);
+        assert!(s.is_allocated());
+
+        let sl1 = s.slice(4..30);
+        assert_eq!(&sl1, &v[4..30]);
+        assert_eq!(sl1.as_ptr(), s[4..30].as_ptr());
+        drop(s);
+
+        let sl2 = sl1.slice(5..8);
+        drop(sl1);
+        assert_eq!(&sl2, &v[9..12]);
+        assert!(sl2.is_inline());
     }
 
     #[test]
@@ -1494,55 +1488,62 @@ mod tests {
         assert_eq!(a.capacity(), HipStr::inline_capacity());
 
         let mut v = String::with_capacity(42);
-        v.push_str("abc");
+        for _ in 0..10 {
+            v.push_str("abc");
+        }
         let a = HipStr::from(v);
         assert_eq!(a.capacity(), 42);
     }
 
     #[test]
-    fn test_mutate() {
-        {
-            // static
-            let mut a = HipStr::borrowed("abc");
-            assert!(a.is_borrowed(), "a should be static");
-            a.mutate().push_str("def");
-            assert!(a.is_allocated(), "a should be allocated at the end");
-            assert_eq!(a, "abcdef", "should be modified");
-        }
+    fn test_mutate_borrowed() {
+        let mut a = HipStr::borrowed("abc");
+        assert!(a.is_borrowed(), "a should be borrowed at the start");
+        a.mutate().push_str("def");
+        assert!(!a.is_borrowed(), "a should be borrowed at the start");
+        assert_eq!(a, "abcdef", "should be modified");
+    }
 
-        {
-            // inline
-            let mut a = HipStr::from("abc");
-            assert!(a.is_inline(), "a should be inline at the start");
-            a.mutate().push_str("def");
-            assert!(a.is_allocated(), "a should be allocated at the end");
-            assert_eq!(a, "abcdef", "should be modified");
-        }
+    #[test]
+    fn test_mutate_inline() {
+        let mut a = HipStr::from("abc");
+        assert!(a.is_inline(), "a should be inline at the start");
+        a.mutate().push_str("def");
+        assert_eq!(a, "abcdef", "should be modified");
+    }
 
+    #[test]
+    fn test_mutate_allocated() {
         {
             // allocated, unique with enough capacity
-            let mut v = String::with_capacity(6);
-            v.push_str("abc");
+            let mut v = String::with_capacity(42);
+            v.push_str("abcdefghijklmnopqrstuvwxyz");
             let p = v.as_ptr();
             let mut a = HipStr::from(v);
             assert!(a.is_allocated(), "should be allocated at the start");
-            a.mutate().push_str("def");
+            a.mutate().push_str("0123456789");
             assert!(a.is_allocated(), "should be allocated at the end");
-            assert_eq!(a, "abcdef", "should be modified");
+            assert_eq!(
+                a, "abcdefghijklmnopqrstuvwxyz0123456789",
+                "should be modified"
+            );
             assert_eq!(a.as_ptr(), p, "should have same backend vector");
         }
 
         {
             // allocated, shared
-            let mut v = String::with_capacity(6);
-            v.push_str("abc");
+            let mut v = String::with_capacity(42);
+            v.push_str("abcdefghijklmnopqrstuvwxyz");
             let mut a = HipStr::from(v);
             assert!(a.is_allocated(), "a should be allocated at the start");
             let b = a.clone();
-            a.mutate().push_str("def");
+            a.mutate().push_str("0123456789");
             assert!(a.is_allocated(), "a should be allocated at the end");
-            assert_eq!(a, "abcdef", "a should be modified");
-            assert_eq!(b, "abc", "b should not be modified");
+            assert_eq!(
+                a, "abcdefghijklmnopqrstuvwxyz0123456789",
+                "a should be modified"
+            );
+            assert_eq!(b, "abcdefghijklmnopqrstuvwxyz", "b should not be modified");
             assert_ne!(a.as_ptr(), b.as_ptr(), "different backend vector");
         }
     }

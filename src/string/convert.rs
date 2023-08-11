@@ -187,8 +187,8 @@ mod tests {
     }
 
     #[test]
-    fn test_into() {
-        let v = String::from("abc");
+    fn test_into_string() {
+        let v = "a".repeat(42); // string's length > inline capacity
         let p = v.as_ptr();
         let a = HipStr::from(v);
         let v: String = a.into();
@@ -198,18 +198,36 @@ mod tests {
         let v: String = a.into();
         assert_eq!(v.as_str(), "abc");
 
-        let v = String::from("abc");
+        let a = HipStr::borrowed("abc");
+        let v: String = a.into();
+        assert_eq!(v.as_str(), "abc");
+    }
+
+    #[test]
+    fn test_into_hipbyt() {
+        let v = "a".repeat(42); // string's length > inline capacity
         let p = v.as_ptr();
         let hs = HipStr::from(v);
         let hb: HipByt = hs.into();
-        assert_eq!(hb, b"abc");
+        assert_eq!(hb, b"a".repeat(42));
         assert_eq!(hb.as_ptr(), p);
 
-        let v = String::from("abc");
+        let a = HipStr::from("abc");
+        let v: HipByt = a.into();
+        assert_eq!(v, b"abc");
+
+        let a = HipStr::borrowed("abc");
+        let v: HipByt = a.into();
+        assert_eq!(v, b"abc");
+    }
+
+    #[test]
+    fn test_into_vec() {
+        let v = "a".repeat(42); // string's length > inline capacity
         let p = v.as_ptr();
         let hs = HipStr::from(v);
         let v: Vec<u8> = hs.into();
-        assert_eq!(v, b"abc");
+        assert_eq!(v, b"a".repeat(42));
         assert_eq!(v.as_ptr(), p);
     }
 
@@ -228,10 +246,10 @@ mod tests {
         let hs: HipStr = slice.try_into().unwrap();
         assert_eq!(hs, "abc");
 
-        let v = Vec::from(slice);
+        let v = b"a".repeat(42);
         let p = v.as_ptr();
         let hs: HipStr = v.try_into().unwrap();
-        assert_eq!(hs, "abc");
+        assert_eq!(hs, "a".repeat(42));
         assert_eq!(hs.as_ptr(), p);
     }
 }
