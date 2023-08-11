@@ -45,7 +45,6 @@ impl<'de> de::Visitor<'de> for CowVisitor {
     where
         E: de::Error,
     {
-        println!("borrowed");
         Ok(Cow::Borrowed(v))
     }
 
@@ -53,7 +52,6 @@ impl<'de> de::Visitor<'de> for CowVisitor {
     where
         E: de::Error,
     {
-        println!("owned");
         Ok(Cow::Owned(v.to_string()))
     }
 
