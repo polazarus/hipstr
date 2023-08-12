@@ -152,3 +152,32 @@ impl<B: Backend> Allocated<B> {
             })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Allocated;
+    use crate::Local;
+
+    #[test]
+    fn test_clone() {
+        let allocated = Allocated::<Local>::new(vec![]);
+        let _clone = allocated.clone();
+        let local = unsafe { Local::from_raw(allocated.owner) };
+        let count = Local::strong_count(&local);
+        let _ = Local::into_raw(local);
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_try_into_vec() {
+        let allocated = Allocated::<Local>::new(vec![0, 1, 2]);
+
+        {
+            let slice = allocated.slice(1..2);
+            assert!(slice.try_into_vec().is_err());
+        }
+        allocated.decr_ref_count();
+
+        assert!(allocated.try_into_vec().is_ok());
+    }
+}
