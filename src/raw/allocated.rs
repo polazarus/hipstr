@@ -166,6 +166,7 @@ mod tests {
         let count = Local::strong_count(&local);
         let _ = Local::into_raw(local);
         assert_eq!(count, 1);
+        allocated.decr_ref_count();
     }
 
     #[test]
