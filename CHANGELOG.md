@@ -26,13 +26,13 @@ Notable changes only.
 
 ### Added
 
-- Add mutable accessor (may clone data: `to_mut_slice` for `HipByt`, `to_mut_str` for `HipStr`
+- Add mutable accessor (may clone data) `to_mut_slice` for `HipByt`, `to_mut_str` for `HipStr`
 - Add forced inlining (`inline` method)
 - More docs
 - More CI
 - Set MSRV
 
-## Changed
+### Changed
 
 - Lower `serde` version requirement
 
