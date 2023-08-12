@@ -6,7 +6,7 @@ description = """Another immutable string: zero-cost static,
     inline representation for small strings, reference counting,
     and owned (but shared) slicing"""
 repository = "https://github.com/polazarus/hipstr"
-keywords = ["string", "refcount", "inline", "arc_str", "rc_str", "cow"]
+keywords = ["string", "refcount", "inline", "arc_str", "cow"]
 categories = ["memory-management", "data-structures"]
 license = "MIT OR Apache-2.0"
 edition = "2021"
