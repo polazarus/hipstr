@@ -1148,19 +1148,23 @@ mod tests {
     #[test]
     fn test_mutate_borrowed() {
         let mut a = HipByt::borrowed(b"abc");
-        assert!(a.is_borrowed(), "a should be borrowed at the start");
-        a.mutate().extend_from_slice(b"def");
-        assert!(!a.is_borrowed(), "a should be borrowed at the start");
-        assert_eq!(a, b"abcdef", "should be modified");
+        assert!(a.is_borrowed());
+        {
+            let mut r = a.mutate();
+            assert_eq!(r.as_slice(), b"abc");
+            r.extend_from_slice(b"def");
+        }
+        assert!(!a.is_borrowed());
+        assert_eq!(a, b"abcdef");
         assert!(a.is_normalized());
     }
 
     #[test]
     fn test_mutate_inline() {
         let mut a = HipByt::from(b"abc");
-        assert!(a.is_inline(), "a should be inline at the start");
+        assert!(a.is_inline());
         a.mutate().extend_from_slice(b"def");
-        assert_eq!(a, b"abcdef", "should be modified");
+        assert_eq!(a, b"abcdef");
         assert!(a.is_normalized());
     }
 
@@ -1172,14 +1176,14 @@ mod tests {
             v.extend_from_slice(b"abcdefghijklmnopqrstuvwxyz");
             let p = v.as_ptr();
             let mut a = HipByt::from(v);
-            assert!(a.is_allocated(), "should be allocated at the start");
+            assert!(a.is_allocated());
             a.mutate().extend_from_slice(b"0123456789");
-            assert!(a.is_allocated(), "should be allocated at the end");
+            assert!(a.is_allocated());
             assert_eq!(
                 a, b"abcdefghijklmnopqrstuvwxyz0123456789",
                 "a should be modified"
             );
-            assert_eq!(a.as_ptr(), p, "should have same backend vector");
+            assert_eq!(a.as_ptr(), p);
             assert!(a.is_normalized());
         }
 
@@ -1188,16 +1192,13 @@ mod tests {
             let mut v = Vec::with_capacity(42);
             v.extend_from_slice(b"abcdefghijklmnopqrstuvwxyz");
             let mut a = HipByt::from(v);
-            assert!(a.is_allocated(), "a should be allocated at the start");
+            assert!(a.is_allocated());
             let b = a.clone();
             a.mutate().extend_from_slice(b"0123456789");
-            assert!(a.is_allocated(), "a should be allocated at the end");
-            assert_eq!(
-                a, b"abcdefghijklmnopqrstuvwxyz0123456789",
-                "a should be modified"
-            );
-            assert_eq!(b, b"abcdefghijklmnopqrstuvwxyz", "b should not be modified");
-            assert_ne!(a.as_ptr(), b.as_ptr(), "different backend vector");
+            assert!(a.is_allocated());
+            assert_eq!(a, b"abcdefghijklmnopqrstuvwxyz0123456789",);
+            assert_eq!(b, b"abcdefghijklmnopqrstuvwxyz");
+            assert_ne!(a.as_ptr(), b.as_ptr());
             assert!(a.is_normalized());
         }
     }
