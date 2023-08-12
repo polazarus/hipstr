@@ -2,6 +2,22 @@
 
 Notable changes only.
 
+## 0.3.0
+
+### Added
+
+- Add support for Copy On Write for any lifetime (like `std::borrow::Cow`)
+- Add opt-in `borrow_deserialize`
+- More tests
+
+### Changed
+
+- Normalize representation of short allocated string to inlined string
+
+### Removed
+
+- On-demand inlining with `inline`
+
 ## 0.2.0 - 2023-07-06
 
 ### Fixed
