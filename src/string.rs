@@ -1499,7 +1499,11 @@ mod tests {
     fn test_mutate_borrowed() {
         let mut a = HipStr::borrowed("abc");
         assert!(a.is_borrowed(), "a should be borrowed at the start");
-        a.mutate().push_str("def");
+        {
+            let mut r = a.mutate();
+            assert_eq!(r.as_str(), "abc");
+            r.push_str("def");
+        }
         assert!(!a.is_borrowed(), "a should be borrowed at the start");
         assert_eq!(a, "abcdef", "should be modified");
     }
@@ -1507,7 +1511,7 @@ mod tests {
     #[test]
     fn test_mutate_inline() {
         let mut a = HipStr::from("abc");
-        assert!(a.is_inline(), "a should be inline at the start");
+        assert!(a.is_inline());
         a.mutate().push_str("def");
         assert_eq!(a, "abcdef", "should be modified");
     }
@@ -1523,10 +1527,7 @@ mod tests {
             assert!(a.is_allocated(), "should be allocated at the start");
             a.mutate().push_str("0123456789");
             assert!(a.is_allocated(), "should be allocated at the end");
-            assert_eq!(
-                a, "abcdefghijklmnopqrstuvwxyz0123456789",
-                "should be modified"
-            );
+            assert_eq!(a, "abcdefghijklmnopqrstuvwxyz0123456789",);
             assert_eq!(a.as_ptr(), p, "should have same backend vector");
         }
 
@@ -1535,16 +1536,13 @@ mod tests {
             let mut v = String::with_capacity(42);
             v.push_str("abcdefghijklmnopqrstuvwxyz");
             let mut a = HipStr::from(v);
-            assert!(a.is_allocated(), "a should be allocated at the start");
+            assert!(a.is_allocated());
             let b = a.clone();
             a.mutate().push_str("0123456789");
-            assert!(a.is_allocated(), "a should be allocated at the end");
-            assert_eq!(
-                a, "abcdefghijklmnopqrstuvwxyz0123456789",
-                "a should be modified"
-            );
-            assert_eq!(b, "abcdefghijklmnopqrstuvwxyz", "b should not be modified");
-            assert_ne!(a.as_ptr(), b.as_ptr(), "different backend vector");
+            assert!(a.is_allocated());
+            assert_eq!(a, "abcdefghijklmnopqrstuvwxyz0123456789",);
+            assert_eq!(b, "abcdefghijklmnopqrstuvwxyz");
+            assert_ne!(a.as_ptr(), b.as_ptr());
         }
     }
 

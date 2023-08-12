@@ -1179,10 +1179,7 @@ mod tests {
             assert!(a.is_allocated());
             a.mutate().extend_from_slice(b"0123456789");
             assert!(a.is_allocated());
-            assert_eq!(
-                a, b"abcdefghijklmnopqrstuvwxyz0123456789",
-                "a should be modified"
-            );
+            assert_eq!(a, b"abcdefghijklmnopqrstuvwxyz0123456789",);
             assert_eq!(a.as_ptr(), p);
             assert!(a.is_normalized());
         }
