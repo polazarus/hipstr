@@ -22,11 +22,6 @@ impl<'borrow> Borrowed<'borrow> {
     }
 
     #[inline]
-    pub const fn empty() -> Self {
-        Self::new(b"")
-    }
-
-    #[inline]
     pub const fn len(&self) -> usize {
         debug_assert!(self.is_valid(), "Static::len on an invalid representation");
         self.slice.len()

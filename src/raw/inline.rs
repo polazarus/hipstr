@@ -18,11 +18,21 @@ pub struct Inline<const INLINE_CAPACITY: usize> {
 }
 
 impl<const INLINE_CAPACITY: usize> Inline<INLINE_CAPACITY> {
+    /// Creates a new empty `Inline`.
+    #[inline]
+    pub const fn empty() -> Self {
+        let data = unsafe { MaybeUninit::uninit().assume_init() };
+        #[allow(clippy::inconsistent_struct_constructor)]
+        Self {
+            data,
+            shifted_len: 1,
+        }
+    }
+
     /// Creates a new `Inline` string by copying a byte slice.
     #[inline]
     pub fn new(sl: &[u8]) -> Self {
         let len = sl.len();
-        debug_assert!(len != 0);
         assert!(len <= INLINE_CAPACITY);
 
         let mut data: [MaybeUninit<u8>; INLINE_CAPACITY];

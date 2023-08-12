@@ -63,6 +63,11 @@ where
     ///
     /// Function provided for [`Vec::new`] replacement.
     ///
+    /// # ⚠️ Warning!
+    ///
+    /// The used representation of the empty string is unspecified.
+    /// It may be *borrowed* or *inlined* but will never be allocated.
+    ///
     /// # Examples
     ///
     /// Basic usage:
@@ -774,9 +779,8 @@ mod tests {
 
         for size in [0, 1, INLINE_CAPACITY, INLINE_CAPACITY + 1, 256, 1024] {
             let bytes = HipByt::from(&V[..size]);
-            assert_eq!(size > 0 && size <= INLINE_CAPACITY, bytes.is_inline());
+            assert_eq!(size <= INLINE_CAPACITY, bytes.is_inline());
             assert_eq!(size > INLINE_CAPACITY, bytes.is_allocated());
-            assert!(size == 0 || !bytes.is_borrowed());
             assert_eq!(bytes.len(), size);
         }
     }
@@ -1053,21 +1057,26 @@ mod tests {
     fn test_empty_vec() {
         let source = vec![];
         let heap_zero = HipByt::from(source);
-        assert!(heap_zero.is_borrowed());
+        assert!(heap_zero.is_normalized());
+        assert!(!heap_zero.is_allocated());
         assert_eq!(heap_zero.len(), 0);
         assert_eq!(heap_zero, b"");
     }
 
     #[test]
     fn test_empty_slice() {
-        // should normalize slice to static
+        // should normalize slice
         let source1 = HipByt::from(vec![1, 2, 3]);
         let empty_slice1 = source1.slice(0..0);
-        assert!(empty_slice1.is_borrowed());
+        assert!(empty_slice1.is_normalized());
+        assert!(!empty_slice1.is_allocated());
+        assert!(empty_slice1.is_empty());
 
         let source2 = HipByt::from(&[1, 2, 3]);
         let empty_slice2 = source2.slice(0..0);
-        assert!(empty_slice2.is_borrowed());
+        assert!(empty_slice2.is_normalized());
+        assert!(!empty_slice2.is_allocated());
+        assert!(empty_slice2.is_empty());
     }
 
     #[test]

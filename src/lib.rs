@@ -47,6 +47,12 @@
 //! The shared reference can be [`Local`] or [`ThreadSafe`].
 //! Default aliases in the root of the library use [`ThreadSafe`].
 //!
+//!
+//! ## ⚠️ Warning!
+//!
+//! The used representation of the empty string is **unspecified** and may change between patch versions!
+//! It may be *borrowed* or *inlined* but will never be allocated.
+//!
 //! # Platform Support
 //!
 //! This crate is only supported on platforms where:

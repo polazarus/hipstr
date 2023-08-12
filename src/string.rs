@@ -68,6 +68,11 @@ where
     ///
     /// Function provided for [`String::new`] replacement.
     ///
+    /// # ⚠️ Warning!
+    ///
+    /// The used representation of the empty string is unspecified.
+    /// It may be *borrowed* or *inlined* but will never be allocated.
+    ///
     /// # Examples
     ///
     /// Basic usage:
@@ -1169,8 +1174,8 @@ mod tests {
 
         for size in [0, 1, INLINE_CAPACITY, INLINE_CAPACITY + 1, 256, 1024] {
             let string = HipStr::from(&s[..size]);
-            assert_eq!(size > 0 && size <= INLINE_CAPACITY, string.is_inline());
-            assert!(size == 0 || !string.is_borrowed());
+            assert_eq!(size <= INLINE_CAPACITY, string.is_inline());
+            assert_eq!(size > INLINE_CAPACITY, string.is_allocated());
             assert_eq!(string.len(), size);
         }
     }

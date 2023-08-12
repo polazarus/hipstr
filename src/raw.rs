@@ -44,7 +44,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
     #[inline]
     pub const fn empty() -> Self {
         Self {
-            borrowed: Borrowed::empty(),
+            inline: Inline::empty(),
         }
     }
 
@@ -61,9 +61,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
     #[inline]
     pub fn from_vec(vec: Vec<u8>) -> Self {
         let len = vec.len();
-        if len == 0 {
-            Self::empty()
-        } else if len <= INLINE_CAPACITY {
+        if len <= INLINE_CAPACITY {
             Self {
                 inline: Inline::new(&vec),
             }
@@ -78,9 +76,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
     #[inline]
     pub fn from_slice(bytes: &[u8]) -> Self {
         let len = bytes.len();
-        if len == 0 {
-            Self::empty()
-        } else if len <= INLINE_CAPACITY {
+        if len <= INLINE_CAPACITY {
             Self {
                 inline: Inline::new(bytes),
             }
@@ -165,10 +161,9 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
 
     #[inline]
     pub fn slice(&self, range: Range<usize>) -> Self {
-        if range.is_empty() {
-            return Self::empty();
-        }
-
+        // if range.is_empty() {
+        //     return Self::empty();
+        // }
         let result = match self.split() {
             RawSplit::Inline(inline) => {
                 debug_assert!(range.len() <= inline.len());
