@@ -21,7 +21,11 @@ impl<const INLINE_CAPACITY: usize> Inline<INLINE_CAPACITY> {
     /// Creates a new empty `Inline`.
     #[inline]
     pub const fn empty() -> Self {
+        // SAFETY: just a noop hack to construct an array of MaybeUninit
         let data = unsafe { MaybeUninit::uninit().assume_init() };
+        // waiting for stabilization of MaybeUninit::uninit_array
+        // or inline const expression
+
         #[allow(clippy::inconsistent_struct_constructor)]
         Self {
             data,
@@ -35,9 +39,13 @@ impl<const INLINE_CAPACITY: usize> Inline<INLINE_CAPACITY> {
         let len = sl.len();
         assert!(len <= INLINE_CAPACITY);
 
-        let mut data: [MaybeUninit<u8>; INLINE_CAPACITY];
+        // SAFETY: just a noop hack to construct an array of MaybeUninit
+        let mut data: [MaybeUninit<u8>; INLINE_CAPACITY] =
+            unsafe { MaybeUninit::uninit().assume_init() };
+        // waiting for stabilization of MaybeUninit::uninit_array
+        // or inline const expression
+
         unsafe {
-            data = MaybeUninit::uninit().assume_init();
             std::ptr::copy_nonoverlapping(sl.as_ptr(), data.as_mut_ptr().cast(), len);
         }
 
@@ -64,24 +72,28 @@ impl<const INLINE_CAPACITY: usize> Inline<INLINE_CAPACITY> {
             "Inline::as_slice on an invalid representation"
         );
 
-        // waiting for const_slice_index
+        // XXX waiting for const_slice_index and maybe_uninit_slice
         let data = self.data.as_ptr();
         let len = self.len();
 
-        // SAFETY: type invariant
+        // SAFETY: type invariant (the first `len`-th bytes are initialized)
         unsafe { std::slice::from_raw_parts(data.cast(), len) }
     }
 
     /// Returns a mutable view of this `Inline` string.
     #[inline]
     pub fn as_mut_slice(&mut self) -> &mut [u8] {
+        // XXX const: waiting for const_mut_refs
+
         debug_assert!(
             self.is_valid(),
             "Inline::as_mut_slice on an invalid representation"
         );
-
+        let data = self.data.as_mut_ptr();
         let len = self.len();
-        unsafe { std::slice::from_raw_parts_mut(self.data.as_mut_ptr().cast(), len) }
+
+        // SAFETY: type invariant (the first `len`-th bytes are initialized)
+        unsafe { std::slice::from_raw_parts_mut(data.cast(), len) }
     }
 
     /// Return `true` iff this representation is valid.

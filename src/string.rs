@@ -630,6 +630,7 @@ where
     pub fn into_string(self) -> Result<String, Self> {
         self.0
             .into_vec()
+            // SAFETY: type invariant
             .map(|v| unsafe { String::from_utf8_unchecked(v) })
             .map_err(Self)
     }
@@ -656,6 +657,7 @@ where
     #[inline]
     #[must_use]
     pub fn mutate(&mut self) -> RefMut<'_, 'borrow, B> {
+        // SAFETY: type invariant
         let owned = unsafe { String::from_utf8_unchecked(self.0.take_vec()) };
         RefMut {
             result: self,

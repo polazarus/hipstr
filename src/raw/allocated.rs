@@ -71,15 +71,20 @@ impl<B: Backend> Allocated<B> {
 
     /// Returns a mutable slice if possible (unique non-static reference).
     #[inline]
-    pub unsafe fn mut_slice<'a>(self) -> Option<&'a mut [u8]> {
+    pub unsafe fn as_mut_slice<'a>(self) -> Option<&'a mut [u8]> {
         debug_assert!(
             self.is_valid(),
             "Inline::as_mut_slice on invalid representation"
         );
 
-        // SAFETY: if this reference is unique, no one else can "see" the string
-        if unsafe { B::raw_is_unique(self.owner) } {
-            Some(unsafe { std::slice::from_raw_parts_mut(self.ptr as *mut u8, self.len) })
+        // SAFETY: type invariant, valid owner
+        let is_unique = unsafe { B::raw_is_unique(self.owner) };
+
+        if is_unique {
+            // SAFETY:
+            // * unique -> no one else can "see" the string
+            // * type invariant -> valid slice
+            Some(unsafe { std::slice::from_raw_parts_mut(self.ptr.cast_mut(), self.len) })
         } else {
             None
         }
@@ -93,6 +98,8 @@ impl<B: Backend> Allocated<B> {
         assert!(range.start <= self.len);
         assert!(range.end <= self.len);
         self.incr_ref_count();
+        // SAFETY: type invariant -> self.ptr..self.ptr+self.len is valid
+        // also Rust like C specify you can move to the last + 1
         let ptr = unsafe { self.ptr.add(range.start) };
         Self {
             ptr,
@@ -108,6 +115,7 @@ impl<B: Backend> Allocated<B> {
             self.is_valid(),
             "Allocated::incr_ref_count on invalid representation"
         );
+        // SAFETY: type invariant -> owner is valid
         unsafe { B::raw_increment_count(self.owner) };
     }
 
@@ -118,6 +126,7 @@ impl<B: Backend> Allocated<B> {
             self.is_valid(),
             "Allocated::decr_ref_count on invalid representation"
         );
+        // SAFETY: type invariant -> owner is valid
         unsafe { B::raw_decrement_count(self.owner) };
     }
 
@@ -127,8 +136,12 @@ impl<B: Backend> Allocated<B> {
         B::raw_is_valid(self.owner)
     }
 
+    /// Returns a reference to the underlying vector.
     #[inline]
     pub fn owner_vec(&self) -> &Vec<u8> {
+        debug_assert!(self.is_valid());
+
+        // SAFETY: type invariant -> owner is valid.
         unsafe { B::raw_as_vec(self.owner) }
     }
 
@@ -144,6 +157,7 @@ impl<B: Backend> Allocated<B> {
             // the starts differ, cannot truncate
             return Err(self);
         }
+        // SAFETY: type invariant, the owner is valid
         unsafe { B::raw_try_unwrap(self.owner) }
             .map_err(|owner| Self { owner, ..self })
             .map(|mut v| {
