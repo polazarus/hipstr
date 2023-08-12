@@ -118,6 +118,14 @@ mod tests {
     }
 
     #[test]
+    fn test_serde_err() {
+        assert_de_tokens_error::<HipStr>(
+            &[Token::I32(0)],
+            "invalid type: integer `0`, expected a string",
+        );
+    }
+
+    #[test]
     fn test_serde_borrow() {
         use serde_json::Value;
 
@@ -141,7 +149,22 @@ mod tests {
                     len: 1,
                 },
                 Token::Str("field"),
-                Token::String("a"),
+                Token::Str("a"),
+                Token::StructEnd,
+            ],
+        );
+
+        assert_de_tokens(
+            &MyStruct {
+                field: HipStr::from("a"),
+            },
+            &[
+                Token::Struct {
+                    name: "MyStruct",
+                    len: 1,
+                },
+                Token::Str("field"),
+                Token::BorrowedStr("a"),
                 Token::StructEnd,
             ],
         );
