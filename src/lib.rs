@@ -31,9 +31,7 @@
 //! - [`HipStr<B>`](crate::string::HipStr) \
 //!   a replacement for both `String` and `str`
 //!
-//! where `B` is a backend among `ThreadSafe` ([`Arc<Vec<u8>>`](std::sync::Arc)) and `Local` ([`Rc<Vec<u8>>`](std::rc::Rc))
-//!
-//! The crate root provides aliases with `B` fixed to `ThreadSafe`.
+//! where `B` is a backend, see below.
 //!
 //! # Three Representations
 //!
@@ -44,14 +42,24 @@
 //! - Inline sequence (up to [`HipByt::inline_capacity()`])
 //! - Shared reference (cheaply clonable) _and slice_ (sliceable)
 //!
-//! The shared reference can be [`Local`] or [`ThreadSafe`].
-//! Default aliases in the root of the library use [`ThreadSafe`].
-//!
+//! The shared reference can be thread-safe or not, depending on the backend.
 //!
 //! ## ⚠️ Warning!
 //!
 //! The used representation of the empty string is **unspecified** and may change between patch versions!
 //! It may be *borrowed* or *inlined* but will never be allocated.
+//!
+//! # Two Backends
+//!
+//! The crate provides two backends:
+//!
+//! - `ThreadSafe` ([`Arc<Vec<u8>>`](std::sync::Arc)),
+//! - `Local` ([`Rc<Vec<u8>>`](std::rc::Rc)).
+//!
+//! The crate root also provides some convenience type aliases:
+//!
+//! - `hipstr::HipByt` and `hipstr::HipStr` that set `B` to `ThreadSafe`,
+//! - `hipstr::LocalHipByt` and `hipstr::LocalHipStr` that set `B` to `Local`.
 //!
 //! # Platform Support
 //!
