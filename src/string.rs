@@ -1498,14 +1498,14 @@ mod tests {
     #[test]
     fn test_mutate_borrowed() {
         let mut a = HipStr::borrowed("abc");
-        assert!(a.is_borrowed(), "a should be borrowed at the start");
+        assert!(a.is_borrowed());
         {
             let mut r = a.mutate();
             assert_eq!(r.as_str(), "abc");
             r.push_str("def");
         }
-        assert!(!a.is_borrowed(), "a should be borrowed at the start");
-        assert_eq!(a, "abcdef", "should be modified");
+        assert!(!a.is_borrowed());
+        assert_eq!(a, "abcdef");
     }
 
     #[test]
@@ -1513,7 +1513,7 @@ mod tests {
         let mut a = HipStr::from("abc");
         assert!(a.is_inline());
         a.mutate().push_str("def");
-        assert_eq!(a, "abcdef", "should be modified");
+        assert_eq!(a, "abcdef");
     }
 
     #[test]
@@ -1524,11 +1524,11 @@ mod tests {
             v.push_str("abcdefghijklmnopqrstuvwxyz");
             let p = v.as_ptr();
             let mut a = HipStr::from(v);
-            assert!(a.is_allocated(), "should be allocated at the start");
+            assert!(a.is_allocated());
             a.mutate().push_str("0123456789");
-            assert!(a.is_allocated(), "should be allocated at the end");
+            assert!(a.is_allocated());
             assert_eq!(a, "abcdefghijklmnopqrstuvwxyz0123456789",);
-            assert_eq!(a.as_ptr(), p, "should have same backend vector");
+            assert_eq!(a.as_ptr(), p);
         }
 
         {
