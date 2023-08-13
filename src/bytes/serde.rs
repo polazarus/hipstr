@@ -48,6 +48,7 @@ where
 /// # Errors
 ///
 /// Returns a deserializer if either the serialization is incorrect or an unexpected value is encountered.
+#[inline]
 pub fn borrow_deserialize<'de: 'a, 'a, D, B>(deserializer: D) -> Result<HipByt<'a, B>, D::Error>
 where
     D: serde::Deserializer<'de>,

@@ -124,6 +124,7 @@ impl<'borrow, B> Ord for HipStr<'borrow, B>
 where
     B: Backend,
 {
+    #[inline]
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.as_str().cmp(other.as_str())
     }
@@ -133,6 +134,7 @@ impl<'borrow, B> PartialOrd for HipStr<'borrow, B>
 where
     B: Backend,
 {
+    #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         self.as_str().partial_cmp(other.as_str())
     }

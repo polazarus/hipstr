@@ -23,7 +23,7 @@ pub mod serde;
 ///
 /// # Examples
 ///
-/// You can create a `HipStr` from a [string slice][str], an owned string
+/// You can create a `HipStr` from a [string slice (`&str`)][str], an owned string
 /// ([`String`], [`Box<str>`][Box]), or a clone-on-write smart pointer
 /// ([`Cow<str>`][std::borrow::Cow]) with [`From`]:
 ///
@@ -297,6 +297,7 @@ where
     /// slice.make_ascii_uppercase();
     /// assert_eq!("FOO", slice);
     /// ```
+    #[inline]
     #[must_use]
     pub fn as_mut_str(&mut self) -> Option<&mut str> {
         self.0.as_mut_slice().map(|slice|
@@ -319,6 +320,7 @@ where
     /// slice.make_ascii_uppercase();
     /// assert_eq!("FOO", slice);
     /// ```
+    #[inline]
     #[must_use]
     pub fn to_mut_str(&mut self) -> &mut str {
         let slice = self.0.to_mut_slice();

@@ -19,7 +19,7 @@ pub mod serde;
 ///
 /// # Examples
 ///
-/// You can create a `HipStr` from a [byte slice][slice], an owned byte string
+/// You can create a `HipStr` from a [byte slice (&`[u8]`)][slice], an owned byte string
 /// ([`Vec<u8>`], [`Box<[u8]>`][Box]), or a clone-on-write smart pointer
 /// ([`Cow<[u8]>`][std::borrow::Cow]) with [`From`]:
 ///
@@ -238,6 +238,7 @@ where
     ///
     /// assert_eq!(b"foobar", s.as_slice());
     /// ```
+    #[inline]
     #[must_use]
     pub const fn as_slice(&self) -> &[u8] {
         self.0.as_slice()
@@ -256,6 +257,7 @@ where
     /// slice.copy_from_slice(b"bar");
     /// assert_eq!(b"bar", slice);
     /// ```
+    #[inline]
     #[must_use]
     pub fn as_mut_slice(&mut self) -> Option<&mut [u8]> {
         self.0.as_mut_slice()
@@ -276,6 +278,7 @@ where
     /// slice.copy_from_slice(b"bar");
     /// assert_eq!(b"bar", slice);
     /// ```
+    #[inline]
     pub fn to_mut_slice(&mut self) -> &mut [u8] {
         self.0.to_mut_slice()
     }

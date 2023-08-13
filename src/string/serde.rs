@@ -10,6 +10,7 @@ impl<'borrow, B> Serialize for HipStr<'borrow, B>
 where
     B: Backend,
 {
+    #[inline]
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -22,6 +23,7 @@ impl<'de, 'borrow, B> Deserialize<'de> for HipStr<'borrow, B>
 where
     B: Backend,
 {
+    #[inline]
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -81,6 +83,7 @@ impl<'de> de::Visitor<'de> for CowVisitor {
 /// # Errors
 ///
 /// Returns a deserializer if either the serialization is incorrect or an unexpected value is encountered.
+#[inline]
 pub fn borrow_deserialize<'de: 'a, 'a, D, B>(deserializer: D) -> Result<HipStr<'a, B>, D::Error>
 where
     D: serde::Deserializer<'de>,
