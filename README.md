@@ -100,14 +100,23 @@ cargo +nightly miri test --target i686-unknown-linux-gnu
 
 ## 📦 Similar crates
 
-* [`arcstr`](https://github.com/thomcc/arcstr): no inline repr, heavy slice
-  (with dedicated substring type) and custom `Arc`.
-* [`flexstr`](https://github.com/nu11ptr/flexstr): no slice, very similar
-  but use an `Arc<str>` instead of an `Arc<String>` (remove one level of
-  indirection but use fat pointers).
-* [`imstr`](https://github.com/xfbs/imstr): no inline repr, otherwise very
-  similar.
-* and many more.
+`#[non-exhaustive]`
+
+| Name | Thread-safe cheap-clone | Local cheap-clone | Inline | Cheap slice  | Bytes | Cow<'a>  | Comment |
+| ---- | ----------- | ----- | ------ | ------ | ----- | ---- | :------ |
+| `hipstr` | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | obviously!
+| [`arcstr`](https://github.com/thomcc/arcstr) | 🟢* | ❌ | ❌ | ❌** | ❌ | ❌ | *use a custom `Arc`, **heavy slice (with dedicated substring type) |
+| [`flexstr`](https://github.com/nu11ptr/flexstr) | 🟢* | 🟢 | 🟢 | ❌ |  ❌ | ❌ | *use an `Arc<str>` instead of an `Arc<String>` (remove one level of  indirection but use fat pointers) |
+| [`imstr`](https://github.com/xfbs/imstr) | 🟢 | 🟢 | ❌ | 🟢 | ❌ | ❌ | |
+| [`faststr`](https://github.com/volo-rs/faststr) | 🟢 | ❌ | 🟢 | 🟢 | ❌ | ❌ | zero-doc with complex API |
+| [`fast-str`](https://github.com/xxXyh1908/rust-fast-str) | 🟢 | ❌ | 🟢 | 🟢 | ❌ | ❌ | inline repr is opt-in |
+| [`ecow`](https://github.com/typst/ecow) | 🟢* | ❌ | 🟢 | ❌ | 🟢** | ❌ | *on two words only 🤤, **even any `T`
+| [`compact_str`](https://github.com/parkmycar/compact_str) | ❌ | ❌ | 🟢 | ❌ | 🟢* | ❌ | * opt-in via `smallvec`
+| [`inline_string`](https://github.com/fitzgen/inlinable_string) | ❌ | ❌ | 🟢   | ❌ | ❌ | ❌ |
+| [`smartstring`](https://github.com/xxXyh1908/rust-fast-str) | ❌ | ❌ | 🟢   | ❌ | ❌ | ❌ |
+| [`smol_str`](https://github.com/rust-analyzer/smol_str) | ❌ | ❌ | 🟢* | ❌ | ❌ | ❌ | * but only inline string, here for reference |
+
+skipping specialized string types like [`tinystr`](https://github.com/unicode-org/icu4x) (ASCII-only, bounded)
 
 In short, `HipStr`, one string type to rule them all…
 
