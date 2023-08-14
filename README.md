@@ -111,20 +111,18 @@ cargo +nightly miri test --target i686-unknown-linux-gnu
 | [`faststr`](https://github.com/volo-rs/faststr) | 🟢 | ❌ | 🟢 | 🟢 | ❌ | ❌ | zero-doc with complex API |
 | [`fast-str`](https://github.com/xxXyh1908/rust-fast-str) | 🟢 | ❌ | 🟢 | 🟢 | ❌ | ❌ | inline repr is opt-in |
 | [`ecow`](https://github.com/typst/ecow) | 🟢* | ❌ | 🟢 | ❌ | 🟢** | ❌ | *on two words only 🤤, **even any `T`
-| [`compact_str`](https://github.com/parkmycar/compact_str) | ❌ | ❌ | 🟢 | ❌ | 🟢* | ❌ | * opt-in via `smallvec`
-| [`inline_string`](https://github.com/fitzgen/inlinable_string) | ❌ | ❌ | 🟢   | ❌ | ❌ | ❌ |
-| [`smartstring`](https://github.com/xxXyh1908/rust-fast-str) | ❌ | ❌ | 🟢   | ❌ | ❌ | ❌ |
-| [`smol_str`](https://github.com/rust-analyzer/smol_str) | ❌ | ❌ | 🟢* | ❌ | ❌ | ❌ | * but only inline string, here for reference |
+| [`cowstr`](https://git.pipapo.org/cehteh/cowstr.git) | 🟢 | ❌ | ❌ | ❌* | ❌ | ❌** | *heavy slice, **contrary to its name |
+| [`compact_str`](https://github.com/parkmycar/compact_str) | ❌ | ❌ | 🟢 | ❌ | 🟢* | ❌ | *opt-in via `smallvec` |
+| [`inline_string`](https://github.com/fitzgen/inlinable_string) | ❌ | ❌ | 🟢   | ❌ | ❌ | ❌ | |
+| [`smartstring`](https://github.com/bodil/smartstring) | ❌ | ❌ | 🟢   | ❌ | ❌ | ❌ | |
+| [`smallstr`](https://github.com/murarth/smallstr) | ❌ | ❌ | 🟢   | ❌ | ❌ | ❌ | |
+| [`smol_str`](https://github.com/rust-analyzer/smol_str) | ❌ | ❌ | 🟢* | ❌ | ❌ | ❌ | *but only inline string, here for reference |
 
-skipping specialized string types like [`tinystr`](https://github.com/unicode-org/icu4x) (ASCII-only, bounded)
+skipping specialized string types like [`tinystr`](https://github.com/unicode-org/icu4x) (ASCII-only, bounded), or bstr, or bytestring, or
 
 In short, `HipStr`, one string type to rule them all…
 
 [![How standards proliferate](https://imgs.xkcd.com/comics/standards.png)](https://xkcd.com/927/)
-
-## 🚀 TODOs
-
-* More copy on write API (like `imstr`)?
 
 ## 📖 Author and licenses
 
