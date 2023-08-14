@@ -246,6 +246,29 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
     }
 
     #[inline]
+    pub fn push_slice(&mut self, addition: &[u8]) {
+        let new_len = self.len() + addition.len();
+        if new_len <= INLINE_CAPACITY {
+            if !self.is_inline() {
+                // make it inline first
+                // SAFETY: new_len is checked before, so current len <= INLINE_CAPACITY
+                *self = unsafe { Self::inline_unchecked(self.as_slice()) };
+            }
+            unsafe { self.inline.push_slice_unchecked(addition) };
+        } else if self.is_allocated() && unsafe { self.allocated.can_push() } {
+            // current allocation can be pushed into
+            unsafe { self.allocated.push_slice_unchecked(addition) };
+        } else {
+            let mut vec = Vec::with_capacity(new_len);
+            vec.extend_from_slice(self.as_slice());
+            vec.extend_from_slice(addition);
+            let allocated = Allocated::new(vec);
+            *self = Self { allocated };
+            return;
+        }
+    }
+
+    #[inline]
     pub fn take_vec(&mut self) -> Vec<u8> {
         if self.is_allocated() {
             // SAFETY: representation is checked, copy without ownership

@@ -165,6 +165,34 @@ impl<B: Backend> Allocated<B> {
                 v
             })
     }
+
+    /// Returns `true` if the underlying vector can be mutated (easily), that
+    /// is, if their only one reference to the underlying vector
+    /// and the current slice starts at index 0 of the underlying vector.
+    pub fn can_push(&self) -> bool {
+        debug_assert!(self.is_valid());
+
+        // SAFETY: type invariant -> owner is valid
+        let is_unique = unsafe { B::raw_is_unique(self.owner) };
+
+        // SAFETY: type invariant -> owner is valid
+        let ptr = unsafe { B::raw_as_vec(self.owner).as_ptr() };
+
+        is_unique && ptr == self.ptr
+    }
+
+    /// Push a slice at the end of the underlying vector.
+    ///
+    /// # Safety
+    ///
+    /// The reference must be unique.
+    pub unsafe fn push_slice_unchecked(&mut self, addition: &[u8]) {
+        let v = unsafe { B::raw_get_mut_unchecked(self.owner) };
+        v.truncate(self.len);
+        v.extend_from_slice(addition);
+        self.len += addition.len();
+        self.ptr = v.as_ptr();
+    }
 }
 
 #[cfg(test)]

@@ -91,6 +91,14 @@ pub mod private {
         /// stay valid for lifetime `'a`.
         unsafe fn raw_as_vec<'a>(raw: Self::RawPointer) -> &'a Vec<u8>;
 
+        /// Returns a mutable reference to the underlying vector.
+        ///
+        /// # Safety
+        ///
+        /// The raw pointer should be one corresponding to a valid backend,
+        /// AND there must be **no other reference to it**.
+        unsafe fn raw_get_mut_unchecked<'a>(raw: Self::RawPointer) -> &'a mut Vec<u8>;
+
         /// Try to unwrap the vector from the backend.
         ///
         /// # Errors
@@ -161,6 +169,11 @@ pub mod private {
         }
 
         #[inline]
+        unsafe fn raw_get_mut_unchecked<'a>(raw: Self::RawPointer) -> &'a mut Vec<u8> {
+            unsafe { &mut *raw.cast_mut() }
+        }
+
+        #[inline]
         fn raw_is_valid(raw: Self::RawPointer) -> bool {
             !raw.is_null() && raw.align_offset(align_of::<Self::RawPointer>()) == 0
         }
@@ -214,6 +227,12 @@ pub mod private {
             // SAFETY: the raw pointer should be to a valid Vec<u8>
             unsafe { &*raw }
         }
+
+        #[inline]
+        unsafe fn raw_get_mut_unchecked<'a>(raw: Self::RawPointer) -> &'a mut Vec<u8> {
+            unsafe { &mut *raw.cast_mut() }
+        }
+
         #[inline]
         fn raw_is_valid(raw: Self::RawPointer) -> bool {
             !raw.is_null() && raw.align_offset(align_of::<Self::RawPointer>()) == 0

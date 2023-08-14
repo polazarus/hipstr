@@ -666,6 +666,46 @@ where
             owned,
         }
     }
+
+    /// Appends a given string slice onto the end of this `HipStr`.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// # use hipstr::HipStr;
+    /// let mut s = HipStr::from("cork");
+    /// s.push_str("screw");
+    /// assert_eq!(s, "corkscrew");
+    /// ```
+    #[inline]
+    pub fn push_str(&mut self, addition: &str) {
+        self.0.push_slice(addition.as_bytes())
+    }
+
+    /// Appends the given [`char`] to the end of this `Hipstr`.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// # use hipstr::HipStr;
+    /// let mut s = HipStr::from("abc");
+    ///
+    /// s.push('1');
+    /// s.push('2');
+    /// s.push('3');
+    ///
+    /// assert_eq!(s, "abc123");
+    /// ```
+    #[inline]
+    pub fn push(&mut self, ch: char) {
+        let ref mut data = [0; 4];
+        let s = ch.encode_utf8(data);
+        self.0.push_slice(s.as_bytes());
+    }
 }
 
 impl<B> HipStr<'static, B>
@@ -1569,5 +1609,45 @@ mod tests {
         assert_eq!(HipStr::from_utf16_lossy(&v[0..4]), "a".repeat(4));
         assert_eq!(HipStr::from_utf16_lossy(&v), "a".repeat(42));
         assert_eq!(HipStr::from_utf16_lossy(&[0xD834]), "\u{FFFD}");
+    }
+
+    const FORTY_TWOS: &str = unsafe { std::str::from_utf8_unchecked(&[42; 42]) };
+
+    #[test]
+    fn test_push_slice_allocated() {
+        let mut a = HipStr::from(FORTY_TWOS);
+        a.push_str("abc");
+        assert_eq!(&a[0..42], FORTY_TWOS);
+        assert_eq!(&a[42..], "abc");
+
+        let mut a = HipStr::from(FORTY_TWOS);
+        let pa = a.as_ptr();
+        let b = a.clone();
+        assert_eq!(pa, b.as_ptr());
+        a.push_str("abc");
+        assert_ne!(a.as_ptr(), pa);
+        assert_eq!(&a[0..42], FORTY_TWOS);
+        assert_eq!(&a[42..], "abc");
+        assert_eq!(b, FORTY_TWOS);
+
+        let mut a = {
+            let x = HipStr::from(FORTY_TWOS);
+            x.slice(1..42) // need to reallocate (do not shift)
+        };
+        a.push_str("abc");
+        assert_eq!(&a[..41], &FORTY_TWOS[1..42]);
+        assert_eq!(&a[41..], "abc");
+    }
+
+    #[test]
+    fn test_push() {
+        // for now, push_char uses push_slice
+        // so test can be minimal
+
+        let mut a = HipStr::from("abc");
+        a.push('d');
+        assert_eq!(a, "abcd");
+        a.push('🦀');
+        assert_eq!(a, "abcd🦀");
     }
 }
