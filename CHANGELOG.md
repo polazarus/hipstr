@@ -2,7 +2,14 @@
 
 Notable changes only.
 
-## 0.3.0
+## [0.3.1] - 2023-08-14
+
+### Changed
+
+- Improve overall performances
+- Add more state of the art in the README
+
+## [0.3.0] - 2023-08-12
 
 ### Added
 
@@ -18,7 +25,7 @@ Notable changes only.
 
 - On-demand inlining with `inline`
 
-## 0.2.0 - 2023-07-06
+## [0.2.0] - 2023-07-06
 
 ### Fixed
 
@@ -36,6 +43,11 @@ Notable changes only.
 
 - Lower `serde` version requirement
 
-## 0.1.0 - 2023-06-01
+## [0.1.0] - 2023-06-01
 
 Initial release
+
+[0.3.1]: https://github.com/polazarus/hipstr/compare/0.3.0...0.3.1
+[0.3.0]: https://github.com/polazarus/hipstr/compare/0.2.0...0.3.0
+[0.2.0]: https://github.com/polazarus/hipstr/compare/0.1.0...0.2.0
+[0.1.0]: https://github.com/polazarus/hipstr/releases/tag/0.1.0
