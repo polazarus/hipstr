@@ -110,4 +110,4 @@ jobs:
       - uses: taiki-e/install-action@cargo-minimal-versions
 
       - name: Check with minimal versions
-        run: cargo minimal-versions check --workspace
+        run: cargo minimal-versions check
