@@ -17,15 +17,8 @@ rust-version = "1.64.0"
 unstable = []
 serde = ["dep:serde", "dep:serde_bytes"]
 
-[[bench]]
-name = "competition"
-harness = false
-
 [dev-dependencies]
-arcstr = "1.1.5"
-fastrand = "1.9.0"
-flexstr = "0.9.2"
-imstr = "0.2.0"
+fastrand = "2.0.0"
 serde_test = "1.0.176"
 serde = { version = "1.0.69", features = ["derive"] }
 serde_json = "1.0"
@@ -33,3 +26,6 @@ serde_json = "1.0"
 [dependencies]
 serde = { version = "1.0.69", optional = true }
 serde_bytes = { version = "0.11.5", optional = true }
+
+[workspace]
+members = ['string-comparison']

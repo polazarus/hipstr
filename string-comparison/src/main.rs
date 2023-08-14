@@ -46,6 +46,18 @@ fn bench_hipbyt_from_slice(input: &str) {
 }
 
 #[inline(never)]
+fn bench_fast_str_from_slice(input: &str) {
+    let s = black_box(fast_str::FastStr::from_ref(input));
+    assert_eq!(s.as_str(), input);
+}
+
+#[inline(never)]
+fn bench_faststr_from_slice(input: &str) {
+    let s = black_box(faststr::FastStr::from_string(input.to_string()));
+    assert_eq!(s.as_str(), input);
+}
+
+#[inline(never)]
 fn bench_arcstr_from_slice(input: &str) {
     let s = black_box(ArcStr::from(input));
     assert_eq!(s.as_str(), input);
@@ -73,10 +85,10 @@ fn bench<I, O>(name: impl fmt::Display, input: I, f: impl Fn(I) -> O)
 where
     I: Clone,
 {
-    let samples = 15_000;
+    let samples = 50_000;
     let samples: Vec<_> = (0..samples)
         .map(|_| {
-            let batch = 1000_u32;
+            let batch = 1_000_u32;
 
             let inputs: Vec<I> = vec![input.clone(); batch as usize];
             let mut outputs = Vec::with_capacity(batch as usize);
@@ -88,10 +100,10 @@ where
             let timing = start.elapsed();
             drop(outputs);
 
-            timing.checked_div(batch).unwrap().as_secs_f64()
+            (timing / batch).as_secs_f64()
         })
         .collect();
-    let samples = &samples[1_000..];
+    let samples = &samples[10_000..];
     let (count, av, stddev) = average_stddev(samples.iter().copied());
     let (new_count, av_no_outliers) = average(
         samples
@@ -108,11 +120,14 @@ where
 }
 
 fn main() {
+    println!("64 bytes");
     bench("String", &TEXT[..64], bench_string_from_slice);
     bench("Arc<String>", &TEXT[..64], bench_arc_string_from_slice);
     bench("Arc<Box<str>>", &TEXT[..64], bench_arc_box_str_from_slice);
-    bench("HipStr", &TEXT[..64], bench_hipstr_from_slice);
     bench("HipByt", &TEXT[..64], bench_hipbyt_from_slice);
+    bench("HipStr", &TEXT[..64], bench_hipstr_from_slice);
+    bench("fast_str", &TEXT[..64], bench_fast_str_from_slice);
+    bench("faststr", &TEXT[..64], bench_faststr_from_slice);
     bench("flexstr::SharedStr", &TEXT[..64], bench_flexstr_from_slice);
     bench("ArcStr", &TEXT[..64], bench_arcstr_from_slice);
     bench("imstr::ImString", &TEXT[..64], bench_imstr_from_slice);
@@ -121,11 +136,14 @@ fn main() {
         &TEXT[..64],
         bench_hipstr_from_slice_via_to_string,
     );
+    println!("10bytes");
     bench("String", &TEXT[..10], bench_string_from_slice);
     bench("Arc<String>", &TEXT[..10], bench_arc_string_from_slice);
     bench("Arc<Box<str>>", &TEXT[..10], bench_arc_box_str_from_slice);
     bench("HipStr", &TEXT[..10], bench_hipstr_from_slice);
     bench("HipByt", &TEXT[..10], bench_hipbyt_from_slice);
+    bench("fast_str", &TEXT[..10], bench_fast_str_from_slice);
+    bench("faststr", &TEXT[..10], bench_faststr_from_slice);
     bench("flexstr::SharedStr", &TEXT[..10], bench_flexstr_from_slice);
     bench("ArcStr", &TEXT[..10], bench_arcstr_from_slice);
     bench("imstr::ImString", &TEXT[..10], bench_imstr_from_slice);

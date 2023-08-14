@@ -36,8 +36,18 @@ impl<const INLINE_CAPACITY: usize> Inline<INLINE_CAPACITY> {
     /// Creates a new `Inline` string by copying a byte slice.
     #[inline]
     pub fn new(sl: &[u8]) -> Self {
+        assert!(sl.len() <= INLINE_CAPACITY);
+        unsafe { Self::new_unchecked(sl) }
+    }
+
+    /// Creates a new `Inline` string by copying a short byte slice.
+    ///
+    /// # Safety
+    ///
+    /// The input slice's length MUST be at most `INLINE_CAPACITY`.
+    #[inline]
+    pub unsafe fn new_unchecked(sl: &[u8]) -> Self {
         let len = sl.len();
-        assert!(len <= INLINE_CAPACITY);
 
         // SAFETY: just a noop hack to construct an array of MaybeUninit
         let mut data: [MaybeUninit<u8>; INLINE_CAPACITY] =
@@ -45,6 +55,7 @@ impl<const INLINE_CAPACITY: usize> Inline<INLINE_CAPACITY> {
         // waiting for stabilization of MaybeUninit::uninit_array
         // or inline const expression
 
+        // SAFETY: sl's length is a **function precondition**
         unsafe {
             std::ptr::copy_nonoverlapping(sl.as_ptr(), data.as_mut_ptr().cast(), len);
         }

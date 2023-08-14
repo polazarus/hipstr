@@ -73,17 +73,33 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
     }
 
     /// Creates a new `Raw` from a slice.
-    #[inline]
     pub fn from_slice(bytes: &[u8]) -> Self {
         let len = bytes.len();
         if len <= INLINE_CAPACITY {
-            Self {
-                inline: Inline::new(bytes),
-            }
+            unsafe { Self::inline_unchecked(bytes) }
         } else {
-            Self {
-                allocated: Allocated::new(bytes.to_vec()),
-            }
+            Self::allocate(bytes)
+        }
+    }
+
+    /// Creates a new `Raw` from a short slice
+    ///
+    /// # Safety
+    ///
+    /// The input slice's length MUST be at most INLINE_CAPACITY.
+    #[inline(never)]
+    pub unsafe fn inline_unchecked(bytes: &[u8]) -> Self {
+        // SAFETY: see function precondition
+        Self {
+            inline: unsafe { Inline::new_unchecked(bytes) },
+        }
+    }
+
+    // for whatever reason the actual allocation is not efficient when inlined
+    #[inline(never)]
+    fn allocate(bytes: &[u8]) -> Self {
+        Self {
+            allocated: Allocated::new(bytes.to_vec()),
         }
     }
 

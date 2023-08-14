@@ -854,7 +854,7 @@ mod tests {
     #[test]
     fn test_clone_drop() {
         let v = vec![42; 42];
-        let rand = Rng::with_seed(0);
+        let mut rand = Rng::with_seed(0);
         for n in [5, 10, 20, 100] {
             // println!("!n {n}");
             let mut vs = vec![HipByt::from(v.clone()); n];
