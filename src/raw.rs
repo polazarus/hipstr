@@ -86,7 +86,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
     ///
     /// # Safety
     ///
-    /// The input slice's length MUST be at most INLINE_CAPACITY.
+    /// The input slice's length MUST be at most `INLINE_CAPACITY`.
     #[inline(never)]
     pub unsafe fn inline_unchecked(bytes: &[u8]) -> Self {
         // SAFETY: see function precondition

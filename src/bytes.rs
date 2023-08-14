@@ -414,7 +414,7 @@ where
     /// ```
     #[inline]
     pub fn push_slice(&mut self, addition: &[u8]) {
-        self.0.push_slice(addition)
+        self.0.push_slice(addition);
     }
 
     /// Appends a byte to this `HipByt`.

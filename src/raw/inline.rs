@@ -122,7 +122,7 @@ impl<const INLINE_CAPACITY: usize> Inline<INLINE_CAPACITY> {
     ///
     /// # Safety
     ///
-    /// Does not check if addition size stays inside minimal capacity.
+    /// Does not check if the size with `addition` stays inside minimal capacity.
     #[inline]
     pub unsafe fn push_slice_unchecked(&mut self, addition: &[u8]) {
         let len = self.len();
@@ -135,6 +135,9 @@ impl<const INLINE_CAPACITY: usize> Inline<INLINE_CAPACITY> {
                 add_len,
             );
         }
-        self.shifted_len = ((new_len << 1) | 1) as u8;
+        #[allow(clippy::cast_possible_truncation)]
+        {
+            self.shifted_len = ((new_len << 1) | 1) as u8;
+        }
     }
 }

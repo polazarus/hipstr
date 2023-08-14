@@ -681,7 +681,7 @@ where
     /// ```
     #[inline]
     pub fn push_str(&mut self, addition: &str) {
-        self.0.push_slice(addition.as_bytes())
+        self.0.push_slice(addition.as_bytes());
     }
 
     /// Appends the given [`char`] to the end of this `Hipstr`.
@@ -702,8 +702,8 @@ where
     /// ```
     #[inline]
     pub fn push(&mut self, ch: char) {
-        let ref mut data = [0; 4];
-        let s = ch.encode_utf8(data);
+        let mut data = [0; 4];
+        let s = ch.encode_utf8(&mut data);
         self.0.push_slice(s.as_bytes());
     }
 }
