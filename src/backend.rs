@@ -257,6 +257,7 @@ mod tests {
 
     fn test_backend<B: Backend>() {
         let v = vec![42; 42];
+        let p = v.as_ptr();
         unsafe {
             let r = B::into_raw(B::new(v));
             assert!(B::raw_is_valid(r));
@@ -265,6 +266,11 @@ mod tests {
                 let v = B::raw_as_vec(r);
                 assert_eq!(v.len(), 42);
             }
+            {
+                let v = B::raw_get_mut_unchecked(r);
+                assert_eq!(p, v.as_ptr());
+            }
+
             B::raw_increment_count(r);
             assert!(!B::raw_is_unique(r));
             B::raw_decrement_count(r);
