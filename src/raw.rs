@@ -86,7 +86,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
     ///
     /// # Safety
     ///
-    /// The input slice's length MUST be at most INLINE_CAPACITY.
+    /// The input slice's length MUST be at most `INLINE_CAPACITY`.
     #[inline(never)]
     pub unsafe fn inline_unchecked(bytes: &[u8]) -> Self {
         // SAFETY: see function precondition
@@ -243,6 +243,29 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
         *self = copy;
         debug_assert!(self.is_normalized());
         self.as_mut_slice().unwrap()
+    }
+
+    #[inline]
+    pub fn push_slice(&mut self, addition: &[u8]) {
+        let new_len = self.len() + addition.len();
+        if new_len <= INLINE_CAPACITY {
+            if !self.is_inline() {
+                // make it inline first
+                // SAFETY: new_len is checked before, so current len <= INLINE_CAPACITY
+                *self = unsafe { Self::inline_unchecked(self.as_slice()) };
+            }
+            unsafe { self.inline.push_slice_unchecked(addition) };
+        } else if self.is_allocated() && unsafe { self.allocated.can_push() } {
+            // current allocation can be pushed into
+            unsafe { self.allocated.push_slice_unchecked(addition) };
+        } else {
+            let mut vec = Vec::with_capacity(new_len);
+            vec.extend_from_slice(self.as_slice());
+            vec.extend_from_slice(addition);
+            let allocated = Allocated::new(vec);
+            *self = Self { allocated };
+            return;
+        }
     }
 
     #[inline]

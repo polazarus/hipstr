@@ -117,4 +117,27 @@ impl<const INLINE_CAPACITY: usize> Inline<INLINE_CAPACITY> {
     pub const fn capacity() -> usize {
         INLINE_CAPACITY
     }
+
+    /// Push a short slice into this inline string.
+    ///
+    /// # Safety
+    ///
+    /// Does not check if the size with `addition` stays inside minimal capacity.
+    #[inline]
+    pub unsafe fn push_slice_unchecked(&mut self, addition: &[u8]) {
+        let len = self.len();
+        let add_len = addition.len();
+        let new_len = len + add_len;
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                addition.as_ptr().cast(),
+                self.data.as_mut_ptr().add(len),
+                add_len,
+            );
+        }
+        #[allow(clippy::cast_possible_truncation)]
+        {
+            self.shifted_len = ((new_len << 1) | 1) as u8;
+        }
+    }
 }

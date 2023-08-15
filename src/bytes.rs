@@ -402,6 +402,38 @@ where
         }
     }
 
+    /// Appends all bytes of the slice to this `HipByt`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::HipByt;
+    /// let mut bytes = HipByt::from(b"abc");
+    /// bytes.push_slice(b"123");
+    /// assert_eq!(bytes, b"abc123");
+    /// ```
+    #[inline]
+    pub fn push_slice(&mut self, addition: &[u8]) {
+        self.0.push_slice(addition);
+    }
+
+    /// Appends a byte to this `HipByt`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::HipByt;
+    /// let mut bytes = HipByt::from(b"abc");
+    /// bytes.push(b'1');
+    /// bytes.push(b'2');
+    /// bytes.push(b'3');
+    /// assert_eq!(bytes, b"abc123");
+    /// ```
+    #[inline]
+    pub fn push(&mut self, value: u8) {
+        self.0.push_slice(&[value]);
+    }
+
     pub(crate) fn take_vec(&mut self) -> Vec<u8> {
         self.0.take_vec()
     }
@@ -1210,5 +1242,67 @@ mod tests {
             assert_ne!(a.as_ptr(), b.as_ptr());
             assert!(a.is_normalized());
         }
+    }
+
+    const FORTY_TWOS: &[u8] = &[42; 42];
+
+    #[test]
+    fn test_push_slice_borrowed() {
+        let mut a = HipByt::borrowed(b"abc");
+        a.push_slice(b"def");
+        assert_eq!(a, b"abcdef");
+
+        let mut a = HipByt::borrowed(FORTY_TWOS);
+        a.push_slice(b"abc");
+        assert_eq!(&a[..42], FORTY_TWOS);
+        assert_eq!(&a[42..], b"abc");
+    }
+
+    #[test]
+    fn test_push_slice_inline() {
+        let mut a = HipByt::from(b"abc");
+        a.push_slice(b"def");
+        assert_eq!(a, b"abcdef");
+
+        let mut a = HipByt::from(b"abc");
+        a.push_slice(FORTY_TWOS);
+        assert_eq!(&a[..3], b"abc");
+        assert_eq!(&a[3..], FORTY_TWOS);
+    }
+
+    #[test]
+    fn test_push_slice_allocated() {
+        let mut a = HipByt::from(FORTY_TWOS);
+        a.push_slice(b"abc");
+        assert_eq!(&a[0..42], FORTY_TWOS);
+        assert_eq!(&a[42..], b"abc");
+
+        let mut a = HipByt::from(FORTY_TWOS);
+        let pa = a.as_ptr();
+        let b = a.clone();
+        assert_eq!(pa, b.as_ptr());
+        a.push_slice(b"abc");
+        assert_ne!(a.as_ptr(), pa);
+        assert_eq!(&a[0..42], FORTY_TWOS);
+        assert_eq!(&a[42..], b"abc");
+        assert_eq!(b, FORTY_TWOS);
+
+        let mut a = {
+            let x = HipByt::from(FORTY_TWOS);
+            x.slice(1..42) // need to reallocate (do not shift)
+        };
+        a.push_slice(b"abc");
+        assert_eq!(&a[..41], &FORTY_TWOS[1..42]);
+        assert_eq!(&a[41..], b"abc");
+    }
+
+    #[test]
+    fn test_push() {
+        // for now, push uses push_slice
+        // so test can be minimal
+
+        let mut a = HipByt::from(b"abc");
+        a.push(b'd');
+        assert_eq!(a, b"abcd");
     }
 }
