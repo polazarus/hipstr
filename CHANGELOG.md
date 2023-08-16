@@ -2,6 +2,14 @@
 
 Notable changes only.
 
+## [0.3.2] - 2023-08-18
+
+## Added
+
+- Add trait impls for OsStr/Path compatibility
+- Add push_str and push
+- Add performance chart generation
+
 ## [0.3.1] - 2023-08-14
 
 ### Changed
@@ -47,6 +55,7 @@ Notable changes only.
 
 Initial release
 
+[0.3.2]: https://github.com/polazarus/hipstr/compare/0.3.1...0.3.2
 [0.3.1]: https://github.com/polazarus/hipstr/compare/0.3.0...0.3.1
 [0.3.0]: https://github.com/polazarus/hipstr/compare/0.2.0...0.3.0
 [0.2.0]: https://github.com/polazarus/hipstr/compare/0.1.0...0.2.0
