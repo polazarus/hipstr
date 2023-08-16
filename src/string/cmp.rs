@@ -243,6 +243,16 @@ mod tests {
     }
 
     #[test]
+    fn test_eq_os_string() {
+        let s = "abc";
+        let os: &std::ffi::OsStr = s.as_ref();
+        let oss = os.to_os_string();
+        let h = HipStr::from(s);
+        assert_eq!(h, oss);
+        assert_eq!(oss, h);
+    }
+
+    #[test]
     fn test_ord() {
         let h1 = HipStr::borrowed("abc");
         let h2 = HipStr::from("abd");
