@@ -1,4 +1,5 @@
-use std::mem::MaybeUninit;
+use core::mem::MaybeUninit;
+use core::ptr::copy_nonoverlapping;
 
 //// Inline string.
 ///
@@ -57,7 +58,7 @@ impl<const INLINE_CAPACITY: usize> Inline<INLINE_CAPACITY> {
 
         // SAFETY: sl's length is a **function precondition**
         unsafe {
-            std::ptr::copy_nonoverlapping(sl.as_ptr(), data.as_mut_ptr().cast(), len);
+            copy_nonoverlapping(sl.as_ptr(), data.as_mut_ptr().cast(), len);
         }
 
         #[allow(clippy::cast_possible_truncation)]
@@ -88,7 +89,7 @@ impl<const INLINE_CAPACITY: usize> Inline<INLINE_CAPACITY> {
         let len = self.len();
 
         // SAFETY: type invariant (the first `len`-th bytes are initialized)
-        unsafe { std::slice::from_raw_parts(data.cast(), len) }
+        unsafe { core::slice::from_raw_parts(data.cast(), len) }
     }
 
     /// Returns a mutable view of this `Inline` string.
@@ -104,7 +105,7 @@ impl<const INLINE_CAPACITY: usize> Inline<INLINE_CAPACITY> {
         let len = self.len();
 
         // SAFETY: type invariant (the first `len`-th bytes are initialized)
-        unsafe { std::slice::from_raw_parts_mut(data.cast(), len) }
+        unsafe { core::slice::from_raw_parts_mut(data.cast(), len) }
     }
 
     /// Return `true` iff this representation is valid.
@@ -129,7 +130,7 @@ impl<const INLINE_CAPACITY: usize> Inline<INLINE_CAPACITY> {
         let add_len = addition.len();
         let new_len = len + add_len;
         unsafe {
-            std::ptr::copy_nonoverlapping(
+            copy_nonoverlapping(
                 addition.as_ptr().cast(),
                 self.data.as_mut_ptr().add(len),
                 add_len,

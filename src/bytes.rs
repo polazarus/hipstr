@@ -1,12 +1,12 @@
 //! Cheaply clonable, sliceable, and mostly immutable, byte string.
 
-use std::borrow::Borrow;
-use std::error::Error;
-use std::fmt;
-use std::hash::Hash;
-use std::ops::{Bound, Deref, DerefMut, Range, RangeBounds};
+use core::borrow::Borrow;
+use core::hash::Hash;
+use core::ops::{Bound, Deref, DerefMut, Range, RangeBounds};
 
 use super::raw::Raw;
+use crate::alloc::fmt;
+use crate::alloc::vec::Vec;
 use crate::{Backend, ThreadSafe};
 
 mod cmp;
@@ -532,7 +532,7 @@ where
     B: Backend,
 {
     #[inline]
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         self.as_slice().hash(state);
     }
 }
@@ -692,7 +692,8 @@ where
     }
 }
 
-impl<'a, 'borrow, B> Error for SliceError<'a, 'borrow, B> where B: Backend {}
+#[cfg(feature = "std")]
+impl<'a, 'borrow, B> std::error::Error for SliceError<'a, 'borrow, B> where B: Backend {}
 
 /// A wrapper type for a mutably borrowed vector out of a [`HipByt`].
 pub struct RefMut<'a, 'borrow, B>
@@ -708,7 +709,7 @@ where
     B: Backend,
 {
     fn drop(&mut self) {
-        let owned = std::mem::take(&mut self.owned);
+        let owned = core::mem::take(&mut self.owned);
         *self.result = HipByt::from(owned);
     }
 }
@@ -734,13 +735,17 @@ where
 
 #[cfg(test)]
 mod tests {
+    use core::ops::Bound;
+    use core::ptr;
+    #[cfg(feature = "std")]
     use std::collections::HashSet;
-    use std::ops::Bound;
 
     // cspell:ignore fastrand
     use fastrand::Rng;
 
     use super::SliceErrorKind;
+    use crate::alloc::vec::Vec;
+    use crate::alloc::{format, vec};
     use crate::HipByt;
 
     const INLINE_CAPACITY: usize = HipByt::inline_capacity();
@@ -757,6 +762,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "std")]
     fn test_borrow_and_hash() {
         let mut set = HashSet::new();
         set.insert(HipByt::from(b"a"));
@@ -1077,7 +1083,7 @@ mod tests {
         assert_eq!(e.start(), 7);
         assert_eq!(e.end(), 6);
         assert_eq!(e.range(), 7..6);
-        assert!(std::ptr::eq(e.source(), &a));
+        assert!(ptr::eq(e.source(), &a));
         assert_eq!(format!("{e:?}"), "SliceError { kind: StartOutOfBounds, start: 7, end: 6, bytes: [97, 98, 99, 100, 101, 102] }");
         assert_eq!(
             format!("{e}"),

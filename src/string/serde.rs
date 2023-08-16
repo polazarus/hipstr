@@ -1,9 +1,9 @@
-use std::borrow::Cow;
-use std::fmt;
-
 use serde::{de, Deserialize, Serialize};
 
 use super::HipStr;
+use crate::alloc::borrow::Cow;
+use crate::alloc::fmt;
+use crate::alloc::string::{String, ToString};
 use crate::Backend;
 
 impl<'borrow, B> Serialize for HipStr<'borrow, B>

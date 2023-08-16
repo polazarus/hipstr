@@ -1,7 +1,8 @@
-use std::mem::size_of;
-use std::ops::Range;
-use std::panic::{RefUnwindSafe, UnwindSafe};
+use core::mem::size_of;
+use core::ops::Range;
+use core::panic::{RefUnwindSafe, UnwindSafe};
 
+use crate::alloc::vec::Vec;
 use crate::Backend;
 
 #[repr(C)]
@@ -66,7 +67,7 @@ impl<B: Backend> Allocated<B> {
         // debug_assert!(self.is_valid()); // is_valid is not const!
 
         // SAFETY: Type invariant
-        unsafe { std::slice::from_raw_parts(self.ptr, self.len) }
+        unsafe { core::slice::from_raw_parts(self.ptr, self.len) }
     }
 
     /// Returns a mutable slice if possible (unique non-static reference).
@@ -84,7 +85,7 @@ impl<B: Backend> Allocated<B> {
             // SAFETY:
             // * unique -> no one else can "see" the string
             // * type invariant -> valid slice
-            Some(unsafe { std::slice::from_raw_parts_mut(self.ptr.cast_mut(), self.len) })
+            Some(unsafe { core::slice::from_raw_parts_mut(self.ptr.cast_mut(), self.len) })
         } else {
             None
         }
@@ -198,6 +199,7 @@ impl<B: Backend> Allocated<B> {
 #[cfg(test)]
 mod tests {
     use super::Allocated;
+    use crate::alloc::vec;
     use crate::Local;
 
     #[test]

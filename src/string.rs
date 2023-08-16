@@ -1,13 +1,13 @@
 //! Cheaply clonable, sliceable, and mostly immutable, string.
 
-use std::borrow::{Borrow, Cow};
-use std::error::Error;
-use std::fmt;
-use std::hash::Hash;
-use std::ops::{Deref, DerefMut, Range, RangeBounds};
-use std::str::Utf8Error;
-use std::string::FromUtf16Error;
+use core::borrow::Borrow;
+use core::hash::Hash;
+use core::ops::{Deref, DerefMut, Range, RangeBounds};
+use core::str::Utf8Error;
 
+use crate::alloc::borrow::Cow;
+use crate::alloc::fmt;
+use crate::alloc::string::{FromUtf16Error, String};
 use crate::bytes::{simplify_range, HipByt, SliceErrorKind as ByteSliceErrorKind};
 use crate::Backend;
 
@@ -196,7 +196,7 @@ where
             .into_borrowed()
             .map(|slice|
                 // SAFETY: type invariant
-                unsafe { std::str::from_utf8_unchecked(slice) })
+                unsafe { core::str::from_utf8_unchecked(slice) })
             .map_err(Self)
     }
 
@@ -281,7 +281,7 @@ where
     #[must_use]
     pub const fn as_str(&self) -> &str {
         // SAFETY: type invariant
-        unsafe { std::str::from_utf8_unchecked(self.0.as_slice()) }
+        unsafe { core::str::from_utf8_unchecked(self.0.as_slice()) }
     }
 
     /// Extracts a mutable string slice of the entire `HipStr` if possible.
@@ -302,7 +302,7 @@ where
     pub fn as_mut_str(&mut self) -> Option<&mut str> {
         self.0.as_mut_slice().map(|slice|
                 // SAFETY: type invariant
-                unsafe { std::str::from_utf8_unchecked_mut(slice) })
+                unsafe { core::str::from_utf8_unchecked_mut(slice) })
     }
 
     /// Extracts a mutable string slice of the entire `HipStr` changing the
@@ -325,7 +325,7 @@ where
     pub fn to_mut_str(&mut self) -> &mut str {
         let slice = self.0.to_mut_slice();
         // SAFETY: type invariant
-        unsafe { std::str::from_utf8_unchecked_mut(slice) }
+        unsafe { core::str::from_utf8_unchecked_mut(slice) }
     }
 
     /// Extracts a slice as its own `HipStr`.
@@ -531,7 +531,7 @@ where
     /// [`into_bytes`]: HipStr::into_bytes
     #[inline]
     pub fn from_utf8(bytes: HipByt<'borrow, B>) -> Result<Self, FromUtf8Error<'borrow, B>> {
-        match std::str::from_utf8(&bytes) {
+        match core::str::from_utf8(&bytes) {
             Ok(_) => {
                 // SAFETY: checked above
                 Ok(unsafe { Self::from_utf8_unchecked(bytes) })
@@ -796,7 +796,7 @@ where
     B: Backend,
 {
     #[inline]
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         self.as_str().hash(state);
     }
 }
@@ -964,6 +964,7 @@ where
     }
 }
 
+#[cfg(configure = "std")]
 impl<'a, 'borrow, B> Error for SliceError<'a, 'borrow, B> where B: Backend {}
 
 /// A possible error value when converting a [`HipStr`] from a [`HipByt`].
@@ -1108,7 +1109,8 @@ where
     }
 }
 
-impl<'borrow, B> Error for FromUtf8Error<'borrow, B> where B: Backend {}
+#[cfg(feature = "std")]
+impl<'borrow, B> std::error::Error for FromUtf8Error<'borrow, B> where B: Backend {}
 
 /// A wrapper type for a mutably borrowed [`String`] out of a [`HipStr`].
 pub struct RefMut<'a, 'borrow, B>
@@ -1124,7 +1126,7 @@ where
     B: Backend,
 {
     fn drop(&mut self) {
-        let owned = std::mem::take(&mut self.owned);
+        let owned = core::mem::take(&mut self.owned);
         *self.result = HipStr::from(owned);
     }
 }
@@ -1150,9 +1152,13 @@ where
 
 #[cfg(test)]
 mod tests {
+    use core::ptr;
+    #[cfg(feature = "std")]
     use std::collections::HashSet;
 
     use super::SliceErrorKind;
+    use crate::alloc::format;
+    use crate::alloc::string::{String, ToString};
     use crate::{HipByt, HipStr};
 
     const INLINE_CAPACITY: usize = HipStr::inline_capacity();
@@ -1169,6 +1175,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "std")]
     fn test_borrow_and_hash() {
         let mut set = HashSet::new();
         set.insert(HipStr::from("a"));
@@ -1229,7 +1236,7 @@ mod tests {
     #[test]
     fn test_from_slice() {
         static V: &[u8] = &[b'a'; 1024];
-        let s = std::str::from_utf8(V).unwrap();
+        let s = core::str::from_utf8(V).unwrap();
 
         for size in [0, 1, INLINE_CAPACITY, INLINE_CAPACITY + 1, 256, 1024] {
             let string = HipStr::from(&s[..size]);
@@ -1477,7 +1484,7 @@ mod tests {
         assert_eq!(err.start(), 10);
         assert_eq!(err.end(), a.len());
         assert_eq!(err.range(), 10..a.len());
-        assert!(std::ptr::eq(err.source(), &a));
+        assert!(ptr::eq(err.source(), &a));
         assert_eq!(
             format!("{err:?}"),
             "SliceError { kind: StartOutOfBounds, start: 10, end: 9, string: \"Rust \u{1F980}\" }"
@@ -1516,7 +1523,7 @@ mod tests {
     fn test_from_utf8() {
         let bytes = HipByt::borrowed(b"abc\x80");
         let err = HipStr::from_utf8(bytes.clone()).unwrap_err();
-        assert!(std::ptr::eq(err.as_bytes(), bytes.as_slice()));
+        assert!(ptr::eq(err.as_bytes(), bytes.as_slice()));
         assert_eq!(err.utf8_error().valid_up_to(), 3);
         assert_eq!(format!("{err:?}"), "FromUtf8Error { bytes: [97, 98, 99, 128], error: Utf8Error { valid_up_to: 3, error_len: Some(1) } }");
         assert_eq!(
@@ -1626,7 +1633,7 @@ mod tests {
         assert_eq!(HipStr::from_utf16_lossy(&[0xD834]), "\u{FFFD}");
     }
 
-    const FORTY_TWOS: &str = unsafe { std::str::from_utf8_unchecked(&[42; 42]) };
+    const FORTY_TWOS: &str = unsafe { core::str::from_utf8_unchecked(&[42; 42]) };
 
     #[test]
     fn test_push_slice_allocated() {
