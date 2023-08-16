@@ -1,6 +1,7 @@
 //! Conversion trait implementations for `HipStr`.
 
 use std::borrow::Cow;
+use std::net::ToSocketAddrs;
 
 use super::HipStr;
 use crate::bytes::HipByt;
@@ -13,6 +14,34 @@ where
     #[inline]
     fn as_ref(&self) -> &str {
         self.as_str()
+    }
+}
+
+impl<'borrow, B> AsRef<[u8]> for HipStr<'borrow, B>
+where
+    B: Backend,
+{
+    #[inline]
+    fn as_ref(&self) -> &[u8] {
+        self.as_bytes()
+    }
+}
+
+impl<'borrow, B> AsRef<std::ffi::OsStr> for HipStr<'borrow, B>
+where
+    B: Backend,
+{
+    fn as_ref(&self) -> &std::ffi::OsStr {
+        self.as_str().as_ref()
+    }
+}
+
+impl<'borrow, B> AsRef<std::path::Path> for HipStr<'borrow, B>
+where
+    B: Backend,
+{
+    fn as_ref(&self) -> &std::path::Path {
+        self.as_str().as_ref()
     }
 }
 
@@ -144,9 +173,21 @@ where
     }
 }
 
+impl<'borrow, B> ToSocketAddrs for HipStr<'borrow, B>
+where
+    B: Backend,
+{
+    type Iter = <str as ToSocketAddrs>::Iter;
+
+    fn to_socket_addrs(&self) -> std::io::Result<Self::Iter> {
+        self.as_str().to_socket_addrs()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::borrow::Cow;
+    use std::net::ToSocketAddrs;
 
     use crate::{HipByt, HipStr};
 
@@ -266,5 +307,36 @@ mod tests {
         assert!(HipStr::try_from(slice.to_vec()).is_err());
         assert!(HipStr::try_from(&hb).is_err());
         assert!(HipStr::try_from(hb).is_err());
+    }
+
+    #[test]
+    fn as_ref_bytes() {
+        let h = HipStr::from("abc");
+        let b: &[u8] = h.as_ref();
+        assert!(std::ptr::eq(h.as_bytes(), b));
+    }
+
+    #[test]
+    fn as_ref_os_str() {
+        let h = HipStr::from("abc");
+        let o: &std::ffi::OsStr = h.as_ref();
+        assert_eq!(o, "abc");
+        assert!(std::ptr::eq(h.as_str().as_ref(), o));
+    }
+
+    #[test]
+    fn as_ref_path() {
+        let h = HipStr::from("abc");
+        let p: &std::path::Path = h.as_ref();
+        assert_eq!(p, std::path::Path::new("abc"));
+        assert!(std::ptr::eq(h.as_str().as_ref(), p));
+    }
+
+    #[test]
+    fn to_sock_addrs() {
+        let h = HipStr::from("0.0.0.0:80");
+        let v: Vec<_> = h.to_socket_addrs().unwrap().collect();
+        let v2: Vec<_> = "0.0.0.0:80".to_socket_addrs().unwrap().collect();
+        assert_eq!(v, v2);
     }
 }
