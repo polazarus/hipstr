@@ -102,6 +102,19 @@ where
     }
 }
 
+impl<'borrow, B> From<HipStr<'borrow, B>> for std::ffi::OsString
+where
+    B: Backend,
+{
+    #[inline]
+    fn from(value: HipStr<B>) -> Self {
+        value
+            .into_string()
+            .unwrap_or_else(|value| value.as_str().into())
+            .into()
+    }
+}
+
 impl<'borrow, B> From<HipStr<'borrow, B>> for HipByt<'borrow, B>
 where
     B: Backend,
@@ -242,6 +255,13 @@ mod tests {
         let a = HipStr::borrowed("abc");
         let v: String = a.into();
         assert_eq!(v.as_str(), "abc");
+    }
+
+    #[test]
+    fn into_os_string() {
+        let h = HipStr::from("abc");
+        let os_string: std::ffi::OsString = h.into();
+        assert_eq!(os_string, "abc");
     }
 
     #[test]
