@@ -25,6 +25,7 @@ jobs:
           - macos-latest
         features:
           - ""
+          - "--no-default-features"
           - "--all-features"
 
     runs-on: ${{matrix.os}}
@@ -111,3 +112,19 @@ jobs:
 
       - name: Check with minimal versions
         run: cargo minimal-versions check
+
+  no_std:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: taiki-e/install-action@cargo-binstall
+
+      - name: Install cargo-nono
+        run: cargo binstall -y cargo-nono
+
+      - name: Check no_std compatibility
+        run: cargo nono
