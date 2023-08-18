@@ -120,6 +120,66 @@ where
     }
 }
 
+impl<'borrow, B> PartialEq<std::ffi::OsStr> for HipStr<'borrow, B>
+where
+    B: Backend,
+{
+    #[inline]
+    fn eq(&self, other: &std::ffi::OsStr) -> bool {
+        self.as_str().eq(other)
+    }
+}
+
+impl<'borrow, B> PartialEq<HipStr<'borrow, B>> for std::ffi::OsStr
+where
+    B: Backend,
+{
+    #[inline]
+    fn eq(&self, other: &HipStr<'borrow, B>) -> bool {
+        self.eq(other.as_str())
+    }
+}
+
+impl<'a, 'borrow, B> PartialEq<&'a std::ffi::OsStr> for HipStr<'borrow, B>
+where
+    B: Backend,
+{
+    #[inline]
+    fn eq(&self, other: &&'a std::ffi::OsStr) -> bool {
+        self.as_str().eq(*other)
+    }
+}
+
+impl<'a, 'borrow, B> PartialEq<HipStr<'borrow, B>> for &'a std::ffi::OsStr
+where
+    B: Backend,
+{
+    #[inline]
+    fn eq(&self, other: &HipStr<'borrow, B>) -> bool {
+        (*self).eq(other.as_str())
+    }
+}
+
+impl<'borrow, B> PartialEq<std::ffi::OsString> for HipStr<'borrow, B>
+where
+    B: Backend,
+{
+    #[inline]
+    fn eq(&self, other: &std::ffi::OsString) -> bool {
+        self.as_str().eq(other)
+    }
+}
+
+impl<'borrow, B> PartialEq<HipStr<'borrow, B>> for std::ffi::OsString
+where
+    B: Backend,
+{
+    #[inline]
+    fn eq(&self, other: &HipStr<'borrow, B>) -> bool {
+        self.eq(other.as_str())
+    }
+}
+
 impl<'borrow, B> Ord for HipStr<'borrow, B>
 where
     B: Backend,
@@ -169,6 +229,27 @@ mod tests {
 
         assert_eq!(h, c);
         assert_eq!(c, h);
+    }
+
+    #[test]
+    fn test_eq_os_str() {
+        let s = "abc";
+        let os: &std::ffi::OsStr = s.as_ref();
+        let h = HipStr::from(s);
+        assert_eq!(h, os);
+        assert_eq!(os, h);
+        assert_eq!(&h, os);
+        assert_eq!(os, &h);
+    }
+
+    #[test]
+    fn test_eq_os_string() {
+        let s = "abc";
+        let os: &std::ffi::OsStr = s.as_ref();
+        let oss = os.to_os_string();
+        let h = HipStr::from(s);
+        assert_eq!(h, oss);
+        assert_eq!(oss, h);
     }
 
     #[test]
