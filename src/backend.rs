@@ -1,10 +1,12 @@
 //! Unstable allocated backend trait and the built-in implementations.
 
-use std::rc::Rc;
-use std::sync::Arc;
-
 #[cfg(feature = "unstable")]
 pub use private::Backend;
+
+use crate::alloc::rc::Rc;
+#[cfg(target_has_atomic = "ptr")]
+use crate::alloc::sync::Arc;
+use crate::alloc::vec::Vec;
 
 /// Sealed marker trait for allocated backend.
 #[cfg(not(feature = "unstable"))]
@@ -23,9 +25,12 @@ pub type Local = Rc<Vec<u8>>;
 pub type ThreadSafe = Arc<Vec<u8>>;
 
 pub mod private {
-    use std::mem::{align_of, ManuallyDrop};
-    use std::rc::Rc;
-    use std::sync::Arc;
+    use core::mem::{align_of, ManuallyDrop};
+
+    use crate::alloc::rc::Rc;
+    #[cfg(target_has_atomic = "ptr")]
+    use crate::alloc::sync::Arc;
+    use crate::alloc::vec::Vec;
 
     /// _Unsafe_ trait for reference counted allocated backend.
     ///
@@ -119,6 +124,7 @@ pub mod private {
         fn raw_is_valid(raw: Self::RawPointer) -> bool;
     }
 
+    #[cfg(target_has_atomic = "ptr")]
     unsafe impl Backend for Arc<Vec<u8>> {
         type RawPointer = *const Vec<u8>;
 
@@ -244,6 +250,7 @@ pub mod private {
 mod tests {
 
     use super::*;
+    use crate::alloc::vec;
 
     #[test]
     fn test_basic_rc() {

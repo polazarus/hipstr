@@ -72,8 +72,15 @@
 //! work on new and future architectures relying on large tagged pointers
 //! (e.g. CHERI 128-bit pointers).
 
+#![cfg_attr(not(feature = "std"), no_std)]
 #![warn(clippy::pedantic, clippy::nursery, clippy::cargo)]
 #![warn(unsafe_op_in_unsafe_fn)]
+
+#[cfg(not(feature = "std"))]
+pub(crate) extern crate alloc;
+
+#[cfg(feature = "std")]
+pub(crate) use std as alloc;
 
 mod backend;
 pub mod bytes;

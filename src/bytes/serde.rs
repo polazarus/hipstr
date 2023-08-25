@@ -1,8 +1,8 @@
-use std::borrow::Cow;
-
 use serde::{Deserialize, Serialize};
 
 use super::HipByt;
+use crate::alloc::borrow::Cow;
+use crate::alloc::vec::Vec;
 use crate::Backend;
 
 impl<'borrow, B> Serialize for HipByt<'borrow, B>

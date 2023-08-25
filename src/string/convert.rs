@@ -1,9 +1,13 @@
 //! Conversion trait implementations for `HipStr`.
 
-use std::borrow::Cow;
+#[cfg(feature = "std")]
 use std::net::ToSocketAddrs;
 
 use super::HipStr;
+use crate::alloc::borrow::Cow;
+use crate::alloc::boxed::Box;
+use crate::alloc::string::String;
+use crate::alloc::vec::Vec;
 use crate::bytes::HipByt;
 use crate::Backend;
 
@@ -27,6 +31,7 @@ where
     }
 }
 
+#[cfg(feature = "std")]
 impl<'borrow, B> AsRef<std::ffi::OsStr> for HipStr<'borrow, B>
 where
     B: Backend,
@@ -36,6 +41,7 @@ where
     }
 }
 
+#[cfg(feature = "std")]
 impl<'borrow, B> AsRef<std::path::Path> for HipStr<'borrow, B>
 where
     B: Backend,
@@ -102,6 +108,7 @@ where
     }
 }
 
+#[cfg(feature = "std")]
 impl<'borrow, B> From<HipStr<'borrow, B>> for std::ffi::OsString
 where
     B: Backend,
@@ -165,11 +172,11 @@ impl<'a, 'borrow, B> TryFrom<&'a [u8]> for HipStr<'borrow, B>
 where
     B: Backend,
 {
-    type Error = std::str::Utf8Error;
+    type Error = core::str::Utf8Error;
 
     #[inline]
     fn try_from(value: &'a [u8]) -> Result<Self, Self::Error> {
-        Ok(Self::from(std::str::from_utf8(value)?))
+        Ok(Self::from(core::str::from_utf8(value)?))
     }
 }
 
@@ -177,7 +184,7 @@ impl<'borrow, B> TryFrom<Vec<u8>> for HipStr<'borrow, B>
 where
     B: Backend,
 {
-    type Error = std::string::FromUtf8Error;
+    type Error = crate::alloc::string::FromUtf8Error;
 
     #[inline]
     fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
@@ -186,6 +193,7 @@ where
     }
 }
 
+#[cfg(feature = "std")]
 impl<'borrow, B> ToSocketAddrs for HipStr<'borrow, B>
 where
     B: Backend,
@@ -199,15 +207,20 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::borrow::Cow;
+    use core::ptr;
+    #[cfg(feature = "std")]
     use std::net::ToSocketAddrs;
 
+    use crate::alloc::borrow::Cow;
+    use crate::alloc::boxed::Box;
+    use crate::alloc::string::String;
+    use crate::alloc::vec::Vec;
     use crate::{HipByt, HipStr};
 
     #[test]
     fn test_as_ref() {
         let a = HipStr::from("abc");
-        assert!(std::ptr::eq(a.as_str(), a.as_ref()));
+        assert!(ptr::eq(a.as_str(), a.as_ref()));
     }
 
     #[test]
@@ -226,18 +239,18 @@ mod tests {
 
         let fv = HipStr::from(string);
         assert_eq!(fv.as_str(), slice);
-        assert!(std::ptr::eq(fv.as_ptr(), ptr_string));
+        assert!(ptr::eq(fv.as_ptr(), ptr_string));
 
         let fv = HipStr::from(b);
         assert_eq!(fv.as_str(), slice);
-        assert!(std::ptr::eq(fv.as_ptr(), ptr_b));
+        assert!(ptr::eq(fv.as_ptr(), ptr_b));
 
         let fc1 = HipStr::from(c1);
         assert_eq!(fc1.as_str(), slice);
 
         let fc2 = HipStr::from(c2);
         assert_eq!(fc2.as_str(), slice);
-        assert!(std::ptr::eq(fc2.as_ptr(), ptr_c2));
+        assert!(ptr::eq(fc2.as_ptr(), ptr_c2));
     }
 
     #[test]
@@ -258,6 +271,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "std")]
     fn into_os_string() {
         let h = HipStr::from("abc");
         let os_string: std::ffi::OsString = h.into();
@@ -333,25 +347,28 @@ mod tests {
     fn as_ref_bytes() {
         let h = HipStr::from("abc");
         let b: &[u8] = h.as_ref();
-        assert!(std::ptr::eq(h.as_bytes(), b));
+        assert!(ptr::eq(h.as_bytes(), b));
     }
 
+    #[cfg(feature = "std")]
     #[test]
     fn as_ref_os_str() {
         let h = HipStr::from("abc");
         let o: &std::ffi::OsStr = h.as_ref();
         assert_eq!(o, "abc");
-        assert!(std::ptr::eq(h.as_str().as_ref(), o));
+        assert!(ptr::eq(h.as_str().as_ref(), o));
     }
 
+    #[cfg(feature = "std")]
     #[test]
     fn as_ref_path() {
         let h = HipStr::from("abc");
         let p: &std::path::Path = h.as_ref();
         assert_eq!(p, std::path::Path::new("abc"));
-        assert!(std::ptr::eq(h.as_str().as_ref(), p));
+        assert!(ptr::eq(h.as_str().as_ref(), p));
     }
 
+    #[cfg(feature = "std")]
     #[test]
     fn to_sock_addrs() {
         let h = HipStr::from("0.0.0.0:80");

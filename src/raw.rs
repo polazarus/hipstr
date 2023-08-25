@@ -2,12 +2,13 @@
 //!
 //! Provides only the core features for the sequence of bytes.
 
-use std::mem::{forget, replace, size_of, ManuallyDrop};
-use std::ops::Range;
+use core::mem::{forget, replace, size_of, ManuallyDrop};
+use core::ops::Range;
 
 use allocated::Allocated;
 use borrowed::Borrowed;
 
+use crate::alloc::vec::Vec;
 use crate::Backend;
 
 mod allocated;

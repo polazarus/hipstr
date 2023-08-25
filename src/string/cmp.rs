@@ -1,8 +1,9 @@
 //! Comparison trait implementations for `HipStr`
 
-use std::borrow::Cow;
-
 use super::HipStr;
+use crate::alloc::borrow::Cow;
+use crate::alloc::boxed::Box;
+use crate::alloc::string::String;
 use crate::Backend;
 
 // Equality
@@ -120,6 +121,7 @@ where
     }
 }
 
+#[cfg(feature = "std")]
 impl<'borrow, B> PartialEq<std::ffi::OsStr> for HipStr<'borrow, B>
 where
     B: Backend,
@@ -130,6 +132,7 @@ where
     }
 }
 
+#[cfg(feature = "std")]
 impl<'borrow, B> PartialEq<HipStr<'borrow, B>> for std::ffi::OsStr
 where
     B: Backend,
@@ -140,6 +143,7 @@ where
     }
 }
 
+#[cfg(feature = "std")]
 impl<'a, 'borrow, B> PartialEq<&'a std::ffi::OsStr> for HipStr<'borrow, B>
 where
     B: Backend,
@@ -150,6 +154,7 @@ where
     }
 }
 
+#[cfg(feature = "std")]
 impl<'a, 'borrow, B> PartialEq<HipStr<'borrow, B>> for &'a std::ffi::OsStr
 where
     B: Backend,
@@ -160,6 +165,7 @@ where
     }
 }
 
+#[cfg(feature = "std")]
 impl<'borrow, B> PartialEq<std::ffi::OsString> for HipStr<'borrow, B>
 where
     B: Backend,
@@ -170,6 +176,7 @@ where
     }
 }
 
+#[cfg(feature = "std")]
 impl<'borrow, B> PartialEq<HipStr<'borrow, B>> for std::ffi::OsString
 where
     B: Backend,
@@ -185,7 +192,7 @@ where
     B: Backend,
 {
     #[inline]
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         self.as_str().cmp(other.as_str())
     }
 }
@@ -195,16 +202,17 @@ where
     B: Backend,
 {
     #[inline]
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         self.as_str().partial_cmp(other.as_str())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::borrow::Cow;
-    use std::cmp::Ordering;
+    use core::cmp::Ordering;
 
+    use crate::alloc::borrow::Cow;
+    use crate::alloc::boxed::Box;
     use crate::HipStr;
 
     #[test]
@@ -232,6 +240,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "std")]
     fn test_eq_os_str() {
         let s = "abc";
         let os: &std::ffi::OsStr = s.as_ref();
@@ -243,6 +252,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "std")]
     fn test_eq_os_string() {
         let s = "abc";
         let os: &std::ffi::OsStr = s.as_ref();

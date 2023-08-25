@@ -1,8 +1,9 @@
 //! Comparison trait implementations for `HipByt`
 
-use std::borrow::Cow;
-
 use super::HipByt;
+use crate::alloc::borrow::Cow;
+use crate::alloc::boxed::Box;
+use crate::alloc::vec::Vec;
 use crate::Backend;
 
 // Equality
@@ -167,7 +168,7 @@ where
     B: Backend,
 {
     #[inline]
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         self.as_slice().cmp(other.as_slice())
     }
 }
@@ -177,16 +178,18 @@ where
     B: Backend,
 {
     #[inline]
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         self.as_slice().partial_cmp(other.as_slice())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::borrow::Cow;
-    use std::cmp::Ordering;
+    use core::cmp::Ordering;
 
+    use crate::alloc::borrow::Cow;
+    use crate::alloc::boxed::Box;
+    use crate::alloc::vec::Vec;
     use crate::HipByt;
 
     #[test]

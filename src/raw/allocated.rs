@@ -1,7 +1,8 @@
-use std::mem::size_of;
-use std::ops::Range;
-use std::panic::{RefUnwindSafe, UnwindSafe};
+use core::mem::size_of;
+use core::ops::Range;
+use core::panic::{RefUnwindSafe, UnwindSafe};
 
+use crate::alloc::vec::Vec;
 use crate::Backend;
 
 #[repr(C)]
@@ -66,16 +67,13 @@ impl<B: Backend> Allocated<B> {
         // debug_assert!(self.is_valid()); // is_valid is not const!
 
         // SAFETY: Type invariant
-        unsafe { std::slice::from_raw_parts(self.ptr, self.len) }
+        unsafe { core::slice::from_raw_parts(self.ptr, self.len) }
     }
 
     /// Returns a mutable slice if possible (unique non-static reference).
     #[inline]
     pub unsafe fn as_mut_slice<'a>(self) -> Option<&'a mut [u8]> {
-        debug_assert!(
-            self.is_valid(),
-            "Inline::as_mut_slice on invalid representation"
-        );
+        debug_assert!(self.is_valid());
 
         // SAFETY: type invariant, valid owner
         let is_unique = unsafe { B::raw_is_unique(self.owner) };
@@ -84,7 +82,7 @@ impl<B: Backend> Allocated<B> {
             // SAFETY:
             // * unique -> no one else can "see" the string
             // * type invariant -> valid slice
-            Some(unsafe { std::slice::from_raw_parts_mut(self.ptr.cast_mut(), self.len) })
+            Some(unsafe { core::slice::from_raw_parts_mut(self.ptr.cast_mut(), self.len) })
         } else {
             None
         }
@@ -93,7 +91,7 @@ impl<B: Backend> Allocated<B> {
     /// Creates a new `Allocated` for some range with the same owner.
     #[inline]
     pub fn slice(&self, range: Range<usize>) -> Self {
-        debug_assert!(self.is_valid(), "Inline::slice on invalid representation");
+        debug_assert!(self.is_valid());
 
         assert!(range.start <= self.len);
         assert!(range.end <= self.len);
@@ -111,10 +109,7 @@ impl<B: Backend> Allocated<B> {
     /// Increments the reference count.
     #[inline]
     pub fn incr_ref_count(&self) {
-        debug_assert!(
-            self.is_valid(),
-            "Allocated::incr_ref_count on invalid representation"
-        );
+        debug_assert!(self.is_valid());
         // SAFETY: type invariant -> owner is valid
         unsafe { B::raw_increment_count(self.owner) };
     }
@@ -122,10 +117,7 @@ impl<B: Backend> Allocated<B> {
     /// Decrements the reference count.
     #[inline]
     pub fn decr_ref_count(self) {
-        debug_assert!(
-            self.is_valid(),
-            "Allocated::decr_ref_count on invalid representation"
-        );
+        debug_assert!(self.is_valid());
         // SAFETY: type invariant -> owner is valid
         unsafe { B::raw_decrement_count(self.owner) };
     }
@@ -147,10 +139,7 @@ impl<B: Backend> Allocated<B> {
 
     #[inline]
     pub fn try_into_vec(self) -> Result<Vec<u8>, Self> {
-        debug_assert!(
-            self.is_valid(),
-            "Allocated::try_into_vec on invalid representation"
-        );
+        debug_assert!(self.is_valid());
 
         let ptr = self.owner_vec().as_ptr();
         if self.ptr != ptr {
@@ -198,6 +187,7 @@ impl<B: Backend> Allocated<B> {
 #[cfg(test)]
 mod tests {
     use super::Allocated;
+    use crate::alloc::vec;
     use crate::Local;
 
     #[test]

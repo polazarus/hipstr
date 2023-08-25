@@ -1,8 +1,9 @@
 //! Conversion trait implementations for `HipByt`.
 
-use std::borrow::Cow;
-
 use super::HipByt;
+use crate::alloc::borrow::Cow;
+use crate::alloc::boxed::Box;
+use crate::alloc::vec::Vec;
 use crate::raw::Raw;
 use crate::Backend;
 
@@ -89,14 +90,17 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::borrow::Cow;
+    use core::ptr;
 
+    use super::*;
+    use crate::alloc::borrow::Cow;
+    use crate::alloc::vec;
     use crate::{HipByt, ThreadSafe};
 
     #[test]
     fn test_as_ref() {
         let a = HipByt::from(b"abc");
-        assert!(std::ptr::eq(a.as_slice(), a.as_ref()));
+        assert!(ptr::eq(a.as_slice(), a.as_ref()));
     }
 
     #[test]
@@ -118,11 +122,11 @@ mod tests {
 
         let fv = HipByt::from(v);
         assert_eq!(fv.as_slice(), &a);
-        assert!(std::ptr::eq(fv.as_ptr(), ptr_v));
+        assert!(ptr::eq(fv.as_ptr(), ptr_v));
 
         let fv = HipByt::from(b);
         assert_eq!(fv.as_slice(), &a);
-        assert!(std::ptr::eq(fv.as_ptr(), ptr_b));
+        assert!(ptr::eq(fv.as_ptr(), ptr_b));
 
         type H<'a> = crate::bytes::HipByt<'a, ThreadSafe>;
         let fc1 = H::from(c1);
@@ -130,7 +134,7 @@ mod tests {
 
         let fc2 = H::from(c2);
         assert_eq!(fc2.as_slice(), &a);
-        assert!(std::ptr::eq(fc2.as_ptr(), ptr_c2));
+        assert!(ptr::eq(fc2.as_ptr(), ptr_c2));
     }
 
     #[test]
