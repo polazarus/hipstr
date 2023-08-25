@@ -280,7 +280,8 @@ where
     /// ```
     #[inline]
     pub fn to_mut_slice(&mut self) -> &mut [u8] {
-        self.0.to_mut_slice()
+        self.0.make_unique();
+        unsafe { self.0.as_mut_slice().unwrap_unchecked() }
     }
 
     /// Extracts a slice as its own `HipByt`.
@@ -432,6 +433,21 @@ where
     #[inline]
     pub fn push(&mut self, value: u8) {
         self.0.push_slice(&[value]);
+    }
+
+    /// Makes the data owned, copying it if the data is actually borrowed.
+    ///
+    /// ```
+    /// # use hipstr::HipByt;
+    /// let v = vec![42; 42];
+    /// let h = HipByt::borrowed(&v[..]);
+    /// // drop(v); // err, v is borrowed
+    /// let h = h.into_owned();
+    /// drop(v); // ok
+    /// assert_eq!(h, [42; 42]);
+    /// ```
+    pub fn into_owned(self) -> HipByt<'static, B> {
+        HipByt(self.0.into_owned())
     }
 
     pub(crate) fn take_vec(&mut self) -> Vec<u8> {
@@ -1304,5 +1320,27 @@ mod tests {
         let mut a = HipByt::from(b"abc");
         a.push(b'd');
         assert_eq!(a, b"abcd");
+    }
+
+    #[test]
+    fn test_to_owned() {
+        let b = b"abc";
+        let h = HipByt::from(b);
+        assert!(h.is_inline());
+        let h = h.into_owned();
+        assert!(h.is_inline());
+
+        let v = vec![42; 42];
+        let a = HipByt::borrowed(&v[0..2]);
+        let a = a.into_owned();
+        drop(v);
+        assert_eq!(a, [42, 42]);
+
+        let v = vec![42; 42];
+        let a = HipByt::from(&v[..]);
+        drop(v);
+        let p = a.as_ptr();
+        let a = a.into_owned();
+        assert_eq!(a.as_ptr(), p);
     }
 }

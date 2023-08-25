@@ -166,32 +166,31 @@ impl<B: Backend> Allocated<B> {
             })
     }
 
-    /// Returns `true` if the underlying vector can be mutated (easily), that
-    /// is, if their only one reference to the underlying vector
-    /// and the current slice starts at index 0 of the underlying vector.
-    pub fn can_push(&self) -> bool {
+    /// Returns `true` if there is only one reference to the underlying vector.
+    pub fn is_unique(&self) -> bool {
         debug_assert!(self.is_valid());
 
         // SAFETY: type invariant -> owner is valid
-        let is_unique = unsafe { B::raw_is_unique(self.owner) };
-
-        // SAFETY: type invariant -> owner is valid
-        let ptr = unsafe { B::raw_as_vec(self.owner).as_ptr() };
-
-        is_unique && ptr == self.ptr
+        unsafe { B::raw_is_unique(self.owner) }
     }
 
-    /// Push a slice at the end of the underlying vector.
+    /// Pushes a slice at the end of the underlying vector.
     ///
     /// # Safety
     ///
     /// The reference must be unique.
     pub unsafe fn push_slice_unchecked(&mut self, addition: &[u8]) {
         let v = unsafe { B::raw_get_mut_unchecked(self.owner) };
-        v.truncate(self.len);
+
+        // SAFETY: compute the shift from within the vector range (type invariant)
+        let shift = unsafe { self.ptr.offset_from(v.as_ptr()) as usize };
+        v.truncate(shift + self.len);
         v.extend_from_slice(addition);
         self.len += addition.len();
-        self.ptr = v.as_ptr();
+
+        // SAFETY: shift to within the vector range (the shift was already
+        // in the old range).
+        self.ptr = unsafe { v.as_ptr().add(shift) };
     }
 }
 

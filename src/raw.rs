@@ -221,30 +221,6 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
         }
     }
 
-    #[allow(clippy::wrong_self_convention)]
-    #[inline]
-    pub fn to_mut_slice(&mut self) -> &mut [u8] {
-        let copy = if self.is_inline() {
-            // SAFETY: representation is checked
-            return unsafe { &mut self.inline }.as_mut_slice();
-        } else if self.is_allocated() {
-            // SAFETY: representation is checked and data stay allocated for the lifetime of self
-            if let Some(slice) = unsafe { self.allocated.as_mut_slice() } {
-                return slice;
-            }
-            // SAFETY: representation is checked
-            let allocated = unsafe { self.allocated };
-            Self::from_slice(allocated.as_slice())
-        } else {
-            // SAFETY: representation is checked
-            let borrowed = unsafe { self.borrowed };
-            Self::from_slice(borrowed.as_slice())
-        };
-        *self = copy;
-        debug_assert!(self.is_normalized());
-        self.as_mut_slice().unwrap()
-    }
-
     #[inline]
     pub fn push_slice(&mut self, addition: &[u8]) {
         let new_len = self.len() + addition.len();
@@ -255,7 +231,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
                 *self = unsafe { Self::inline_unchecked(self.as_slice()) };
             }
             unsafe { self.inline.push_slice_unchecked(addition) };
-        } else if self.is_allocated() && unsafe { self.allocated.can_push() } {
+        } else if self.is_allocated() && unsafe { self.allocated.is_unique() } {
             // current allocation can be pushed into
             unsafe { self.allocated.push_slice_unchecked(addition) };
         } else {
@@ -321,6 +297,80 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
         } else {
             None
         }
+    }
+
+    /// Makes the data owned, copying it if it's not already owned.
+    #[inline]
+    pub fn into_owned(self) -> Raw<'static, B> {
+        // SAFETY: take ownership of the allocated
+        // the old value do not need to be dropped
+        let old = ManuallyDrop::new(self);
+        if old.is_borrowed() {
+            Raw::from_slice(old.as_slice())
+        } else if old.is_inline() {
+            // SAFETY: representation is checked above
+            Raw {
+                inline: unsafe { old.inline },
+            }
+        } else {
+            // => old.is_allocated()
+
+            // SAFETY: take ownership of the allocated
+            // the old value should not be dropped
+            let old = ManuallyDrop::new(old);
+            // SAFETY: representation is checked above
+            Raw {
+                allocated: unsafe { old.allocated },
+            }
+        }
+    }
+
+    /// Makes the data owned and unique, copying it if necessary.
+    ///
+    /// # Safety
+    ///
+    /// Must be non-unique, i.e. `is_unique()` must return `true` **beforehand**.
+    #[inline]
+    pub unsafe fn into_unique_unchecked(self) -> Self {
+        debug_assert!(!self.is_unique());
+
+        // SAFETY: take ownership of the allocated
+        // the old value do not need to be dropped
+        let old = ManuallyDrop::new(self);
+        if old.is_borrowed() {
+            Raw::from_slice(old.as_slice())
+        } else {
+            debug_assert!(old.is_allocated());
+
+            // SAFETY: take ownership of the allocated
+            // the old value should not be dropped
+            let old = ManuallyDrop::new(old);
+
+            // SAFETY: representation is checked above
+            let allocated = unsafe { old.allocated };
+
+            debug_assert!(allocated.len() > INLINE_CAPACITY);
+
+            let new = Self::allocate(allocated.as_slice());
+            allocated.decr_ref_count();
+            new
+        }
+    }
+
+    /// Makes the underlying data uniquely owned, copying if needed.
+    #[inline]
+    pub fn make_unique(&mut self) {
+        if !self.is_unique() {
+            let old = replace(self, Self::empty());
+            // SAFETY: non uniqueness checked above
+            *self = unsafe { old.into_unique_unchecked() };
+        }
+    }
+
+    /// Returns `true` if the data is uniquely owned.
+    #[inline]
+    pub fn is_unique(&self) -> bool {
+        self.is_inline() || (self.is_allocated() && unsafe { self.allocated.is_unique() })
     }
 
     #[inline]

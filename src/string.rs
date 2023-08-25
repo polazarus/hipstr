@@ -706,6 +706,21 @@ where
         let s = ch.encode_utf8(&mut data);
         self.0.push_slice(s.as_bytes());
     }
+
+    /// Makes the string owned, copying the data if it is actually borrowed.
+    ///
+    /// ```
+    /// # use hipstr::HipStr;
+    /// let s: String = ('a'..'z').collect();
+    /// let h = HipStr::borrowed(&s[..]);
+    /// // drop(s); // err, s is borrowed
+    /// let h = h.into_owned();
+    /// drop(s); // ok
+    /// assert_eq!(h, ('a'..'z').collect::<String>());
+    /// ```
+    pub fn into_owned(self) -> HipStr<'static, B> {
+        HipStr(self.0.into_owned())
+    }
 }
 
 impl<B> HipStr<'static, B>
@@ -1649,5 +1664,29 @@ mod tests {
         assert_eq!(a, "abcd");
         a.push('🦀');
         assert_eq!(a, "abcd🦀");
+    }
+
+    #[test]
+    fn test_to_owned() {
+        let b = "abc";
+        let h = HipStr::from(b);
+        assert!(h.is_inline());
+        let h = h.into_owned();
+        assert!(h.is_inline());
+
+        let r = "*".repeat(42);
+
+        let v = r.clone();
+        let a = HipStr::borrowed(&v[0..2]);
+        let a = a.into_owned();
+        drop(v);
+        assert_eq!(a, &r[0..2]);
+
+        let v = r.clone();
+        let a = HipStr::from(&v[..]);
+        drop(v);
+        let p = a.as_ptr();
+        let a = a.into_owned();
+        assert_eq!(a.as_ptr(), p);
     }
 }
