@@ -16,23 +16,23 @@ pub struct Borrowed<'borrow> {
 }
 
 impl<'borrow> Borrowed<'borrow> {
+    /// Creates a new borrowed representation.
     #[inline]
     pub const fn new(slice: &'borrow [u8]) -> Self {
         Self { slice, reserved: 0 }
     }
 
+    /// Returns the length of the underlying data.
     #[inline]
     pub const fn len(&self) -> usize {
-        debug_assert!(self.is_valid(), "Static::len on an invalid representation");
+        debug_assert!(self.is_valid());
         self.slice.len()
     }
 
+    /// Returns the underlying data as a slice
     #[inline]
     pub const fn as_slice(&self) -> &'borrow [u8] {
-        debug_assert!(
-            self.is_valid(),
-            "Static::as_slice on an invalid representation"
-        );
+        debug_assert!(self.is_valid());
         self.slice
     }
 
