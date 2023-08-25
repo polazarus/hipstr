@@ -183,6 +183,7 @@ impl<B: Backend> Allocated<B> {
         let v = unsafe { B::raw_get_mut_unchecked(self.owner) };
 
         // SAFETY: compute the shift from within the vector range (type invariant)
+        #[allow(clippy::cast_sign_loss)]
         let shift = unsafe { self.ptr.offset_from(v.as_ptr()) as usize };
         v.truncate(shift + self.len);
         v.extend_from_slice(addition);
