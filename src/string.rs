@@ -706,6 +706,21 @@ where
         let s = ch.encode_utf8(&mut data);
         self.0.push_slice(s.as_bytes());
     }
+
+    /// Makes the string owned, copying the data if it is actually borrowed.
+    ///
+    /// ```
+    /// # use hipstr::HipStr;
+    /// let s: String = ('a'..'z').collect();
+    /// let h = HipStr::borrowed(&s[..]);
+    /// // drop(s); // err, s is borrowed
+    /// let h = h.into_owned();
+    /// drop(s); // ok
+    /// assert_eq!(h, ('a'..'z').collect::<String>());
+    /// ```
+    pub fn into_owned(self) -> HipStr<'static, B> {
+        HipStr(self.0.into_owned())
+    }
 }
 
 impl<B> HipStr<'static, B>
@@ -1615,11 +1630,19 @@ mod tests {
 
     #[test]
     fn test_push_slice_allocated() {
+        // borrowed, not unique
+        let mut a = HipStr::borrowed(FORTY_TWOS);
+        a.push_str("abc");
+        assert_eq!(&a[0..42], FORTY_TWOS);
+        assert_eq!(&a[42..], "abc");
+
+        // allocated, unique
         let mut a = HipStr::from(FORTY_TWOS);
         a.push_str("abc");
         assert_eq!(&a[0..42], FORTY_TWOS);
         assert_eq!(&a[42..], "abc");
 
+        // allocated, not unique
         let mut a = HipStr::from(FORTY_TWOS);
         let pa = a.as_ptr();
         let b = a.clone();
@@ -1630,13 +1653,17 @@ mod tests {
         assert_eq!(&a[42..], "abc");
         assert_eq!(b, FORTY_TWOS);
 
+        // allocated, unique but shifted
         let mut a = {
             let x = HipStr::from(FORTY_TWOS);
-            x.slice(1..42) // need to reallocate (do not shift)
+            x.slice(1..39)
         };
+        let p = a.as_ptr();
         a.push_str("abc");
-        assert_eq!(&a[..41], &FORTY_TWOS[1..42]);
-        assert_eq!(&a[41..], "abc");
+        assert_eq!(&a[..38], &FORTY_TWOS[1..39]);
+        assert_eq!(&a[38..], "abc");
+        assert_eq!(a.as_ptr(), p);
+        // => the underlying vector is big enough
     }
 
     #[test]
@@ -1649,5 +1676,29 @@ mod tests {
         assert_eq!(a, "abcd");
         a.push('🦀');
         assert_eq!(a, "abcd🦀");
+    }
+
+    #[test]
+    fn test_to_owned() {
+        let b = "abc";
+        let h = HipStr::from(b);
+        assert!(h.is_inline());
+        let h = h.into_owned();
+        assert!(h.is_inline());
+
+        let r = "*".repeat(42);
+
+        let v = r.clone();
+        let a = HipStr::borrowed(&v[0..2]);
+        let a = a.into_owned();
+        drop(v);
+        assert_eq!(a, &r[0..2]);
+
+        let v = r.clone();
+        let a = HipStr::from(&v[..]);
+        drop(v);
+        let p = a.as_ptr();
+        let a = a.into_owned();
+        assert_eq!(a.as_ptr(), p);
     }
 }

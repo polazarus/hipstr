@@ -280,7 +280,8 @@ where
     /// ```
     #[inline]
     pub fn to_mut_slice(&mut self) -> &mut [u8] {
-        self.0.to_mut_slice()
+        self.0.make_unique();
+        unsafe { self.0.as_mut_slice().unwrap_unchecked() }
     }
 
     /// Extracts a slice as its own `HipByt`.
@@ -432,6 +433,21 @@ where
     #[inline]
     pub fn push(&mut self, value: u8) {
         self.0.push_slice(&[value]);
+    }
+
+    /// Makes the data owned, copying it if the data is actually borrowed.
+    ///
+    /// ```
+    /// # use hipstr::HipByt;
+    /// let v = vec![42; 42];
+    /// let h = HipByt::borrowed(&v[..]);
+    /// // drop(v); // err, v is borrowed
+    /// let h = h.into_owned();
+    /// drop(v); // ok
+    /// assert_eq!(h, [42; 42]);
+    /// ```
+    pub fn into_owned(self) -> HipByt<'static, B> {
+        HipByt(self.0.into_owned())
     }
 
     pub(crate) fn take_vec(&mut self) -> Vec<u8> {
@@ -1272,11 +1288,19 @@ mod tests {
 
     #[test]
     fn test_push_slice_allocated() {
+        // borrowed, not unique
+        let mut a = HipByt::borrowed(FORTY_TWOS);
+        a.push_slice(b"abc");
+        assert_eq!(&a[0..42], FORTY_TWOS);
+        assert_eq!(&a[42..], b"abc");
+
+        // allocated, unique
         let mut a = HipByt::from(FORTY_TWOS);
         a.push_slice(b"abc");
         assert_eq!(&a[0..42], FORTY_TWOS);
         assert_eq!(&a[42..], b"abc");
 
+        // allocated, not unique
         let mut a = HipByt::from(FORTY_TWOS);
         let pa = a.as_ptr();
         let b = a.clone();
@@ -1287,13 +1311,17 @@ mod tests {
         assert_eq!(&a[42..], b"abc");
         assert_eq!(b, FORTY_TWOS);
 
+        // allocated, unique but shifted
         let mut a = {
             let x = HipByt::from(FORTY_TWOS);
-            x.slice(1..42) // need to reallocate (do not shift)
+            x.slice(1..39)
         };
+        let p = a.as_ptr();
         a.push_slice(b"abc");
-        assert_eq!(&a[..41], &FORTY_TWOS[1..42]);
-        assert_eq!(&a[41..], b"abc");
+        assert_eq!(&a[..38], &FORTY_TWOS[1..39]);
+        assert_eq!(&a[38..], b"abc");
+        assert_eq!(a.as_ptr(), p);
+        // => the underlying vector is big enough
     }
 
     #[test]
@@ -1304,5 +1332,27 @@ mod tests {
         let mut a = HipByt::from(b"abc");
         a.push(b'd');
         assert_eq!(a, b"abcd");
+    }
+
+    #[test]
+    fn test_to_owned() {
+        let b = b"abc";
+        let h = HipByt::from(b);
+        assert!(h.is_inline());
+        let h = h.into_owned();
+        assert!(h.is_inline());
+
+        let v = vec![42; 42];
+        let a = HipByt::borrowed(&v[0..2]);
+        let a = a.into_owned();
+        drop(v);
+        assert_eq!(a, [42, 42]);
+
+        let v = vec![42; 42];
+        let a = HipByt::from(&v[..]);
+        drop(v);
+        let p = a.as_ptr();
+        let a = a.into_owned();
+        assert_eq!(a.as_ptr(), p);
     }
 }
