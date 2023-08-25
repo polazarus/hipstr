@@ -73,10 +73,7 @@ impl<B: Backend> Allocated<B> {
     /// Returns a mutable slice if possible (unique non-static reference).
     #[inline]
     pub unsafe fn as_mut_slice<'a>(self) -> Option<&'a mut [u8]> {
-        debug_assert!(
-            self.is_valid(),
-            "Inline::as_mut_slice on invalid representation"
-        );
+        debug_assert!(self.is_valid());
 
         // SAFETY: type invariant, valid owner
         let is_unique = unsafe { B::raw_is_unique(self.owner) };
@@ -94,7 +91,7 @@ impl<B: Backend> Allocated<B> {
     /// Creates a new `Allocated` for some range with the same owner.
     #[inline]
     pub fn slice(&self, range: Range<usize>) -> Self {
-        debug_assert!(self.is_valid(), "Inline::slice on invalid representation");
+        debug_assert!(self.is_valid());
 
         assert!(range.start <= self.len);
         assert!(range.end <= self.len);
@@ -112,10 +109,7 @@ impl<B: Backend> Allocated<B> {
     /// Increments the reference count.
     #[inline]
     pub fn incr_ref_count(&self) {
-        debug_assert!(
-            self.is_valid(),
-            "Allocated::incr_ref_count on invalid representation"
-        );
+        debug_assert!(self.is_valid());
         // SAFETY: type invariant -> owner is valid
         unsafe { B::raw_increment_count(self.owner) };
     }
@@ -123,10 +117,7 @@ impl<B: Backend> Allocated<B> {
     /// Decrements the reference count.
     #[inline]
     pub fn decr_ref_count(self) {
-        debug_assert!(
-            self.is_valid(),
-            "Allocated::decr_ref_count on invalid representation"
-        );
+        debug_assert!(self.is_valid());
         // SAFETY: type invariant -> owner is valid
         unsafe { B::raw_decrement_count(self.owner) };
     }
@@ -148,10 +139,7 @@ impl<B: Backend> Allocated<B> {
 
     #[inline]
     pub fn try_into_vec(self) -> Result<Vec<u8>, Self> {
-        debug_assert!(
-            self.is_valid(),
-            "Allocated::try_into_vec on invalid representation"
-        );
+        debug_assert!(self.is_valid());
 
         let ptr = self.owner_vec().as_ptr();
         if self.ptr != ptr {
