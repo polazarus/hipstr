@@ -1288,11 +1288,19 @@ mod tests {
 
     #[test]
     fn test_push_slice_allocated() {
+        // borrowed, not unique
+        let mut a = HipByt::borrowed(FORTY_TWOS);
+        a.push_slice(b"abc");
+        assert_eq!(&a[0..42], FORTY_TWOS);
+        assert_eq!(&a[42..], b"abc");
+
+        // allocated, unique
         let mut a = HipByt::from(FORTY_TWOS);
         a.push_slice(b"abc");
         assert_eq!(&a[0..42], FORTY_TWOS);
         assert_eq!(&a[42..], b"abc");
 
+        // allocated, not unique
         let mut a = HipByt::from(FORTY_TWOS);
         let pa = a.as_ptr();
         let b = a.clone();
@@ -1303,13 +1311,17 @@ mod tests {
         assert_eq!(&a[42..], b"abc");
         assert_eq!(b, FORTY_TWOS);
 
+        // allocated, unique but shifted
         let mut a = {
             let x = HipByt::from(FORTY_TWOS);
-            x.slice(1..42) // need to reallocate (do not shift)
+            x.slice(1..39)
         };
+        let p = a.as_ptr();
         a.push_slice(b"abc");
-        assert_eq!(&a[..41], &FORTY_TWOS[1..42]);
-        assert_eq!(&a[41..], b"abc");
+        assert_eq!(&a[..38], &FORTY_TWOS[1..39]);
+        assert_eq!(&a[38..], b"abc");
+        assert_eq!(a.as_ptr(), p);
+        // => the underlying vector is big enough
     }
 
     #[test]
