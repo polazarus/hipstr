@@ -1,7 +1,8 @@
+/// Inline string.
 use core::mem::MaybeUninit;
 use core::ptr::copy_nonoverlapping;
 
-//// Inline string.
+/// Inline string.
 ///
 /// Warning!
 /// For big-endian platform, the shifted length is **after** the data.
@@ -71,20 +72,18 @@ impl<const INLINE_CAPACITY: usize> Inline<INLINE_CAPACITY> {
     /// Returns the length of this inline string.
     #[inline]
     pub const fn len(&self) -> usize {
-        debug_assert!(self.is_valid(), "Inline::len on an invalid representation");
+        debug_assert!(self.is_valid());
 
         (self.shifted_len >> 1) as usize
     }
 
-    /// Returns an immutable view of this `Inline` string.
+    /// Returns an immutable view of this inline string.
     #[inline]
     pub const fn as_slice(&self) -> &[u8] {
-        debug_assert!(
-            self.is_valid(),
-            "Inline::as_slice on an invalid representation"
-        );
+        debug_assert!(self.is_valid());
 
-        // XXX waiting for const_slice_index and maybe_uninit_slice
+        // XXX could be done with less unsafe one day:
+        // waiting for const_slice_index and maybe_uninit_slice
         let data = self.data.as_ptr();
         let len = self.len();
 
@@ -92,15 +91,15 @@ impl<const INLINE_CAPACITY: usize> Inline<INLINE_CAPACITY> {
         unsafe { core::slice::from_raw_parts(data.cast(), len) }
     }
 
-    /// Returns a mutable view of this `Inline` string.
+    /// Returns a mutable view of this inline string.
     #[inline]
     pub fn as_mut_slice(&mut self) -> &mut [u8] {
-        // XXX const: waiting for const_mut_refs
+        // XXX should add const: waiting for const_mut_refs
 
-        debug_assert!(
-            self.is_valid(),
-            "Inline::as_mut_slice on an invalid representation"
-        );
+        debug_assert!(self.is_valid());
+
+        // XXX could be done without less unsafe: maybe_uninit_slice
+        // and const-ly: const_mut_refs, const_slice_index
         let data = self.data.as_mut_ptr();
         let len = self.len();
 
@@ -108,18 +107,19 @@ impl<const INLINE_CAPACITY: usize> Inline<INLINE_CAPACITY> {
         unsafe { core::slice::from_raw_parts_mut(data.cast(), len) }
     }
 
-    /// Return `true` iff this representation is valid.
+    /// Returns `true` iff this representation is valid.
     #[inline]
     pub const fn is_valid(&self) -> bool {
         (self.shifted_len & 1) != 0
     }
 
+    /// Returns the actual `const`-parameter for inline capacity of this type.
     #[inline]
     pub const fn capacity() -> usize {
         INLINE_CAPACITY
     }
 
-    /// Push a short slice into this inline string.
+    /// Pushes a short slice into this inline string.
     ///
     /// # Safety
     ///
@@ -129,6 +129,9 @@ impl<const INLINE_CAPACITY: usize> Inline<INLINE_CAPACITY> {
         let len = self.len();
         let add_len = addition.len();
         let new_len = len + add_len;
+
+        debug_assert!(new_len <= INLINE_CAPACITY);
+
         unsafe {
             copy_nonoverlapping(
                 addition.as_ptr().cast(),
