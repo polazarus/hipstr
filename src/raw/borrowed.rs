@@ -1,8 +1,11 @@
-/// Static string.
+//! Representation for borrowed slice.
+
+/// Borrowed slice representation.
 ///
-/// Warning!
-/// For big-endian platform, the reserved word is **after** the data.
-/// For little-endian platform, the reserved word is **before** the data.
+/// # Warning!
+///
+/// For big-endian platform, the reserved word is **after** the slice.
+/// For little-endian platform, the reserved word is **before** the slice.
 #[derive(Clone, Copy)]
 #[repr(C)]
 pub struct Borrowed<'borrow> {

@@ -1,10 +1,12 @@
-/// Inline string.
+//! Inline representation.
+
 use core::mem::MaybeUninit;
 use core::ptr::copy_nonoverlapping;
 
-/// Inline string.
+/// Inline representation.
 ///
-/// Warning!
+/// # Warning!
+///
 /// For big-endian platform, the shifted length is **after** the data.
 /// For little-endian platform, the shifted length is **before** the data.
 #[derive(Clone, Copy)]

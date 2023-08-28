@@ -1,4 +1,5 @@
-/// Allocated representation.
+//! Allocated representation.
+
 use core::mem::size_of;
 use core::ops::Range;
 use core::panic::{RefUnwindSafe, UnwindSafe};
