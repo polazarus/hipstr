@@ -1270,9 +1270,51 @@ mod tests {
 
     #[test]
     fn test_push_slice_borrowed() {
-        let mut a = HipByt::borrowed(b"abc");
-        a.push_slice(b"def");
-        assert_eq!(a, b"abcdef");
+        #[track_caller]
+        fn should_inline(input: &[u8], addition: &[u8], expected: &[u8]) {
+            let mut a = HipByt::borrowed(input);
+            assert!(a.is_borrowed());
+            a.push_slice(addition);
+            assert!(a.is_inline());
+            assert_eq!(a, expected);
+        }
+
+        #[track_caller]
+        fn should_allocate(input: &[u8], addition: &[u8], expected: &[u8]) {
+            let mut a = HipByt::borrowed(input);
+            assert!(a.is_borrowed());
+            a.push_slice(addition);
+            assert!(a.is_allocated());
+            assert_eq!(a, expected);
+        }
+
+        should_inline(b"abc", b"def", b"abcdef");
+
+        for i in 0..(INLINE_CAPACITY - 1) {
+            // add one byte to a byte string of variable length (< inline capacity)
+            should_inline(&FORTY_TWOS[..i], &[42], &FORTY_TWOS[..i + 1]);
+
+            // fill to inline capacity
+            should_inline(
+                &FORTY_TWOS[..i],
+                &FORTY_TWOS[..INLINE_CAPACITY - i],
+                &FORTY_TWOS[..INLINE_CAPACITY],
+            );
+
+            // overfill by one
+            should_allocate(
+                &FORTY_TWOS[..i],
+                &FORTY_TWOS[..INLINE_CAPACITY - i + 1],
+                &FORTY_TWOS[..INLINE_CAPACITY + 1],
+            );
+        }
+
+        // add one byte to a byte string with a length at max inline capacity
+        should_allocate(
+            &FORTY_TWOS[..INLINE_CAPACITY],
+            &FORTY_TWOS[..1],
+            &FORTY_TWOS[..INLINE_CAPACITY + 1],
+        );
 
         let mut a = HipByt::borrowed(FORTY_TWOS);
         a.push_slice(b"abc");
@@ -1282,32 +1324,69 @@ mod tests {
 
     #[test]
     fn test_push_slice_inline() {
-        let mut a = HipByt::from(b"abc");
-        a.push_slice(b"def");
-        assert_eq!(a, b"abcdef");
+        #[track_caller]
+        fn should_stay_inline(input: &[u8], addition: &[u8], expected: &[u8]) {
+            let mut a = HipByt::from(input);
+            assert!(a.is_inline());
+            a.push_slice(addition);
+            assert!(a.is_inline());
+            assert_eq!(a, expected);
+        }
+        #[track_caller]
+        fn should_allocate(input: &[u8], addition: &[u8], expected: &[u8]) {
+            let mut a = HipByt::from(input);
+            assert!(a.is_inline());
+            a.push_slice(addition);
+            assert!(a.is_allocated());
+            assert_eq!(a, expected);
+        }
+
+        should_stay_inline(b"abc", b"def", b"abcdef");
 
         let mut a = HipByt::from(b"abc");
         a.push_slice(FORTY_TWOS);
         assert_eq!(&a[..3], b"abc");
         assert_eq!(&a[3..], FORTY_TWOS);
+
+        for i in 0..(INLINE_CAPACITY - 1) {
+            // add one byte to an inline byte string of variable length
+            should_stay_inline(&FORTY_TWOS[..i], &[42], &FORTY_TWOS[..i + 1]);
+
+            // fill to inline capacity
+            should_stay_inline(
+                &FORTY_TWOS[..i],
+                &FORTY_TWOS[..INLINE_CAPACITY - i],
+                &FORTY_TWOS[..INLINE_CAPACITY],
+            );
+
+            // overfill by one
+            should_allocate(
+                &FORTY_TWOS[..i],
+                &FORTY_TWOS[..INLINE_CAPACITY - i + 1],
+                &FORTY_TWOS[..INLINE_CAPACITY + 1],
+            );
+        }
+
+        // add one byte to an inline byte string at max length
+        should_allocate(
+            &FORTY_TWOS[..INLINE_CAPACITY],
+            &FORTY_TWOS[..1],
+            &FORTY_TWOS[..INLINE_CAPACITY + 1],
+        );
     }
 
     #[test]
     fn test_push_slice_allocated() {
-        // borrowed, not unique
-        let mut a = HipByt::borrowed(FORTY_TWOS);
-        a.push_slice(b"abc");
-        assert_eq!(&a[0..42], FORTY_TWOS);
-        assert_eq!(&a[42..], b"abc");
-
         // allocated, unique
         let mut a = HipByt::from(FORTY_TWOS);
+        assert!(a.is_allocated());
         a.push_slice(b"abc");
         assert_eq!(&a[0..42], FORTY_TWOS);
         assert_eq!(&a[42..], b"abc");
 
         // allocated, not unique
         let mut a = HipByt::from(FORTY_TWOS);
+        assert!(a.is_allocated());
         let pa = a.as_ptr();
         let b = a.clone();
         assert_eq!(pa, b.as_ptr());
@@ -1317,11 +1396,12 @@ mod tests {
         assert_eq!(&a[42..], b"abc");
         assert_eq!(b, FORTY_TWOS);
 
-        // allocated, unique but shifted
+        // allocated, unique but sliced
         let mut a = {
             let x = HipByt::from(FORTY_TWOS);
             x.slice(1..39)
         };
+        assert!(a.is_allocated());
         let p = a.as_ptr();
         a.push_slice(b"abc");
         assert_eq!(&a[..38], &FORTY_TWOS[1..39]);
