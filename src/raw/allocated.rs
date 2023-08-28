@@ -1,3 +1,4 @@
+/// Allocated representation.
 use core::mem::size_of;
 use core::ops::Range;
 use core::panic::{RefUnwindSafe, UnwindSafe};
@@ -5,6 +6,12 @@ use core::panic::{RefUnwindSafe, UnwindSafe};
 use crate::alloc::vec::Vec;
 use crate::Backend;
 
+/// Allocated representation.
+///
+/// # Warning!
+///
+/// For big-endian platform, the owner pointer is **after** the slice.
+/// For little-endian platform, the owner pointer is **before** the slice.
 #[repr(C)]
 pub struct Allocated<B: Backend> {
     #[cfg(target_endian = "little")]
@@ -124,8 +131,17 @@ impl<B: Backend> Allocated<B> {
 
     /// Return `true` iff this representation is valid.
     #[inline]
+    #[cfg(debug_assertions)]
     pub fn is_valid(&self) -> bool {
-        B::raw_is_valid(self.owner)
+        B::raw_is_valid(self.owner) && {
+            let owner = unsafe { B::raw_as_vec(self.owner) };
+            let owner_ptr = owner.as_ptr();
+            let shift = unsafe { self.ptr.offset_from(owner_ptr) };
+            shift >= 0 && {
+                let shift = shift as usize;
+                shift <= owner.len() && shift + self.len <= owner.len()
+            }
+        }
     }
 
     /// Returns a reference to the underlying vector.
