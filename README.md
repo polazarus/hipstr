@@ -12,7 +12,7 @@ Yet another string for Rust 🦀
 * no copy **borrow** via `borrowed` (a `const` constructor) or `from_static`
 * no alloc **small strings** (_23 bytes_ on 64-bit platform)
 * no copy **owned slices**
-* **zero dependency**
+* **zero dependency** and compatible `no_std` with `alloc`
 
 And **bytes** too!
 
@@ -31,6 +31,7 @@ let _user = greetings.slice(6..): // no copy
 
 ## ✏️ Features
 
+* `std` (default): uses `std` rather than `core` and `alloc`, and also provides more trait implementations (for comparison, conversions, and errors)
 * `serde`: provides serialization/deserialization support with `serde` crate
 * `unstable`: exposes internal `Backend` trait that may change at any moment
 

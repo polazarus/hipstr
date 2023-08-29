@@ -71,6 +71,12 @@
 //! For now, most common architectures are like that. However, `hipstr` will not
 //! work on new and future architectures relying on large tagged pointers
 //! (e.g. CHERI 128-bit pointers).
+//!
+//! # Features
+//!
+//! * `std` (default): uses `std` rather than `core` and `alloc`, and also provides more trait implementations (for comparison, conversions, and errors)
+//! * `serde`: provides serialization/deserialization support with `serde` crate
+//! * `unstable`: exposes internal `Backend` trait that may change at any moment
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![warn(clippy::pedantic, clippy::nursery, clippy::cargo)]
