@@ -328,12 +328,21 @@ where
     pub fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, SliceError<B>> {
         let range = simplify_range(range, self.len())
             .map_err(|(start, end, kind)| SliceError::new(kind, start, end, self))?;
-        Ok(Self(self.0.slice(range)))
+        let slice = unsafe { self.0.slice_unchecked(range) };
+        Ok(Self(slice))
     }
 
+    /// Extracts a slice as its own `HipByt`.
+    ///
+    /// Used by `HipStr`.
+    ///
+    /// # Safety
+    ///
+    /// The range must be a range `a..b` with `a <= b <= len`.
+    /// Panics in debug mode. UB in release mode.
     #[must_use]
-    pub(crate) fn slice_unchecked(&self, range: Range<usize>) -> Self {
-        Self(self.0.slice(range))
+    pub(crate) unsafe fn slice_unchecked(&self, range: Range<usize>) -> Self {
+        Self(unsafe { self.0.slice_unchecked(range) })
     }
 
     /// Returns the maximal length for inline byte sequence.

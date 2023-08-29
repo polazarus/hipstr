@@ -176,14 +176,23 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
         }
     }
 
+    /// Slices the raw byte string.
+    ///
+    /// # Safety
+    ///
+    /// `range` must be a range `a..b` with `a <= b <= len`.
+    /// Panics in debug build, UB in release.
     #[inline]
-    pub fn slice(&self, range: Range<usize>) -> Self {
+    pub unsafe fn slice_unchecked(&self, range: Range<usize>) -> Self {
+        debug_assert!(range.start <= range.end);
+
         // if range.is_empty() {
         //     return Self::empty();
         // }
         let result = match self.split() {
             RawSplit::Inline(inline) => {
                 debug_assert!(range.len() <= inline.len());
+
                 let inline = Inline::new(&inline.as_slice()[range]);
                 Self { inline }
             }
@@ -199,7 +208,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
                     let inline = Inline::new(&allocated.as_slice()[range]);
                     Self { inline }
                 } else {
-                    let allocated = allocated.slice(range);
+                    let allocated = unsafe { allocated.slice_unchecked(range) };
                     Self { allocated }
                 }
             }
@@ -272,7 +281,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
         match self.split() {
             RawSplit::Inline(_) => Self::inline_capacity(),
             RawSplit::Borrowed(borrowed) => borrowed.len(), // provide something to simplify the API
-            RawSplit::Allocated(allocated) => allocated.owner_vec().capacity(),
+            RawSplit::Allocated(allocated) => allocated.capacity(),
         }
     }
 

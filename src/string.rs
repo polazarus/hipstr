@@ -388,7 +388,7 @@ where
                 string: self,
             })
         } else {
-            Ok(Self(self.0.slice_unchecked(range)))
+            Ok(Self(unsafe { self.0.slice_unchecked(range) }))
         }
     }
 

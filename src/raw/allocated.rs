@@ -97,9 +97,14 @@ impl<B: Backend> Allocated<B> {
     }
 
     /// Creates a new `Allocated` for some range with the same owner.
+    ///
+    /// # Safety
+    ///
+    /// Range must be a range `a..b` such that `a <= b <= len`.
     #[inline]
-    pub fn slice(&self, range: Range<usize>) -> Self {
+    pub unsafe fn slice_unchecked(&self, range: Range<usize>) -> Self {
         debug_assert!(self.is_valid());
+        debug_assert!(range.start <= range.end);
 
         assert!(range.start <= self.len);
         assert!(range.end <= self.len);
@@ -147,13 +152,20 @@ impl<B: Backend> Allocated<B> {
 
     /// Returns a reference to the underlying vector.
     #[inline]
-    pub fn owner_vec(&self) -> &Vec<u8> {
+    fn owner_vec(&self) -> &Vec<u8> {
         debug_assert!(self.is_valid());
 
         // SAFETY: type invariant -> owner is valid.
         unsafe { B::raw_as_vec(self.owner) }
     }
 
+    /// Returns the backend capacity.
+    #[inline]
+    pub fn capacity(&self) -> usize {
+        self.owner_vec().capacity()
+    }
+
+    /// Unwraps the inner vector if it makes any sense.
     #[inline]
     pub fn try_into_vec(self) -> Result<Vec<u8>, Self> {
         debug_assert!(self.is_valid());
@@ -186,6 +198,8 @@ impl<B: Backend> Allocated<B> {
     ///
     /// The reference must be unique.
     pub unsafe fn push_slice_unchecked(&mut self, addition: &[u8]) {
+        debug_assert!(self.is_valid());
+
         let v = unsafe { B::raw_get_mut_unchecked(self.owner) };
 
         // SAFETY: compute the shift from within the vector range (type invariant)
@@ -223,7 +237,7 @@ mod tests {
         let allocated = Allocated::<Local>::new(vec![0, 1, 2]);
 
         {
-            let slice = allocated.slice(1..2);
+            let slice = unsafe { allocated.slice_unchecked(1..2) };
             assert!(slice.try_into_vec().is_err());
         }
         allocated.decr_ref_count();
