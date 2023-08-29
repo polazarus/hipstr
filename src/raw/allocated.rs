@@ -138,6 +138,7 @@ impl<B: Backend> Allocated<B> {
             let owner_ptr = owner.as_ptr();
             let shift = unsafe { self.ptr.offset_from(owner_ptr) };
             shift >= 0 && {
+                #[allow(clippy::cast_sign_loss)]
                 let shift = shift as usize;
                 shift <= owner.len() && shift + self.len <= owner.len()
             }
