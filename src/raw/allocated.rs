@@ -132,7 +132,6 @@ impl<B: Backend> Allocated<B> {
 
     /// Return `true` iff this representation is valid.
     #[inline]
-    #[cfg(debug_assertions)]
     pub fn is_valid(&self) -> bool {
         B::raw_is_valid(self.owner) && {
             let owner = unsafe { B::raw_as_vec(self.owner) };
