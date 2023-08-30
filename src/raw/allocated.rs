@@ -1,6 +1,5 @@
 //! Allocated representation.
 
-use core::mem::size_of;
 use core::ops::Range;
 use core::panic::{RefUnwindSafe, UnwindSafe};
 
@@ -44,10 +43,6 @@ impl<B: Backend + UnwindSafe> UnwindSafe for Allocated<B> {}
 impl<B: Backend + RefUnwindSafe> RefUnwindSafe for Allocated<B> {}
 
 impl<B: Backend> Allocated<B> {
-    const _ASSERTS: () = {
-        assert!(size_of::<B::RawPointer>() == size_of::<usize>());
-    };
-
     /// Creates an allocated from a vector.
     ///
     /// Takes ownership of the vector without copying the data.

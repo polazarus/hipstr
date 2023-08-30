@@ -1,7 +1,7 @@
 //! Unstable allocated backend trait and the built-in implementations.
 
 #[cfg(feature = "unstable")]
-pub use private::Backend;
+pub use private::{check_backend, Backend};
 
 use crate::alloc::rc::Rc;
 #[cfg(target_has_atomic = "ptr")]
@@ -25,7 +25,7 @@ pub type Local = Rc<Vec<u8>>;
 pub type ThreadSafe = Arc<Vec<u8>>;
 
 pub mod private {
-    use core::mem::{align_of, ManuallyDrop};
+    use core::mem::{align_of, size_of, ManuallyDrop};
 
     use crate::alloc::rc::Rc;
     #[cfg(target_has_atomic = "ptr")]
@@ -123,6 +123,22 @@ pub mod private {
         /// For debugging purposes only.
         fn raw_is_valid(raw: Self::RawPointer) -> bool;
     }
+
+    /// Check backend validity at compile time.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if the backend is not valid.
+    pub const fn check_backend<B: Backend>() {
+        assert!(size_of::<B::RawPointer>() == size_of::<usize>());
+        assert!(align_of::<B::RawPointer>() > 1);
+    }
+
+    const _ASSERTS: () = {
+        #[cfg(target_has_atomic = "ptr")]
+        check_backend::<Arc<Vec<u8>>>();
+        check_backend::<Rc<Vec<u8>>>();
+    };
 
     #[cfg(target_has_atomic = "ptr")]
     unsafe impl Backend for Arc<Vec<u8>> {

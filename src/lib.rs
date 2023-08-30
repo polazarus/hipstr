@@ -93,7 +93,7 @@ pub mod bytes;
 mod raw;
 pub mod string;
 
-pub use backend::{Backend, Local, ThreadSafe};
+pub use backend::*;
 
 /// Thread-safe shared byte sequence.
 pub type HipByt<'borrow> = bytes::HipByt<'borrow, ThreadSafe>;

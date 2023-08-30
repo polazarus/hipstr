@@ -35,12 +35,6 @@ enum RawSplit<'a, 'borrow, B: Backend> {
 }
 
 impl<'borrow, B: Backend> Raw<'borrow, B> {
-    const _ASSERTS: () = {
-        assert!(size_of::<Inline>() == size_of::<Allocated<B>>());
-        assert!(size_of::<Inline>() == size_of::<Borrowed<'borrow>>());
-        assert!(size_of::<B::RawPointer>() == size_of::<usize>());
-    };
-
     /// Creates a new empty `Raw`.
     #[inline]
     pub const fn empty() -> Self {
@@ -96,7 +90,8 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
         }
     }
 
-    // for whatever reason the actual allocation is not efficient when inlined
+    /// Creates a new allocated `Raw`.
+    // For whatever reason the actual allocation is not efficient when inlined
     #[inline(never)]
     fn allocate(bytes: &[u8]) -> Self {
         Self {
