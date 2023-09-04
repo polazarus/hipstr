@@ -23,6 +23,7 @@ fastrand = "2.0.0"
 serde_test = "1.0.176"
 serde = { version = "1.0.69", default-features = false, features = ["derive", "alloc"] }
 serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
+trybuild = "1.0.83"
 
 [dependencies]
 serde = { version = "1.0.69", optional = true, default-features = false, features = [] }

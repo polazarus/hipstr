@@ -1,0 +1,17 @@
+error[E0080]: evaluation of constant value failed
+  --> src/backend.rs
+   |
+   |         assert!(size_of::<B::RawPointer>() == size_of::<usize>());
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the evaluated program panicked at 'assertion failed: size_of::<B::RawPointer>() == size_of::<usize>()', $DIR/src/backend.rs:133:9
+   |
+note: inside `check_backend::<BadBackend>`
+  --> src/backend.rs
+   |
+   |         assert!(size_of::<B::RawPointer>() == size_of::<usize>());
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+note: inside `_`
+  --> tests/bad_backend/too_large.rs:60:5
+   |
+60 |     hipstr::check_backend::<BadBackend>();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = note: this error originates in the macro `assert` (in Nightly builds, run with -Z macro-backtrace for more info)
