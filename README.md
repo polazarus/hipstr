@@ -67,11 +67,13 @@ Check out the current coverage on [Codecov]:
 You can easily run the test on various platforms with [`cross`]:
 
 ```bash
-cross test --target mips-unknown-linux-gnu          # 32-bit BE
-cross test --target mips64-unknown-linux-gnuabi64   # 64-bit BE
+cross test --target s390x-unknown-linux-gnu         # 32-bit BE
+cross test --target powerpc64-unknown-linux-gnu     # 64-bit BE
 cross test --target i686-unknown-linux-gnu          # 32-bit LE
 cross test --target x86_64-unknown-linux-gnu        # 64-bit LE
 ```
+
+NB: previously I used MIPS targets for big endian, but due to some LLVM-related issue they are not working anymore… see [Rust issue #113065](https://github.com/rust-lang/rust/issues/113065)
 
 ### 🔍 [Miri]
 
