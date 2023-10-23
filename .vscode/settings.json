@@ -15,6 +15,7 @@
         "imstr",
         "miri",
         "MIRIFLAGS",
+        "multibyte",
         "nonoverlapping",
         "powi",
         "repr",

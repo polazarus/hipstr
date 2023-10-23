@@ -1,4 +1,6 @@
-//! Cheaply clonable, sliceable, and mostly immutable, byte string.
+//! Bytes.
+//!
+//! This module provides the [`HipByt`] type as well as the associated helper and error types.
 
 use core::borrow::Borrow;
 use core::hash::Hash;

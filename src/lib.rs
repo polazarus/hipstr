@@ -90,8 +90,14 @@ pub(crate) use std as alloc;
 
 pub(crate) mod backend;
 pub mod bytes;
+pub(crate) mod macros;
 mod raw;
 pub mod string;
+
+#[cfg(feature = "std")]
+pub mod os_string;
+#[cfg(feature = "std")]
+pub mod path;
 
 pub use backend::*;
 
@@ -101,8 +107,24 @@ pub type HipByt<'borrow> = bytes::HipByt<'borrow, ThreadSafe>;
 /// Thread-safe shared string.
 pub type HipStr<'borrow> = string::HipStr<'borrow, ThreadSafe>;
 
+/// Thread-safe shared string.
+#[cfg(feature = "std")]
+pub type HipOsStr<'borrow> = os_string::HipOsStr<'borrow, ThreadSafe>;
+
+/// Thread-safe shared string.
+#[cfg(feature = "std")]
+pub type HipPath<'borrow> = path::HipPath<'borrow, ThreadSafe>;
+
 /// Thread-local byte sequence.
 pub type LocalHipByt<'borrow> = bytes::HipByt<'borrow, Local>;
 
 /// Thread-local string.
 pub type LocalHipStr<'borrow> = string::HipStr<'borrow, Local>;
+
+/// Thread-local byte sequence.
+#[cfg(feature = "std")]
+pub type LocalHipOsStr<'borrow> = os_string::HipOsStr<'borrow, Local>;
+
+/// Thread-local byte sequence.
+#[cfg(feature = "std")]
+pub type LocalHipPath<'borrow> = path::HipPath<'borrow, Local>;
