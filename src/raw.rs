@@ -281,6 +281,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
     }
 
     #[inline]
+    #[allow(clippy::option_if_let_else)]
     pub fn into_vec(mut self) -> Result<Vec<u8>, Self> {
         if let Some(allocated) = self.take_allocated() {
             allocated

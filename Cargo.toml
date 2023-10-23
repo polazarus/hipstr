@@ -10,11 +10,11 @@ categories = ["memory-management", "data-structures"]
 license = "MIT OR Apache-2.0"
 edition = "2021"
 readme = "README.md"
-rust-version = "1.65.0"
+rust-version = "1.74.0"
 
 [features]
 default = ["std"]
-std = []
+std = ["serde/std"]
 unstable = []
 serde = ["dep:serde", "dep:serde_bytes"]
 

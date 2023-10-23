@@ -1,4 +1,6 @@
-//! Cheaply clonable, sliceable, and mostly immutable, string.
+//! String.
+//!
+//! This module provides the [`HipStr`] type as well as the associated helper and error types.
 
 use core::borrow::Borrow;
 use core::hash::Hash;
