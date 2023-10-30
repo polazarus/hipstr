@@ -684,7 +684,7 @@ where
         self.0.push_slice(addition.as_bytes());
     }
 
-    /// Appends the given [`char`] to the end of this `Hipstr`.
+    /// Appends the given [`char`] to the end of this `HipStr`.
     ///
     /// # Examples
     ///
@@ -964,8 +964,8 @@ where
     }
 }
 
-#[cfg(configure = "std")]
-impl<'a, 'borrow, B> Error for SliceError<'a, 'borrow, B> where B: Backend {}
+#[cfg(feature = "std")]
+impl<'a, 'borrow, B> std::error::Error for SliceError<'a, 'borrow, B> where B: Backend {}
 
 /// A possible error value when converting a [`HipStr`] from a [`HipByt`].
 ///
