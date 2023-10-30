@@ -684,7 +684,7 @@ where
         self.0.push_slice(addition.as_bytes());
     }
 
-    /// Appends the given [`char`] to the end of this `Hipstr`.
+    /// Appends the given [`char`] to the end of this `HipStr`.
     ///
     /// # Examples
     ///
