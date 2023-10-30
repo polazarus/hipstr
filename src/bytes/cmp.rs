@@ -17,7 +17,9 @@ where
 {
     #[inline]
     fn eq(&self, other: &HipByt<B1>) -> bool {
-        self.as_slice() == other.as_slice()
+        let a = self.as_slice();
+        let b = other.as_slice();
+        core::ptr::eq(a, b) || a == b
     }
 }
 
@@ -200,6 +202,11 @@ mod tests {
         let b: Box<[u8]> = Box::from(arr);
         let c: Cow<[u8]> = Cow::Borrowed(&arr);
         let h = HipByt::from(arr.as_slice());
+        let h2 = HipByt::borrowed(arr.as_slice());
+
+        assert_eq!(h, h);
+        assert_eq!(h, h2);
+        assert_ne!(h2, h2.slice(0..4));
 
         assert_eq!(h, arr);
         assert_eq!(arr, h);

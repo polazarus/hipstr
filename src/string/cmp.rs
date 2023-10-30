@@ -17,7 +17,9 @@ where
 {
     #[inline]
     fn eq(&self, other: &HipStr<B1>) -> bool {
-        self.as_str() == other.as_str()
+        let a = self.as_str();
+        let b = other.as_str();
+        core::ptr::eq(a, b) || a == b
     }
 }
 
@@ -222,6 +224,12 @@ mod tests {
         let b: Box<str> = Box::from(slice);
         let c: Cow<str> = Cow::Borrowed(slice);
         let h = HipStr::from(slice);
+        let h2 = HipStr::borrowed(slice);
+
+        assert_eq!(h, h);
+        assert_eq!(h2, h2);
+        assert_eq!(h, h2);
+        assert_ne!(h2, h2.slice(0..4));
 
         assert_eq!(h, slice);
         assert_eq!(slice, h);
