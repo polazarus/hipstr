@@ -2,6 +2,13 @@
 
 Notable changes only.
 
+## [0.3.3] - 2023-10-30
+
+## Fixed
+
+- fix clippy lint in `bytes/cmp.rs`
+- fix missing `std::error::Error` impl for `string::SliceError`
+
 ## [0.3.2] - 2023-08-18
 
 ## Added
@@ -55,6 +62,7 @@ Notable changes only.
 
 Initial release
 
+[0.3.2]: https://github.com/polazarus/hipstr/compare/0.3.2...0.3.3
 [0.3.2]: https://github.com/polazarus/hipstr/compare/0.3.1...0.3.2
 [0.3.1]: https://github.com/polazarus/hipstr/compare/0.3.0...0.3.1
 [0.3.0]: https://github.com/polazarus/hipstr/compare/0.2.0...0.3.0
