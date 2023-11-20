@@ -21,7 +21,6 @@ where
 {
     #[inline]
     fn eq(&self, other: &HipPath<B1>) -> bool {
-        // TODO optimize is same pointer
         ptr::eq(self.0.as_encoded_bytes(), other.0.as_encoded_bytes())
             || self.as_path() == other.as_path()
     }

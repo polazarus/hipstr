@@ -114,6 +114,13 @@ impl<const INLINE_CAPACITY: usize> Inline<INLINE_CAPACITY> {
         unsafe { core::slice::from_raw_parts(data.cast(), len) }
     }
 
+    /// Returns an immutable raw pointer of this inline string.
+    #[inline]
+    pub const fn as_ptr(&self) -> *const u8 {
+        debug_assert!(self.is_valid());
+        self.data.as_ptr().cast()
+    }
+
     /// Returns a mutable view of this inline string.
     #[inline]
     pub fn as_mut_slice(&mut self) -> &mut [u8] {

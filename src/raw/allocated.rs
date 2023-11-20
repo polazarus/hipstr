@@ -73,6 +73,13 @@ impl<B: Backend> Allocated<B> {
         unsafe { core::slice::from_raw_parts(self.ptr, self.len) }
     }
 
+    /// Returns a raw pointer to the first element.
+    #[inline]
+    pub const fn as_ptr(&self) -> *const u8 {
+        // debug_assert!(self.is_valid()); // is_valid is not const!
+        self.ptr
+    }
+
     /// Returns a mutable slice if possible (unique non-static reference).
     #[inline]
     pub unsafe fn as_mut_slice<'a>(self) -> Option<&'a mut [u8]> {

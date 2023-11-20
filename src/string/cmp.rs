@@ -18,9 +18,7 @@ where
 {
     #[inline]
     fn eq(&self, other: &HipStr<B1>) -> bool {
-        let a = self.as_str();
-        let b = other.as_str();
-        core::ptr::eq(a, b) || a == b
+        self.0 == other.0
     }
 }
 

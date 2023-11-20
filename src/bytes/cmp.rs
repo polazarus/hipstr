@@ -17,10 +17,8 @@ where
     B2: Backend,
 {
     #[inline]
-    fn eq(&self, other: &HipByt<B1>) -> bool {
-        let a = self.as_slice();
-        let b = other.as_slice();
-        core::ptr::eq(a, b) || a == b
+    fn eq(&self, other: &HipByt<'b1, B1>) -> bool {
+        self.0.eq(&other.0)
     }
 }
 

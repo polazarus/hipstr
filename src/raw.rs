@@ -217,6 +217,16 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
         }
     }
 
+    /// Returns a pointer to the start of the raw byte string.
+    #[inline]
+    pub const fn as_ptr(&self) -> *const u8 {
+        match self.split() {
+            RawSplit::Inline(inline) => inline.as_ptr(),
+            RawSplit::Allocated(heap) => heap.as_ptr(),
+            RawSplit::Borrowed(borrowed) => borrowed.as_ptr(),
+        }
+    }
+
     /// Slices the raw byte string.
     ///
     /// # Safety
@@ -231,9 +241,6 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
             assert!(range.end <= self.len());
         }
 
-        // if range.is_empty() {
-        //     return Self::empty();
-        // }
         let result = match self.split() {
             RawSplit::Inline(inline) => {
                 // SAFETY: by slice_unchecked's own safety precondition and `split`
@@ -514,6 +521,32 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
     #[inline]
     pub const fn is_normalized(&self) -> bool {
         self.is_inline() || self.is_borrowed() || self.len() > Self::inline_capacity()
+    }
+
+    /// Returns `true` it `self` is equal byte for byte to `other`.
+    #[inline(never)]
+    pub fn eq<B2: Backend>(&self, other: &Raw<B2>) -> bool {
+        // use memcmp directly to squeeze one more comparison
+        extern "C" {
+            fn memcmp(a: *const u8, b: *const u8, size: usize) -> core::ffi::c_int;
+        }
+
+        let len = self.len();
+        if len != other.len() {
+            return false;
+        }
+
+        let self_ptr = self.as_ptr();
+        let other_ptr = other.as_ptr();
+        if core::ptr::eq(self_ptr, other_ptr) {
+            return true;
+        }
+
+        // use element size (just a remainder for now)
+        let size = len * core::mem::size_of::<u8>();
+
+        // SAFETY: size checked above
+        unsafe { memcmp(self_ptr, other_ptr, size) == 0 }
     }
 
     /// Creates a new raw byte string by repeating this one `n` times.

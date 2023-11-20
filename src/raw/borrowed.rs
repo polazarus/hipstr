@@ -42,6 +42,13 @@ impl<'borrow> Borrowed<'borrow> {
         self.slice
     }
 
+    /// Returns the underlying data as a slice
+    #[inline]
+    pub const fn as_ptr(&self) -> *const u8 {
+        debug_assert!(self.is_valid());
+        self.slice.as_ptr()
+    }
+
     /// Return `true` iff this representation is valid.
     #[inline]
     pub const fn is_valid(&self) -> bool {
