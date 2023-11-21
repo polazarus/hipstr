@@ -24,7 +24,7 @@ pub type Local = Rc<Vec<u8>>;
 /// Shared (thread-safe) reference counted backend.
 pub type ThreadSafe = Arc<Vec<u8>>;
 
-pub mod private {
+mod private {
     use core::mem::{align_of, size_of, ManuallyDrop};
 
     use crate::alloc::rc::Rc;
@@ -129,6 +129,7 @@ pub mod private {
     /// # Panics
     ///
     /// Will panic if the backend is not valid.
+    #[allow(dead_code)]
     pub const fn check_backend<B: Backend>() {
         assert!(size_of::<B::RawPointer>() == size_of::<usize>());
         assert!(align_of::<B::RawPointer>() > 1);

@@ -88,7 +88,7 @@ pub(crate) extern crate alloc;
 #[cfg(feature = "std")]
 pub(crate) use std as alloc;
 
-mod backend;
+pub(crate) mod backend;
 pub mod bytes;
 mod raw;
 pub mod string;
