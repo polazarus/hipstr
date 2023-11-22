@@ -2,9 +2,9 @@ name: coverage
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 env:
   CARGO_TERM_COLOR: always
@@ -28,7 +28,10 @@ jobs:
         run: cargo generate-lockfile
 
       - name: cargo llvm-cov
-        run: cargo llvm-cov --locked --all-features --codecov --output-path codecov.json
+        run: >
+          cargo llvm-cov --locked --all-features
+          --codecov
+          --output-path codecov.json
 
       - name: Upload to codecov.io
         uses: codecov/codecov-action@v3
