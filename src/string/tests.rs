@@ -554,3 +554,32 @@ fn test_to_owned() {
     let a = a.into_owned();
     assert_eq!(a.as_ptr(), p);
 }
+
+#[test]
+fn test_to_case() {
+    for (input, a_l, l, a_u, u) in [
+        ("abc", "abc", "abc", "ABC", "ABC"),
+        ("ὈΔΥΣΣΕΎΣ", "ὈΔΥΣΣΕΎΣ", "ὀδυσσεύς", "ὈΔΥΣΣΕΎΣ", "ὈΔΥΣΣΕΎΣ"),
+        ("农历新年", "农历新年", "农历新年", "农历新年", "农历新年"),
+    ] {
+        let h = HipStr::from(input);
+        assert_eq!(h.to_ascii_lowercase(), a_l);
+        assert_eq!(h.to_lowercase(), l);
+        assert_eq!(h.to_ascii_uppercase(), a_u);
+        assert_eq!(h.to_uppercase(), u);
+    }
+}
+
+#[test]
+fn test_make_case() {
+    let mut h = HipStr::from("abcDEF");
+    let mut h2 = h.clone();
+    let h_ref = h.clone();
+    h.make_ascii_lowercase();
+    assert_eq!(h, "abcdef");
+    assert_eq!(h_ref, "abcDEF");
+
+    h2.make_ascii_uppercase();
+    assert_eq!(h2, "ABCDEF");
+    assert_eq!(h_ref, "abcDEF");
+}

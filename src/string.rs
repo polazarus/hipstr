@@ -723,6 +723,206 @@ where
     pub fn into_owned(self) -> HipStr<'static, B> {
         HipStr(self.0.into_owned())
     }
+
+    /// Returns a copy of this string where each character is mapped to its
+    /// ASCII lower case equivalent.
+    ///
+    /// ASCII letters 'A' to 'Z' are mapped to 'a' to 'z',
+    /// but non-ASCII letters are unchanged.
+    ///
+    /// To lowercase the value in-place, use [`make_ascii_lowercase`].
+    ///
+    /// To lowercase ASCII characters in addition to non-ASCII characters, use
+    /// [`to_lowercase`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::HipStr;
+    /// let s = HipStr::from("Grüße, Jürgen ❤");
+    ///
+    /// assert_eq!("grüße, jürgen ❤", s.to_ascii_lowercase());
+    /// ```
+    ///
+    /// [`make_ascii_lowercase`]: Self::make_ascii_lowercase
+    /// [`to_lowercase`]: Self::to_lowercase
+    #[inline]
+    #[must_use]
+    pub fn to_ascii_lowercase(&self) -> Self {
+        // SAFETY: changing ASCII letters only does not invalidate UTF-8.
+        Self(self.0.to_ascii_lowercase())
+    }
+
+    /// Returns a copy of this string where each character is mapped to its
+    /// ASCII upper case equivalent.
+    ///
+    /// ASCII letters 'a' to 'z' are mapped to 'A' to 'Z',
+    /// but non-ASCII letters are unchanged.
+    ///
+    /// To uppercase the value in-place, use [`make_ascii_uppercase`].
+    ///
+    /// To uppercase ASCII characters in addition to non-ASCII characters, use
+    /// [`to_uppercase`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::HipStr;
+    /// let s = HipStr::from("Grüße, Jürgen ❤");
+    ///
+    /// assert_eq!("GRüßE, JüRGEN ❤", s.to_ascii_uppercase());
+    /// ```
+    ///
+    /// [`make_ascii_uppercase`]: Self::make_ascii_uppercase
+    /// [`to_uppercase`]: Self::to_uppercase
+    #[inline]
+    #[must_use]
+    pub fn to_ascii_uppercase(&self) -> Self {
+        // SAFETY: changing ASCII letters only does not invalidate UTF-8.
+        Self(self.0.to_ascii_uppercase())
+    }
+
+    /// Converts this string to its ASCII upper case equivalent in-place.
+    ///
+    /// ASCII letters 'a' to 'z' are mapped to 'A' to 'Z',
+    /// but non-ASCII letters are unchanged.
+    ///
+    /// To return a new uppercased value without modifying the existing one, use
+    /// [`to_ascii_uppercase`].
+    ///
+    /// [`to_ascii_uppercase`]: Self::to_ascii_uppercase
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut s = String::from("Grüße, Jürgen ❤");
+    ///
+    /// s.make_ascii_uppercase();
+    ///
+    /// assert_eq!("GRüßE, JüRGEN ❤", s);
+    /// ```
+    #[inline]
+    pub fn make_ascii_uppercase(&mut self) {
+        // SAFETY: changing ASCII letters only does not invalidate UTF-8.
+        self.0.make_ascii_uppercase();
+    }
+
+    /// Converts this string to its ASCII lower case equivalent in-place.
+    ///
+    /// ASCII letters 'A' to 'Z' are mapped to 'a' to 'z',
+    /// but non-ASCII letters are unchanged.
+    ///
+    /// To return a new lowercased value without modifying the existing one, use
+    /// [`to_ascii_lowercase`].
+    ///
+    /// [`to_ascii_lowercase`]: Self::to_ascii_lowercase
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::HipStr;
+    /// let mut s = HipStr::from("GRÜßE, JÜRGEN ❤");
+    ///
+    /// s.make_ascii_lowercase();
+    ///
+    /// assert_eq!("grÜße, jÜrgen ❤", s);
+    /// ```
+    #[inline]
+    pub fn make_ascii_lowercase(&mut self) {
+        // SAFETY: changing ASCII letters only does not invalidate UTF-8.
+        self.0.make_ascii_lowercase();
+    }
+
+    /// Returns the lowercase equivalent of this string, as a new `HipStr`.
+    ///
+    /// 'Lowercase' is defined according to the terms of the Unicode Derived Core Property
+    /// `Lowercase`.
+    ///
+    /// Since some characters can expand into multiple characters when changing
+    /// the case, this function returns a [`String`] instead of modifying the
+    /// parameter in-place.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// # use hipstr::HipStr;
+    /// let s = HipStr::from("HELLO");
+    ///
+    /// assert_eq!("hello", s.to_lowercase());
+    /// ```
+    ///
+    /// A tricky example, with sigma:
+    ///
+    /// ```
+    /// # use hipstr::HipStr;
+    /// let sigma = HipStr::from("Σ");
+    ///
+    /// assert_eq!("σ", sigma.to_lowercase());
+    ///
+    /// // but at the end of a word, it's ς, not σ:
+    /// let odysseus = HipStr::from("ὈΔΥΣΣΕΎΣ");
+    ///
+    /// assert_eq!("ὀδυσσεύς", odysseus.to_lowercase());
+    /// ```
+    ///
+    /// Languages without case are not changed:
+    ///
+    /// ```
+    /// # use hipstr::HipStr;
+    /// let new_year = HipStr::from("农历新年");
+    ///
+    /// assert_eq!(new_year, new_year.to_lowercase());
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn to_lowercase(&self) -> Self {
+        Self::from(self.as_str().to_lowercase())
+    }
+
+    /// Returns the uppercase equivalent of this string, as a new `HipStr`.
+    ///
+    /// 'Uppercase' is defined according to the terms of the Unicode Derived Core Property
+    /// `Uppercase`.
+    ///
+    /// Since some characters can expand into multiple characters when changing
+    /// the case, this function returns a [`String`] instead of modifying the
+    /// parameter in-place.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// # use hipstr::HipStr;
+    /// let s = HipStr::from("hello");
+    ///
+    /// assert_eq!("HELLO", s.to_uppercase());
+    /// ```
+    ///
+    /// Scripts without case are not changed:
+    ///
+    /// ```
+    /// # use hipstr::HipStr;
+    /// let new_year = HipStr::from("农历新年");
+    ///
+    /// assert_eq!(new_year, new_year.to_uppercase());
+    /// ```
+    ///
+    /// One character can become multiple:
+    ///
+    /// ```
+    /// # use hipstr::HipStr;
+    /// let s = HipStr::from("tschüß");
+    ///
+    /// assert_eq!("TSCHÜSS", s.to_uppercase());
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn to_uppercase(&self) -> Self {
+        Self::from(self.as_str().to_uppercase())
+    }
 }
 
 impl<B> HipStr<'static, B>
