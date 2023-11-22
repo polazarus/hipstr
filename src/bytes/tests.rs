@@ -704,3 +704,53 @@ fn test_to_owned() {
     let a = a.into_owned();
     assert_eq!(a.as_ptr(), p);
 }
+
+#[test]
+fn test_make_ascii_lowercase() {
+    let mut h = HipByt::from(b"aB0\x80");
+    h.make_ascii_lowercase();
+    assert_eq!(h, b"ab0\x80");
+
+    let r = b"*".repeat(42);
+    let mut h = HipByt::from(&r[..]);
+    h.make_ascii_lowercase();
+    assert_eq!(h, r);
+}
+
+#[test]
+fn test_to_ascii_lowercase() {
+    let h = HipByt::from(b"aB0\x80");
+    let h2 = h.to_ascii_lowercase();
+    assert_eq!(h2, b"ab0\x80");
+    assert_eq!(h, b"aB0\x80");
+
+    let r = b"*".repeat(42);
+    let h = HipByt::from(&r[..]);
+    let h2 = h.to_ascii_lowercase();
+    assert_eq!(h2, r);
+}
+
+#[test]
+fn test_make_ascii_uppercase() {
+    let mut h = HipByt::from(b"aB0\x80");
+    h.make_ascii_uppercase();
+    assert_eq!(h, b"AB0\x80");
+
+    let r = b"*".repeat(42);
+    let mut h = HipByt::from(&r[..]);
+    h.make_ascii_uppercase();
+    assert_eq!(h, r);
+}
+
+#[test]
+fn test_to_ascii_uppercase() {
+    let h = HipByt::from(b"aB0\x80");
+    let h2 = h.to_ascii_uppercase();
+    assert_eq!(h2, b"AB0\x80");
+    assert_eq!(h, b"aB0\x80");
+
+    let r = b"*".repeat(42);
+    let h = HipByt::from(&r[..]);
+    let h2 = h.to_ascii_uppercase();
+    assert_eq!(h2, r);
+}
