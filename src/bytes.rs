@@ -470,6 +470,104 @@ where
     pub(crate) fn is_normalized(&self) -> bool {
         self.0.is_normalized()
     }
+
+    /// Returns a new `HipByt` containing a copy of this slice where each byte
+    /// is mapped to its ASCII lower case equivalent.
+    ///
+    /// ASCII letters 'A' to 'Z' are mapped to 'a' to 'z',
+    /// but non-ASCII letters are unchanged.
+    ///
+    /// To lowercase the value in-place, use [`make_ascii_lowercase`].
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use hipstr::HipByt;
+    /// let h = HipByt::from(b"!abc\0OK\x80");
+    /// let h2 = h.to_ascii_lowercase();
+    /// assert_eq!(h2, b"!abc\0ok\x80");
+    /// ```
+    ///
+    /// [`make_ascii_lowercase`]: Self::make_ascii_lowercase
+    #[inline]
+    #[must_use]
+    pub fn to_ascii_lowercase(&self) -> Self {
+        let mut other = self.clone();
+        other.to_mut_slice().make_ascii_lowercase();
+        other
+    }
+
+    /// Converts this slice to its ASCII lower case equivalent in-place.
+    ///
+    /// ASCII letters 'A' to 'Z' are mapped to 'a' to 'z',
+    /// but non-ASCII letters are unchanged.
+    ///
+    /// To return a new lowercased value without modifying the existing one, use
+    /// [`to_ascii_lowercase`].
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use hipstr::HipByt;
+    /// let mut h = HipByt::from(b"!abc\0OK\x80");
+    /// h.make_ascii_lowercase();
+    /// assert_eq!(h, b"!abc\0ok\x80");
+    /// ```
+    ///
+    /// [`to_ascii_lowercase`]: Self::to_ascii_lowercase
+    #[inline]
+    pub fn make_ascii_lowercase(&mut self) {
+        self.to_mut_slice().make_ascii_lowercase();
+    }
+
+    /// Returns a new `HipByt` containing a copy of this slice where each byte
+    /// is mapped to its ASCII lower case equivalent.
+    ///
+    /// ASCII letters 'A' to 'Z' are mapped to 'a' to 'z',
+    /// but non-ASCII letters are unchanged.
+    ///
+    /// To lowercase the value in-place, use [`make_ascii_lowercase`].
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use hipstr::HipByt;
+    /// let h = HipByt::from(b"!abc\0OK\x80");
+    /// let h2: HipByt = h.to_ascii_uppercase();
+    /// assert_eq!(h2, b"!ABC\0OK\x80");
+    /// ```
+    ///
+    /// [`make_ascii_lowercase`]: Self::make_ascii_lowercase
+    #[inline]
+    #[must_use]
+    pub fn to_ascii_uppercase(&self) -> Self {
+        let mut other = self.clone();
+        other.to_mut_slice().make_ascii_uppercase();
+        other
+    }
+
+    /// Converts this slice to its ASCII upper case equivalent in-place.
+    ///
+    /// ASCII letters 'a' to 'z' are mapped to 'A' to 'Z',
+    /// but non-ASCII letters are unchanged.
+    ///
+    /// To return a new uppercased value without modifying the existing one, use
+    /// [`to_ascii_uppercase`].
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use hipstr::HipByt;
+    /// let mut h = HipByt::from(b"!abc\0OK\x80");
+    /// h.make_ascii_uppercase();
+    /// assert_eq!(h, b"!ABC\0OK\x80");
+    /// ```
+    ///
+    /// [`to_ascii_uppercase`]: Self::to_ascii_uppercase
+    #[inline]
+    pub fn make_ascii_uppercase(&mut self) {
+        self.to_mut_slice().make_ascii_uppercase();
+    }
 }
 
 impl<B> HipByt<'static, B>
