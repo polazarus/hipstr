@@ -2,9 +2,9 @@ name: rust
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 env:
   CARGO_TERM_COLOR: always
@@ -31,33 +31,33 @@ jobs:
     runs-on: ${{matrix.os}}
 
     steps:
-    - uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-    - uses: dtolnay/rust-toolchain@master
-      with:
-        toolchain: ${{matrix.toolchain}}
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{matrix.toolchain}}
 
-    - name: Show version
-      run: cargo version
+      - name: Show version
+        run: cargo version
 
-    - name: Build
-      run: cargo build --verbose --profile ${{matrix.profile}} ${{matrix.features}}
+      - name: Build
+        run: cargo build --verbose --profile ${{matrix.profile}} ${{matrix.features}}
 
-    - name: Run tests
-      run: cargo test --verbose --profile ${{matrix.profile}} ${{matrix.features}}
+      - name: Run tests
+        run: cargo test --verbose --profile ${{matrix.profile}} ${{matrix.features}} -- --nocapture
 
   fmt:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-    - uses: dtolnay/rust-toolchain@master
-      with:
-        toolchain: stable
-        components: rustfmt
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          components: rustfmt
 
-    - name: Check formatting
-      run: cargo fmt --all --check
+      - name: Check formatting
+        run: cargo fmt --all --check
 
   doc:
     runs-on: ubuntu-latest
@@ -98,7 +98,7 @@ jobs:
         run: cargo build --verbose --release --all-features
 
       - name: Run tests
-        run: cargo test --verbose --release --all-features
+        run: cargo test --verbose --release --all-features -- --nocapture
 
   minimal-versions:
     runs-on: ubuntu-latest
