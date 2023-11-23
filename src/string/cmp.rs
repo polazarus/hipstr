@@ -4,6 +4,7 @@ use super::HipStr;
 use crate::alloc::borrow::Cow;
 use crate::alloc::boxed::Box;
 use crate::alloc::string::String;
+use crate::macros::{symmetric_eq, symmetric_ord};
 use crate::Backend;
 
 // Equality
@@ -23,169 +24,40 @@ where
     }
 }
 
-impl<'borrow, B> PartialEq<str> for HipStr<'borrow, B>
-where
-    B: Backend,
-{
-    #[inline]
-    fn eq(&self, other: &str) -> bool {
-        self.as_str() == other
+symmetric_eq! {
+    <'borrow, B, > [where B: Backend] (a : str, b : HipStr<'borrow, B>) {
+        a == b.as_str()
     }
-}
 
-impl<'borrow, B> PartialEq<HipStr<'borrow, B>> for str
-where
-    B: Backend,
-{
-    #[inline]
-    fn eq(&self, other: &HipStr<B>) -> bool {
-        self == other.as_str()
+    <'a, 'borrow, B, > [where B: Backend] (a : &'a str, b : HipStr<'borrow, B>) {
+        *a == b.as_str()
     }
-}
 
-impl<'a, 'borrow, B> PartialEq<&'a str> for HipStr<'borrow, B>
-where
-    B: Backend,
-{
-    #[inline]
-    fn eq(&self, other: &&'a str) -> bool {
-        self.as_str() == *other
+    <'borrow, B, > [where B: Backend] (a : String, b : HipStr<'borrow, B>) {
+        a.as_str() == b.as_str()
     }
-}
 
-impl<'a, 'borrow, B> PartialEq<HipStr<'borrow, B>> for &'a str
-where
-    B: Backend,
-{
-    #[inline]
-    fn eq(&self, other: &HipStr<B>) -> bool {
-        *self == other.as_str()
+    <'borrow, B, > [where B: Backend] (a : Box<str>, b : HipStr<'borrow, B>) {
+        a.as_ref() == b.as_str()
     }
-}
 
-impl<'borrow, B> PartialEq<String> for HipStr<'borrow, B>
-where
-    B: Backend,
-{
-    #[inline]
-    fn eq(&self, other: &String) -> bool {
-        self.as_str() == other.as_str()
-    }
-}
-
-impl<'borrow, B> PartialEq<HipStr<'borrow, B>> for String
-where
-    B: Backend,
-{
-    #[inline]
-    fn eq(&self, other: &HipStr<B>) -> bool {
-        self.as_str() == other.as_str()
-    }
-}
-
-impl<'borrow, B> PartialEq<Box<str>> for HipStr<'borrow, B>
-where
-    B: Backend,
-{
-    #[inline]
-    fn eq(&self, other: &Box<str>) -> bool {
-        self.as_str() == other.as_ref()
-    }
-}
-
-impl<'borrow, B> PartialEq<HipStr<'borrow, B>> for Box<str>
-where
-    B: Backend,
-{
-    #[inline]
-    fn eq(&self, other: &HipStr<B>) -> bool {
-        self.as_ref() == other.as_str()
-    }
-}
-
-impl<'a, 'b, B> PartialEq<Cow<'a, str>> for HipStr<'b, B>
-where
-    B: Backend,
-{
-    #[inline]
-    fn eq(&self, other: &Cow<'a, str>) -> bool {
-        self.as_str() == other.as_ref()
-    }
-}
-
-impl<'a, 'b, B> PartialEq<HipStr<'a, B>> for Cow<'b, str>
-where
-    B: Backend,
-{
-    #[inline]
-    fn eq(&self, other: &HipStr<B>) -> bool {
-        self.as_ref() == other.as_str()
+    <'a, 'borrow, B, > [where B: Backend] (a : Cow<'a, str>, b : HipStr<'borrow, B>) {
+        a.as_ref() == b.as_str()
     }
 }
 
 #[cfg(feature = "std")]
-impl<'borrow, B> PartialEq<std::ffi::OsStr> for HipStr<'borrow, B>
-where
-    B: Backend,
-{
-    #[inline]
-    fn eq(&self, other: &std::ffi::OsStr) -> bool {
-        self.as_str().eq(other)
+symmetric_eq! {
+    <'borrow, B, > [where B: Backend] (a : std::ffi::OsStr, b : HipStr<'borrow, B>) {
+        a == b.as_str()
     }
-}
 
-#[cfg(feature = "std")]
-impl<'borrow, B> PartialEq<HipStr<'borrow, B>> for std::ffi::OsStr
-where
-    B: Backend,
-{
-    #[inline]
-    fn eq(&self, other: &HipStr<'borrow, B>) -> bool {
-        self.eq(other.as_str())
+    <'a, 'borrow, B, > [where B: Backend] (a : &'a std::ffi::OsStr, b : HipStr<'borrow, B>) {
+        *a == b.as_str()
     }
-}
 
-#[cfg(feature = "std")]
-impl<'a, 'borrow, B> PartialEq<&'a std::ffi::OsStr> for HipStr<'borrow, B>
-where
-    B: Backend,
-{
-    #[inline]
-    fn eq(&self, other: &&'a std::ffi::OsStr) -> bool {
-        self.as_str().eq(*other)
-    }
-}
-
-#[cfg(feature = "std")]
-impl<'a, 'borrow, B> PartialEq<HipStr<'borrow, B>> for &'a std::ffi::OsStr
-where
-    B: Backend,
-{
-    #[inline]
-    fn eq(&self, other: &HipStr<'borrow, B>) -> bool {
-        (*self).eq(other.as_str())
-    }
-}
-
-#[cfg(feature = "std")]
-impl<'borrow, B> PartialEq<std::ffi::OsString> for HipStr<'borrow, B>
-where
-    B: Backend,
-{
-    #[inline]
-    fn eq(&self, other: &std::ffi::OsString) -> bool {
-        self.as_str().eq(other)
-    }
-}
-
-#[cfg(feature = "std")]
-impl<'borrow, B> PartialEq<HipStr<'borrow, B>> for std::ffi::OsString
-where
-    B: Backend,
-{
-    #[inline]
-    fn eq(&self, other: &HipStr<'borrow, B>) -> bool {
-        self.eq(other.as_str())
+    <'borrow, B, > [where B: Backend] (a : std::ffi::OsString, b : HipStr<'borrow, B>) {
+        a == b.as_str()
     }
 }
 
@@ -206,6 +78,35 @@ where
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         Some(self.cmp(other))
+    }
+}
+
+symmetric_ord! {
+    <'borrow, B, > [where B: Backend] (a: str, b: HipStr<'borrow, B>) {
+        str::partial_cmp(a, b.as_str())
+    }
+
+    <'a, 'borrow, B, > [where B: Backend] (a: &'a str, b: HipStr<'borrow, B>) {
+        str::partial_cmp(a, b.as_str())
+    }
+
+    <'borrow, B, > [where B: Backend] (a: String, b: HipStr<'borrow, B>) {
+        str::partial_cmp(a.as_str(), b.as_str())
+    }
+}
+
+#[cfg(feature = "std")]
+symmetric_ord! {
+    <'borrow, B, > [where B: Backend] (a: std::ffi::OsStr, b: HipStr<'borrow, B>) {
+        std::ffi::OsStr::partial_cmp(a, b.as_str())
+    }
+
+    <'a, 'borrow, B, > [where B: Backend] (a: &'a std::ffi::OsStr, b: HipStr<'borrow, B>) {
+        std::ffi::OsStr::partial_cmp(a, b.as_str())
+    }
+
+    <'borrow, B, > [where B: Backend] (a: std::ffi::OsString, b: HipStr<'borrow, B>) {
+        std::ffi::OsString::partial_cmp(a, b.as_str())
     }
 }
 
@@ -270,18 +171,86 @@ mod tests {
         assert_eq!(oss, h);
     }
 
+    static BB_H: HipStr = HipStr::borrowed("bb");
+    static BC_H: HipStr = HipStr::borrowed("bc");
+
     #[test]
-    fn test_ord() {
-        let h1 = HipStr::borrowed("abc");
-        let h2 = HipStr::from("abd");
+    fn test_cmp() {
+        assert_eq!(BB_H.partial_cmp(&BB_H), Some(Ordering::Equal));
+        assert_eq!(BB_H.cmp(&BB_H), Ordering::Equal);
 
-        assert_eq!(h1.partial_cmp(&h1), Some(Ordering::Equal));
-        assert_eq!(h1.cmp(&h1), Ordering::Equal);
+        assert!(BB_H < BC_H);
+        assert_eq!(BB_H.cmp(&BC_H), Ordering::Less);
+        assert_eq!(BB_H.partial_cmp(&BC_H), Some(Ordering::Less));
+        assert_eq!(BC_H.cmp(&BB_H), Ordering::Greater);
+        assert_eq!(BC_H.partial_cmp(&BB_H), Some(Ordering::Greater));
+    }
 
-        assert!(h1 < h2);
-        assert_eq!(h1.cmp(&h2), Ordering::Less);
-        assert_eq!(h1.partial_cmp(&h2), Some(Ordering::Less));
-        assert_eq!(h2.cmp(&h1), Ordering::Greater);
-        assert_eq!(h2.partial_cmp(&h1), Some(Ordering::Greater));
+    #[test]
+    fn test_cmp_str() {
+        assert!(&BB_H < "bc");
+        assert!(&BB_H > "ba");
+        assert!(&BB_H >= "bb");
+
+        assert!("bc" > &BB_H);
+        assert!("ba" < &BB_H);
+        assert!("bb" <= &BB_H);
+
+        assert!(BB_H < "bc");
+        assert!(BB_H > "ba");
+        assert!(BB_H >= "bb");
+
+        assert!("bc" > BB_H);
+        assert!("ba" < BB_H);
+        assert!("bb" <= BB_H);
+    }
+
+    #[test]
+    fn test_cmp_string() {
+        use crate::alloc::string::String;
+
+        assert!(BB_H < String::from("bc"));
+        assert!(BB_H > String::from("ba"));
+        assert!(BB_H >= String::from("bb"));
+
+        assert!(String::from("bc") > BB_H);
+        assert!(String::from("ba") < BB_H);
+        assert!(String::from("bb") <= BB_H);
+    }
+
+    #[test]
+    #[cfg(feature = "std")]
+    fn test_cmp_os_str() {
+        use std::ffi::OsStr;
+
+        assert!(OsStr::new("bc") > &BB_H);
+        assert!(OsStr::new("ba") < &BB_H);
+        assert!(OsStr::new("bb") <= &BB_H);
+
+        assert!(&BB_H < OsStr::new("bc"));
+        assert!(&BB_H > OsStr::new("ba"));
+        assert!(&BB_H >= OsStr::new("bb"));
+
+        assert!(OsStr::new("bc") > BB_H);
+        assert!(OsStr::new("ba") < BB_H);
+        assert!(OsStr::new("bb") <= BB_H);
+
+        assert!(BB_H < OsStr::new("bc"));
+        assert!(BB_H > OsStr::new("ba"));
+        assert!(BB_H >= OsStr::new("bb"));
+    }
+
+    #[test]
+    #[cfg(feature = "std")]
+    fn test_cmp_os_string() {
+        use std::ffi::OsString;
+
+        assert!(OsString::from("bc") > BB_H);
+        assert!(OsString::from("ba") < BB_H);
+        assert!(OsString::from("bb") <= BB_H);
+
+        assert!(BB_H < OsString::from("bc"));
+        assert!(BB_H > OsString::from("ba"));
+        assert!(BB_H >= OsString::from("bb"));
     }
 }
