@@ -707,14 +707,26 @@ pub(crate) fn simplify_range(
     range: impl RangeBounds<usize>,
     len: usize,
 ) -> Result<Range<usize>, (usize, usize, SliceErrorKind)> {
-    let start = match range.start_bound() {
-        Bound::Included(&start) => start,
-        Bound::Excluded(&start) => start + 1,
+    simplify_range_mono(
+        range.start_bound().cloned(),
+        range.end_bound().cloned(),
+        len,
+    )
+}
+
+fn simplify_range_mono(
+    start: Bound<usize>,
+    end: Bound<usize>,
+    len: usize,
+) -> Result<Range<usize>, (usize, usize, SliceErrorKind)> {
+    let start = match start {
+        Bound::Included(start) => start,
+        Bound::Excluded(start) => start + 1,
         Bound::Unbounded => 0,
     };
-    let end = match range.end_bound() {
-        Bound::Included(&end) => end + 1,
-        Bound::Excluded(&end) => end,
+    let end = match end {
+        Bound::Included(end) => end + 1,
+        Bound::Excluded(end) => end,
         Bound::Unbounded => len,
     };
     if start > len {

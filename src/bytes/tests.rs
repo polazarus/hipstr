@@ -6,7 +6,7 @@ use std::collections::HashSet;
 // cspell:ignore fastrand
 use fastrand::Rng;
 
-use super::SliceErrorKind;
+use super::{simplify_range, SliceErrorKind};
 use crate::alloc::vec::Vec;
 use crate::alloc::{format, vec};
 use crate::HipByt;
@@ -804,4 +804,81 @@ fn test_repeat() {
     assert!(h4.is_inline());
 
     assert_eq!(h.repeat(50), b"abc".repeat(50));
+}
+
+#[test]
+fn test_simplify_range() {
+    assert_eq!(simplify_range(0..10, 10), Ok(0..10));
+    assert_eq!(simplify_range(.., 10), Ok(0..10));
+    assert_eq!(simplify_range(..10, 10), Ok(0..10));
+    assert_eq!(simplify_range(..=9, 10), Ok(0..10));
+    assert_eq!(
+        simplify_range((Bound::Included(0), Bound::Excluded(10)), 10),
+        Ok(0..10)
+    );
+    assert_eq!(
+        simplify_range((Bound::Unbounded, Bound::Excluded(10)), 10),
+        Ok(0..10)
+    );
+    assert_eq!(
+        simplify_range((Bound::Included(0), Bound::Unbounded), 10),
+        Ok(0..10)
+    );
+    assert_eq!(
+        simplify_range((Bound::<usize>::Unbounded, Bound::Unbounded), 10),
+        Ok(0..10)
+    );
+
+    assert_eq!(simplify_range(1..10, 10), Ok(1..10));
+    assert_eq!(simplify_range(1.., 10), Ok(1..10));
+    assert_eq!(
+        simplify_range((Bound::Included(1), Bound::Excluded(10)), 10),
+        Ok(1..10)
+    );
+    assert_eq!(
+        simplify_range((Bound::Excluded(0), Bound::Excluded(10)), 10),
+        Ok(1..10)
+    );
+    assert_eq!(
+        simplify_range((Bound::Included(1), Bound::Unbounded), 10),
+        Ok(1..10)
+    );
+    assert_eq!(
+        simplify_range((Bound::Excluded(0), Bound::Excluded(10)), 10),
+        Ok(1..10)
+    );
+
+    assert_eq!(
+        simplify_range(11..13, 10),
+        Err((11, 13, SliceErrorKind::StartOutOfBounds))
+    );
+    assert_eq!(
+        simplify_range((Bound::Included(11), Bound::Excluded(13)), 10),
+        Err((11, 13, SliceErrorKind::StartOutOfBounds))
+    );
+    assert_eq!(
+        simplify_range(11..=12, 10),
+        Err((11, 13, SliceErrorKind::StartOutOfBounds))
+    );
+    assert_eq!(
+        simplify_range((Bound::Included(11), Bound::Included(12)), 10),
+        Err((11, 13, SliceErrorKind::StartOutOfBounds))
+    );
+    assert_eq!(
+        simplify_range(11.., 10),
+        Err((11, 10, SliceErrorKind::StartOutOfBounds))
+    );
+    assert_eq!(
+        simplify_range((Bound::Included(11), Bound::Unbounded), 10),
+        Err((11, 10, SliceErrorKind::StartOutOfBounds))
+    );
+
+    assert_eq!(
+        simplify_range(9..8, 10),
+        Err((9, 8, SliceErrorKind::StartGreaterThanEnd))
+    );
+    assert_eq!(
+        simplify_range(9..=7, 10),
+        Err((9, 8, SliceErrorKind::StartGreaterThanEnd))
+    );
 }
