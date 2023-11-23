@@ -429,6 +429,7 @@ fn test_from_utf8() {
         format!("{err}"),
         "invalid utf-8 sequence of 1 bytes from index 3"
     );
+    assert_eq!(err.clone(), err);
     let bytes_clone = err.into_bytes();
     assert_eq!(bytes_clone.as_ptr(), bytes.as_ptr());
     assert_eq!(bytes_clone.len(), bytes.len());
@@ -443,6 +444,7 @@ fn test_from_utf8_lossy() {
     let bytes = HipByt::borrowed(b"abc\x80");
     let string = HipStr::from_utf8_lossy(bytes.clone());
     assert!(string.len() > bytes.len());
+    assert_eq!(string, "abc\u{FFFD}");
 
     let bytes = HipByt::from(b"abc".repeat(10));
     let string = HipStr::from_utf8_lossy(bytes.clone());
