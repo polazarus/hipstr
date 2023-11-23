@@ -754,3 +754,23 @@ fn test_to_ascii_uppercase() {
     let h2 = h.to_ascii_uppercase();
     assert_eq!(h2, r);
 }
+
+#[test]
+fn test_repeat() {
+    let h = HipByt::new();
+    let h50 = h.repeat(50);
+    assert_eq!(h50.len(), 0);
+    assert!(!h50.is_allocated());
+
+    let h = HipByt::from(b"*".repeat(42));
+    let h1 = h.repeat(1);
+    assert_eq!(h1.len(), h.len());
+    assert_eq!(h.as_ptr(), h1.as_ptr());
+
+    let h = HipByt::from(b"abc");
+    let h4 = h.repeat(2);
+    assert_eq!(h4, b"abc".repeat(2));
+    assert!(h4.is_inline());
+
+    assert_eq!(h.repeat(50), b"abc".repeat(50));
+}

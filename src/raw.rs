@@ -4,6 +4,7 @@
 
 use core::mem::{forget, replace, size_of, ManuallyDrop};
 use core::ops::Range;
+use core::ptr;
 
 use allocated::Allocated;
 use borrowed::Borrowed;
@@ -382,6 +383,32 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
     #[inline]
     pub const fn is_normalized(&self) -> bool {
         self.is_inline() || self.is_borrowed() || self.len() > Self::inline_capacity()
+    }
+
+    pub fn repeat(&self, n: usize) -> Self {
+        if self.len() == 0 || n == 1 {
+            self.clone()
+        } else {
+            let src_len = self.len();
+            let new_len = src_len.checked_mul(n).expect("capacity overflow");
+            if new_len <= INLINE_CAPACITY {
+                let mut inline = Inline::zeroed(new_len);
+                let src = self.as_slice().as_ptr();
+                let mut dst = inline.as_mut_slice().as_mut_ptr();
+
+                // could be algorithmically better
+                // but no expected gain for at most 23 bytes
+                unsafe {
+                    for _ in 0..n {
+                        ptr::copy_nonoverlapping(src, dst, src_len);
+                        dst = dst.add(src_len);
+                    }
+                }
+                Self { inline }
+            } else {
+                Self::from_vec(self.as_slice().repeat(n))
+            }
+        }
     }
 }
 

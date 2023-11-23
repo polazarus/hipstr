@@ -923,6 +923,34 @@ where
     pub fn to_uppercase(&self) -> Self {
         Self::from(self.as_str().to_uppercase())
     }
+
+    /// Creates a new `HipStr` by repeating this one `n` times.
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if the capacity would overflow.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// # use hipstr::HipStr;
+    /// assert_eq!(HipStr::from("abc").repeat(4), HipStr::from("abcabcabcabc"));
+    /// ```
+    ///
+    /// A panic upon overflow:
+    ///
+    /// ```should_panic
+    /// # use hipstr::HipStr;
+    /// // this will panic at runtime
+    /// let huge = HipStr::from("0123456789abcdef").repeat(usize::MAX);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn repeat(&self, n: usize) -> Self {
+        Self(self.0.repeat(n))
+    }
 }
 
 impl<B> HipStr<'static, B>
