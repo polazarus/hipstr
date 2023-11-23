@@ -375,6 +375,10 @@ where
     pub fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, SliceError<B>> {
         let range = simplify_range(range, self.len())
             .map_err(|(start, end, kind)| SliceError::new(kind, start, end, self))?;
+        self.try_slice_aux(range)
+    }
+
+    fn try_slice_aux(&self, range: Range<usize>) -> Result<Self, SliceError<B>> {
         if !self.is_char_boundary(range.start) {
             Err(SliceError {
                 kind: SliceErrorKind::StartNotACharBoundary,
