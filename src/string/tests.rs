@@ -1,3 +1,4 @@
+use core::ops::Bound;
 use core::ptr;
 #[cfg(feature = "std")]
 use std::collections::HashSet;
@@ -321,16 +322,16 @@ fn test_slice_panic_end_char_boundary() {
     let _b = a.slice(0..2);
 }
 
-#[test]
-fn test_try_slice() {
-    let a = HipStr::borrowed("Rust \u{1F980}");
+static RUST_CRAB: HipStr = HipStr::borrowed("Rust \u{1F980}");
 
-    let err = a.try_slice(10..).unwrap_err();
+#[test]
+fn test_try_slice_start_out_of_bounds() {
+    let err = RUST_CRAB.try_slice(10..).unwrap_err();
     assert_eq!(err.kind(), SliceErrorKind::StartOutOfBounds);
     assert_eq!(err.start(), 10);
-    assert_eq!(err.end(), a.len());
-    assert_eq!(err.range(), 10..a.len());
-    assert!(ptr::eq(err.source(), &a));
+    assert_eq!(err.end(), RUST_CRAB.len());
+    assert_eq!(err.range(), 10..RUST_CRAB.len());
+    assert!(ptr::eq(err.source(), &RUST_CRAB));
     assert_eq!(
         format!("{err:?}"),
         "SliceError { kind: StartOutOfBounds, start: 10, end: 9, string: \"Rust \u{1F980}\" }"
@@ -339,29 +340,81 @@ fn test_try_slice() {
         format!("{err}"),
         "range start index 10 is out of bounds of `Rust \u{1F980}`"
     );
+    assert_eq!(err.clone(), err);
+}
 
-    let err = a.try_slice(..10).unwrap_err();
+#[test]
+fn test_try_slice_end_out_of_bounds() {
+    let err = RUST_CRAB.try_slice(..10).unwrap_err();
+    assert_eq!(err.kind(), SliceErrorKind::EndOutOfBounds);
+    assert_eq!(
+        format!("{err:?}"),
+        "SliceError { kind: EndOutOfBounds, start: 0, end: 10, string: \"Rust \u{1F980}\" }"
+    );
     assert_eq!(
         format!("{err}"),
         "range end index 10 is out of bounds of `Rust \u{1F980}`"
     );
+    assert_eq!(err.clone(), err);
+}
 
-    let err = a.try_slice(4..2).unwrap_err();
+#[test]
+fn test_try_slice_start_greater_than_end() {
+    let err = RUST_CRAB.try_slice(4..2).unwrap_err();
+    assert_eq!(err.kind(), SliceErrorKind::StartGreaterThanEnd);
+    assert_eq!(
+        format!("{err:?}"),
+        "SliceError { kind: StartGreaterThanEnd, start: 4, end: 2, string: \"Rust \u{1F980}\" }"
+    );
     assert_eq!(
         format!("{err}"),
         "range starts at 4 but ends at 2 when slicing `Rust \u{1F980}`"
     );
+    assert_eq!(err.clone(), err);
+}
 
-    let err = a.try_slice(6..).unwrap_err();
+#[test]
+fn test_try_slice_start_not_a_char_boundary() {
+    let err = RUST_CRAB.try_slice(6..).unwrap_err();
+    assert_eq!(err.kind(), SliceErrorKind::StartNotACharBoundary);
+    assert_eq!(
+        format!("{err:?}"),
+        "SliceError { kind: StartNotACharBoundary, start: 6, end: 9, string: \"Rust \u{1F980}\" }"
+    );
     assert_eq!(
         format!("{err}"),
         "range start index 6 is not a char boundary of `Rust \u{1F980}`"
     );
+}
 
-    let err = a.try_slice(..6).unwrap_err();
+#[test]
+fn test_try_slice_end_not_a_char_boundary() {
+    let err = RUST_CRAB.try_slice(..6).unwrap_err();
+    assert_eq!(err.kind(), SliceErrorKind::EndNotACharBoundary);
+    assert_eq!(
+        format!("{err:?}"),
+        "SliceError { kind: EndNotACharBoundary, start: 0, end: 6, string: \"Rust \u{1F980}\" }"
+    );
     assert_eq!(
         format!("{err}"),
         "range end index 6 is not a char boundary of `Rust \u{1F980}`"
+    );
+    assert_eq!(err.clone(), err);
+}
+
+#[test]
+fn test_try_slice_ok() {
+    let s = RUST_CRAB.as_str();
+    assert_eq!(RUST_CRAB.try_slice(..).unwrap(), RUST_CRAB);
+    assert_eq!(RUST_CRAB.try_slice(0..5).unwrap(), &s[0..5]);
+    assert_eq!(RUST_CRAB.try_slice(0..=4).unwrap(), &s[0..=4]);
+    assert_eq!(RUST_CRAB.try_slice(..=1).unwrap(), &s[..=1]);
+    assert_eq!(RUST_CRAB.try_slice(1..).unwrap(), &s[1..]);
+    assert_eq!(
+        RUST_CRAB
+            .try_slice((Bound::Excluded(0), Bound::Included(1)))
+            .unwrap(),
+        &s[(Bound::Excluded(0), Bound::Included(1))]
     );
 }
 
