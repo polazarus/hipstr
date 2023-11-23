@@ -1,5 +1,8 @@
 //! Representation for borrowed slice.
 
+#[cfg(test)]
+mod tests;
+
 /// Borrowed slice representation.
 ///
 /// # Warning!
