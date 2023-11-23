@@ -568,6 +568,37 @@ where
     pub fn make_ascii_uppercase(&mut self) {
         self.to_mut_slice().make_ascii_uppercase();
     }
+
+    /// Creates a new `HipByt` by copying this one `n` times.
+    ///
+    /// This function **will not allocate** if the new length is less than or
+    /// equal to the maximum inline capacity.
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if the capacity would overflow.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// # use hipstr::HipByt;
+    /// assert_eq!(HipByt::from(&[1, 2]).repeat(3), HipByt::from(&[1, 2, 1, 2, 1, 2]));
+    /// ```
+    ///
+    /// A panic upon overflow:
+    ///
+    /// ```should_panic
+    /// // this will panic at runtime
+    /// # use hipstr::HipByt;
+    /// HipByt::from(b"0123456789abcdef").repeat(usize::MAX);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn repeat(&self, n: usize) -> Self {
+        Self(self.0.repeat(n))
+    }
 }
 
 impl<B> HipByt<'static, B>

@@ -3,6 +3,9 @@
 use core::mem::MaybeUninit;
 use core::ptr::copy_nonoverlapping;
 
+#[cfg(test)]
+mod tests;
+
 /// Inline representation.
 ///
 /// # Warning!
@@ -35,6 +38,23 @@ impl<const INLINE_CAPACITY: usize> Inline<INLINE_CAPACITY> {
             data,
             shifted_len: 1,
         }
+    }
+
+    /// Creates a new empty `Inline`.
+    #[inline]
+    pub fn zeroed(len: usize) -> Self {
+        // TODO waiting for const-stabilization of MaybeUninit::zeroed
+
+        // SAFETY: just a hack to construct a zeroed array of MaybeUninit
+        let data = unsafe { MaybeUninit::zeroed().assume_init() };
+
+        assert!(len <= INLINE_CAPACITY, "invalid length");
+
+        #[allow(clippy::cast_possible_truncation)]
+        let shifted_len = ((len << 1) | 1) as u8;
+
+        #[allow(clippy::inconsistent_struct_constructor)]
+        Self { data, shifted_len }
     }
 
     /// Creates a new `Inline` string by copying a byte slice.
