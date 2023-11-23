@@ -340,6 +340,15 @@ fn test_slice_panic_mixed() {
 static ABCDEF: HipByt = HipByt::borrowed(b"abcdef");
 
 #[test]
+fn test_slice_ok() {
+    assert_eq!(ABCDEF.slice(..), b"abcdef");
+    assert_eq!(ABCDEF.slice(..1), b"a");
+    assert_eq!(ABCDEF.slice(..=1), b"ab");
+    assert_eq!(ABCDEF.slice(1..2), b"b");
+    assert_eq!(ABCDEF.slice((Bound::Excluded(0), Bound::Included(1))), b"b");
+}
+
+#[test]
 fn test_try_slice_start_out_of_bounds() {
     let err = ABCDEF.try_slice(7..).unwrap_err();
     assert_eq!(err.kind(), SliceErrorKind::StartOutOfBounds);
