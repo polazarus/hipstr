@@ -337,40 +337,62 @@ fn test_slice_panic_mixed() {
     let _b = a.slice(3..2);
 }
 
-#[test]
-fn test_try_slice() {
-    let a = HipByt::borrowed(b"abcdef");
+static ABCDEF: HipByt = HipByt::borrowed(b"abcdef");
 
-    let e = a.try_slice(7..).unwrap_err();
-    assert_eq!(e.kind(), SliceErrorKind::StartOutOfBounds);
-    assert_eq!(e.start(), 7);
-    assert_eq!(e.end(), 6);
-    assert_eq!(e.range(), 7..6);
-    assert!(ptr::eq(e.source(), &a));
-    assert_eq!(format!("{e:?}"), "SliceError { kind: StartOutOfBounds, start: 7, end: 6, bytes: [97, 98, 99, 100, 101, 102] }");
+#[test]
+fn test_try_slice_start_out_of_bounds() {
+    let err = ABCDEF.try_slice(7..).unwrap_err();
+    assert_eq!(err.kind(), SliceErrorKind::StartOutOfBounds);
+    assert_eq!(err.start(), 7);
+    assert_eq!(err.end(), 6);
+    assert_eq!(err.range(), 7..6);
+    assert!(ptr::eq(err.source(), &ABCDEF));
+    assert_eq!(format!("{err:?}"), "SliceError { kind: StartOutOfBounds, start: 7, end: 6, bytes: [97, 98, 99, 100, 101, 102] }");
     assert_eq!(
-        format!("{e}"),
+        format!("{err}"),
         "range start index 7 out of bounds for slice of length 6"
     );
+    assert_eq!(err.clone(), err);
+}
 
-    let e = a.try_slice(..7).unwrap_err();
+#[test]
+fn test_try_slice_end_out_of_bounds() {
+    let err = ABCDEF.try_slice(..7).unwrap_err();
+    assert_eq!(err.kind(), SliceErrorKind::EndOutOfBounds);
     assert_eq!(
-        format!("{e}"),
+        format!("{err:?}"),
+        "SliceError { kind: EndOutOfBounds, start: 0, end: 7, bytes: [97, 98, 99, 100, 101, 102] }"
+    );
+    assert_eq!(
+        format!("{err}"),
         "range end index 7 out of bounds for slice of length 6"
     );
-    assert_eq!(a.try_slice(0..=6).unwrap_err(), e);
+    assert_eq!(err.clone(), err);
+}
 
-    let e = a.try_slice(1..0).unwrap_err();
-    assert_eq!(format!("{e}"), "range starts at 1 but ends at 0");
+#[test]
+fn test_try_slice_start_greater_than_end() {
+    let err = ABCDEF.try_slice(1..0).unwrap_err();
+    assert_eq!(err.kind(), SliceErrorKind::StartGreaterThanEnd);
+    assert_eq!(format!("{err:?}"), "SliceError { kind: StartGreaterThanEnd, start: 1, end: 0, bytes: [97, 98, 99, 100, 101, 102] }");
+    assert_eq!(format!("{err}"), "range starts at 1 but ends at 0");
+    assert_eq!(err.clone(), err);
+}
 
-    assert!(a.try_slice(0..6).is_ok());
-    assert!(a.try_slice(..=1).is_ok());
-
-    assert!(a.try_slice(1..).is_ok());
-    assert!(a.try_slice(1..0).is_err());
-    assert!(a
-        .try_slice((Bound::Excluded(0), Bound::Included(1)))
-        .is_ok());
+#[test]
+fn test_try_slice_ok() {
+    assert_eq!(ABCDEF.try_slice(..).unwrap(), b"abcdef");
+    assert_eq!(ABCDEF.try_slice(..5).unwrap(), b"abcde");
+    assert_eq!(ABCDEF.try_slice(1..4).unwrap(), b"bcd");
+    assert_eq!(ABCDEF.try_slice(0..=5).unwrap(), b"abcdef");
+    assert_eq!(ABCDEF.try_slice(..=1).unwrap(), b"ab");
+    assert_eq!(ABCDEF.try_slice(1..).unwrap(), b"bcdef");
+    assert_eq!(
+        ABCDEF
+            .try_slice((Bound::Excluded(0), Bound::Included(1)))
+            .unwrap(),
+        b"b"
+    );
 }
 
 #[test]
