@@ -4,6 +4,7 @@ use super::HipByt;
 use crate::alloc::borrow::Cow;
 use crate::alloc::boxed::Box;
 use crate::alloc::vec::Vec;
+use crate::macros::{symmetric_eq, symmetric_ord};
 use crate::Backend;
 
 // Equality
@@ -23,143 +24,33 @@ where
     }
 }
 
-impl<'borrow, B> PartialEq<[u8]> for HipByt<'borrow, B>
-where
-    B: Backend,
-{
-    #[inline]
-    fn eq(&self, other: &[u8]) -> bool {
-        self.as_slice() == other
+symmetric_eq! {
+    <'borrow> <B> <> [where B: Backend] (a : [u8], b : HipByt<'borrow, B>) {
+        a == b.as_slice()
+    }
+
+    <'a, 'borrow> <B> <> [where B: Backend] (a : &'a [u8], b : HipByt<'borrow, B>) {
+        *a == b.as_slice()
+    }
+
+    <'borrow> <B> <> [where B: Backend] (a : Vec<u8>, b : HipByt<'borrow, B>) {
+        a.as_slice() == b.as_slice()
+    }
+
+    <'borrow> <B> <> [where B: Backend] (a : Box<[u8]>, b : HipByt<'borrow, B>) {
+        a.as_ref() == b.as_slice()
+    }
+
+    <'a, 'borrow> <B> <> [where B: Backend] (a : Cow<'a, [u8]>, b : HipByt<'borrow, B>) {
+        a.as_ref() == b.as_slice()
     }
 }
-
-impl<'borrow, B> PartialEq<HipByt<'borrow, B>> for [u8]
-where
-    B: Backend,
-{
-    #[inline]
-    fn eq(&self, other: &HipByt<B>) -> bool {
-        self == other.as_slice()
+symmetric_eq! {
+    <'borrow> <B> <const N: usize> [where B: Backend] (a : [u8; N], b : HipByt<'borrow, B>) {
+        a == b.as_slice()
     }
-}
-
-impl<'a, 'borrow, B> PartialEq<&'a [u8]> for HipByt<'borrow, B>
-where
-    B: Backend,
-{
-    #[inline]
-    fn eq(&self, other: &&'a [u8]) -> bool {
-        self.as_slice() == *other
-    }
-}
-
-impl<'a, 'borrow, B> PartialEq<HipByt<'borrow, B>> for &'a [u8]
-where
-    B: Backend,
-{
-    #[inline]
-    fn eq(&self, other: &HipByt<B>) -> bool {
-        *self == other.as_slice()
-    }
-}
-
-impl<'borrow, B> PartialEq<Vec<u8>> for HipByt<'borrow, B>
-where
-    B: Backend,
-{
-    #[inline]
-    fn eq(&self, other: &Vec<u8>) -> bool {
-        self.as_slice() == other.as_slice()
-    }
-}
-
-impl<'borrow, B> PartialEq<HipByt<'borrow, B>> for Vec<u8>
-where
-    B: Backend,
-{
-    #[inline]
-    fn eq(&self, other: &HipByt<B>) -> bool {
-        self.as_slice() == other.as_slice()
-    }
-}
-
-impl<'borrow, B> PartialEq<Box<[u8]>> for HipByt<'borrow, B>
-where
-    B: Backend,
-{
-    #[inline]
-    fn eq(&self, other: &Box<[u8]>) -> bool {
-        self.as_slice() == other.as_ref()
-    }
-}
-
-impl<'borrow, B> PartialEq<HipByt<'borrow, B>> for Box<[u8]>
-where
-    B: Backend,
-{
-    #[inline]
-    fn eq(&self, other: &HipByt<B>) -> bool {
-        self.as_ref() == other.as_slice()
-    }
-}
-
-impl<'a, 'borrow, B> PartialEq<Cow<'a, [u8]>> for HipByt<'borrow, B>
-where
-    B: Backend,
-{
-    #[inline]
-    fn eq(&self, other: &Cow<'a, [u8]>) -> bool {
-        self.as_slice() == other.as_ref()
-    }
-}
-
-impl<'a, 'borrow, B> PartialEq<HipByt<'borrow, B>> for Cow<'a, [u8]>
-where
-    B: Backend,
-{
-    #[inline]
-    fn eq(&self, other: &HipByt<B>) -> bool {
-        self.as_ref() == other.as_slice()
-    }
-}
-
-impl<'borrow, B, const N: usize> PartialEq<[u8; N]> for HipByt<'borrow, B>
-where
-    B: Backend,
-{
-    #[inline]
-    fn eq(&self, other: &[u8; N]) -> bool {
-        self.as_slice() == other.as_slice()
-    }
-}
-
-impl<'borrow, B, const N: usize> PartialEq<HipByt<'borrow, B>> for [u8; N]
-where
-    B: Backend,
-{
-    #[inline]
-    fn eq(&self, other: &HipByt<B>) -> bool {
-        self.as_slice() == other.as_slice()
-    }
-}
-
-impl<'a, 'borrow, B, const N: usize> PartialEq<&'a [u8; N]> for HipByt<'borrow, B>
-where
-    B: Backend,
-{
-    #[inline]
-    fn eq(&self, other: &&'a [u8; N]) -> bool {
-        self.as_slice() == other.as_slice()
-    }
-}
-
-impl<'a, 'borrow, B, const N: usize> PartialEq<HipByt<'borrow, B>> for &'a [u8; N]
-where
-    B: Backend,
-{
-    #[inline]
-    fn eq(&self, other: &HipByt<B>) -> bool {
-        self.as_slice() == other.as_slice()
+    <'a, 'borrow> <B> <const N: usize> [where B: Backend] (a : &'a [u8; N], b : HipByt<'borrow, B>) {
+        a.as_slice() == b.as_slice()
     }
 }
 
@@ -182,6 +73,31 @@ where
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         Some(self.cmp(other))
+    }
+}
+
+symmetric_ord! {
+    <'borrow> <B> <> [where B: Backend] (a: [u8], b: HipByt<'borrow, B>) {
+        <[u8] as PartialOrd>::partial_cmp(a, b.as_slice())
+    }
+
+    <'a, 'borrow> <B> <> [where B: Backend] (a: &'a [u8], b: HipByt<'borrow, B>) {
+        <[u8] as PartialOrd>::partial_cmp(a, b.as_slice())
+    }
+
+    <'borrow> <B> <const N: usize> [where B: Backend] (a: [u8; N], b: HipByt<'borrow, B>) {
+        <[u8] as PartialOrd>::partial_cmp(a, b.as_slice())
+    }
+
+    <'a, 'borrow> <B> <const N: usize> [where B: Backend] (a: &'a [u8; N], b: HipByt<'borrow, B>) {
+        <[u8] as PartialOrd>::partial_cmp(*a, b.as_slice())
+    }
+
+    <'borrow> <B> <> [where B: Backend] (a: Vec<u8>, b: HipByt<'borrow, B>) {
+        <[u8] as PartialOrd>::partial_cmp(a, b.as_slice())
+    }
+    <'a, 'borrow> <B> <> [where B: Backend] (a: Cow<'a, [u8]>, b: HipByt<'borrow, B>) {
+        <[u8] as PartialOrd>::partial_cmp(a, b.as_slice())
     }
 }
 
@@ -241,5 +157,19 @@ mod tests {
         assert_eq!(h1.partial_cmp(&h2), Some(Ordering::Less));
         assert_eq!(h2.cmp(&h1), Ordering::Greater);
         assert_eq!(h2.partial_cmp(&h1), Some(Ordering::Greater));
+    }
+
+    static H: HipByt = HipByt::from_static(b"abc");
+
+    #[test]
+    fn test_ord_other() {
+        assert_eq!(H.partial_cmp(b"abc".as_slice()), Some(Ordering::Equal));
+        assert_eq!(H.partial_cmp(b"abc"), Some(Ordering::Equal));
+        assert!(H < b"abd");
+        assert!(&H < b"abd");
+        assert!(H < b"abd".as_slice());
+        assert!(&H < b"abd".as_slice());
+        assert!(H < Vec::from(b"abd"));
+        assert!(H < Cow::Borrowed(b"abd".as_slice()));
     }
 }

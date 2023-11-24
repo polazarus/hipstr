@@ -28,67 +28,67 @@ where
 symmetric_eq! {
 
     // Path*
-    <'borrow, B, > [where B: Backend] (a : Path, b : HipPath<'borrow, B>) {
+    <'borrow> <B> <> [where B: Backend] (a : Path, b : HipPath<'borrow, B>) {
         a == b.as_path()
     }
 
-    <'a, 'borrow, B, > [where B: Backend] (a : &'a Path, b : HipPath<'borrow, B>) {
+    <'a, 'borrow> <B> <> [where B: Backend] (a : &'a Path, b : HipPath<'borrow, B>) {
         *a == b.as_path()
     }
 
-    <'borrow, B, > [where B: Backend] (a: PathBuf, b: HipPath<'borrow, B>) {
+    <'borrow> <B> <> [where B: Backend] (a: PathBuf, b: HipPath<'borrow, B>) {
         a.as_path() == b.as_path()
     }
 
-    <'a, 'borrow, B, > [where B: Backend] (a: &'a PathBuf, b: HipPath<'borrow, B>) {
+    <'a, 'borrow> <B> <> [where B: Backend] (a: &'a PathBuf, b: HipPath<'borrow, B>) {
         a.as_path() == b.as_path()
     }
 
-    <'borrow, B, > [where B: Backend] (a: Box<Path>, b: HipPath<'borrow, B>) {
+    <'borrow> <B> <> [where B: Backend] (a: Box<Path>, b: HipPath<'borrow, B>) {
         a.as_ref() == b.as_path()
     }
 
-    <'a, 'borrow, B, > [where B: Backend] (a: &'a Box<Path>, b: HipPath<'borrow, B>) {
+    <'a, 'borrow> <B> <> [where B: Backend] (a: &'a Box<Path>, b: HipPath<'borrow, B>) {
         a.as_ref() == b.as_path()
     }
 
-    <'a, 'b, B, > [where B: Backend] (a: Cow<'a, Path>, b: HipPath<'b, B>) {
+    <'a, 'b> <B> <> [where B: Backend] (a: Cow<'a, Path>, b: HipPath<'b, B>) {
         a.as_ref() == b.as_path()
     }
 
-    <'a, 'b, B, > [where B: Backend] (a: &'a Cow<'a, Path>, b: HipPath<'b, B>) {
+    <'a, 'b> <B> <> [where B: Backend] (a: &'a Cow<'a, Path>, b: HipPath<'b, B>) {
         a.as_ref() == b.as_path()
     }
 
     // OsStr*
-    <'borrow, B, > [where B: Backend] (a: OsStr, b: HipPath<'borrow, B>) {
+    <'borrow> <B> <> [where B: Backend] (a: OsStr, b: HipPath<'borrow, B>) {
         a == b.as_os_str()
     }
 
-    <'a, 'borrow, B, > [where B: Backend] (a: &'a OsStr, b: HipPath<'borrow, B>) {
+    <'a, 'borrow> <B> <> [where B: Backend] (a: &'a OsStr, b: HipPath<'borrow, B>) {
         *a == b.as_os_str()
     }
 
-    <'borrow, B, > [where B: Backend] (a: OsString, b: HipPath<'borrow, B>) {
+    <'borrow> <B> <> [where B: Backend] (a: OsString, b: HipPath<'borrow, B>) {
         a.as_os_str() == b.as_os_str()
     }
 
-    <'a, 'borrow, B, > [where B: Backend] (a: &'a OsString, b: HipPath<'borrow, B>) {
+    <'a, 'borrow> <B> <> [where B: Backend] (a: &'a OsString, b: HipPath<'borrow, B>) {
         a.as_os_str() == b.as_os_str()
     }
 
-    <'borrow, B, > [where B: Backend] (a: Box<OsStr>, b: HipPath<'borrow, B>) {
+    <'borrow> <B> <> [where B: Backend] (a: Box<OsStr>, b: HipPath<'borrow, B>) {
         a.as_ref() == b.as_os_str()
     }
 
-    <'a, 'borrow, B, > [where B: Backend] (a: &'a Box<OsStr>, b: HipPath<'borrow, B>) {
+    <'a, 'borrow> <B> <> [where B: Backend] (a: &'a Box<OsStr>, b: HipPath<'borrow, B>) {
         a.as_ref() == b.as_os_str()
     }
-    <'a, 'b, B, > [where B: Backend] (a: Cow<'a, OsStr>, b: HipPath<'b, B>) {
+    <'a, 'b> <B> <> [where B: Backend] (a: Cow<'a, OsStr>, b: HipPath<'b, B>) {
         *a == b.as_os_str()
     }
 
-    <'a, 'b, B, > [where B: Backend] (a: &'a Cow<'a, OsStr>, b: HipPath<'b, B>) {
+    <'a, 'b> <B> <> [where B: Backend] (a: &'a Cow<'a, OsStr>, b: HipPath<'b, B>) {
         **a == b.as_os_str()
     }
 }
