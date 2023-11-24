@@ -28,63 +28,63 @@ where
 symmetric_eq! {
 
     // str
-    <'borrow, B, > [where B: Backend] (a: str, b: HipOsStr<'borrow, B>) {
+    <'borrow> <B> <> [where B: Backend] (a: str, b: HipOsStr<'borrow, B>) {
         a == b.as_os_str()
     }
 
-    <'a, 'borrow, B, > [where B: Backend] (a: &'a str, b: HipOsStr<'borrow, B>) {
+    <'a, 'borrow> <B> <> [where B: Backend] (a: &'a str, b: HipOsStr<'borrow, B>) {
         *a == b.as_os_str()
     }
 
-    <'borrow, B, > [where B: Backend] (a: Box<str>, b: HipOsStr<'borrow, B>) {
+    <'borrow> <B> <> [where B: Backend] (a: Box<str>, b: HipOsStr<'borrow, B>) {
         **a == *b.as_os_str()
     }
 
-    <'a, 'borrow, B, > [where B: Backend] (a: Cow<'a, str>, b: HipOsStr<'borrow, B>) {
+    <'a, 'borrow> <B> <> [where B: Backend] (a: Cow<'a, str>, b: HipOsStr<'borrow, B>) {
         **a == *b.as_os_str()
     }
 
     // OsStr
-    <'borrow, B, > [where B: Backend] (a: OsStr, b: HipOsStr<'borrow, B>) {
+    <'borrow> <B> <> [where B: Backend] (a: OsStr, b: HipOsStr<'borrow, B>) {
         a == b.as_os_str()
     }
 
-    <'a, 'borrow, B, > [where B: Backend] (a: &'a OsStr, b: HipOsStr<'borrow, B>) {
+    <'a, 'borrow> <B> <> [where B: Backend] (a: &'a OsStr, b: HipOsStr<'borrow, B>) {
         *a == b.as_os_str()
     }
 
-    <'a, 'borrow, B, > [where B: Backend] (a: OsStr, b: &'a HipOsStr<'borrow, B>) {
+    <'a, 'borrow> <B> <> [where B: Backend] (a: OsStr, b: &'a HipOsStr<'borrow, B>) {
         a == b.as_os_str()
     }
 
-    <'a, 'borrow, B, > [where B: Backend] (a: Cow<'a, OsStr>, b: HipOsStr<'borrow, B>) {
+    <'a, 'borrow> <B> <> [where B: Backend] (a: Cow<'a, OsStr>, b: HipOsStr<'borrow, B>) {
         &**a == b.as_os_str()
     }
 
     // OsString
-    <'borrow, B, > [where B: Backend] (a: OsString, b: HipOsStr<'borrow, B>) {
+    <'borrow> <B> <> [where B: Backend] (a: OsString, b: HipOsStr<'borrow, B>) {
         a.as_os_str() == b.as_os_str()
     }
 
     // Path
-    <'borrow, B, > [where B: Backend] (a: Path, b: HipOsStr<'borrow, B>) {
+    <'borrow> <B> <> [where B: Backend] (a: Path, b: HipOsStr<'borrow, B>) {
         a.as_os_str() == b.as_os_str()
     }
 
-    <'a, 'borrow, B, > [where B: Backend] (a: &'a Path, b: HipOsStr<'borrow, B>) {
+    <'a, 'borrow> <B> <> [where B: Backend] (a: &'a Path, b: HipOsStr<'borrow, B>) {
         a.as_os_str() == b.as_os_str()
     }
 
-    <'b, 'borrow, B, > [where B: Backend] (a: Path, b: &'b HipOsStr<'borrow, B>) {
+    <'b, 'borrow> <B> <> [where B: Backend] (a: Path, b: &'b HipOsStr<'borrow, B>) {
         a.as_os_str() == b.as_os_str()
     }
 
-    <'a, 'borrow, B, > [where B: Backend] (a: Cow<'a, Path>, b: HipOsStr<'borrow, B>) {
+    <'a, 'borrow> <B> <> [where B: Backend] (a: Cow<'a, Path>, b: HipOsStr<'borrow, B>) {
         a.as_os_str() == b.as_os_str()
     }
 
     // PathBuf
-    <'borrow, B, > [where B: Backend] (a: PathBuf, b: HipOsStr<'borrow, B>) {
+    <'borrow> <B> <> [where B: Backend] (a: PathBuf, b: HipOsStr<'borrow, B>) {
         a.as_os_str() == b.as_os_str()
     }
 }
@@ -104,35 +104,35 @@ impl<'borrow, B: Backend> PartialOrd for HipOsStr<'borrow, B> {
 }
 
 symmetric_ord! {
-    <'borrow, B, > [where B: Backend] (a: OsStr, b: HipOsStr<'borrow, B>) {
+    <'borrow> <B> <> [where B: Backend] (a: OsStr, b: HipOsStr<'borrow, B>) {
         <OsStr as PartialOrd<OsStr>>::partial_cmp(a, b)
     }
 
-    <'a, 'borrow, B, > [where B: Backend] (a: &'a OsStr, b: HipOsStr<'borrow, B>) {
+    <'a, 'borrow> <B> <> [where B: Backend] (a: &'a OsStr, b: HipOsStr<'borrow, B>) {
         <OsStr as PartialOrd>::partial_cmp(a, b)
     }
 
-    <'a, 'borrow, B, > [where B: Backend] (a: Cow<'a, OsStr>, b: HipOsStr<'borrow, B>) {
+    <'a, 'borrow> <B> <> [where B: Backend] (a: Cow<'a, OsStr>, b: HipOsStr<'borrow, B>) {
         <OsStr as PartialOrd>::partial_cmp(a, b)
     }
 
-    <'borrow, B, > [where B: Backend] (a: OsString, b: HipOsStr<'borrow, B>) {
+    <'borrow> <B> <> [where B: Backend] (a: OsString, b: HipOsStr<'borrow, B>) {
         <OsStr as PartialOrd>::partial_cmp(a, b)
     }
 
-    <'borrow, B, > [where B: Backend] (a: Path, b: HipOsStr<'borrow, B>) {
+    <'borrow> <B> <> [where B: Backend] (a: Path, b: HipOsStr<'borrow, B>) {
         <Path as PartialOrd<OsStr>>::partial_cmp(a, b)
     }
 
-    <'a, 'borrow, B, > [where B: Backend] (a: &'a Path, b: HipOsStr<'borrow, B>) {
+    <'a, 'borrow> <B> <> [where B: Backend] (a: &'a Path, b: HipOsStr<'borrow, B>) {
         <Path as PartialOrd<OsStr>>::partial_cmp(a, b)
     }
 
-    <'a, 'borrow, B, > [where B: Backend] (a: Cow<'a, Path>, b: HipOsStr<'borrow, B>) {
+    <'a, 'borrow> <B> <> [where B: Backend] (a: Cow<'a, Path>, b: HipOsStr<'borrow, B>) {
         <Path as PartialOrd<OsStr>>::partial_cmp(a, b)
     }
 
-    <'borrow, B, > [where B: Backend] (a: PathBuf, b: HipOsStr<'borrow, B>) {
+    <'borrow> <B> <> [where B: Backend] (a: PathBuf, b: HipOsStr<'borrow, B>) {
         <Path as PartialOrd<OsStr>>::partial_cmp(a, b)
     }
 }

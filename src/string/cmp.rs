@@ -25,38 +25,38 @@ where
 }
 
 symmetric_eq! {
-    <'borrow, B, > [where B: Backend] (a : str, b : HipStr<'borrow, B>) {
+    <'borrow> <B> <> [where B: Backend] (a : str, b : HipStr<'borrow, B>) {
         a == b.as_str()
     }
 
-    <'a, 'borrow, B, > [where B: Backend] (a : &'a str, b : HipStr<'borrow, B>) {
+    <'a, 'borrow> <B> <> [where B: Backend] (a : &'a str, b : HipStr<'borrow, B>) {
         *a == b.as_str()
     }
 
-    <'borrow, B, > [where B: Backend] (a : String, b : HipStr<'borrow, B>) {
+    <'borrow> <B> <> [where B: Backend] (a : String, b : HipStr<'borrow, B>) {
         a.as_str() == b.as_str()
     }
 
-    <'borrow, B, > [where B: Backend] (a : Box<str>, b : HipStr<'borrow, B>) {
+    <'borrow> <B> <> [where B: Backend] (a : Box<str>, b : HipStr<'borrow, B>) {
         a.as_ref() == b.as_str()
     }
 
-    <'a, 'borrow, B, > [where B: Backend] (a : Cow<'a, str>, b : HipStr<'borrow, B>) {
+    <'a, 'borrow> <B> <> [where B: Backend] (a : Cow<'a, str>, b : HipStr<'borrow, B>) {
         a.as_ref() == b.as_str()
     }
 }
 
 #[cfg(feature = "std")]
 symmetric_eq! {
-    <'borrow, B, > [where B: Backend] (a : std::ffi::OsStr, b : HipStr<'borrow, B>) {
+    <'borrow> <B> <> [where B: Backend] (a : std::ffi::OsStr, b : HipStr<'borrow, B>) {
         a == b.as_str()
     }
 
-    <'a, 'borrow, B, > [where B: Backend] (a : &'a std::ffi::OsStr, b : HipStr<'borrow, B>) {
+    <'a, 'borrow> <B> <> [where B: Backend] (a : &'a std::ffi::OsStr, b : HipStr<'borrow, B>) {
         *a == b.as_str()
     }
 
-    <'borrow, B, > [where B: Backend] (a : std::ffi::OsString, b : HipStr<'borrow, B>) {
+    <'borrow> <B> <> [where B: Backend] (a : std::ffi::OsString, b : HipStr<'borrow, B>) {
         a == b.as_str()
     }
 }
@@ -82,30 +82,30 @@ where
 }
 
 symmetric_ord! {
-    <'borrow, B, > [where B: Backend] (a: str, b: HipStr<'borrow, B>) {
+    <'borrow> <B> <> [where B: Backend] (a: str, b: HipStr<'borrow, B>) {
         str::partial_cmp(a, b.as_str())
     }
 
-    <'a, 'borrow, B, > [where B: Backend] (a: &'a str, b: HipStr<'borrow, B>) {
+    <'a, 'borrow> <B> <> [where B: Backend] (a: &'a str, b: HipStr<'borrow, B>) {
         str::partial_cmp(a, b.as_str())
     }
 
-    <'borrow, B, > [where B: Backend] (a: String, b: HipStr<'borrow, B>) {
+    <'borrow> <B> <> [where B: Backend] (a: String, b: HipStr<'borrow, B>) {
         str::partial_cmp(a.as_str(), b.as_str())
     }
 }
 
 #[cfg(feature = "std")]
 symmetric_ord! {
-    <'borrow, B, > [where B: Backend] (a: std::ffi::OsStr, b: HipStr<'borrow, B>) {
+    <'borrow> <B> <> [where B: Backend] (a: std::ffi::OsStr, b: HipStr<'borrow, B>) {
         std::ffi::OsStr::partial_cmp(a, b.as_str())
     }
 
-    <'a, 'borrow, B, > [where B: Backend] (a: &'a std::ffi::OsStr, b: HipStr<'borrow, B>) {
+    <'a, 'borrow> <B> <> [where B: Backend] (a: &'a std::ffi::OsStr, b: HipStr<'borrow, B>) {
         std::ffi::OsStr::partial_cmp(a, b.as_str())
     }
 
-    <'borrow, B, > [where B: Backend] (a: std::ffi::OsString, b: HipStr<'borrow, B>) {
+    <'borrow> <B> <> [where B: Backend] (a: std::ffi::OsString, b: HipStr<'borrow, B>) {
         std::ffi::OsString::partial_cmp(a, b.as_str())
     }
 }
