@@ -17,6 +17,9 @@ mod convert;
 #[cfg(feature = "serde")]
 pub mod serde;
 
+#[cfg(test)]
+mod tests;
+
 /// Smart bytes, i.e. cheaply clonable and sliceable byte string.
 ///
 /// # Examples
@@ -336,8 +339,6 @@ where
 
     /// Extracts a slice as its own `HipByt`.
     ///
-    /// Used by `HipStr`.
-    ///
     /// # Safety
     ///
     /// The range must be a range `a..b` with `a <= b <= len`.
@@ -345,6 +346,65 @@ where
     #[must_use]
     pub(crate) unsafe fn slice_unchecked(&self, range: Range<usize>) -> Self {
         Self(unsafe { self.0.slice_unchecked(range) })
+    }
+
+    /// Extracts a slice as its own `HipByt` based on the given subslice `&[u8]`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `slice` is not part of `self`.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// # use hipstr::HipByt;
+    /// let a = HipByt::from(b"abc");
+    /// let sl = &a[0..2];
+    /// assert_eq!(a.slice_ref(sl), HipByt::from(b"ab"));
+    /// ```
+    #[must_use]
+    #[track_caller]
+    pub fn slice_ref(&self, slice: &[u8]) -> Self {
+        let Some(result) = self.try_slice_ref(slice) else {
+            panic!("slice {slice:p} is not a part of {self:p}")
+        };
+        result
+    }
+
+    /// Extracts a slice as its own `HipByt` based on the given subslice `&[u8]`.
+    ///
+    /// # Safety
+    ///
+    /// The slice MUST be a part of this `HipByt`
+    #[must_use]
+    pub unsafe fn slice_ref_unchecked(&self, slice: &[u8]) -> Self {
+        Self(unsafe { self.0.slice_ref_unchecked(slice) })
+    }
+
+    /// Returns a slice as it own `HipByt` based on the given subslice `&[u8]`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `None` if `slice` is not a part of `self`.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// # use hipstr::HipByt;
+    /// let a = HipByt::from(b"abc");
+    /// let sl = &a[0..2];
+    /// assert_eq!(a.try_slice_ref(sl), Some(HipByt::from(b"ab")));
+    /// assert!(a.try_slice_ref(b"z").is_none());
+    /// ```
+    pub fn try_slice_ref(&self, range: &[u8]) -> Option<Self> {
+        let slice = range;
+        let range = self.0.try_range_of_slice(slice)?;
+        let raw = unsafe { self.0.slice_unchecked(range) };
+        Some(Self(raw))
     }
 
     /// Returns the maximal length for inline byte sequence.
@@ -884,6 +944,3 @@ where
         &mut self.owned
     }
 }
-
-#[cfg(test)]
-mod tests;

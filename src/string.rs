@@ -398,6 +398,62 @@ where
         }
     }
 
+    /// Extracts a slice as its own `HipStr` based on the given subslice `&str`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `slice` is not part of `self`.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// # use hipstr::HipStr;
+    /// let a = HipStr::from("abc");
+    /// let sl = &a[0..2];
+    /// assert_eq!(a.slice_ref(sl), HipStr::from("ab"));
+    /// ```
+    #[must_use]
+    #[track_caller]
+    pub fn slice_ref(&self, slice: &str) -> Self {
+        let Some(result) = self.try_slice_ref(slice) else {
+            panic!("slice {slice:p} is not a part of {self:p}")
+        };
+        result
+    }
+
+    /// Extracts a slice as its own `HipStr` based on the given subslice `&str`.
+    ///
+    /// # Safety
+    ///
+    /// The slice MUST be a part of this `HipStr`.
+    #[must_use]
+    pub unsafe fn slice_ref_unchecked(&self, slice: &str) -> Self {
+        unsafe { Self(self.0.slice_ref_unchecked(slice.as_bytes())) }
+    }
+
+    /// Returns a slice as it own `HipStr` based on the given subslice `&str`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `None` if `slice` is not a part of `self`.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// # use hipstr::HipStr;
+    /// let a = HipStr::from("abc");
+    /// let sl = &a[0..2];
+    /// assert_eq!(a.try_slice_ref(sl), Some(HipStr::from("ab")));
+    /// assert!(a.try_slice_ref("z").is_none());
+    /// ```
+    pub fn try_slice_ref(&self, range: &str) -> Option<Self> {
+        self.0.try_slice_ref(range.as_bytes()).map(Self)
+    }
+
     /// Decodes a UTF-16–encoded vector `v` into a `HipStr`.
     ///
     /// # Errors

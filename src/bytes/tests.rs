@@ -882,3 +882,66 @@ fn test_simplify_range() {
         Err((9, 8, SliceErrorKind::StartGreaterThanEnd))
     );
 }
+
+#[test]
+fn test_slice_ref_unchecked() {
+    let s = Vec::from(b"abc");
+    let a = HipByt::borrowed(s.as_slice());
+
+    unsafe {
+        assert_eq!(a.slice_ref_unchecked(&a[0..1]), b"a");
+        assert_eq!(a.slice_ref_unchecked(&a[0..0]), b"");
+        assert_eq!(a.slice_ref_unchecked(&a[3..3]), b"");
+    }
+
+    let a = HipByt::from(s.as_slice());
+
+    unsafe {
+        assert_eq!(a.slice_ref_unchecked(&a[0..1]), b"a");
+        assert_eq!(a.slice_ref_unchecked(&a[0..0]), b"");
+        assert_eq!(a.slice_ref_unchecked(&a[3..3]), b"");
+    }
+
+    let s = b"*".repeat(42);
+    let a = HipByt::from(s);
+
+    unsafe {
+        assert_eq!(a.slice_ref_unchecked(&a[0..1]), b"*");
+        assert_eq!(a.slice_ref_unchecked(&a[0..41]).as_ptr(), a.as_ptr());
+        assert_eq!(a.slice_ref_unchecked(&a[0..0]), b"");
+        assert_eq!(a.slice_ref_unchecked(&a[3..3]), b"");
+    }
+}
+
+#[test]
+fn test_try_slice_ref() {
+    let s = Vec::from(b"abc");
+    let a = HipByt::borrowed(s.as_slice());
+
+    assert_eq!(a.try_slice_ref(&a[0..1]).unwrap(), b"a");
+    assert_eq!(a.try_slice_ref(&a[0..0]).unwrap(), b"");
+    assert_eq!(a.try_slice_ref(&a[3..3]).unwrap(), b"");
+
+    assert!(a.try_slice_ref(b"abc").is_none());
+    assert!(a.try_slice_ref(b"").is_none());
+
+    let b = HipByt::borrowed(&s[0..2]);
+    assert!(b.try_slice_ref(&s[1..3]).is_none());
+}
+
+#[test]
+fn test_slice_ref() {
+    let s = Vec::from(b"abc");
+    let a = HipByt::borrowed(s.as_slice());
+    assert_eq!(a.slice_ref(&a[0..1]), b"a");
+    assert_eq!(a.slice_ref(&a[0..0]), b"");
+    assert_eq!(a.slice_ref(&a[3..3]), b"");
+}
+
+#[test]
+#[should_panic]
+fn test_slice_ref_panic() {
+    let s = Vec::from(b"abc");
+    let a = HipByt::borrowed(s.as_slice());
+    let _ = a.slice_ref(b"abc");
+}
