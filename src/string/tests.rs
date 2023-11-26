@@ -721,3 +721,190 @@ fn test_slice_ref_panic() {
     let a = HipStr::borrowed(s.as_str());
     let _ = a.slice_ref("abc");
 }
+
+#[inline]
+#[track_caller]
+fn value_eq<'a>(computed: HipStr<'a>, expected: &'a str) {
+    assert!(
+        core::ptr::eq(computed.as_str(), expected),
+        "{computed:?} and {expected:?} are not the same"
+    );
+}
+
+#[inline]
+#[track_caller]
+fn option_eq<'a>(computed: Option<HipStr<'a>>, expected: Option<&'a str>) {
+    match (computed, expected) {
+        (None, None) => (),
+        (None, Some(e)) => panic!("expected value {e:?}, got none"),
+        (Some(c), None) => panic!("expected none, got {c:?}"),
+        (Some(c), Some(e)) => value_eq(c, e),
+    }
+}
+
+#[inline]
+#[track_caller]
+fn iter_eq_bidir<'a>(
+    computed: impl Iterator<Item = HipStr<'a>> + DoubleEndedIterator + Clone,
+    expected: impl Iterator<Item = &'a str> + DoubleEndedIterator + Clone,
+) {
+    iter_eq(computed.clone(), expected.clone());
+    iter_eq(computed.rev(), expected.rev());
+}
+#[inline]
+#[track_caller]
+fn iter_eq<'a>(
+    mut computed: impl Iterator<Item = HipStr<'a>>,
+    mut expected: impl Iterator<Item = &'a str>,
+) {
+    loop {
+        match (computed.next(), expected.next()) {
+            (Some(c), Some(e)) => value_eq(c, e),
+            (None, None) => break,
+            (_, _) => panic!("non matching iterator"),
+        }
+    }
+}
+
+#[inline]
+#[track_caller]
+fn pair_eq<'a>(computed: Option<(HipStr<'a>, HipStr<'a>)>, expected: Option<(&'a str, &'a str)>) {
+    match (computed, expected) {
+        (Some((c1, c2)), Some((e1, e2))) => {
+            value_eq(c1, e1);
+            value_eq(c2, e2);
+        }
+        (None, None) => (),
+        (_, _) => panic!("non matching iterator"),
+    }
+}
+
+#[test]
+fn test_whitespace() {
+    // test only with borrowed string
+
+    let source = " \r\n a\t\n";
+    let h = HipStr::borrowed(source);
+    value_eq(h.trim(), source.trim());
+    value_eq(h.trim_start(), source.trim_start());
+    value_eq(h.trim_end(), source.trim_end());
+    iter_eq_bidir(h.split_whitespace(), source.split_whitespace());
+    iter_eq_bidir(h.split_ascii_whitespace(), source.split_ascii_whitespace());
+    iter_eq_bidir(h.lines(), source.lines());
+
+    let source = "abc";
+    let h = HipStr::borrowed(source);
+    value_eq(h.trim(), source.trim());
+    value_eq(h.trim_start(), source.trim_start());
+    value_eq(h.trim_end(), source.trim_end());
+    iter_eq_bidir(h.split_whitespace(), source.split_whitespace());
+    iter_eq_bidir(h.split_ascii_whitespace(), source.split_ascii_whitespace());
+    iter_eq_bidir(h.lines(), source.lines());
+}
+
+#[test]
+fn test_pattern() {
+    // test only on borrowed string  to check the slice reuse easily
+    // compare the resulting iterator to the iterator obtained on str
+
+    macro_rules! test_method {
+        (>< $name:ident  $( ( $p:tt ) )? $test:ident) => {{
+            let source = ":a:b:c:";
+            let hip = HipStr::borrowed(source);
+            $test(hip.$name($( $p , )? ':'), source.$name($( $p , )? ':'));
+            $test(hip.$name($( $p , )? '.'), source.$name($( $p , )? '.'));
+            $test(hip.$name($( $p , )? [':'].as_slice()), source.$name($( $p , )? [':'].as_slice()));
+            $test(hip.$name($( $p , )? |c| c == ':'), source.$name($( $p , )? |c| c == ':'));
+        }};
+        ($name:ident  $( ( $p:tt ) )? $test:ident) => {{
+            let source = ":a:b:c:";
+            let hip = HipStr::borrowed(source);
+            $test(hip.$name($( $p , )? ":"), source.$name($( $p , )? ":"));
+            $test(hip.$name($( $p , )? "."), source.$name($( $p , )? "."));
+            $test(hip.$name($( $p , )? ':'), source.$name($( $p , )? ':'));
+            $test(hip.$name($( $p , )? &[':']), source.$name($( $p , )? &[':']));
+            $test(hip.$name($( $p , )? [':'].as_slice()), source.$name($( $p , )? [':'].as_slice()));
+            $test(hip.$name($( $p , )? |c| c == ':'), source.$name($( $p , )? |c| c == ':'));
+        }};
+    }
+
+    test_method!(split iter_eq);
+    test_method!(>< split iter_eq_bidir);
+    test_method!(split_inclusive iter_eq);
+    test_method!(>< split_inclusive iter_eq_bidir);
+    test_method!(rsplit iter_eq);
+    test_method!(>< rsplit iter_eq_bidir);
+    test_method!(split_terminator iter_eq);
+    test_method!(>< split_terminator iter_eq_bidir);
+    test_method!(rsplit_terminator iter_eq);
+    test_method!(>< rsplit_terminator iter_eq_bidir);
+    test_method!(splitn(1) iter_eq);
+    test_method!(rsplitn(2) iter_eq);
+    test_method!(split_once pair_eq);
+    test_method!(rsplit_once pair_eq);
+    test_method!(matches iter_eq);
+    test_method!(>< matches iter_eq_bidir);
+    test_method!(rmatches iter_eq);
+    test_method!(>< rmatches iter_eq_bidir);
+
+    {
+        let source = ":a:b:c:";
+        let hip = HipStr::borrowed(source);
+        iter_eq(hip.match_indices(":").map(|(_, v)| v), source.matches(":"));
+        iter_eq(hip.match_indices(".").map(|(_, v)| v), source.matches("."));
+        iter_eq_bidir(hip.match_indices(':').map(|(_, v)| v), source.matches(':'));
+        iter_eq_bidir(hip.match_indices('.').map(|(_, v)| v), source.matches('.'));
+        iter_eq(
+            hip.match_indices(&[':']).map(|(_, v)| v),
+            source.matches(&[':']),
+        );
+        iter_eq_bidir(
+            hip.match_indices([':'].as_slice()).map(|(_, v)| v),
+            source.matches([':'].as_slice()),
+        );
+        iter_eq_bidir(
+            hip.match_indices(|c| c == ':').map(|(_, v)| v),
+            source.matches(|c| c == ':'),
+        );
+    };
+
+    {
+        let source = ":a:b:c:";
+        let hip = HipStr::borrowed(source);
+        iter_eq(
+            hip.rmatch_indices(":").map(|(_, v)| v),
+            source.rmatches(":"),
+        );
+        iter_eq(
+            hip.rmatch_indices(".").map(|(_, v)| v),
+            source.rmatches("."),
+        );
+        iter_eq_bidir(
+            hip.rmatch_indices(':').map(|(_, v)| v),
+            source.rmatches(':'),
+        );
+        iter_eq_bidir(
+            hip.rmatch_indices('.').map(|(_, v)| v),
+            source.rmatches('.'),
+        );
+        iter_eq(
+            hip.rmatch_indices(&[':']).map(|(_, v)| v),
+            source.rmatches(&[':']),
+        );
+        iter_eq_bidir(
+            hip.rmatch_indices([':'].as_slice()).map(|(_, v)| v),
+            source.rmatches([':'].as_slice()),
+        );
+        iter_eq_bidir(
+            hip.rmatch_indices(|c| c == ':').map(|(_, v)| v),
+            source.rmatches(|c| c == ':'),
+        );
+    };
+
+    test_method!(trim_start_matches value_eq);
+    test_method!(trim_end_matches value_eq);
+    test_method!(>< trim_matches value_eq);
+
+    test_method!(strip_prefix option_eq);
+    test_method!(strip_suffix option_eq);
+}
