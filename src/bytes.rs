@@ -775,7 +775,7 @@ pub(crate) fn simplify_range(
     )
 }
 
-fn simplify_range_mono(
+const fn simplify_range_mono(
     start: Bound<usize>,
     end: Bound<usize>,
     len: usize,
