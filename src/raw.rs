@@ -214,6 +214,46 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
         result
     }
 
+    pub unsafe fn slice_ref_unchecked(&self, slice: &[u8]) -> Self {
+        #[cfg(debug_assertions)]
+        {
+            let range = self.as_slice().as_ptr_range();
+            let slice_range = slice.as_ptr_range();
+            assert!(range.contains(&slice_range.start) || range.end == slice_range.start);
+            assert!(range.contains(&slice_range.end) || range.end == slice_range.end);
+        }
+
+        let result = match self.split() {
+            RawSplit::Inline(inline) => {
+                let range = unsafe { self.range_of_slice_unchecked(slice) };
+                debug_assert!(range.len() <= inline.len());
+
+                let inline = Inline::new(&inline.as_slice()[range]);
+                Self { inline }
+            }
+            RawSplit::Borrowed(_) => {
+                let sl: &'borrow [u8] = unsafe { core::mem::transmute(slice) };
+                Self {
+                    borrowed: Borrowed::new(sl),
+                }
+            }
+            RawSplit::Allocated(allocated) => {
+                // normalize to inline if possible
+                if slice.len() <= INLINE_CAPACITY {
+                    let inline = Inline::new(slice);
+                    Self { inline }
+                } else {
+                    let range = unsafe { self.range_of_slice_unchecked(slice) };
+                    let allocated = unsafe { allocated.slice_unchecked(range) };
+                    Self { allocated }
+                }
+            }
+        };
+
+        debug_assert!(self.is_normalized());
+        result
+    }
+
     #[inline]
     pub fn as_mut_slice(&mut self) -> Option<&mut [u8]> {
         if self.is_inline() {
@@ -408,6 +448,38 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
             } else {
                 Self::from_vec(self.as_slice().repeat(n))
             }
+        }
+    }
+
+    unsafe fn range_of_slice_unchecked(&self, slice: &[u8]) -> Range<usize> {
+        unsafe {
+            let offset = slice.as_ptr().offset_from(self.as_slice().as_ptr());
+            let offset: usize = offset.try_into().unwrap_unchecked();
+            offset..offset + slice.len()
+        }
+    }
+
+    pub fn try_range_of_slice(&self, slice: &[u8]) -> Option<Range<usize>> {
+        let len = self.len();
+        let slice_len = slice.len();
+        let slice_ptr = slice.as_ptr();
+
+        // slice_ptr in self?
+        if !self.as_slice().as_ptr_range().contains(&slice_ptr)
+            && slice_ptr != self.as_slice().as_ptr_range().end
+        {
+            return None;
+        }
+
+        // SAFETY: `offset_from` requires both pointers to be in the same allocated object (+1).
+        // that is checked above: slice_ptr is in self
+        let offset = unsafe { slice_ptr.offset_from(self.as_slice().as_ptr()) };
+        // SAFETY: offset is between 0 and slice_len included
+        let offset: usize = unsafe { offset.try_into().unwrap_unchecked() };
+        if offset + slice_len > len {
+            None
+        } else {
+            Some(offset..offset + slice_len)
         }
     }
 }

@@ -658,3 +658,66 @@ fn test_repeat() {
 
     assert_eq!(h.repeat(50), "abc".repeat(50));
 }
+
+#[test]
+fn test_slice_ref_unchecked() {
+    let s = String::from("abc");
+    let a = HipStr::borrowed(s.as_str());
+
+    unsafe {
+        assert_eq!(a.slice_ref_unchecked(&a[0..1]), "a");
+        assert_eq!(a.slice_ref_unchecked(&a[0..0]), "");
+        assert_eq!(a.slice_ref_unchecked(&a[3..3]), "");
+    }
+
+    let a = HipStr::from(s.as_str());
+
+    unsafe {
+        assert_eq!(a.slice_ref_unchecked(&a[0..1]), "a");
+        assert_eq!(a.slice_ref_unchecked(&a[0..0]), "");
+        assert_eq!(a.slice_ref_unchecked(&a[3..3]), "");
+    }
+
+    let s = "*".repeat(42);
+    let a = HipStr::from(s);
+
+    unsafe {
+        assert_eq!(a.slice_ref_unchecked(&a[0..1]), "*");
+        assert_eq!(a.slice_ref_unchecked(&a[0..41]).as_ptr(), a.as_ptr());
+        assert_eq!(a.slice_ref_unchecked(&a[0..0]), "");
+        assert_eq!(a.slice_ref_unchecked(&a[3..3]), "");
+    }
+}
+
+#[test]
+fn test_try_slice_ref() {
+    let s = String::from("abc");
+    let a = HipStr::borrowed(s.as_str());
+
+    assert_eq!(a.try_slice_ref(&a[0..1]).unwrap(), "a");
+    assert_eq!(a.try_slice_ref(&a[0..0]).unwrap(), "");
+    assert_eq!(a.try_slice_ref(&a[3..3]).unwrap(), "");
+
+    assert!(a.try_slice_ref("abc").is_none());
+    assert!(a.try_slice_ref("").is_none());
+
+    let b = HipStr::borrowed(&s[0..2]);
+    assert!(b.try_slice_ref(&s[1..3]).is_none());
+}
+
+#[test]
+fn test_slice_ref() {
+    let s = String::from("abc");
+    let a = HipStr::borrowed(s.as_str());
+    assert_eq!(a.slice_ref(&a[0..1]), "a");
+    assert_eq!(a.slice_ref(&a[0..0]), "");
+    assert_eq!(a.slice_ref(&a[3..3]), "");
+}
+
+#[test]
+#[should_panic]
+fn test_slice_ref_panic() {
+    let s = String::from("abc");
+    let a = HipStr::borrowed(s.as_str());
+    let _ = a.slice_ref("abc");
+}
