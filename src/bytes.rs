@@ -9,6 +9,7 @@ use core::ops::{Bound, Deref, DerefMut, Range, RangeBounds};
 use super::raw::Raw;
 use crate::alloc::fmt;
 use crate::alloc::vec::Vec;
+use crate::raw::try_range_of;
 use crate::{Backend, ThreadSafe};
 
 mod cmp;
@@ -402,7 +403,7 @@ where
     /// ```
     pub fn try_slice_ref(&self, range: &[u8]) -> Option<Self> {
         let slice = range;
-        let range = self.0.try_range_of_slice(slice)?;
+        let range = try_range_of(self.0.as_slice(), slice)?;
         let raw = unsafe { self.0.slice_unchecked(range) };
         Some(Self(raw))
     }
