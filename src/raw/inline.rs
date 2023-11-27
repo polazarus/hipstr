@@ -59,6 +59,7 @@ impl<const INLINE_CAPACITY: usize> Inline<INLINE_CAPACITY> {
 
     /// Creates a new `Inline` string by copying a byte slice.
     #[inline]
+    #[allow(dead_code)]
     pub fn new(sl: &[u8]) -> Self {
         assert!(sl.len() <= INLINE_CAPACITY);
         unsafe { Self::new_unchecked(sl) }
