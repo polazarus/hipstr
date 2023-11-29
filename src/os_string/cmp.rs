@@ -20,8 +20,8 @@ where
 {
     #[inline]
     fn eq(&self, other: &HipOsStr<B1>) -> bool {
-        // TODO optimize if same
-        self.as_os_str() == other.as_os_str()
+        // compare the encoded bytes.
+        self.0.eq(&other.0)
     }
 }
 
