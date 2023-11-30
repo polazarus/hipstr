@@ -516,6 +516,67 @@ where
         // SAFETY: type invariant
         unsafe { OsString::from_encoded_bytes_unchecked(self.0.take_vec()) }
     }
+
+    /// Extracts a slice as its own `HipOsStr` based on the given subslice `&OsStr`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `slice` is not part of `self`.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// # use hipstr::HipOsStr;
+    /// # use std::path::Path;
+    /// # use std::ffi::OsStr;
+    /// let a = HipOsStr::from("abc/def");
+    /// let p: &Path = a.as_ref();
+    /// let n: &OsStr = p.file_name().unwrap();
+    /// assert_eq!(a.slice_ref(n), HipOsStr::from("def"));
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn slice_ref(&self, slice: &OsStr) -> Self {
+        Self(self.0.slice_ref(slice.as_encoded_bytes()))
+    }
+
+    /// Returns a slice as it own `HipStr` based on the given subslice `&OsStr`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `None` if `slice` is not a part of `self`.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// # use hipstr::HipOsStr;
+    /// # use std::path::Path;
+    /// # use std::ffi::OsStr;
+    /// let a = HipOsStr::from("abc");
+    /// let sl: &OsStr = unsafe { OsStr::from_encoded_bytes_unchecked(&a.as_encoded_bytes()[0..2]) };
+    /// assert_eq!(a.try_slice_ref(sl), Some(HipOsStr::from("ab")));
+    /// assert!(a.try_slice_ref("z".as_ref()).is_none());
+    /// ```
+    #[inline]
+    pub fn try_slice_ref(&self, slice: &OsStr) -> Option<Self> {
+        self.0.try_slice_ref(slice.as_encoded_bytes()).map(Self)
+    }
+
+    /// Extracts a slice as its own `HipOsStr` based on the given subslice `&OsStr`.
+    ///
+    /// # Safety
+    ///
+    /// The slice MUST be a part of this `HipOsStr`.
+    #[inline]
+    #[must_use]
+    pub fn slice_ref_unchecked(&self, slice: &OsStr) -> Self {
+        // SAFETY
+        unsafe { Self(self.0.slice_ref_unchecked(slice.as_encoded_bytes())) }
+    }
 }
 
 impl<B> HipOsStr<'static, B>
