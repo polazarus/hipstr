@@ -1,3 +1,4 @@
+use core::ops::Range;
 use std::collections::HashSet;
 use std::ffi::OsStr;
 
@@ -368,4 +369,95 @@ fn test_to_str_lossy() {
         let hs = ho.to_str_lossy();
         assert_eq!(hs, "abc�");
     }
+}
+
+/// Gets a OsStr slice out of an HipOsStr.
+///
+/// # Safety
+///
+/// The range must be at "os char" boundary.
+unsafe fn sl<'a>(h: &'a HipOsStr, r: Range<usize>) -> &'a OsStr {
+    unsafe { OsStr::from_encoded_bytes_unchecked(&h.0[r]) }
+}
+
+#[test]
+fn test_slice_ref_unchecked() {
+    let s = String::from("abc");
+    let a = HipOsStr::borrowed(s.as_str());
+
+    unsafe {
+        assert_eq!(a.slice_ref_unchecked(sl(&a, 0..1)).as_encoded_bytes(), b"a");
+        assert_eq!(a.slice_ref_unchecked(sl(&a, 0..0)).as_encoded_bytes(), b"");
+        assert_eq!(a.slice_ref_unchecked(sl(&a, 3..3)).as_encoded_bytes(), b"");
+    }
+
+    let a = HipOsStr::from(s.as_str());
+
+    unsafe {
+        assert_eq!(a.slice_ref_unchecked(sl(&a, 0..1)).as_encoded_bytes(), b"a");
+        assert_eq!(a.slice_ref_unchecked(sl(&a, 0..0)).as_encoded_bytes(), b"");
+        assert_eq!(a.slice_ref_unchecked(sl(&a, 3..3)).as_encoded_bytes(), b"");
+    }
+
+    let s = "*".repeat(42);
+    let a = HipOsStr::from(s);
+
+    unsafe {
+        assert_eq!(a.slice_ref_unchecked(sl(&a, 0..1)).as_encoded_bytes(), b"*");
+        assert_eq!(a.slice_ref_unchecked(sl(&a, 0..41)).as_ptr(), a.as_ptr());
+        assert_eq!(a.slice_ref_unchecked(sl(&a, 0..0)).as_encoded_bytes(), b"");
+        assert_eq!(a.slice_ref_unchecked(sl(&a, 3..3)).as_encoded_bytes(), b"");
+    }
+}
+
+#[test]
+fn test_try_slice_ref() {
+    let s = String::from("abc");
+    let a = HipOsStr::borrowed(s.as_str());
+
+    assert_eq!(
+        a.try_slice_ref(unsafe { sl(&a, 0..1) })
+            .unwrap()
+            .as_encoded_bytes(),
+        b"a"
+    );
+    assert_eq!(
+        a.try_slice_ref(unsafe { sl(&a, 0..0) })
+            .unwrap()
+            .as_encoded_bytes(),
+        b""
+    );
+    assert_eq!(
+        a.try_slice_ref(unsafe { sl(&a, 3..3) })
+            .unwrap()
+            .as_encoded_bytes(),
+        b""
+    );
+
+    assert!(a.try_slice_ref(OsStr::new("abc")).is_none());
+    assert!(a.try_slice_ref(OsStr::new("")).is_none());
+
+    let b = HipOsStr::borrowed(&s[0..2]);
+    assert!(b.try_slice_ref(s[1..3].as_ref()).is_none());
+}
+
+#[test]
+fn test_slice_ref() {
+    let s = String::from("abc");
+    let a = HipOsStr::borrowed(&s);
+
+    assert_eq!(
+        a.slice_ref(unsafe { sl(&a, 0..1) }).as_encoded_bytes(),
+        b"a"
+    );
+    assert_eq!(a.slice_ref(unsafe { sl(&a, 0..0) }).as_encoded_bytes(), b"");
+    assert_eq!(a.slice_ref(unsafe { sl(&a, 3..3) }).as_encoded_bytes(), b"");
+}
+
+#[test]
+#[should_panic]
+fn test_slice_ref_panic() {
+    let s = String::from("abc");
+    let a = HipOsStr::borrowed(&s);
+    let _ = a.slice_ref("abc".as_ref());
 }
