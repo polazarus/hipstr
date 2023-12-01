@@ -2,6 +2,22 @@
 
 Notable changes only.
 
+## [0.4.0] - 2023-12-01
+
+## Added
+
+- add `HipPath` and `HipOsStr` (#11)
+- more methods to keep working with `Hip*` types when possible (#13)
+- add pattern methods on `HipStr` (#17)
+- more comparisons (#15)
+
+Most of those addition are breaking because they shadows `str`'s methods.
+
+## Changed
+
+- make equality more efficient (#12 then #18)
+- better coverage with more tests (#14)
+
 ## [0.3.3] - 2023-10-30
 
 ## Fixed
@@ -62,7 +78,8 @@ Notable changes only.
 
 Initial release
 
-[0.3.2]: https://github.com/polazarus/hipstr/compare/0.3.2...0.3.3
+[0.4.0]: https://github.com/polazarus/hipstr/compare/0.3.3...0.4.0
+[0.3.3]: https://github.com/polazarus/hipstr/compare/0.3.2...0.3.3
 [0.3.2]: https://github.com/polazarus/hipstr/compare/0.3.1...0.3.2
 [0.3.1]: https://github.com/polazarus/hipstr/compare/0.3.0...0.3.1
 [0.3.0]: https://github.com/polazarus/hipstr/compare/0.2.0...0.3.0
