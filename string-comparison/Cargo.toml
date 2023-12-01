@@ -11,5 +11,5 @@ arcstr = "1.1.5"
 fast-str = { version = "1.0.0", features = ["stack"] }
 faststr = "0.2.9"
 flexstr = "0.9.2"
-hipstr = { version = "0.3.0", path = ".." }
+hipstr = { path = ".." }
 imstr = "0.2.0"
