@@ -1516,7 +1516,6 @@ pub enum SliceErrorKind {
 /// A possible error value when slicing a [`HipStr`].
 ///
 /// This type is the error type for [`HipStr::try_slice`].
-#[derive(PartialEq, Eq, Clone)]
 pub struct SliceError<'a, 'borrow, B>
 where
     B: Backend,
@@ -1525,6 +1524,34 @@ where
     start: usize,
     end: usize,
     string: &'a HipStr<'borrow, B>,
+}
+
+impl<'a, 'borrow, B> Eq for SliceError<'a, 'borrow, B> where B: Backend {}
+
+impl<'a, 'borrow, B> PartialEq for SliceError<'a, 'borrow, B>
+where
+    B: Backend,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind
+            && self.start == other.start
+            && self.end == other.end
+            && self.string == other.string
+    }
+}
+
+impl<'a, 'borrow, B> Clone for SliceError<'a, 'borrow, B>
+where
+    B: Backend,
+{
+    fn clone(&self) -> Self {
+        Self {
+            kind: self.kind.clone(),
+            start: self.start.clone(),
+            end: self.end.clone(),
+            string: self.string,
+        }
+    }
 }
 
 impl<'a, 'borrow, B> SliceError<'a, 'borrow, B>
@@ -1671,13 +1698,35 @@ impl<'a, 'borrow, B> std::error::Error for SliceError<'a, 'borrow, B> where B: B
 /// assert!(value.is_err());
 /// assert_eq!(vec![0, 159], value.unwrap_err().into_bytes());
 /// ```
-#[derive(PartialEq, Eq, Clone)]
 pub struct FromUtf8Error<'borrow, B>
 where
     B: Backend,
 {
     pub(super) bytes: HipByt<'borrow, B>,
     pub(super) error: Utf8Error,
+}
+
+impl<'borrow, B> Eq for FromUtf8Error<'borrow, B> where B: Backend {}
+
+impl<'borrow, B> PartialEq for FromUtf8Error<'borrow, B>
+where
+    B: Backend,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.bytes == other.bytes && self.error == other.error
+    }
+}
+
+impl<'borrow, B> Clone for FromUtf8Error<'borrow, B>
+where
+    B: Backend,
+{
+    fn clone(&self) -> Self {
+        Self {
+            bytes: self.bytes.clone(),
+            error: self.error.clone(),
+        }
+    }
 }
 
 impl<'borrow, B> fmt::Debug for FromUtf8Error<'borrow, B>

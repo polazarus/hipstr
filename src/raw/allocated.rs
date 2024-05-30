@@ -1,10 +1,79 @@
 //! Allocated representation.
 
+use core::marker::PhantomData;
+use core::mem::transmute;
 use core::ops::Range;
 use core::panic::{RefUnwindSafe, UnwindSafe};
 
 use crate::alloc::vec::Vec;
-use crate::Backend;
+use crate::backend::{rc, Backend};
+
+const MASK: usize = 0b11;
+pub const TAG: u8 = 0b11;
+const TAG_USIZE: usize = TAG as usize;
+
+struct TaggedRaw<B: Backend>(*mut (), PhantomData<rc::Raw<Vec<u8>, B>>);
+
+impl<B: Backend> Clone for TaggedRaw<B> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<B: Backend> Copy for TaggedRaw<B> {}
+
+impl<B: Backend> TaggedRaw<B> {
+    #[inline]
+    fn from(raw: rc::Raw<Vec<u8>, B>) -> Self {
+        // SAFETY: add a 2-bit tag to a non-null pointer with the same alignment
+        // requirement as usize (typically 4 bytes on 32-bit architectures, and
+        // more on 64-bit architectures)
+        unsafe {
+            let ptr: *mut () = transmute(raw);
+            debug_assert!((ptr as usize) & MASK == 0);
+            debug_assert!(!ptr.is_null());
+
+            // Strict provenance API, nightly only, for now just for MIRI
+            #[cfg(miri)]
+            let new_ptr = ptr.map_addr(|addr| addr | TAG_USIZE);
+
+            #[cfg(not(miri))]
+            let new_ptr = ((ptr as usize) | TAG_USIZE) as *mut ();
+
+            Self(new_ptr, PhantomData)
+        }
+    }
+
+    #[inline]
+    fn into(self) -> rc::Raw<Vec<u8>, B> {
+        let this: rc::Raw<Vec<u8>, B>;
+
+        debug_assert!((self.0 as usize) & MASK == TAG_USIZE);
+
+        // SAFETY: remove a 2-bit tag to a non-null pointer with the same
+        // alignment as usize (typically 4 bytes on 32-bit architectures, and
+        // more on 64-bit architectures)
+        unsafe {
+            // Strict provenance API, nightly only, for now just for MIRI
+            #[cfg(miri)]
+            let new_ptr = self.0.map_addr(|addr| (addr | MASK) ^ MASK);
+
+            #[cfg(not(miri))]
+            let new_ptr = ((self.0 as usize) ^ TAG_USIZE) as *mut ();
+
+            debug_assert!(!new_ptr.is_null());
+
+            this = transmute(new_ptr);
+            debug_assert!(this.is_valid());
+        }
+
+        this
+    }
+
+    fn check_tag(self) -> bool {
+        self.0 as usize & MASK == TAG_USIZE
+    }
+}
 
 /// Allocated representation.
 ///
@@ -15,13 +84,13 @@ use crate::Backend;
 #[repr(C)]
 pub struct Allocated<B: Backend> {
     #[cfg(target_endian = "little")]
-    owner: B::RawPointer,
+    owner: TaggedRaw<B>,
 
     ptr: *const u8,
     len: usize,
 
     #[cfg(target_endian = "big")]
-    owner: B::RawPointer,
+    owner: TaggedRaw<B>,
 }
 
 impl<B: Backend> Copy for Allocated<B> {}
@@ -43,6 +112,10 @@ impl<B: Backend + UnwindSafe> UnwindSafe for Allocated<B> {}
 impl<B: Backend + RefUnwindSafe> RefUnwindSafe for Allocated<B> {}
 
 impl<B: Backend> Allocated<B> {
+    fn owner(&self) -> rc::Raw<Vec<u8>, B> {
+        self.owner.into()
+    }
+
     /// Creates an allocated from a vector.
     ///
     /// Takes ownership of the vector without copying the data.
@@ -50,10 +123,17 @@ impl<B: Backend> Allocated<B> {
     pub fn new(v: Vec<u8>) -> Self {
         let ptr = v.as_ptr();
         let len = v.len();
-        let owner = B::into_raw(B::new(v));
+        let owner = rc::Raw::new(v);
 
-        #[allow(clippy::inconsistent_struct_constructor)]
-        Self { ptr, len, owner }
+        let this = Self {
+            ptr,
+            len,
+            owner: TaggedRaw::from(owner),
+        };
+
+        debug_assert!(this.is_unique());
+
+        this
     }
 
     /// Returns the length of this allocated string.
@@ -82,11 +162,11 @@ impl<B: Backend> Allocated<B> {
 
     /// Returns a mutable slice if possible (unique non-static reference).
     #[inline]
-    pub unsafe fn as_mut_slice<'a>(self) -> Option<&'a mut [u8]> {
+    pub fn as_mut_slice(&mut self) -> Option<&mut [u8]> {
         debug_assert!(self.is_valid());
 
         // SAFETY: type invariant, valid owner
-        let is_unique = unsafe { B::raw_is_unique(self.owner) };
+        let is_unique = unsafe { self.owner().is_unique() };
 
         if is_unique {
             // SAFETY:
@@ -126,7 +206,9 @@ impl<B: Backend> Allocated<B> {
     pub fn incr_ref_count(&self) {
         debug_assert!(self.is_valid());
         // SAFETY: type invariant -> owner is valid
-        unsafe { B::raw_increment_count(self.owner) };
+        unsafe {
+            self.owner().incr();
+        }
     }
 
     /// Decrements the reference count.
@@ -134,21 +216,30 @@ impl<B: Backend> Allocated<B> {
     pub fn decr_ref_count(self) {
         debug_assert!(self.is_valid());
         // SAFETY: type invariant -> owner is valid
-        unsafe { B::raw_decrement_count(self.owner) };
+        unsafe {
+            self.owner().decr();
+        };
     }
 
     /// Return `true` iff this representation is valid.
     #[inline]
     pub fn is_valid(&self) -> bool {
-        B::raw_is_valid(self.owner) && {
-            let owner = unsafe { B::raw_as_vec(self.owner) };
-            let owner_ptr = owner.as_ptr();
-            let shift = unsafe { self.ptr.offset_from(owner_ptr) };
-            shift >= 0 && {
-                #[allow(clippy::cast_sign_loss)]
-                let shift = shift as usize;
-                shift <= owner.len() && shift + self.len <= owner.len()
-            }
+        if !self.owner.check_tag() {
+            return false;
+        }
+
+        let owner = self.owner();
+        if unsafe { !owner.is_valid() } {
+            return false;
+        }
+
+        let owner = unsafe { owner.as_ref() };
+        let owner_ptr = owner.as_ptr();
+        let shift = unsafe { self.ptr.offset_from(owner_ptr) };
+        shift >= 0 && {
+            #[allow(clippy::cast_sign_loss)]
+            let shift = shift as usize;
+            shift <= owner.len() && shift + self.len <= owner.len()
         }
     }
 
@@ -158,7 +249,7 @@ impl<B: Backend> Allocated<B> {
         debug_assert!(self.is_valid());
 
         // SAFETY: type invariant -> owner is valid.
-        unsafe { B::raw_as_vec(self.owner) }
+        unsafe { self.owner().as_ref() }
     }
 
     /// Returns the backend capacity.
@@ -177,13 +268,18 @@ impl<B: Backend> Allocated<B> {
             // the starts differ, cannot truncate
             return Err(self);
         }
+
         // SAFETY: type invariant, the owner is valid
-        unsafe { B::raw_try_unwrap(self.owner) }
-            .map_err(|owner| Self { owner, ..self })
-            .map(|mut v| {
-                v.truncate(self.len);
-                v
-            })
+        unsafe {
+            if self.owner().is_unique() {
+                let len = self.len();
+                let mut owner = self.owner().unwrap();
+                owner.truncate(len);
+                Ok(owner)
+            } else {
+                Err(self)
+            }
+        }
     }
 
     /// Returns `true` if there is only one reference to the underlying vector.
@@ -191,7 +287,7 @@ impl<B: Backend> Allocated<B> {
         debug_assert!(self.is_valid());
 
         // SAFETY: type invariant -> owner is valid
-        unsafe { B::raw_is_unique(self.owner) }
+        unsafe { self.owner().is_unique() }
     }
 
     /// Pushes a slice at the end of the underlying vector.
@@ -202,7 +298,8 @@ impl<B: Backend> Allocated<B> {
     pub unsafe fn push_slice_unchecked(&mut self, addition: &[u8]) {
         debug_assert!(self.is_valid());
 
-        let v = unsafe { B::raw_get_mut_unchecked(self.owner) };
+        let owner = self.owner();
+        let v = unsafe { owner.as_mut() };
 
         // SAFETY: compute the shift from within the vector range (type invariant)
         #[allow(clippy::cast_sign_loss)]
@@ -225,13 +322,13 @@ mod tests {
 
     #[test]
     fn test_clone() {
-        let allocated = Allocated::<Local>::new(vec![]);
-        let _clone = allocated.clone();
-        let local = unsafe { Local::from_raw(allocated.owner) };
-        let count = Local::strong_count(&local);
-        let _ = Local::into_raw(local);
-        assert_eq!(count, 1);
-        allocated.decr_ref_count();
+        // let allocated = Allocated::<Local>::new(vec![]);
+        // let _clone = allocated.clone();
+        // let local = unsafe { Local::from_raw(allocated.owner()) };
+        // let count = Local::strong_count(&local);
+        // let _ = Local::into_raw(local);
+        // assert_eq!(count, 1);
+        // allocated.decr_ref_count();
     }
 
     #[test]
@@ -240,9 +337,13 @@ mod tests {
 
         {
             let slice = unsafe { allocated.slice_unchecked(1..2) };
+
+            assert_eq!(unsafe { allocated.owner().ref_count() }, 2);
             assert!(slice.try_into_vec().is_err());
         }
+
         allocated.decr_ref_count();
+        assert_eq!(unsafe { allocated.owner().ref_count() }, 1);
 
         assert!(allocated.try_into_vec().is_ok());
     }

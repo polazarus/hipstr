@@ -28,13 +28,24 @@ impl<'borrow, B: Backend> Adopt<'borrow, B> for (usize, &str) {
     }
 }
 
-#[derive(Clone)]
 pub struct IterWrapper<'haystack, 'borrow, B, I>
 where
     B: Backend,
 {
     source: &'haystack HipStr<'borrow, B>,
     inner: I,
+}
+
+impl<'haystack, 'borrow, B, I: Clone> Clone for IterWrapper<'haystack, 'borrow, B, I>
+where
+    B: Backend,
+{
+    fn clone(&self) -> Self {
+        Self {
+            source: self.source,
+            inner: self.inner.clone(),
+        }
+    }
 }
 
 impl<'haystack, 'borrow, B, I> IterWrapper<'haystack, 'borrow, B, I>
