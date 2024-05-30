@@ -78,16 +78,12 @@
 //! * `serde`: provides serialization/deserialization support with `serde` crate
 //! * `unstable`: exposes internal `Backend` trait that may change at any moment
 
+#![cfg_attr(miri, feature(strict_provenance))]
 #![cfg_attr(not(feature = "std"), no_std)]
 #![warn(clippy::pedantic, clippy::nursery, clippy::cargo)]
 #![warn(unsafe_op_in_unsafe_fn)]
 
-#[cfg(not(feature = "std"))]
 pub(crate) extern crate alloc;
-
-#[cfg(feature = "std")]
-pub(crate) use std as alloc;
-
 pub(crate) mod backend;
 pub mod bytes;
 pub(crate) mod macros;
@@ -99,7 +95,7 @@ pub mod os_string;
 #[cfg(feature = "std")]
 pub mod path;
 
-pub use backend::*;
+pub use backend::{Backend, Local, ThreadSafe};
 
 /// Thread-safe shared byte sequence.
 pub type HipByt<'borrow> = bytes::HipByt<'borrow, ThreadSafe>;

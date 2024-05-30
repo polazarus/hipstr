@@ -1,10 +1,50 @@
 //! Inline representation.
 
-use core::mem::MaybeUninit;
+#![allow(clippy::inconsistent_struct_constructor)]
+// REASON: the supports of little and big endianness results in two field orders
+// as a result respecting the struct order is impossible for one of the two
+
+use core::mem::{offset_of, size_of, MaybeUninit};
+use core::num::NonZeroU8;
 use core::ptr::copy_nonoverlapping;
 
 #[cfg(test)]
 mod tests;
+
+pub const TAG: u8 = 0b01;
+const MASK: u8 = 0b11;
+const SHIFT: u8 = 2;
+const MAX_LEN: usize = 1 << (8 - SHIFT);
+
+#[derive(Clone, Copy, Debug)]
+pub(super) struct TaggedLen(NonZeroU8);
+
+impl TaggedLen {
+    #[allow(clippy::cast_possible_truncation)]
+    #[inline]
+    const fn encode(length: usize) -> Self {
+        debug_assert!(length < MAX_LEN);
+        let value = ((length << SHIFT) as u8) | TAG;
+
+        // SAFETY: TAG != 0  ==>  value != 0
+        Self(unsafe { NonZeroU8::new_unchecked(value) })
+    }
+
+    #[inline]
+    const fn decode(self) -> usize {
+        (self.0.get() >> SHIFT) as usize
+    }
+
+    #[inline]
+    pub(super) const fn tag(self) -> u8 {
+        self.0.get() & MASK
+    }
+
+    #[inline]
+    const fn is_valid(self) -> bool {
+        self.tag() == TAG
+    }
+}
 
 /// Inline representation.
 ///
@@ -16,45 +56,47 @@ mod tests;
 #[repr(C)]
 pub struct Inline<const INLINE_CAPACITY: usize> {
     #[cfg(target_endian = "little")]
-    shifted_len: u8,
+    pub(super) len: TaggedLen,
 
     data: [MaybeUninit<u8>; INLINE_CAPACITY],
 
     #[cfg(target_endian = "big")]
-    shifted_len: u8,
+    len: TaggedLen,
 }
 
 impl<const INLINE_CAPACITY: usize> Inline<INLINE_CAPACITY> {
+    const ASSERTS: () = {
+        if cfg!(target_endian = "little") {
+            assert!(offset_of!(Self, len) == 0);
+        } else {
+            assert!(offset_of!(Self, len) == size_of::<Self>() - 1);
+        }
+    };
+
     /// Creates a new empty `Inline`.
     #[inline]
     pub const fn empty() -> Self {
-        // SAFETY: just a noop hack to construct an array of MaybeUninit
-        let data = unsafe { MaybeUninit::uninit().assume_init() };
-        // waiting for stabilization of MaybeUninit::uninit_array
-        // or inline const expression
+        // HACK to actually check the asserts
+        let () = Self::ASSERTS;
+
+        let data = [MaybeUninit::uninit(); INLINE_CAPACITY];
 
         #[allow(clippy::inconsistent_struct_constructor)]
         Self {
             data,
-            shifted_len: 1,
+            len: TaggedLen::encode(0),
         }
     }
 
     /// Creates a new empty `Inline`.
     #[inline]
-    pub fn zeroed(len: usize) -> Self {
-        // TODO waiting for const-stabilization of MaybeUninit::zeroed
-
-        // SAFETY: just a hack to construct a zeroed array of MaybeUninit
-        let data = unsafe { MaybeUninit::zeroed().assume_init() };
+    pub const fn zeroed(len: usize) -> Self {
+        let data = [MaybeUninit::zeroed(); INLINE_CAPACITY];
 
         assert!(len <= INLINE_CAPACITY, "invalid length");
 
-        #[allow(clippy::cast_possible_truncation)]
-        let shifted_len = ((len << 1) | 1) as u8;
-
-        #[allow(clippy::inconsistent_struct_constructor)]
-        Self { data, shifted_len }
+        let len = TaggedLen::encode(len);
+        Self { data, len }
     }
 
     /// Creates a new `Inline` string by copying a byte slice.
@@ -62,6 +104,8 @@ impl<const INLINE_CAPACITY: usize> Inline<INLINE_CAPACITY> {
     #[allow(dead_code)]
     pub fn new(sl: &[u8]) -> Self {
         assert!(sl.len() <= INLINE_CAPACITY);
+
+        // SAFETY: length check above
         unsafe { Self::new_unchecked(sl) }
     }
 
@@ -73,23 +117,18 @@ impl<const INLINE_CAPACITY: usize> Inline<INLINE_CAPACITY> {
     #[inline]
     pub unsafe fn new_unchecked(sl: &[u8]) -> Self {
         let len = sl.len();
-
-        // SAFETY: just a noop hack to construct an array of MaybeUninit
-        let mut data: [MaybeUninit<u8>; INLINE_CAPACITY] =
-            unsafe { MaybeUninit::uninit().assume_init() };
-        // waiting for stabilization of MaybeUninit::uninit_array
-        // or inline const expression
+        let mut data = [MaybeUninit::uninit(); INLINE_CAPACITY];
 
         // SAFETY: sl's length is a **function precondition**
         unsafe {
             copy_nonoverlapping(sl.as_ptr(), data.as_mut_ptr().cast(), len);
         }
 
-        #[allow(clippy::cast_possible_truncation)]
-        let shifted_len = ((len << 1) | 1) as u8;
+        let len = TaggedLen::encode(len);
+        let this = Self { data, len };
+        debug_assert!(this.is_valid());
 
-        #[allow(clippy::inconsistent_struct_constructor)]
-        Self { data, shifted_len }
+        this
     }
 
     /// Returns the length of this inline string.
@@ -97,7 +136,7 @@ impl<const INLINE_CAPACITY: usize> Inline<INLINE_CAPACITY> {
     pub const fn len(&self) -> usize {
         debug_assert!(self.is_valid());
 
-        (self.shifted_len >> 1) as usize
+        self.len.decode()
     }
 
     /// Returns an immutable view of this inline string.
@@ -105,7 +144,7 @@ impl<const INLINE_CAPACITY: usize> Inline<INLINE_CAPACITY> {
     pub const fn as_slice(&self) -> &[u8] {
         debug_assert!(self.is_valid());
 
-        // XXX could be done with less unsafe one day:
+        // HACK could be done with less unsafe one day:
         // waiting for const_slice_index and maybe_uninit_slice
         let data = self.data.as_ptr();
         let len = self.len();
@@ -128,7 +167,7 @@ impl<const INLINE_CAPACITY: usize> Inline<INLINE_CAPACITY> {
 
         debug_assert!(self.is_valid());
 
-        // XXX could be done without less unsafe: maybe_uninit_slice
+        // HACK could be done without less unsafe: maybe_uninit_slice
         // and const-ly: const_mut_refs, const_slice_index
         let data = self.data.as_mut_ptr();
         let len = self.len();
@@ -140,7 +179,7 @@ impl<const INLINE_CAPACITY: usize> Inline<INLINE_CAPACITY> {
     /// Returns `true` iff this representation is valid.
     #[inline]
     pub const fn is_valid(&self) -> bool {
-        (self.shifted_len & 1) != 0
+        self.len.is_valid()
     }
 
     /// Returns the actual `const`-parameter for inline capacity of this type.
@@ -169,9 +208,7 @@ impl<const INLINE_CAPACITY: usize> Inline<INLINE_CAPACITY> {
                 add_len,
             );
         }
-        #[allow(clippy::cast_possible_truncation)]
-        {
-            self.shifted_len = ((new_len << 1) | 1) as u8;
-        }
+
+        self.len = TaggedLen::encode(new_len);
     }
 }

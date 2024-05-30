@@ -1,7 +1,13 @@
 //! Representation for borrowed slice.
 
+use core::mem::{offset_of, size_of, MaybeUninit};
+use core::num::NonZeroU8;
+
 #[cfg(test)]
 mod tests;
+
+pub const TAG: u8 = 0b10;
+const TAG_NZ: NonZeroU8 = unsafe { NonZeroU8::new_unchecked(TAG) };
 
 /// Borrowed slice representation.
 ///
@@ -13,19 +19,41 @@ mod tests;
 #[repr(C)]
 pub struct Borrowed<'borrow> {
     #[cfg(target_endian = "little")]
-    reserved: usize,
+    tag: NonZeroU8,
+
+    #[cfg(target_endian = "little")]
+    reserved: MaybeUninit<[u8; size_of::<usize>() - 1]>,
 
     slice: &'borrow [u8],
 
     #[cfg(target_endian = "big")]
-    reserved: usize,
+    reserved: MaybeUninit<[u8; size_of::<usize>() - 1]>,
+
+    #[cfg(target_endian = "big")]
+    tag: NonZeroU8,
 }
 
 impl<'borrow> Borrowed<'borrow> {
+    const ASSERTS: () = {
+        if cfg!(target_endian = "little") {
+            assert!(offset_of!(Self, tag) == 0);
+        } else {
+            assert!(offset_of!(Self, tag) == size_of::<Self>() - 1);
+        }
+    };
+
     /// Creates a new borrowed representation.
     #[inline]
     pub const fn new(slice: &'borrow [u8]) -> Self {
-        Self { slice, reserved: 0 }
+        let () = Self::ASSERTS; // HACK to actually do the check
+
+        let this = Self {
+            slice,
+            tag: TAG_NZ,
+            reserved: MaybeUninit::uninit(),
+        };
+        debug_assert!(this.is_valid());
+        this
     }
 
     /// Returns the length of the underlying data.
@@ -52,6 +80,6 @@ impl<'borrow> Borrowed<'borrow> {
     /// Return `true` iff this representation is valid.
     #[inline]
     pub const fn is_valid(&self) -> bool {
-        self.reserved == 0
+        self.tag.get() == TAG
     }
 }

@@ -1,0 +1,62 @@
+[common]
+version = 2
+import_std = [
+    "fs",
+    "net",
+    "process",
+]
+
+[sandbox]
+kind = "Bubblewrap"
+
+[pkg.wasm-bindgen-macro]
+allow_proc_macro = true
+
+[pkg.serde_derive]
+allow_proc_macro = true
+
+[pkg.unicode-ident]
+allow_unsafe = true
+
+[pkg.serde]
+build.allow_apis = [
+    "process",
+]
+allow_unsafe = true
+from.test.allow_apis = [
+    "fs",
+]
+
+[pkg.itoa]
+allow_unsafe = true
+
+[pkg.proc-macro2]
+build.allow_apis = [
+    "process",
+]
+allow_unsafe = true
+
+[pkg.ryu]
+allow_unsafe = true
+
+[pkg.syn]
+allow_unsafe = true
+
+[pkg.serde_bytes]
+allow_unsafe = true
+
+[pkg.serde_json]
+allow_unsafe = true
+
+[pkg.hipstr]
+allow_unsafe = true
+test.allow_unsafe = true
+test.allow_apis = [
+    "fs",
+    "net",
+]
+
+[pkg.serde_test]
+from.test.allow_apis = [
+    "fs",
+]

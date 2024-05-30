@@ -804,7 +804,6 @@ const fn simplify_range_mono(
 /// A possible error value when slicing a [`HipByt`].
 ///
 /// This type is the error type for [`HipByt::try_slice`].
-#[derive(PartialEq, Eq, Clone)]
 pub struct SliceError<'a, 'borrow, B>
 where
     B: Backend,
@@ -813,6 +812,34 @@ where
     start: usize,
     end: usize,
     bytes: &'a HipByt<'borrow, B>,
+}
+
+impl<'a, 'borrow, B> Clone for SliceError<'a, 'borrow, B>
+where
+    B: Backend,
+{
+    fn clone(&self) -> Self {
+        Self {
+            kind: self.kind.clone(),
+            start: self.start.clone(),
+            end: self.end.clone(),
+            bytes: self.bytes,
+        }
+    }
+}
+
+impl<'a, 'borrow, B> Eq for SliceError<'a, 'borrow, B> where B: Backend {}
+
+impl<'a, 'borrow, B> PartialEq for SliceError<'a, 'borrow, B>
+where
+    B: Backend,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind
+            && self.start == other.start
+            && self.end == other.end
+            && self.bytes == other.bytes
+    }
 }
 
 impl<'a, 'borrow, B> SliceError<'borrow, 'a, B>
