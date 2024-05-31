@@ -40,8 +40,8 @@ fn test_serde() {
 #[test]
 fn test_de_error() {
     assert_de_tokens_error::<HipByt>(
-        &[Token::F32(0.0)],
-        "invalid type: floating point `0`, expected byte array",
+        &[Token::Bool(true)],
+        "invalid type: boolean `true`, expected byte array",
     );
 }
 
