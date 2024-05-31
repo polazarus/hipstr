@@ -2,6 +2,21 @@
 
 Notable changes only.
 
+## [0.5.0] - unreleased
+
+## Added
+
+- a niche to make `Option<HipStr>` the same size as `HipStr`
+
+## Changed
+
+- update MSRV to 1.77
+- backend complete overall with its own custom RC implementation
+
+## Fixed
+
+- fixed some clippy lints
+
 ## [0.4.0] - 2023-12-01
 
 ## Added

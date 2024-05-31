@@ -1,6 +1,6 @@
 [package]
 name = "hipstr"
-version = "0.4.0"
+version = "0.5.0"
 authors = ["Polazarus <polazarus@users.noreply.github.com>"]
 description = """Yet another string for Rust: zero-cost borrow and slicing,
     inline representation for small strings, (atomic) reference counting"""
