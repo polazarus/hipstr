@@ -287,6 +287,7 @@ where
     #[inline]
     pub fn to_mut_slice(&mut self) -> &mut [u8] {
         self.0.make_unique();
+        // SAFETY: make_unique makes it owned too
         unsafe { self.0.as_mut_slice().unwrap_unchecked() }
     }
 
@@ -401,6 +402,7 @@ where
     /// assert_eq!(a.try_slice_ref(sl), Some(HipByt::from(b"ab")));
     /// assert!(a.try_slice_ref(b"z").is_none());
     /// ```
+    #[must_use]
     pub fn try_slice_ref(&self, range: &[u8]) -> Option<Self> {
         let slice = range;
         let range = try_range_of(self.0.as_slice(), slice)?;
@@ -431,6 +433,7 @@ where
     /// assert_eq!(bytes.capacity(), 42); // same backend, same capacity
     /// ```
     #[inline]
+    #[must_use]
     pub fn capacity(&self) -> usize {
         self.0.capacity()
     }
@@ -518,6 +521,7 @@ where
     /// drop(v); // ok
     /// assert_eq!(h, [42; 42]);
     /// ```
+    #[must_use]
     pub fn into_owned(self) -> HipByt<'static, B> {
         HipByt(self.0.into_owned())
     }
@@ -819,14 +823,11 @@ where
     B: Backend,
 {
     fn clone(&self) -> Self {
-        Self {
-            kind: self.kind.clone(),
-            start: self.start.clone(),
-            end: self.end.clone(),
-            bytes: self.bytes,
-        }
+        *self
     }
 }
+
+impl<'a, 'borrow, B> Copy for SliceError<'a, 'borrow, B> where B: Backend {}
 
 impl<'a, 'borrow, B> Eq for SliceError<'a, 'borrow, B> where B: Backend {}
 

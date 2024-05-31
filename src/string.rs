@@ -683,6 +683,7 @@ where
     /// assert_eq!(string.capacity(), 42);
     /// ```
     #[inline]
+    #[must_use]
     pub fn capacity(&self) -> usize {
         self.0.capacity()
     }
@@ -783,6 +784,7 @@ where
     /// drop(s); // ok
     /// assert_eq!(h, ('a'..'z').collect::<String>());
     /// ```
+    #[must_use]
     pub fn into_owned(self) -> HipStr<'static, B> {
         HipStr(self.0.into_owned())
     }
@@ -1545,14 +1547,11 @@ where
     B: Backend,
 {
     fn clone(&self) -> Self {
-        Self {
-            kind: self.kind.clone(),
-            start: self.start.clone(),
-            end: self.end.clone(),
-            string: self.string,
-        }
+        *self
     }
 }
+
+impl<'a, 'borrow, B> Copy for SliceError<'a, 'borrow, B> where B: Backend {}
 
 impl<'a, 'borrow, B> SliceError<'a, 'borrow, B>
 where
@@ -1724,7 +1723,7 @@ where
     fn clone(&self) -> Self {
         Self {
             bytes: self.bytes.clone(),
-            error: self.error.clone(),
+            error: self.error,
         }
     }
 }

@@ -300,6 +300,7 @@ where
     /// assert_eq!(string.capacity(), 42);
     /// ```
     #[inline]
+    #[must_use]
     pub fn capacity(&self) -> usize {
         self.0.capacity()
     }
@@ -412,6 +413,7 @@ where
     /// drop(s); // ok
     /// assert_eq!(h.as_os_str(), s2.as_str());
     /// ```
+    #[must_use]
     pub fn into_owned(self) -> HipPath<'static, B> {
         HipPath(self.0.into_owned())
     }
