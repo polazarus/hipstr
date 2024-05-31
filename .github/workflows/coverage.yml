@@ -16,8 +16,8 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Install stable
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install nightly
+        uses: dtolnay/rust-toolchain@nightly
         with:
           components: llvm-tools
 

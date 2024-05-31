@@ -15,6 +15,7 @@ const TAG_USIZE: usize = TAG as usize;
 struct TaggedRaw<B: Backend>(*mut (), PhantomData<rc::Raw<Vec<u8>, B>>);
 
 impl<B: Backend> Clone for TaggedRaw<B> {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn clone(&self) -> Self {
         *self
     }
@@ -96,6 +97,7 @@ pub struct Allocated<B: Backend> {
 impl<B: Backend> Copy for Allocated<B> {}
 
 impl<B: Backend> Clone for Allocated<B> {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn clone(&self) -> Self {
         *self
     }
@@ -223,6 +225,7 @@ impl<B: Backend> Allocated<B> {
 
     /// Return `true` iff this representation is valid.
     #[inline]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn is_valid(&self) -> bool {
         if !self.owner.check_tag() {
             return false;
