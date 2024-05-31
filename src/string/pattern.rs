@@ -28,6 +28,7 @@ impl<'borrow, B: Backend> Adopt<'borrow, B> for (usize, &str) {
     }
 }
 
+#[must_use]
 pub struct IterWrapper<'haystack, 'borrow, B, I>
 where
     B: Backend,

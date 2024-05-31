@@ -333,6 +333,7 @@ where
     /// assert_eq!(string.capacity(), 42);
     /// ```
     #[inline]
+    #[must_use]
     pub fn capacity(&self) -> usize {
         self.0.capacity()
     }
@@ -411,6 +412,7 @@ where
     /// drop(s); // ok
     /// assert_eq!(h, s2.as_str());
     /// ```
+    #[must_use]
     pub fn into_owned(self) -> HipOsStr<'static, B> {
         HipOsStr(self.0.into_owned())
     }
@@ -452,8 +454,10 @@ where
     /// let os_str = HipOsStr::from("foo");
     /// assert_eq!(os_str.to_str(), Some(HipStr::from("foo")));
     /// ```
+    #[must_use]
     pub fn to_str(&self) -> Option<HipStr<'borrow, B>> {
         let _ = self.as_os_str().to_str()?;
+        // SAFETY: the previous line checked the encoding
         Some(unsafe { HipStr::from_utf8_unchecked(self.0.clone()) })
     }
 
@@ -505,6 +509,7 @@ where
     /// }
     /// ```
     #[inline]
+    #[must_use]
     pub fn to_str_lossy(&self) -> HipStr<'borrow, B> {
         match self.as_os_str().to_string_lossy() {
             Cow::Borrowed(_) => unsafe { HipStr::from_utf8_unchecked(self.0.clone()) },
