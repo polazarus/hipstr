@@ -79,6 +79,7 @@
 //! * `unstable`: exposes internal `Backend` trait that may change at any moment
 
 #![cfg_attr(miri, feature(strict_provenance))]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 #![cfg_attr(not(feature = "std"), no_std)]
 #![warn(clippy::pedantic, clippy::nursery, clippy::cargo)]
 #![warn(unsafe_op_in_unsafe_fn)]

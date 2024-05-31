@@ -193,6 +193,7 @@ impl<T, C: Count> Raw<T, C> {
     ///
     /// The pointer must be valid.
     #[inline]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub unsafe fn is_valid(self) -> bool {
         // SAFETY: function precondition => pointer is valid
         self.0.as_ptr().align_offset(align_of::<Inner<T, C>>()) == 0
