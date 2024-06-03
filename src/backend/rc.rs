@@ -7,7 +7,7 @@ use core::sync::atomic::{fence, AtomicUsize, Ordering};
 
 use crate::alloc::boxed::Box;
 
-/// Trait for a basic reference counter
+/// Trait for a basic reference counter.
 pub trait Count {
     /// Creates a new counter that starts at one.
     fn one() -> Self;
@@ -30,22 +30,26 @@ pub struct Local(Cell<usize>);
 pub struct ThreadSafe(AtomicUsize);
 
 impl Count for Local {
+    #[inline]
     fn one() -> Self {
         Self(Cell::new(1))
     }
 
+    #[inline]
     fn incr(&self) -> bool {
         let new_value = self.0.get() + 1;
         self.0.set(new_value);
         new_value == usize::MAX
     }
 
+    #[inline]
     fn decr(&self) -> bool {
         let new_value = self.0.get().saturating_sub(1);
         self.0.set(new_value);
         new_value == 0
     }
 
+    #[inline]
     fn get(&self) -> usize {
         self.0.get()
     }
@@ -53,10 +57,12 @@ impl Count for Local {
 
 #[cfg(target_has_atomic = "ptr")]
 impl Count for ThreadSafe {
+    #[inline]
     fn one() -> Self {
         Self(AtomicUsize::new(1))
     }
 
+    #[inline]
     fn decr(&self) -> bool {
         let old_value = self.0.fetch_sub(1, Ordering::Release);
         if old_value == 1 {
@@ -67,11 +73,13 @@ impl Count for ThreadSafe {
         }
     }
 
+    #[inline]
     fn incr(&self) -> bool {
         let old = self.0.fetch_add(1, Ordering::Relaxed);
         old == usize::MAX
     }
 
+    #[inline]
     fn get(&self) -> usize {
         self.0.load(Ordering::Acquire)
     }
@@ -89,7 +97,7 @@ struct Inner<T, C: Count> {
 /// Please follow the following rules:
 ///
 /// - it should not be copied meaningfully (typically it excludes temporary
-///   stack copise) without `incr()`-ing it
+///   stack copies) without `incr()`-ing it
 /// - it should not be dropped (except for temporary copies) without `decr()`-ing it
 pub struct Raw<T, C: Count>(NonNull<Inner<T, C>>);
 
@@ -179,12 +187,15 @@ impl<T, C: Count> Raw<T, C> {
     ///
     /// The pointer must be valid.
     #[inline]
-    pub unsafe fn decr(self) {
+    #[must_use]
+    pub unsafe fn decr(self) -> bool {
         let inner = unsafe { self.inner() };
 
-        if inner.count.decr() {
+        let res = inner.count.decr();
+        if res {
             let _ = unsafe { Box::from_raw(self.0.as_ptr()) };
         }
+        res
     }
 
     /// Checks the apparent validity of this smart pointer.
@@ -325,7 +336,9 @@ where
 {
     fn drop(&mut self) {
         // SAFETY: cannot be dangling
-        unsafe { self.0.decr() }
+        unsafe {
+            let _ = self.0.decr();
+        }
     }
 }
 
@@ -388,7 +401,7 @@ mod tests {
             fn drop(&mut self) {
                 unsafe {
                     self.0.inner().count.0.set(1);
-                    self.0.decr();
+                    assert!(self.0.decr());
                 }
             }
         }

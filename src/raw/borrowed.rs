@@ -3,11 +3,12 @@
 use core::mem::{offset_of, size_of, MaybeUninit};
 use core::num::NonZeroU8;
 
+use super::TAG_BORROWED;
+
 #[cfg(test)]
 mod tests;
 
-pub const TAG: u8 = 0b10;
-const TAG_NZ: NonZeroU8 = unsafe { NonZeroU8::new_unchecked(TAG) };
+const TAG_NZ: NonZeroU8 = unsafe { NonZeroU8::new_unchecked(TAG_BORROWED) };
 
 /// Borrowed slice representation.
 ///
@@ -80,6 +81,6 @@ impl<'borrow> Borrowed<'borrow> {
     /// Return `true` iff this representation is valid.
     #[inline]
     pub const fn is_valid(&self) -> bool {
-        self.tag.get() == TAG
+        self.tag.get() == TAG_BORROWED
     }
 }

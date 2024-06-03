@@ -322,6 +322,36 @@ fn test_slice_panic_end_char_boundary() {
     let _b = a.slice(0..2);
 }
 
+#[test]
+fn test_slice_unchecked() {
+    use core::ops::Bound;
+    let a = HipStr::borrowed("abc");
+    assert_eq!(unsafe { a.slice_unchecked(0..2) }, "ab");
+    assert_eq!(unsafe { a.slice_unchecked(0..=1) }, "ab");
+    assert_eq!(unsafe { a.slice_unchecked(..2) }, "ab");
+    assert_eq!(unsafe { a.slice_unchecked(..) }, "abc");
+    assert_eq!(
+        unsafe { a.slice_unchecked((Bound::Excluded(0), Bound::Unbounded)) },
+        "bc"
+    );
+}
+
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic]
+fn test_slice_unchecked_debug_start_char_boundary_panic() {
+    let a = HipStr::borrowed("\u{1F980}");
+    let _ = unsafe { a.slice_unchecked(1..) };
+}
+
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic]
+fn test_slice_unchecked_debug_end_char_boundary_panic() {
+    let a = HipStr::borrowed("\u{1F980}");
+    let _ = unsafe { a.slice_unchecked(..1) };
+}
+
 static RUST_CRAB: HipStr = HipStr::borrowed("Rust \u{1F980}");
 
 #[test]

@@ -21,11 +21,28 @@ mod inline;
 #[cfg(test)]
 mod tests;
 
-type Inline = inline::Inline<INLINE_CAPACITY>;
+/// Width (in bits) of the tag
+const TAG_BITS: u8 = 2;
+
+/// Mask to extract the tag bits
+const MASK: u8 = (1 << TAG_BITS) - 1;
+
+/// Tag for the inline repr
+const TAG_INLINE: u8 = 1;
+
+/// Tag for the borrowed repr
+const TAG_BORROWED: u8 = 2;
+
+/// Tag for the allocated repr
+const TAG_ALLOCATED: u8 = 3;
 
 /// Maximal byte capacity of an inline [`HipStr`](super::HipStr) or [`HipByt`](super::HipByt).
 const INLINE_CAPACITY: usize = size_of::<Borrowed>() - 1;
 
+/// Alias type for `Inline` with set inline capacity
+type Inline = inline::Inline<INLINE_CAPACITY>;
+
+/// Raw byte sequence.
 #[cfg(target_endian = "little")]
 #[repr(C)]
 pub struct Raw<'borrow, B: Backend> {
@@ -33,14 +50,15 @@ pub struct Raw<'borrow, B: Backend> {
     _word_remainder: MaybeUninit<[u8; size_of::<usize>() - 1]>,
     _word1: MaybeUninit<*mut ()>,
     _word2: MaybeUninit<*mut ()>,
+
     _marker: PhantomData<&'borrow B>,
 }
 
 #[cfg(target_endian = "big")]
 #[repr(C)]
 pub struct Raw<'borrow, B: Backend> {
-    _word1: MaybeUninit<*mut ()>,
     _word2: MaybeUninit<*mut ()>,
+    _word1: MaybeUninit<*mut ()>,
     _word_remainder: MaybeUninit<[u8; size_of::<usize>() - 1]>,
     tag_byte: NonZeroU8,
 
@@ -50,6 +68,9 @@ pub struct Raw<'borrow, B: Backend> {
 unsafe impl<'borrow, B: Backend + Sync> Sync for Raw<'borrow, B> {}
 unsafe impl<'borrow, B: Backend + Send> Send for Raw<'borrow, B> {}
 
+/// Equivalent union representation.
+///
+/// NOTE: Cannot be used directly to keep the niche for Option<Raw<_,_>>
 #[repr(C)]
 union Union<'borrow, B: Backend> {
     /// Inline representation
@@ -58,14 +79,6 @@ union Union<'borrow, B: Backend> {
     allocated: Allocated<B>,
     /// Borrowed slice representation
     borrowed: Borrowed<'borrow>,
-}
-
-#[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Tag {
-    Inline = inline::TAG,
-    Borrowed = borrowed::TAG,
-    Allocated = allocated::TAG,
 }
 
 impl<'borrow, B: Backend> Union<'borrow, B> {
@@ -82,25 +95,18 @@ impl<'borrow, B: Backend> Union<'borrow, B> {
         // SAFETY: same layout and same niche hopefully
         unsafe { transmute(self) }
     }
-
-    #[inline]
-    fn from_raw_mut<'a>(raw: &'a mut Raw<'borrow, B>) -> &'a mut Self {
-        let raw_ptr: *mut _ = raw;
-        let self_ptr: *mut Self = raw_ptr.cast();
-        // SAFETY: same layout and same niche hopefully, same mutability
-        unsafe { &mut *self_ptr }
-    }
-
-    #[inline]
-    const fn from_raw_ref<'a>(raw: &'a Raw<'borrow, B>) -> &'a Self {
-        let raw_ptr: *const _ = raw;
-        let self_ptr: *const Self = raw_ptr.cast();
-        // SAFETY: same layout and same niche hopefully, same immutability
-        unsafe { &*self_ptr }
-    }
 }
 
-/// Raw immutable byte sequence.
+/// Repr tag.
+///
+/// Cannot be used directly to keep the niche.
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Tag {
+    Inline = TAG_INLINE,
+    Borrowed = TAG_BORROWED,
+    Allocated = TAG_ALLOCATED,
+}
 
 /// Helper enum to split this raw byte string into its possible representation.
 enum RawSplit<'a, 'borrow, B: Backend> {
@@ -116,18 +122,35 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
     /// Retrieves a reference on the union.
     #[inline]
     const fn union(&self) -> &Union<'borrow, B> {
-        Union::from_raw_ref(self)
+        let raw_ptr: *const _ = self;
+        let union_ptr: *const Union<'borrow, B> = raw_ptr.cast();
+        // SAFETY: same layout and same niche hopefully, same immutability
+        unsafe { &*union_ptr }
+    }
+
+    /// Retrieves a mutable reference on the union.
+    #[inline]
+    fn union_mut(&mut self) -> &mut Union<'borrow, B> {
+        let raw_ptr: *mut _ = self;
+        let union_ptr: *mut Union<'borrow, B> = raw_ptr.cast();
+        // SAFETY: same layout and same niche hopefully, same mutability
+        unsafe { &mut *union_ptr }
+    }
+
+    /// Extracts the union without dropping the `Raw`.
+    fn union_move(self) -> Union<'borrow, B> {
+        // SAFETY: same layout and same niche hopefully, same mutability
+        let union = unsafe { transmute(self) };
+        union
     }
 
     // basic constructors
 
-    /// Creates a new Raw from an allocated internal representation.
+    /// Creates a new raw byte sequence from an allocated internal representation.
     ///
-    /// # Safety
-    ///
-    /// The allocated's length MUST be strictly greater than `INLINE_CAPACITY`.
+    /// The allocated length should be strictly greater than `INLINE_CAPACITY`.
     #[inline]
-    const unsafe fn from_allocated_unchecked(allocated: Allocated<B>) -> Self {
+    const fn from_allocated(allocated: Allocated<B>) -> Self {
         Union { allocated }.into_raw()
     }
 
@@ -145,16 +168,17 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
 
     /// Creates a new `Raw` from a vector.
     ///
-    /// # Safety
+    /// The vector's length should be strictly greater than `INLINE_CAPACITY`.
     ///
-    /// The vector's length MUST be strictly greater than `INLINE_CAPACITY`.
+    /// # Panics (in debug)
+    ///
+    /// If the vector's length is less than or equal to `INLINE CAPACITY`.
     #[inline]
-    pub unsafe fn from_vec_unchecked(vec: Vec<u8>) -> Self {
+    pub fn from_vec(vec: Vec<u8>) -> Self {
         debug_assert!(vec.len() > INLINE_CAPACITY);
 
         let allocated = Allocated::new(vec);
-        // SAFETY: see function precondition
-        unsafe { Self::from_allocated_unchecked(allocated) }
+        Self::from_allocated(allocated)
     }
 
     /// Creates a new `Raw` from a short slice.
@@ -169,10 +193,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
         // SAFETY: see function precondition
         let inline = unsafe { Inline::new_unchecked(bytes) };
 
-        let this = Self::from_inline(inline);
-        debug_assert!(this.is_inline());
-
-        this
+        Self::from_inline(inline)
     }
 
     /// Creates a new empty `Raw`.
@@ -189,17 +210,10 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
     /// possible: it cannot do it because [`Inline::new`] is not const.
     #[inline]
     pub const fn borrowed(bytes: &'borrow [u8]) -> Self {
-        let this = Union {
+        Union {
             borrowed: Borrowed::new(bytes),
         }
-        .into_raw();
-
-        debug_assert!(this.tag_byte.get() == 2);
-
-        debug_assert!(!this.is_inline());
-        debug_assert!(this.is_borrowed());
-
-        this
+        .into_raw()
     }
 
     // derived constructors
@@ -208,14 +222,13 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
     ///
     /// Will normalize the representation depending on the size of the vector.
     #[inline]
-    pub fn from_vec(vec: Vec<u8>) -> Self {
+    pub fn normalized_from_vec(vec: Vec<u8>) -> Self {
         let len = vec.len();
         if len <= INLINE_CAPACITY {
             // SAFETY: length checked above
             unsafe { Self::inline_unchecked(&vec) }
         } else {
-            // SAFETY: length checked above
-            unsafe { Self::from_vec_unchecked(vec) }
+            Self::from_vec(vec)
         }
     }
 
@@ -228,8 +241,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
             // SAFETY: length checked above
             unsafe { Self::inline_unchecked(bytes) }
         } else {
-            // SAFETY: length checked above
-            unsafe { Self::from_vec_unchecked(bytes.to_vec()) }
+            Self::from_vec(bytes.to_vec())
         }
     }
 
@@ -279,13 +291,13 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
     /// Return the raw byte string if the actual representation is not a borrow.
     #[inline]
     pub fn into_borrowed(self) -> Result<&'borrow [u8], Self> {
-        if self.is_borrowed() {
-            // NO LEAK: no drop needed for borrow repr
-            let this = ManuallyDrop::new(self);
-            // SAFETY: representation is checked before
-            Ok(unsafe { this.union().borrowed.as_slice() })
-        } else {
-            Err(self)
+        match self.split() {
+            RawSplit::Allocated(_) | RawSplit::Inline(_) => Err(self),
+            RawSplit::Borrowed(borrowed) => {
+                let result = borrowed.as_slice();
+                forget(self);
+                Ok(result)
+            }
         }
     }
 
@@ -332,7 +344,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
 
         let result = match self.split() {
             RawSplit::Inline(inline) => {
-                // SAFETY: by slice_unchecked's own safety precondition and `split`
+                // SAFETY: by `slice_unchecked` safety precondition and `split`
                 // range must be of a length <= self.len() <= `INLINE_CAPACITY`
                 unsafe { Self::inline_unchecked(&inline.as_slice()[range]) }
             }
@@ -346,7 +358,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
                     // SAFETY: length is checked above
                     unsafe {
                         let allocated = allocated.slice_unchecked(range);
-                        Self::from_allocated_unchecked(allocated)
+                        Self::from_allocated(allocated)
                     }
                 }
             }
@@ -379,7 +391,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
             RawSplit::Borrowed(_) => {
                 // SAFETY: by the function precondition and the type invariant
                 // slice must have at least the same dynamic lifetime
-                let sl: &'borrow [u8] = unsafe { core::mem::transmute(slice) };
+                let sl: &'borrow [u8] = unsafe { transmute(slice) };
                 Self::borrowed(sl)
             }
             RawSplit::Allocated(allocated) => {
@@ -393,7 +405,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
                     // SAFETY: length checked above
                     unsafe {
                         let allocated = allocated.slice_unchecked(range);
-                        Self::from_allocated_unchecked(allocated)
+                        Self::from_allocated(allocated)
                     }
                 }
             }
@@ -406,7 +418,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
     #[inline]
     pub fn as_mut_slice(&mut self) -> Option<&mut [u8]> {
         let tag = self.tag();
-        let union = Union::from_raw_mut(self);
+        let union = self.union_mut();
 
         // SAFETY: representation is checked
         match tag {
@@ -426,37 +438,41 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
 
             if !self.is_inline() {
                 // make it inline first
-                // SAFETY: new_len is checked before, so current len <= INLINE_CAPACITY
+                // SAFETY: `new_len` is checked before, so current len <= INLINE_CAPACITY
                 *self = unsafe { Self::inline_unchecked(self.as_slice()) };
             }
 
-            // SAFETY: new_len is checked above
+            // SAFETY: `new_len` is checked above
             unsafe {
-                Union::from_raw_mut(self)
-                    .inline
-                    .push_slice_unchecked(addition);
+                self.union_mut().inline.push_slice_unchecked(addition);
             }
-        } else if self.is_allocated_and_unique() {
-            // current allocation can be pushed into it directly
-
-            // SAFETY: uniqueness is checked above
-            unsafe {
-                Union::from_raw_mut(self)
-                    .allocated
-                    .push_slice_unchecked(addition);
-            }
-        } else {
-            // new vector needed
-
-            let mut vec = Vec::with_capacity(new_len);
-            vec.extend_from_slice(self.as_slice());
-            vec.extend_from_slice(addition);
-
-            // SAFETY: vec's len (new_len) is checked above to be > INLINE_CAPACITY
-            *self = unsafe { Self::from_vec_unchecked(vec) };
-
             return;
         }
+
+        if self.is_allocated() {
+            // current allocation may be pushed into it directly?
+
+            // SAFETY: repr checked above
+            let allocated = unsafe { &mut self.union_mut().allocated };
+
+            if allocated.is_unique() {
+                // SAFETY: uniqueness is checked above
+                unsafe {
+                    allocated.push_slice_unchecked(addition);
+                }
+                return;
+            }
+        }
+
+        // requires a new vector
+        let mut vec = Vec::with_capacity(new_len);
+        vec.extend_from_slice(self.as_slice());
+        vec.extend_from_slice(addition);
+
+        // SAFETY: vec's len (new_len) is checked above to be > INLINE_CAPACITY
+        *self = Self::from_vec(vec);
+
+        return;
     }
 
     /// Takes a vector representation of this raw byte string.
@@ -466,7 +482,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
     pub fn take_vec(&mut self) -> Vec<u8> {
         if self.is_allocated() {
             // SAFETY: representation is checked, copy without ownership
-            let allocated = unsafe { Union::from_raw_mut(self).allocated };
+            let allocated = unsafe { self.union_mut().allocated };
             if let Ok(owned) = allocated.try_into_vec() {
                 // SAFETY: ownership is taken, replace with empty
                 // and forget old value (otherwise double drop!!)
@@ -523,66 +539,33 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
     /// Returns `None` if this raw byte string is not allocated.
     #[inline]
     fn take_allocated(&mut self) -> Option<Allocated<B>> {
-        if self.is_allocated() {
-            // SAFETY: take ownership of the allocated
-            // the old value should not be dropped
-            let old = ManuallyDrop::new(replace(self, Self::empty()));
-            debug_assert!(old.is_allocated());
-            // SAFETY: representation is checked above
-            Some(unsafe { old.union().allocated })
-        } else {
-            None
+        match self.split() {
+            RawSplit::Allocated(&allocated) => {
+                // Takes a copy of allocated
+
+                // replace `self` one by an empty raw
+                // forget the old value, we have `allocated` as a valid handle
+                forget(replace(self, Self::empty()));
+
+                Some(allocated)
+            }
+            _ => None,
         }
     }
 
     /// Makes the data owned, copying it if it's not already owned.
     #[inline]
     pub fn into_owned(self) -> Raw<'static, B> {
-        // SAFETY: take ownership of the allocated
-        // the old value do not need to be dropped
-        let old = ManuallyDrop::new(self);
-        if old.is_borrowed() {
-            Raw::from_slice(old.as_slice())
-        } else if old.is_inline() {
-            // SAFETY: representation is checked above
-            Raw::from_inline(unsafe { old.union().inline })
-        } else {
-            // => old.is_allocated()
-            // SAFETY: representation is checked above
-            unsafe { Raw::from_allocated_unchecked(old.union().allocated) }
-        }
-    }
+        let tag = self.tag();
+        let old = self.union_move(); // self is not dropped!
 
-    /// Makes the data owned and unique, copying it if necessary.
-    ///
-    /// # Safety
-    ///
-    /// Must be non-unique, i.e. [`is_unique()`](Self::is_unique) must return
-    /// `true` **beforehand**. In particular, `self` cannot be inlined.
-    #[inline]
-    pub unsafe fn into_unique_unchecked(self) -> Self {
-        debug_assert!(!self.is_unique());
-
-        // SAFETY: take ownership of the allocated
-        // the old value do not need to be dropped
-        let old = ManuallyDrop::new(self);
-        if old.is_borrowed() {
-            Raw::from_slice(old.as_slice())
-        } else {
-            debug_assert!(old.is_allocated());
-
-            // SAFETY: representation is allocated by the function precondition
-            // and the previous check
-            let allocated = unsafe { old.union().allocated };
-
-            // SAFETY: by the type invariant
-            // allocated len must be > INLINE_CAPACITY
-            let new = unsafe { Self::from_vec_unchecked(allocated.as_slice().to_vec()) };
-
-            // manual decrement of the reference count
-            allocated.decr_ref_count();
-
-            new
+        // SAFETY: tag representation
+        unsafe {
+            match tag {
+                Tag::Allocated => Raw::from_allocated(old.allocated),
+                Tag::Borrowed => Raw::from_slice(old.borrowed.as_slice()),
+                Tag::Inline => Raw::from_inline(old.inline),
+            }
         }
     }
 
@@ -591,23 +574,45 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
     pub fn make_unique(&mut self) {
         if !self.is_unique() {
             let old = replace(self, Self::empty());
-            // SAFETY: non uniqueness checked above
-            *self = unsafe { old.into_unique_unchecked() };
+            let tag = old.tag();
+            let old = old.union_move(); // self is not dropped!
+
+            *self = match tag {
+                // Inline is always unique
+                Tag::Inline => unsafe { unreachable_unchecked() },
+
+                Tag::Allocated => {
+                    // SAFETY: representation is allocated by the function precondition
+                    // and the previous check
+                    let allocated = unsafe { old.allocated };
+
+                    // SAFETY: by the type invariant
+                    // allocated len must be > INLINE_CAPACITY
+                    let new = Self::from_vec(allocated.as_slice().to_vec());
+
+                    // manual decrement of the reference count
+                    let _dropped = allocated.decr_ref_count();
+
+                    new
+                }
+
+                Tag::Borrowed => {
+                    // SAFETY: representation is checked above
+                    let borrowed = unsafe { old.borrowed };
+
+                    Self::from_slice(borrowed.as_slice())
+                }
+            };
         }
     }
 
     /// Returns `true` if the data is uniquely owned.
     #[inline]
     pub fn is_unique(&self) -> bool {
-        self.is_inline() || self.is_allocated_and_unique()
-    }
-
-    /// Returns `true` if the data is uniquely owned.
-    #[inline]
-    pub fn is_allocated_and_unique(&self) -> bool {
-        self.is_allocated() && {
-            // SAFETY: representation checked above
-            unsafe { self.union().allocated.is_unique() }
+        match self.split() {
+            RawSplit::Inline(_) => true,
+            RawSplit::Allocated(allocated) => allocated.is_unique(),
+            RawSplit::Borrowed(_) => false,
         }
     }
 
@@ -639,7 +644,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
         }
 
         // use element size (just a remainder for now)
-        let size = len * core::mem::size_of::<u8>();
+        let size = len * size_of::<u8>();
 
         // SAFETY: size checked above
         unsafe { memcmp(self_ptr, other_ptr, size) == 0 }
@@ -652,42 +657,40 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
     /// Panics if the capacity would overflow.
     pub fn repeat(&self, n: usize) -> Self {
         if self.len() == 0 || n == 1 {
-            self.clone()
-        } else {
-            let src_len = self.len();
-            let new_len = src_len.checked_mul(n).expect("capacity overflow");
-            if new_len <= INLINE_CAPACITY {
-                let mut inline = Inline::zeroed(new_len);
-                let src = self.as_slice().as_ptr();
-                let mut dst = inline.as_mut_slice().as_mut_ptr();
+            return self.clone();
+        }
 
-                // SAFETY: copy only new_len bytes with an
-                // upper bound of INLINE_CAPACITY checked above
-                unsafe {
-                    // could be better from an algorithmic standpoint
-                    // but no expected gain for at most 23 bytes on 64 bit platform
-                    for _ in 0..n {
-                        ptr::copy_nonoverlapping(src, dst, src_len);
-                        dst = dst.add(src_len);
-                    }
+        let src_len = self.len();
+        let new_len = src_len.checked_mul(n).expect("capacity overflow");
+        if new_len <= INLINE_CAPACITY {
+            let mut inline = Inline::zeroed(new_len);
+            let src = self.as_slice().as_ptr();
+            let mut dst = inline.as_mut_slice().as_mut_ptr();
+
+            // SAFETY: copy only `new_len` bytes with an
+            // upper bound of `INLINE_CAPACITY` checked above
+            unsafe {
+                // could be better from an algorithmic standpoint
+                // but no expected gain for at most 23 bytes on 64 bit platform
+                for _ in 0..n {
+                    ptr::copy_nonoverlapping(src, dst, src_len);
+                    dst = dst.add(src_len);
                 }
-
-                Self::from_inline(inline)
-            } else {
-                let vec = self.as_slice().repeat(n);
-
-                // SAFETY: new len is checked above
-                unsafe { Self::from_vec_unchecked(vec) }
             }
+
+            Self::from_inline(inline)
+        } else {
+            let vec = self.as_slice().repeat(n);
+            Self::from_vec(vec)
         }
     }
 
     const fn tag(&self) -> Tag {
-        const MASK: u8 = 0b11;
         match self.tag_byte.get() & MASK {
-            inline::TAG => Tag::Inline,
-            borrowed::TAG => Tag::Borrowed,
-            allocated::TAG => Tag::Allocated,
+            TAG_INLINE => Tag::Inline,
+            TAG_BORROWED => Tag::Borrowed,
+            TAG_ALLOCATED => Tag::Allocated,
+            // SAFETY: type invariant
             _ => unsafe { unreachable_unchecked() },
         }
     }
@@ -698,7 +701,7 @@ impl<'borrow, B: Backend> Drop for Raw<'borrow, B> {
     fn drop(&mut self) {
         // Formally drops this `Raw` decreasing the ref count if needed
         if let Some(allocated) = self.take_allocated() {
-            allocated.decr_ref_count();
+            let _dropped = allocated.decr_ref_count();
         }
     }
 }
@@ -711,7 +714,7 @@ impl<'borrow, B: Backend> Clone for Raw<'borrow, B> {
             RawSplit::Borrowed(&borrowed) => Self::from_borrowed(borrowed),
             RawSplit::Allocated(&allocated) => {
                 allocated.incr_ref_count();
-                unsafe { Self::from_allocated_unchecked(allocated) }
+                Self::from_allocated(allocated)
             }
         }
     }
