@@ -1,11 +1,12 @@
 //! Yet another **string type** for Rust 🦀
 //!
 //! * no copy and `const` **literal wrapping**
-//! * no alloc **small strings** (23 bytes on 64-bit platform)
+//! * no alloc **small strings** (_23 bytes_ on 64-bit platform)
 //! * no copy **owned slices**
+//! * a niche: `Option<HipStr>` and `HipStr` have the same size
 //! * **zero dependency**, except for optional `serde` support
 //!
-//! And **byte strings** too!
+//! Also byte strings, OS strings, paths, too!
 //!
 //! # Examples
 //!
@@ -19,26 +20,16 @@
 //! let user = "John";
 //! let greetings = HipStr::from(format!("Hello {}", user));
 //! let user = greetings.slice(6..); // no copy
-//! drop(greetings); // the slice is _owned_, it exits even if greetings disappear
+//! drop(greetings); // the slice is _owned_, it exists even if greetings disappear
 //!
 //! let chars = user.chars().count(); // "inherits" `&str` methods
 //! ```
-//!
-//! # Two Types
-//!
-//! - [`HipByt<B>`](crate::bytes::HipByt) \
-//!   a replacement for both `Vec<u8>` and `[u8]`
-//! - [`HipStr<B>`](crate::string::HipStr) \
-//!   a replacement for both `String` and `str`
-//!
-//! where `B` is a backend, see below.
 //!
 //! # Three Representations
 //!
 //! Each type has three distinct representations:
 //!
-//! - Static borrow, constructed with [`HipStr::from_static`] or
-//!   [`HipByt::from_static`]
+//! - Borrowed slice
 //! - Inline sequence (up to [`HipByt::inline_capacity()`])
 //! - Shared reference (cheaply clonable) _and slice_ (sliceable)
 //!
@@ -47,14 +38,14 @@
 //! ## ⚠️ Warning!
 //!
 //! The used representation of the empty string is **unspecified** and may change between patch versions!
-//! It may be *borrowed* or *inlined* but will never be allocated.
+//! It may be _borrowed_ or _inlined_ but will never be allocated.
 //!
 //! # Two Backends
 //!
 //! The crate provides two backends:
 //!
-//! - `ThreadSafe` ([`Arc<Vec<u8>>`](std::sync::Arc)),
-//! - `Local` ([`Rc<Vec<u8>>`](std::rc::Rc)).
+//! - `ThreadSafe` (atomic reference counting),
+//! - `Local` (reference counting).
 //!
 //! The crate root also provides some convenience type aliases:
 //!
@@ -65,8 +56,8 @@
 //!
 //! This crate is only supported on platforms where:
 //!
-//! - pointers have the same memory size has `usize`
-//! - pointer alignment requirement is strictly greater than 1
+//! - pointers have the same memory size as `usize`,
+//! - pointer alignment requirement is strictly greater than **2**.
 //!
 //! For now, most common architectures are like that. However, `hipstr` will not
 //! work on new and future architectures relying on large tagged pointers

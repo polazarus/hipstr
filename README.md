@@ -7,14 +7,15 @@
 [![Docs](https://img.shields.io/docsrs/hipstr)](https://docs.rs/hipstr)
 ![MIT OR Apache-2.0](https://img.shields.io/crates/l/hipstr)
 
-Yet another string for Rust 🦀
+Yet another string type for Rust 🦀
 
 - no copy **borrow** via `borrowed` (a `const` constructor) or `from_static`
 - no alloc **small strings** (_23 bytes_ on 64-bit platform)
 - no copy **owned slices**
+- a niche: `Option<HipStr>` and `HipStr` have the same size
 - **zero dependency** and compatible `no_std` with `alloc`
 
-And **bytes** too!
+Also byte strings, OS strings, and paths!
 
 ## ⚡ Examples
 
@@ -26,7 +27,10 @@ let _clone = simple_greetings.clone(); // no copy
 
 let user = "John";
 let greetings = HipStr::from(format!("Hello {}", user));
-let _user = greetings.slice(6..): // no copy
+let user = greetings.slice(6..): // no copy
+drop(greetings); // the slice is owned, it exists even if greetings disappear
+
+let chars = user.chars().count(); // "inherits" `&str` methods
 ```
 
 ## ✏️ Features
@@ -39,12 +43,9 @@ let _user = greetings.slice(6..): // no copy
 
 This crate uses `unsafe` extensively. 🤷
 
-It exploits the 1-bit alignment niche in pointers existing on most platforms
-(I think all Rustc supported platforms) to distinguish the inline representation
-from the other representations.
+It exploits the 2-bit alignment niche in pointers existing on most platforms (I think all Rustc supported platforms) to distinguish the inline representation from the other representations.
 
-To make things safer, Rust is tested thoroughly on multiple platforms, normally
-and with [Miri] (the MIR interpreter).
+To make things safer, Rust is tested thoroughly on multiple platforms, normally and with [Miri] (the MIR interpreter).
 
 ## 🧪 Testing
 
