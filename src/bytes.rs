@@ -287,8 +287,9 @@ where
     #[inline]
     pub fn to_mut_slice(&mut self) -> &mut [u8] {
         self.0.make_unique();
-        // SAFETY: make_unique makes it owned too
-        unsafe { self.0.as_mut_slice().unwrap_unchecked() }
+        let slice = self.0.as_mut_slice();
+        // SAFETY: `make_unique` above ensures that it is uniquely owned
+        unsafe { slice.unwrap_unchecked() }
     }
 
     /// Extracts a slice as its own `HipByt`.
@@ -343,11 +344,22 @@ where
     ///
     /// # Safety
     ///
-    /// The range must be a range `a..b` with `a <= b <= len`.
+    /// `range` must be a equivalent to some `a..b` with `a <= b <= len`.
+    ///
     /// Panics in debug mode. UB in release mode.
     #[must_use]
-    pub(crate) unsafe fn slice_unchecked(&self, range: Range<usize>) -> Self {
-        Self(unsafe { self.0.slice_unchecked(range) })
+    pub unsafe fn slice_unchecked(&self, range: impl RangeBounds<usize>) -> Self {
+        let start = match range.start_bound() {
+            Bound::Excluded(&n) => n + 1,
+            Bound::Included(&n) => n,
+            Bound::Unbounded => 0,
+        };
+        let end = match range.end_bound() {
+            Bound::Excluded(&n) => n,
+            Bound::Included(&n) => n + 1,
+            Bound::Unbounded => self.len(),
+        };
+        Self(unsafe { self.0.slice_unchecked(start..end) })
     }
 
     /// Extracts a slice as its own `HipByt` based on the given subslice `&[u8]`.
@@ -489,6 +501,7 @@ where
     /// assert_eq!(bytes, b"abc123");
     /// ```
     #[inline]
+    #[doc(alias = "extend_from_slice")]
     pub fn push_slice(&mut self, addition: &[u8]) {
         self.0.push_slice(addition);
     }

@@ -8,9 +8,8 @@ use core::panic::{RefUnwindSafe, UnwindSafe};
 use crate::alloc::vec::Vec;
 use crate::backend::{rc, Backend};
 
-const MASK: usize = 0b11;
-pub const TAG: u8 = 0b11;
-const TAG_USIZE: usize = TAG as usize;
+const MASK: usize = super::MASK as usize;
+const TAG: usize = super::TAG_ALLOCATED as usize;
 
 struct TaggedRaw<B: Backend>(*mut (), PhantomData<rc::Raw<Vec<u8>, B>>);
 
@@ -36,10 +35,10 @@ impl<B: Backend> TaggedRaw<B> {
 
             // Strict provenance API, nightly only, for now just for MIRI
             #[cfg(miri)]
-            let new_ptr = ptr.map_addr(|addr| addr | TAG_USIZE);
+            let new_ptr = ptr.map_addr(|addr| addr | TAG);
 
             #[cfg(not(miri))]
-            let new_ptr = ((ptr as usize) | TAG_USIZE) as *mut ();
+            let new_ptr = ((ptr as usize) | TAG) as *mut ();
 
             Self(new_ptr, PhantomData)
         }
@@ -49,7 +48,7 @@ impl<B: Backend> TaggedRaw<B> {
     fn into(self) -> rc::Raw<Vec<u8>, B> {
         let this: rc::Raw<Vec<u8>, B>;
 
-        debug_assert!((self.0 as usize) & MASK == TAG_USIZE);
+        debug_assert!((self.0 as usize) & MASK == TAG);
 
         // SAFETY: remove a 2-bit tag to a non-null pointer with the same
         // alignment as usize (typically 4 bytes on 32-bit architectures, and
@@ -57,10 +56,10 @@ impl<B: Backend> TaggedRaw<B> {
         unsafe {
             // Strict provenance API, nightly only, for now just for MIRI
             #[cfg(miri)]
-            let new_ptr = self.0.map_addr(|addr| (addr | MASK) ^ MASK);
+            let new_ptr = self.0.map_addr(|addr| addr ^ TAG);
 
             #[cfg(not(miri))]
-            let new_ptr = ((self.0 as usize) ^ TAG_USIZE) as *mut ();
+            let new_ptr = ((self.0 as usize) ^ TAG) as *mut ();
 
             debug_assert!(!new_ptr.is_null());
 
@@ -72,7 +71,7 @@ impl<B: Backend> TaggedRaw<B> {
     }
 
     fn check_tag(self) -> bool {
-        self.0 as usize & MASK == TAG_USIZE
+        self.0 as usize & MASK == TAG
     }
 }
 
@@ -141,7 +140,10 @@ impl<B: Backend> Allocated<B> {
     /// Returns the length of this allocated string.
     #[inline]
     pub const fn len(&self) -> usize {
-        // debug_assert!(self.is_valid()); // is_valid is not const!
+        // NOTE: must be const to be used in Raw::len even if there is no
+        // way the allocated representation will be used in the const case
+
+        // debug_assert!(self.is_valid()); // not const
 
         self.len
     }
@@ -149,7 +151,10 @@ impl<B: Backend> Allocated<B> {
     /// Returns as a byte slice.
     #[inline]
     pub const fn as_slice(&self) -> &[u8] {
-        // debug_assert!(self.is_valid()); // is_valid is not const!
+        // NOTE: must be const to be used in Raw::as_slice even if there is no
+        // way the allocated representation will be used in the const case
+
+        // debug_assert!(self.is_valid()); // not const
 
         // SAFETY: Type invariant
         unsafe { core::slice::from_raw_parts(self.ptr, self.len) }
@@ -158,6 +163,9 @@ impl<B: Backend> Allocated<B> {
     /// Returns a raw pointer to the first element.
     #[inline]
     pub const fn as_ptr(&self) -> *const u8 {
+        // NOTE: must be const to be used in Raw::as_ptr even if there is no
+        // way the allocated representation will be used in the const case
+
         // debug_assert!(self.is_valid()); // is_valid is not const!
         self.ptr
     }
@@ -189,13 +197,15 @@ impl<B: Backend> Allocated<B> {
     pub unsafe fn slice_unchecked(&self, range: Range<usize>) -> Self {
         debug_assert!(self.is_valid());
         debug_assert!(range.start <= range.end);
+        debug_assert!(range.start <= self.len);
+        debug_assert!(range.end <= self.len);
 
-        assert!(range.start <= self.len);
-        assert!(range.end <= self.len);
         self.incr_ref_count();
+
         // SAFETY: type invariant -> self.ptr..self.ptr+self.len is valid
         // also Rust like C specify you can move to the last + 1
         let ptr = unsafe { self.ptr.add(range.start) };
+
         Self {
             ptr,
             len: range.len(),
@@ -215,12 +225,11 @@ impl<B: Backend> Allocated<B> {
 
     /// Decrements the reference count.
     #[inline]
-    pub fn decr_ref_count(self) {
+    #[must_use]
+    pub fn decr_ref_count(self) -> bool {
         debug_assert!(self.is_valid());
         // SAFETY: type invariant -> owner is valid
-        unsafe {
-            self.owner().decr();
-        };
+        unsafe { self.owner().decr() }
     }
 
     /// Return `true` iff this representation is valid.
@@ -246,19 +255,14 @@ impl<B: Backend> Allocated<B> {
         }
     }
 
-    /// Returns a reference to the underlying vector.
-    #[inline]
-    fn owner_vec(&self) -> &Vec<u8> {
-        debug_assert!(self.is_valid());
-
-        // SAFETY: type invariant -> owner is valid.
-        unsafe { self.owner().as_ref() }
-    }
-
     /// Returns the backend capacity.
     #[inline]
     pub fn capacity(&self) -> usize {
-        self.owner_vec().capacity()
+        debug_assert!(self.is_valid());
+
+        // SAFETY: type invariant -> owner is valid.
+        let vec = unsafe { self.owner().as_ref() };
+        vec.capacity()
     }
 
     /// Unwraps the inner vector if it makes any sense.
@@ -266,17 +270,21 @@ impl<B: Backend> Allocated<B> {
     pub fn try_into_vec(self) -> Result<Vec<u8>, Self> {
         debug_assert!(self.is_valid());
 
-        let ptr = self.owner_vec().as_ptr();
+        let owner = self.owner();
+        let vec = unsafe { owner.as_ref() };
+        let ptr = vec.as_ptr();
+
         if self.ptr != ptr {
             // the starts differ, cannot truncate
             return Err(self);
         }
 
+        let len = self.len();
+
         // SAFETY: type invariant, the owner is valid
         unsafe {
-            if self.owner().is_unique() {
-                let len = self.len();
-                let mut owner = self.owner().unwrap();
+            if owner.is_unique() {
+                let mut owner = owner.unwrap();
                 owner.truncate(len);
                 Ok(owner)
             } else {
@@ -345,7 +353,7 @@ mod tests {
             assert!(slice.try_into_vec().is_err());
         }
 
-        allocated.decr_ref_count();
+        assert!(!allocated.decr_ref_count());
         assert_eq!(unsafe { allocated.owner().ref_count() }, 1);
 
         assert!(allocated.try_into_vec().is_ok());

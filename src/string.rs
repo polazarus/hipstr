@@ -285,8 +285,9 @@ where
     #[inline]
     #[must_use]
     pub const fn as_str(&self) -> &str {
+        let slice = self.0.as_slice();
         // SAFETY: type invariant
-        unsafe { core::str::from_utf8_unchecked(self.0.as_slice()) }
+        unsafe { core::str::from_utf8_unchecked(slice) }
     }
 
     /// Extracts a mutable string slice of the entire `HipStr` if possible.
@@ -378,27 +379,50 @@ where
     pub fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, SliceError<B>> {
         let range = simplify_range(range, self.len())
             .map_err(|(start, end, kind)| SliceError::new(kind, start, end, self))?;
-        self.try_slice_aux(range)
-    }
 
-    fn try_slice_aux(&self, range: Range<usize>) -> Result<Self, SliceError<B>> {
         if !self.is_char_boundary(range.start) {
-            Err(SliceError {
+            return Err(SliceError {
                 kind: SliceErrorKind::StartNotACharBoundary,
                 start: range.start,
                 end: range.end,
                 string: self,
-            })
-        } else if !self.is_char_boundary(range.end) {
-            Err(SliceError {
+            });
+        }
+
+        if !self.is_char_boundary(range.end) {
+            return Err(SliceError {
                 kind: SliceErrorKind::EndNotACharBoundary,
                 start: range.start,
                 end: range.end,
                 string: self,
-            })
-        } else {
-            Ok(Self(unsafe { self.0.slice_unchecked(range) }))
+            });
         }
+
+        // SAFETY: range and char boundaries checked above
+        Ok(unsafe { self.slice_unchecked(range) })
+    }
+
+    /// Extracts a slice as its own `HipStr`.
+    ///
+    /// # Safety
+    ///
+    /// `range` must be a equivalent to some `a..b` with `a <= b <= len`.
+    /// Also, both ends should be **character boundaries**.
+    ///
+    /// Panics in debug mode. UB in release mode.
+    #[must_use]
+    pub unsafe fn slice_unchecked(&self, range: impl RangeBounds<usize>) -> Self {
+        #[cfg(debug_assertions)]
+        {
+            let range = simplify_range(
+                (range.start_bound().clone(), range.end_bound().clone()),
+                self.len(),
+            )
+            .unwrap();
+            assert!(self.is_char_boundary(range.start));
+            assert!(self.is_char_boundary(range.end));
+        }
+        Self(unsafe { self.0.slice_unchecked(range) })
     }
 
     /// Extracts a slice as its own `HipStr` based on the given subslice `&str`.
@@ -433,7 +457,8 @@ where
     /// The slice MUST be a part of this `HipStr`.
     #[must_use]
     pub unsafe fn slice_ref_unchecked(&self, slice: &str) -> Self {
-        unsafe { Self(self.0.slice_ref_unchecked(slice.as_bytes())) }
+        let slice = slice.as_bytes();
+        unsafe { Self(self.0.slice_ref_unchecked(slice)) }
     }
 
     /// Returns a slice as it own `HipStr` based on the given subslice `&str`.
@@ -725,8 +750,9 @@ where
     #[inline]
     #[must_use]
     pub fn mutate(&mut self) -> RefMut<'_, 'borrow, B> {
+        let vec = self.0.take_vec();
         // SAFETY: type invariant
-        let owned = unsafe { String::from_utf8_unchecked(self.0.take_vec()) };
+        let owned = unsafe { String::from_utf8_unchecked(vec) };
         RefMut {
             result: self,
             owned,

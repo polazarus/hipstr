@@ -8,12 +8,13 @@ use core::mem::{offset_of, size_of, MaybeUninit};
 use core::num::NonZeroU8;
 use core::ptr::copy_nonoverlapping;
 
+use super::{MASK, TAG_BITS, TAG_INLINE};
+
 #[cfg(test)]
 mod tests;
 
-pub const TAG: u8 = 0b01;
-const MASK: u8 = 0b11;
-const SHIFT: u8 = 2;
+const TAG: u8 = TAG_INLINE;
+const SHIFT: u8 = TAG_BITS as u8;
 const MAX_LEN: usize = 1 << (8 - SHIFT);
 
 #[derive(Clone, Copy, Debug)]

@@ -45,7 +45,7 @@ where
 {
     #[inline]
     fn from(value: Box<[u8]>) -> Self {
-        Self(Raw::from_vec(value.into_vec()))
+        Self(Raw::normalized_from_vec(value.into_vec()))
     }
 }
 
@@ -55,7 +55,7 @@ where
 {
     #[inline]
     fn from(value: Vec<u8>) -> Self {
-        Self(Raw::from_vec(value))
+        Self(Raw::normalized_from_vec(value))
     }
 }
 

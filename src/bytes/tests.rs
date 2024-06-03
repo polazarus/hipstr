@@ -337,6 +337,44 @@ fn test_slice_panic_mixed() {
     let _b = a.slice(3..2);
 }
 
+#[test]
+fn test_slice_unchecked() {
+    use core::ops::Bound;
+    let a = HipByt::borrowed(b"abc");
+    assert_eq!(unsafe { a.slice_unchecked(0..2) }, b"ab");
+    assert_eq!(unsafe { a.slice_unchecked(0..=1) }, b"ab");
+    assert_eq!(unsafe { a.slice_unchecked(..2) }, b"ab");
+    assert_eq!(unsafe { a.slice_unchecked(..) }, b"abc");
+    assert_eq!(
+        unsafe { a.slice_unchecked((Bound::Excluded(0), Bound::Unbounded)) },
+        b"bc"
+    );
+}
+
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic]
+fn test_slice_unchecked_debug_panic_start() {
+    let a = HipByt::borrowed(b"abc");
+    let _ = unsafe { a.slice_unchecked(4..) };
+}
+
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic]
+fn test_slice_unchecked_debug_panic_end() {
+    let a = HipByt::borrowed(b"abc");
+    let _ = unsafe { a.slice_unchecked(..5) };
+}
+
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic]
+fn test_slice_unchecked_debug_panic_mixed() {
+    let a = HipByt::borrowed(b"abc");
+    let _ = unsafe { a.slice_unchecked(3..2) };
+}
+
 static ABCDEF: HipByt = HipByt::borrowed(b"abcdef");
 
 #[test]
