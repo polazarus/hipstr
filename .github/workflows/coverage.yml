@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Install nightly
         uses: dtolnay/rust-toolchain@nightly
@@ -27,14 +27,16 @@ jobs:
       - name: Resolve dependencies
         run: cargo generate-lockfile
 
-      - name: cargo llvm-cov
+      - name: Run test and collect coverage
         run: >
-          cargo llvm-cov --locked --all-features
+          cargo llvm-cov
+          --locked
+          --all-features
           --codecov
           --output-path codecov.json
 
       - name: Upload to codecov.io
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v4
         with:
           file: codecov.json
           fail_ci_if_error: true
