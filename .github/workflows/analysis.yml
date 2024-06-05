@@ -1,0 +1,70 @@
+name: analysis
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  schedule:
+    - cron: "34 5 * * 1"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  clippy:
+    runs-on: ubuntu-latest
+
+    permissions:
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain with clippy
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Install clippy-sarif and sarif-fmt
+        uses: taiki-e/install-action@v2
+        with:
+          tool: clippy-sarif,sarif-fmt
+
+      - name: Run clippy
+        run: >
+          cargo clippy --all-target --all-features --message-format=json
+          | clippy-sarif
+          | tee rust-clippy-results.sarif
+          | sarif-fmt
+        continue-on-error: true
+
+      - name: Upload analysis results to GitHub
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: rust-clippy-results.sarif
+          category: clippy
+          wait-for-processing: true
+
+  miri:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        platform:
+          - s390x-unknown-linux-gnu # 32-bit LE
+          - powerpc64-unknown-linux-gnu # 64-bit BE
+          - i686-unknown-linux-gnu
+          - x86_64-unknown-linux-gnu
+          - x86_64-pc-windows-msvc
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup toolchain with Miri
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri
+
+      - name: Run tests under Miri
+        run: cargo +nightly miri test --verbose --target ${{matrix.platform}} --all-features
