@@ -987,13 +987,55 @@ fn test_slice_ref_panic() {
 #[test]
 fn test_concat_slices() {
     let slices: &[&[_]] = &[b"a", b"b", b"c"];
-    let h = HipByt::concat_slices(&slices);
+    let h = HipByt::concat_slices(slices);
     assert_eq!(h, slices.concat());
     assert!(h.is_inline());
 
     let long = b"*".repeat(42);
     let slices: &[&[_]] = &[b"a", b"b", b"c", &long];
-    let h = HipByt::concat_slices(&slices);
+    let h = HipByt::concat_slices(slices);
     assert_eq!(h, slices.concat());
+    assert!(h.is_allocated());
+}
+
+#[test]
+fn test_concat() {
+    let slices: &[&[_; 1]] = &[b"a", b"b", b"c"];
+    let h = HipByt::concat(slices);
+    assert_eq!(h, b"abc");
+    assert!(h.is_inline());
+
+    let long = b"*".repeat(42);
+    let slices: &[Vec<_>] = &[b"a".into(), b"b".into(), b"c".into(), long.clone()];
+    let h = HipByt::concat(slices);
+    assert_eq!(h, [b"abc".as_slice(), long.as_slice()].concat());
+    assert!(h.is_allocated());
+}
+
+#[test]
+fn test_join_slices() {
+    let slices: &[&[_]] = &[b"a", b"b", b"c"];
+    let h = HipByt::join_slices(slices, b",");
+    assert_eq!(h, b"a,b,c");
+    assert!(h.is_inline());
+
+    let long = b"*".repeat(42);
+    let slices: &[&[_]] = &[b"a", b"b", b"c", &long];
+    let h = HipByt::join_slices(slices, b",");
+    assert_eq!(h, slices.join(b",".as_slice()));
+    assert!(h.is_allocated());
+}
+
+#[test]
+fn test_join() {
+    let slices: &[&[_; 1]] = &[b"a", b"b", b"c"];
+    let h = HipByt::join(slices, b",");
+    assert_eq!(h, b"a,b,c");
+    assert!(h.is_inline());
+
+    let long = b"*".repeat(42);
+    let slices: &[Vec<_>] = &[b"a".into(), b"b".into(), b"c".into(), long.clone()];
+    let h = HipByt::join(slices, b",");
+    assert_eq!(h, [b"a,b,c,".as_slice(), long.as_slice()].concat());
     assert!(h.is_allocated());
 }

@@ -714,11 +714,11 @@ where
         let mut raw = Raw::with_capacity(new_len);
         let dst = raw.spare_capacity_mut();
         let dst_ptr = dst.as_mut_ptr().cast();
-        let final_ptr = slices.iter().fold(dst_ptr, |dst, slice| {
+        let final_ptr = slices.iter().fold(dst_ptr, |dst_ptr, slice| {
             let len = slice.len();
             unsafe {
-                ptr::copy_nonoverlapping(slice.as_ptr(), dst, len);
-                dst.add(len)
+                ptr::copy_nonoverlapping(slice.as_ptr(), dst_ptr, len);
+                dst_ptr.add(len)
             }
         });
         debug_assert_eq!(unsafe { final_ptr.offset_from(dst_ptr) } as usize, new_len);
@@ -731,8 +731,8 @@ where
         Self(raw)
     }
 
-    pub fn concat(slices: impl IntoIterator<Item = impl Borrow<[u8]>> + Clone) -> Self {
-        let new_len = slices.clone().into_iter().map(|e| e.borrow().len()).sum();
+    pub fn concat(slices: impl IntoIterator<Item = impl AsRef<[u8]>> + Clone) -> Self {
+        let new_len = slices.clone().into_iter().map(|e| e.as_ref().len()).sum();
 
         let mut raw = Raw::with_capacity(new_len);
         let dst = raw.spare_capacity_mut();
@@ -741,16 +741,134 @@ where
         // compute the final pointer
         let final_ptr = unsafe { dst_ptr.add(new_len) };
 
-        let _ = slices.into_iter().fold(dst_ptr, |dst, slice| {
-            let slice = slice.borrow();
+        let _ = slices.into_iter().fold(dst_ptr, |dst_ptr, slice| {
+            let slice = slice.as_ref();
             let len = slice.len();
             let end_ptr = unsafe { dst_ptr.add(len) };
             assert!(end_ptr <= final_ptr, "slices changed during concat");
             unsafe {
-                ptr::copy_nonoverlapping(slice.as_ptr(), dst, len);
+                ptr::copy_nonoverlapping(slice.as_ptr(), dst_ptr, len);
                 end_ptr
             }
         });
+
+        unsafe { raw.set_len(new_len) };
+        debug_assert_eq!(final_ptr.cast_const(), raw.as_slice().as_ptr_range().end);
+
+        Self(raw)
+    }
+
+    pub fn join_slices(slices: &[&[u8]], sep: impl AsRef<[u8]>) -> Self {
+        let segments = slices.len();
+        let segments_len: usize = slices.iter().copied().map(<[_]>::len).sum();
+
+        if segments == 0 {
+            return Self::new();
+        }
+
+        let sep = sep.as_ref();
+        let sep_len = sep.len();
+        let new_len = (segments - 1) * sep_len + segments_len;
+
+        let mut raw = Raw::with_capacity(new_len);
+        let dst = raw.spare_capacity_mut();
+        let dst_ptr: *mut u8 = dst.as_mut_ptr().cast();
+
+        // compute the final pointer
+        let final_ptr = unsafe { dst_ptr.add(new_len) };
+
+        let mut iter = slices.iter();
+
+        if let Some(slice) = iter.next() {
+            // first slice
+            let slice = slice.as_ref();
+            let len = slice.len();
+            let end_ptr = unsafe { dst_ptr.add(len) };
+            debug_assert!(end_ptr <= final_ptr, "slices changed during concat");
+            unsafe {
+                ptr::copy_nonoverlapping(slice.as_ptr(), dst_ptr, len);
+            }
+
+            // remainder
+            let _ = iter.fold(end_ptr, |mut dst_ptr, slice| {
+                let end_ptr = unsafe { dst_ptr.add(sep_len) };
+                debug_assert!(end_ptr <= final_ptr, "slices changed during concat");
+                unsafe {
+                    ptr::copy_nonoverlapping(sep.as_ptr(), dst_ptr, sep_len);
+                }
+                dst_ptr = end_ptr;
+
+                let slice = slice.as_ref();
+                let len = slice.len();
+                let end_ptr = unsafe { dst_ptr.add(len) };
+                debug_assert!(end_ptr <= final_ptr, "slices changed during concat");
+                unsafe {
+                    ptr::copy_nonoverlapping(slice.as_ptr(), dst_ptr, len);
+                }
+
+                end_ptr
+            });
+        } else {
+            panic!("invalid iterator");
+        }
+
+        unsafe { raw.set_len(new_len) };
+        debug_assert_eq!(final_ptr.cast_const(), raw.as_slice().as_ptr_range().end);
+
+        Self(raw)
+    }
+
+    pub fn join(
+        slices: impl IntoIterator<Item = impl AsRef<[u8]>> + Clone,
+        sep: impl AsRef<[u8]>,
+    ) -> Self {
+        let (segments, segments_len) = slices
+            .clone()
+            .into_iter()
+            .fold((0, 0), |(n, l), e| (n + 1, l + e.as_ref().len()));
+        if segments == 0 {
+            return Self::new();
+        }
+        let sep = sep.as_ref();
+        let sep_len = sep.len();
+        let new_len = (segments - 1) * sep_len + segments_len;
+
+        let mut raw = Raw::with_capacity(new_len);
+        let dst = raw.spare_capacity_mut();
+        let dst_ptr: *mut u8 = dst.as_mut_ptr().cast();
+
+        // compute the final pointer
+        let final_ptr = unsafe { dst_ptr.add(new_len) };
+
+        let mut iter = slices.into_iter();
+
+        if let Some(slice) = iter.next() {
+            let slice = slice.as_ref();
+            let len = slice.len();
+            let end_ptr = unsafe { dst_ptr.add(slice.len()) };
+            assert!(end_ptr <= final_ptr, "slices changed during concat");
+            unsafe {
+                ptr::copy_nonoverlapping(slice.as_ptr(), dst_ptr, len);
+            }
+
+            let _ = iter.fold(end_ptr, |mut dst_ptr, slice| {
+                let end_ptr = unsafe { dst_ptr.add(sep_len) };
+                assert!(end_ptr <= final_ptr, "slices changed during concat");
+                unsafe {
+                    ptr::copy_nonoverlapping(sep.as_ptr(), dst_ptr, sep_len);
+                }
+                dst_ptr = end_ptr;
+
+                let slice = slice.as_ref();
+                let len = slice.len();
+                let end_ptr = unsafe { dst_ptr.add(len) };
+                assert!(end_ptr <= final_ptr, "slices changed during concat");
+                unsafe {
+                    ptr::copy_nonoverlapping(slice.as_ptr(), dst_ptr, len);
+                }
+                end_ptr
+            });
+        }
 
         unsafe { raw.set_len(new_len) };
         debug_assert_eq!(final_ptr.cast_const(), raw.as_slice().as_ptr_range().end);
