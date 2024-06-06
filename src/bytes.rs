@@ -691,7 +691,7 @@ where
     /// reading from a file) before marking the data as initialized using the
     /// [`set_len`] method.
     ///
-    /// [`set_len`]: Raw::set_len
+    /// [`set_len`]: HipByt::set_len
     pub fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<u8>] {
         self.0.spare_capacity_mut()
     }
