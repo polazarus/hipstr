@@ -232,14 +232,8 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
     /// Creates a new `Raw` from a vector.
     ///
     /// The vector's length should be strictly greater than `INLINE_CAPACITY`.
-    ///
-    /// # Panics (in debug)
-    ///
-    /// If the vector's length is less than or equal to `INLINE CAPACITY`.
     #[inline]
     pub fn from_vec(vec: Vec<u8>) -> Self {
-        debug_assert!(vec.len() > INLINE_CAPACITY);
-
         let allocated = Allocated::new(vec);
         Self::from_allocated(allocated)
     }

@@ -983,3 +983,17 @@ fn test_slice_ref_panic() {
     let a = HipByt::borrowed(s.as_slice());
     let _ = a.slice_ref(b"abc");
 }
+
+#[test]
+fn test_concat_slices() {
+    let slices: &[&[_]] = &[b"a", b"b", b"c"];
+    let h = HipByt::concat_slices(&slices);
+    assert_eq!(h, slices.concat());
+    assert!(h.is_inline());
+
+    let long = b"*".repeat(42);
+    let slices: &[&[_]] = &[b"a", b"b", b"c", &long];
+    let h = HipByt::concat_slices(&slices);
+    assert_eq!(h, slices.concat());
+    assert!(h.is_allocated());
+}

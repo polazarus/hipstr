@@ -721,11 +721,13 @@ where
                 dst.add(len)
             }
         });
+        debug_assert_eq!(unsafe { final_ptr.offset_from(dst_ptr) } as usize, new_len);
 
         unsafe { raw.set_len(new_len) };
 
         // check end pointer
         debug_assert_eq!(final_ptr.cast_const(), raw.as_slice().as_ptr_range().end);
+
         Self(raw)
     }
 

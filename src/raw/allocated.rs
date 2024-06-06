@@ -360,14 +360,15 @@ impl<B: Backend> Allocated<B> {
         }
 
         debug_assert!(self.is_unique());
-        debug_assert!(new_len < self.capacity());
+        debug_assert!(new_len <= self.capacity());
 
         let owner = self.owner();
         let v = unsafe { owner.as_mut() };
         // SAFETY: compute the shift from within the vector range (type invariant)
         #[allow(clippy::cast_sign_loss)]
-        let start = unsafe { self.ptr.offset_from(v.as_ptr()) as usize };
+        let start = unsafe { self.ptr.offset_from(v.as_ptr()).abs_diff(0) };
         unsafe { v.set_len(start + new_len) };
+        self.len = new_len;
     }
 }
 
