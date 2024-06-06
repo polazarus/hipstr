@@ -5,6 +5,7 @@
 use core::borrow::Borrow;
 use core::hash::Hash;
 use core::ops::{Deref, DerefMut, Range, RangeBounds};
+use core::ptr;
 use core::str::{Lines, SplitAsciiWhitespace, SplitWhitespace, Utf8Error};
 
 use self::pattern::{DoubleEndedPattern, IterWrapper, Pattern, ReversePattern};
@@ -1419,6 +1420,50 @@ where
     #[inline]
     pub fn lines(&self) -> IterWrapper<'_, 'borrow, B, Lines> {
         IterWrapper::new(self, self.as_str().lines())
+    }
+
+    pub fn concat_str(slices: &[&str]) -> Self {
+        let slices: &[&[u8]] = unsafe { core::mem::transmute(slices) };
+        Self(HipByt::concat_slices(slices))
+    }
+
+    /// Concatenates string slices together.
+    ///
+    /// # Panics
+    ///
+    /// During the concatenation the iterator is ran twice: once to get the
+    /// expected new length, and again to do the actual copy.
+    /// If the returned strings are not the same and the new length is greater
+    /// than the expected length, the function panics (before actually
+    /// overflowing).
+    ///
+    /// This behavior differs from [`std::slice::Concat`] that reallocates when
+    /// needed.
+    pub fn concat(slices: impl IntoIterator<Item = impl Borrow<str>> + Clone) -> Self {
+        let new_len = slices.clone().into_iter().map(|e| e.borrow().len()).sum();
+
+        let mut raw = HipByt::with_capacity(new_len);
+        let dst = raw.spare_capacity_mut();
+        let dst_ptr: *mut u8 = dst.as_mut_ptr().cast();
+
+        // compute the final pointer
+        let final_ptr = unsafe { dst_ptr.add(new_len) };
+
+        let _ = slices.into_iter().fold(dst_ptr, |dst, slice| {
+            let slice = slice.borrow();
+            let len = slice.len();
+            let end_ptr = unsafe { dst_ptr.add(len) };
+            assert!(end_ptr <= final_ptr, "slices changed during concat");
+            unsafe {
+                ptr::copy_nonoverlapping(slice.as_ptr(), dst, len);
+                end_ptr
+            }
+        });
+
+        unsafe { raw.set_len(new_len) };
+        debug_assert_eq!(final_ptr.cast_const(), raw.as_slice().as_ptr_range().end);
+
+        Self(raw)
     }
 }
 

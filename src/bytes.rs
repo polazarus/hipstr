@@ -4,7 +4,9 @@
 
 use core::borrow::Borrow;
 use core::hash::Hash;
+use core::mem::MaybeUninit;
 use core::ops::{Bound, Deref, DerefMut, Range, RangeBounds};
+use core::ptr;
 
 use super::raw::Raw;
 use crate::alloc::fmt;
@@ -86,6 +88,10 @@ where
     #[must_use]
     pub const fn new() -> Self {
         Self(Raw::empty())
+    }
+
+    pub(crate) fn with_capacity(new_len: usize) -> Self {
+        Self(Raw::with_capacity(new_len))
     }
 
     /// Creates a new `HipByt` from a borrowed slice without copying the slice.
@@ -676,6 +682,78 @@ where
     #[must_use]
     pub fn repeat(&self, n: usize) -> Self {
         Self(self.0.repeat(n))
+    }
+
+    /// Returns the remaining spare capacity of the vector as a slice of
+    /// `MaybeUninit<T>`.
+    ///
+    /// The returned slice can be used to fill the vector with data (e.g. by
+    /// reading from a file) before marking the data as initialized using the
+    /// [`set_len`] method.
+    ///
+    /// [`set_len`]: Raw::set_len
+    pub fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<u8>] {
+        self.0.spare_capacity_mut()
+    }
+
+    /// Forces the length of the vector to `new_len`.
+    ///
+    /// # Safety
+    ///
+    /// * `new_len` should be must be less than or equal to `INLINE_CAPACITY`.
+    /// * The elements at `old_len..new_len` must be initialized.
+    /// * The vector should not be shared.
+    pub unsafe fn set_len(&mut self, new_len: usize) {
+        // SAFETY: precondition
+        unsafe { self.0.set_len(new_len) }
+    }
+
+    pub fn concat_slices(slices: &[&[u8]]) -> Self {
+        let new_len = slices.iter().map(|e| e.len()).sum();
+
+        let mut raw = Raw::with_capacity(new_len);
+        let dst = raw.spare_capacity_mut();
+        let dst_ptr = dst.as_mut_ptr().cast();
+        let final_ptr = slices.iter().fold(dst_ptr, |dst, slice| {
+            let len = slice.len();
+            unsafe {
+                ptr::copy_nonoverlapping(slice.as_ptr(), dst, len);
+                dst.add(len)
+            }
+        });
+
+        unsafe { raw.set_len(new_len) };
+
+        // check end pointer
+        debug_assert_eq!(final_ptr.cast_const(), raw.as_slice().as_ptr_range().end);
+        Self(raw)
+    }
+
+    pub fn concat(slices: impl IntoIterator<Item = impl Borrow<[u8]>> + Clone) -> Self {
+        let new_len = slices.clone().into_iter().map(|e| e.borrow().len()).sum();
+
+        let mut raw = Raw::with_capacity(new_len);
+        let dst = raw.spare_capacity_mut();
+        let dst_ptr: *mut u8 = dst.as_mut_ptr().cast();
+
+        // compute the final pointer
+        let final_ptr = unsafe { dst_ptr.add(new_len) };
+
+        let _ = slices.into_iter().fold(dst_ptr, |dst, slice| {
+            let slice = slice.borrow();
+            let len = slice.len();
+            let end_ptr = unsafe { dst_ptr.add(len) };
+            assert!(end_ptr <= final_ptr, "slices changed during concat");
+            unsafe {
+                ptr::copy_nonoverlapping(slice.as_ptr(), dst, len);
+                end_ptr
+            }
+        });
+
+        unsafe { raw.set_len(new_len) };
+        debug_assert_eq!(final_ptr.cast_const(), raw.as_slice().as_ptr_range().end);
+
+        Self(raw)
     }
 }
 

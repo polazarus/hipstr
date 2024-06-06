@@ -118,6 +118,16 @@ enum RawSplit<'a, 'borrow, B: Backend> {
     Borrowed(&'a Borrowed<'borrow>),
 }
 
+/// Helper enum to split this raw byte string into its possible representation mutably.
+enum RawSplitMut<'a, 'borrow, B: Backend> {
+    /// Inline representation
+    Inline(&'a mut Inline),
+    /// Allocated and shared representation
+    Allocated(&'a mut Allocated<B>),
+    /// Borrowed slice representation
+    Borrowed(&'a mut Borrowed<'borrow>),
+}
+
 impl<'borrow, B: Backend> Raw<'borrow, B> {
     /// Retrieves a reference on the union.
     #[inline]
@@ -166,6 +176,59 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
         Union { borrowed }.into_raw()
     }
 
+    /// Retrieves the tag.
+    const fn tag(&self) -> Tag {
+        match self.tag_byte.get() & MASK {
+            TAG_INLINE => Tag::Inline,
+            TAG_BORROWED => Tag::Borrowed,
+            TAG_ALLOCATED => Tag::Allocated,
+            // SAFETY: type invariant
+            _ => unsafe { unreachable_unchecked() },
+        }
+    }
+
+    /// Splits this raw into its possible representation.
+    #[inline]
+    const fn split(&self) -> RawSplit<'_, 'borrow, B> {
+        let tag = self.tag();
+        let union = self.union();
+        match tag {
+            Tag::Inline => {
+                // SAFETY: representation checked
+                RawSplit::Inline(unsafe { &union.inline })
+            }
+            Tag::Borrowed => {
+                // SAFETY: representation checked
+                RawSplit::Borrowed(unsafe { &union.borrowed })
+            }
+            Tag::Allocated => {
+                // SAFETY: representation checked
+                RawSplit::Allocated(unsafe { &union.allocated })
+            }
+        }
+    }
+
+    /// Splits this raw into its possible representation.
+    #[inline]
+    fn split_mut(&mut self) -> RawSplitMut<'_, 'borrow, B> {
+        let tag = self.tag();
+        let union = self.union_mut();
+        match tag {
+            Tag::Inline => {
+                // SAFETY: representation checked
+                RawSplitMut::Inline(unsafe { &mut union.inline })
+            }
+            Tag::Borrowed => {
+                // SAFETY: representation checked
+                RawSplitMut::Borrowed(unsafe { &mut union.borrowed })
+            }
+            Tag::Allocated => {
+                // SAFETY: representation checked
+                RawSplitMut::Allocated(unsafe { &mut union.allocated })
+            }
+        }
+    }
+
     /// Creates a new `Raw` from a vector.
     ///
     /// The vector's length should be strictly greater than `INLINE_CAPACITY`.
@@ -196,12 +259,6 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
         Self::from_inline(inline)
     }
 
-    /// Creates a new empty `Raw`.
-    #[inline]
-    pub const fn empty() -> Self {
-        Self::from_inline(Inline::empty())
-    }
-
     /// Creates a new `Raw` from a static slice.
     ///
     /// # Representation
@@ -217,6 +274,12 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
     }
 
     // derived constructors
+
+    /// Creates a new empty `Raw`.
+    #[inline]
+    pub const fn empty() -> Self {
+        Self::from_inline(Inline::empty())
+    }
 
     /// Creates a new `Raw` from a vector.
     ///
@@ -245,24 +308,14 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
         }
     }
 
-    /// Splits this raw into its possible representation.
-    #[inline]
-    const fn split(&self) -> RawSplit<'_, 'borrow, B> {
-        let tag = self.tag();
-        let union = self.union();
-        match tag {
-            Tag::Inline => {
-                // SAFETY: representation checked
-                RawSplit::Inline(unsafe { &union.inline })
-            }
-            Tag::Borrowed => {
-                // SAFETY: representation checked
-                RawSplit::Borrowed(unsafe { &union.borrowed })
-            }
-            Tag::Allocated => {
-                // SAFETY: representation checked
-                RawSplit::Allocated(unsafe { &union.allocated })
-            }
+    /// Creates a new `Raw` with the given capacity.
+    ///
+    /// **This representation may not be normalized.**
+    pub fn with_capacity(capacity: usize) -> Self {
+        if capacity <= INLINE_CAPACITY {
+            Self::from_inline(Inline::empty())
+        } else {
+            Self::from_vec(Vec::with_capacity(capacity))
         }
     }
 
@@ -417,14 +470,10 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
 
     #[inline]
     pub fn as_mut_slice(&mut self) -> Option<&mut [u8]> {
-        let tag = self.tag();
-        let union = self.union_mut();
-
-        // SAFETY: representation is checked
-        match tag {
-            Tag::Inline => Some(unsafe { union.inline.as_mut_slice() }),
-            Tag::Borrowed => None,
-            Tag::Allocated => unsafe { union.allocated.as_mut_slice() },
+        match self.split_mut() {
+            RawSplitMut::Inline(inline) => Some(inline.as_mut_slice()),
+            RawSplitMut::Allocated(allocated) => allocated.as_mut_slice(),
+            RawSplitMut::Borrowed(_) => None,
         }
     }
 
@@ -432,22 +481,6 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
     #[inline]
     pub fn push_slice(&mut self, addition: &[u8]) {
         let new_len = self.len() + addition.len();
-
-        if new_len <= INLINE_CAPACITY {
-            // can be inlined
-
-            if !self.is_inline() {
-                // make it inline first
-                // SAFETY: `new_len` is checked before, so current len <= INLINE_CAPACITY
-                *self = unsafe { Self::inline_unchecked(self.as_slice()) };
-            }
-
-            // SAFETY: `new_len` is checked above
-            unsafe {
-                self.union_mut().inline.push_slice_unchecked(addition);
-            }
-            return;
-        }
 
         if self.is_allocated() {
             // current allocation may be pushed into it directly?
@@ -462,6 +495,20 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
                 }
                 return;
             }
+        }
+
+        if new_len <= INLINE_CAPACITY {
+            if !self.is_inline() {
+                // make it inline first
+                // SAFETY: `new_len` is checked before, so current len <= INLINE_CAPACITY
+                *self = unsafe { Self::inline_unchecked(self.as_slice()) };
+            }
+
+            // SAFETY: `new_len` is checked above
+            unsafe {
+                self.union_mut().inline.push_slice_unchecked(addition);
+            }
+            return;
         }
 
         // requires a new vector
@@ -685,13 +732,36 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
         }
     }
 
-    const fn tag(&self) -> Tag {
-        match self.tag_byte.get() & MASK {
-            TAG_INLINE => Tag::Inline,
-            TAG_BORROWED => Tag::Borrowed,
-            TAG_ALLOCATED => Tag::Allocated,
-            // SAFETY: type invariant
-            _ => unsafe { unreachable_unchecked() },
+    /// Returns the remaining spare capacity of the vector as a slice of
+    /// `MaybeUninit<T>`.
+    ///
+    /// The returned slice can be used to fill the vector with data (e.g. by
+    /// reading from a file) before marking the data as initialized using the
+    /// [`set_len`] method.
+    ///
+    /// [`set_len`]: Raw::set_len
+    pub fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<u8>] {
+        match self.split_mut() {
+            RawSplitMut::Borrowed(_) => &mut [],
+            RawSplitMut::Inline(inline) => inline.spare_capacity_mut(),
+            RawSplitMut::Allocated(allocated) => allocated.spare_capacity_mut(),
+        }
+    }
+
+    /// Forces the length of the vector to `new_len`.
+    ///
+    /// # Safety
+    ///
+    /// * `new_len` should be must be less than or equal to `INLINE_CAPACITY`.
+    /// * The elements at `old_len..new_len` must be initialized.
+    /// * The vector should not be shared (if `new_len != old_len`).
+    pub unsafe fn set_len(&mut self, new_len: usize) {
+        match self.split_mut() {
+            RawSplitMut::Borrowed(borrowed) => {
+                debug_assert!(borrowed.len() == new_len, "set_len on borrowed")
+            }
+            RawSplitMut::Inline(inline) => unsafe { inline.set_len(new_len) },
+            RawSplitMut::Allocated(allocated) => unsafe { allocated.set_len(new_len) },
         }
     }
 }
