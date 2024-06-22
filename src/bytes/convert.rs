@@ -84,6 +84,18 @@ where
     }
 }
 
+impl<'borrow, B> From<HipByt<'borrow, B>> for Cow<'borrow, [u8]>
+where
+    B: Backend,
+{
+    #[inline]
+    fn from(value: HipByt<'borrow, B>) -> Self {
+        value
+            .into_borrowed()
+            .map_or_else(|value| Cow::Owned(value.into()), Cow::Borrowed)
+    }
+}
+
 // Fallible conversions
 
 // => none for now
@@ -149,5 +161,16 @@ mod tests {
         let a = HipByt::from(&arr);
         let v: Vec<_> = a.into();
         assert_eq!(v.as_slice(), &arr);
+    }
+
+    #[test]
+    fn test_into_cow() {
+        let h = HipByt::from_static(b"abc");
+        let c: Cow<'static, [u8]> = h.into();
+        assert_eq!(c, Cow::Borrowed(b"abc"));
+
+        let h = HipByt::from(b"abc");
+        let c: Cow<'static, [u8]> = h.into();
+        assert_eq!(c, Cow::<'static, [u8]>::Owned(b"abc".into()));
     }
 }
