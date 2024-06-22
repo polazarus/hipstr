@@ -6,8 +6,8 @@ use core::ptr;
 use std::collections::HashSet;
 
 use super::SliceErrorKind;
-use crate::alloc::format;
 use crate::alloc::string::{String, ToString};
+use crate::alloc::{format, vec};
 use crate::{HipByt, HipStr as H};
 
 const INLINE_CAPACITY: usize = H::inline_capacity();
