@@ -737,7 +737,7 @@ where
         I: IntoIterator<Item = E>,
         I::IntoIter: Clone,
     {
-        let mut slices = slices.into_iter();
+        let slices = slices.into_iter();
         let new_len = slices.clone().map(|e| e.as_ref().len()).sum();
 
         let mut raw = Raw::with_capacity(new_len);

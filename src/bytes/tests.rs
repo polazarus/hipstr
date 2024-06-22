@@ -1,5 +1,6 @@
 use alloc::rc::Rc;
 use core::cell::Cell;
+use core::mem::MaybeUninit;
 use core::ops::Bound;
 use core::ptr;
 #[cfg(feature = "std")]
@@ -989,6 +990,29 @@ fn test_slice_ref_panic() {
     let s = Vec::from(ABC);
     let a = H::borrowed(s.as_slice());
     let _ = a.slice_ref(ABC);
+}
+
+#[test]
+fn test_spare_capacity_mut() {
+    let mut h = H::from_static(ABC);
+    assert!(h.spare_capacity_mut().is_empty());
+
+    let mut h = H::from(ABC);
+    assert_eq!(h.spare_capacity_mut().len(), INLINE_CAPACITY - ABC.len());
+
+    let mut h = H::with_capacity(42);
+    assert_eq!(h.spare_capacity_mut().len(), 42);
+}
+
+#[test]
+fn test_set_len() {
+    let mut h = H::with_capacity(INLINE_CAPACITY);
+    assert_eq!(h.len(), 0);
+    h.spare_capacity_mut().fill(MaybeUninit::new(0));
+    unsafe {
+        h.set_len(10);
+    }
+    assert_eq!(h.len(), 10);
 }
 
 #[test]

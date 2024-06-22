@@ -6,7 +6,6 @@ use core::borrow::Borrow;
 use core::hash::Hash;
 use core::mem::transmute;
 use core::ops::{Deref, DerefMut, Range, RangeBounds};
-use core::ptr;
 use core::str::{Lines, SplitAsciiWhitespace, SplitWhitespace, Utf8Error};
 
 use self::pattern::{DoubleEndedPattern, IterWrapper, Pattern, ReversePattern};
