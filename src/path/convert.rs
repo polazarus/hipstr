@@ -254,6 +254,18 @@ where
     }
 }
 
+impl<'borrow, B> From<HipPath<'borrow, B>> for Cow<'borrow, Path>
+where
+    B: Backend,
+{
+    #[inline]
+    fn from(value: HipPath<'borrow, B>) -> Self {
+        value
+            .into_borrowed()
+            .map_or_else(|value| Cow::Owned(value.into()), Cow::Borrowed)
+    }
+}
+
 // Fallible conversions
 
 //?
@@ -399,6 +411,17 @@ mod tests {
         let a = HipPath::borrowed("abc");
         let v: PathBuf = a.into();
         assert_eq!(v, Path::new("abc"));
+    }
+
+    #[test]
+    fn test_into_cow() {
+        let h = HipPath::from_static("abc");
+        let c: Cow<'static, Path> = h.into();
+        assert_eq!(c, Cow::Borrowed(Path::new("abc")));
+
+        let h = HipPath::from("abc");
+        let c: Cow<'static, Path> = h.into();
+        assert_eq!(c, Cow::<'static, Path>::Owned("abc".into()));
     }
 
     #[test]
