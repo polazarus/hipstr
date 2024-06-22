@@ -731,8 +731,14 @@ where
         Self(raw)
     }
 
-    pub fn concat(slices: impl IntoIterator<Item = impl AsRef<[u8]>> + Clone) -> Self {
-        let new_len = slices.clone().into_iter().map(|e| e.as_ref().len()).sum();
+    pub fn concat<E, I>(slices: I) -> Self
+    where
+        E: AsRef<[u8]>,
+        I: IntoIterator<Item = E>,
+        I::IntoIter: Clone,
+    {
+        let mut slices = slices.into_iter();
+        let new_len = slices.clone().map(|e| e.as_ref().len()).sum();
 
         let mut raw = Raw::with_capacity(new_len);
         let dst = raw.spare_capacity_mut();
@@ -741,7 +747,7 @@ where
         // compute the final pointer
         let final_ptr = unsafe { dst_ptr.add(new_len) };
 
-        let _ = slices.into_iter().fold(dst_ptr, |dst_ptr, slice| {
+        let _ = slices.fold(dst_ptr, |dst_ptr, slice| {
             let slice = slice.as_ref();
             let len = slice.len();
             let end_ptr = unsafe { dst_ptr.add(len) };
@@ -818,13 +824,15 @@ where
         Self(raw)
     }
 
-    pub fn join(
-        slices: impl IntoIterator<Item = impl AsRef<[u8]>> + Clone,
-        sep: impl AsRef<[u8]>,
-    ) -> Self {
-        let (segments, segments_len) = slices
+    pub fn join<E, I>(slices: I, sep: impl AsRef<[u8]>) -> Self
+    where
+        E: AsRef<[u8]>,
+        I: IntoIterator<Item = E>,
+        I::IntoIter: Clone,
+    {
+        let mut iter = slices.into_iter();
+        let (segments, segments_len) = iter
             .clone()
-            .into_iter()
             .fold((0, 0), |(n, l), e| (n + 1, l + e.as_ref().len()));
         if segments == 0 {
             return Self::new();
@@ -839,8 +847,6 @@ where
 
         // compute the final pointer
         let final_ptr = unsafe { dst_ptr.add(new_len) };
-
-        let mut iter = slices.into_iter();
 
         if let Some(slice) = iter.next() {
             let slice = slice.as_ref();

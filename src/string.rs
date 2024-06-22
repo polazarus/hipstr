@@ -4,6 +4,7 @@
 
 use core::borrow::Borrow;
 use core::hash::Hash;
+use core::mem::transmute;
 use core::ops::{Deref, DerefMut, Range, RangeBounds};
 use core::ptr;
 use core::str::{Lines, SplitAsciiWhitespace, SplitWhitespace, Utf8Error};
@@ -1422,7 +1423,7 @@ where
         IterWrapper::new(self, self.as_str().lines())
     }
 
-    pub fn concat_str(slices: &[&str]) -> Self {
+    pub fn concat_slices(slices: &[&str]) -> Self {
         let slices: &[&[u8]] = unsafe { core::mem::transmute(slices) };
         Self(HipByt::concat_slices(slices))
     }
@@ -1439,31 +1440,29 @@ where
     ///
     /// This behavior differs from [`std::slice::Concat`] that reallocates when
     /// needed.
-    pub fn concat(slices: impl IntoIterator<Item = impl Borrow<str>> + Clone) -> Self {
-        let new_len = slices.clone().into_iter().map(|e| e.borrow().len()).sum();
+    pub fn concat<E, I>(slices: I) -> Self
+    where
+        E: AsRef<str>,
+        I: IntoIterator<Item = E>,
+        I::IntoIter: Clone,
+    {
+        Self(HipByt::concat(slices.into_iter().map(AsBytes)))
+    }
 
-        let mut raw = HipByt::with_capacity(new_len);
-        let dst = raw.spare_capacity_mut();
-        let dst_ptr: *mut u8 = dst.as_mut_ptr().cast();
+    pub fn join_slices(slices: &[&str], sep: impl AsRef<str>) -> Self {
+        let slices: &[&[u8]] = unsafe { transmute(slices) };
 
-        // compute the final pointer
-        let final_ptr = unsafe { dst_ptr.add(new_len) };
+        Self(HipByt::join_slices(slices, sep.as_ref().as_bytes()))
+    }
 
-        let _ = slices.into_iter().fold(dst_ptr, |dst, slice| {
-            let slice = slice.borrow();
-            let len = slice.len();
-            let end_ptr = unsafe { dst_ptr.add(len) };
-            assert!(end_ptr <= final_ptr, "slices changed during concat");
-            unsafe {
-                ptr::copy_nonoverlapping(slice.as_ptr(), dst, len);
-                end_ptr
-            }
-        });
-
-        unsafe { raw.set_len(new_len) };
-        debug_assert_eq!(final_ptr.cast_const(), raw.as_slice().as_ptr_range().end);
-
-        Self(raw)
+    pub fn join<E, I>(slices: I, sep: impl AsRef<str>) -> Self
+    where
+        E: AsRef<str>,
+        I: IntoIterator<Item = E>,
+        I::IntoIter: Clone,
+    {
+        let iter = slices.into_iter().map(AsBytes);
+        Self(HipByt::join(iter, sep.as_ref().as_bytes()))
     }
 }
 
@@ -1937,5 +1936,15 @@ where
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.owned
+    }
+}
+
+#[derive(Clone, Copy)]
+struct AsBytes<T>(T);
+
+impl<T: AsRef<str>> AsRef<[u8]> for AsBytes<T> {
+    #[inline(always)]
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref().as_bytes()
     }
 }
