@@ -6,6 +6,7 @@ Notable changes only.
 
 ## Added
 
+- new conversion to `Cow`s
 - a niche to make `Option<HipStr>` the same size as `HipStr`
 
 ## Changed
