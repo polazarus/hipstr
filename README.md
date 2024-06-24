@@ -1,8 +1,7 @@
 # `hipstr`
 
 [![Rust](https://github.com/polazarus/hipstr/actions/workflows/basic.yml/badge.svg)](https://github.com/polazarus/hipstr/actions/workflows/basic.yml)
-[![Clippy](https://github.com/polazarus/hipstr/actions/workflows/clippy.yml/badge.svg)](https://github.com/polazarus/hipstr/actions/workflows/clippy.yml)
-[![Miri](https://github.com/polazarus/hipstr/actions/workflows/miri.yml/badge.svg)](https://github.com/polazarus/hipstr/actions/workflows/miri.yml)
+[![Clippy & Miri](https://github.com/polazarus/hipstr/actions/workflows/analysis.yml/badge.svg)](https://github.com/polazarus/hipstr/actions/workflows/analysis.yml)
 [![codecov](https://codecov.io/gh/polazarus/hipstr/branch/main/graph/badge.svg?token=Z7YUHB4YUD)](https://codecov.io/gh/polazarus/hipstr)
 [![Docs](https://img.shields.io/docsrs/hipstr)](https://docs.rs/hipstr)
 ![MIT OR Apache-2.0](https://img.shields.io/crates/l/hipstr)
