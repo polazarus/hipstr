@@ -1013,6 +1013,21 @@ fn test_set_len() {
         h.set_len(10);
     }
     assert_eq!(h.len(), 10);
+
+    let mut x = H::borrowed(b"abc");
+    unsafe {
+        x.set_len(3);
+    }
+}
+
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic]
+fn test_set_len_debug_panic() {
+    let mut x = H::borrowed(b"abc");
+    unsafe {
+        x.set_len(4);
+    }
 }
 
 #[test]
