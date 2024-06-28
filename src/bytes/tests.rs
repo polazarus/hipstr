@@ -1014,6 +1014,18 @@ fn test_set_len() {
     }
     assert_eq!(h.len(), 10);
 
+    let mut h = H::with_capacity(INLINE_CAPACITY + 1);
+    assert_eq!(h.len(), 0);
+    unsafe {
+        h.set_len(0);
+    }
+    assert_eq!(h.len(), 0);
+    h.spare_capacity_mut().fill(MaybeUninit::new(0));
+    unsafe {
+        h.set_len(10);
+    }
+    assert_eq!(h.len(), 10);
+
     let mut x = H::borrowed(b"abc");
     unsafe {
         x.set_len(3);
