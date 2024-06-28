@@ -753,6 +753,9 @@ fn test_slice_ref_panic() {
 
 #[test]
 fn test_concat_slices() {
+    let h = H::concat_slices(&[]);
+    assert!(h.is_empty());
+
     let slices: &[&str] = &[A, B, C];
     let h = H::concat_slices(slices);
     assert_eq!(h, slices.concat());
@@ -792,11 +795,14 @@ fn test_concat_bad_iter() {
         }
     }
 
-    let _h = HipByt::concat(I(Some(Rc::new(Cell::new("long")))));
+    let _h = H::concat(I(Some(Rc::new(Cell::new("long")))));
 }
 
 #[test]
 fn test_join_slices() {
+    let h = H::join_slices(&[], ",");
+    assert!(h.is_empty());
+
     let slices: &[&str] = &[A, B, C];
     let h = H::join_slices(slices, ",");
     assert_eq!(h, "a,b,c");
@@ -811,6 +817,10 @@ fn test_join_slices() {
 
 #[test]
 fn test_join() {
+    let slices: &[&str] = &[];
+    let h = H::join(slices, ",");
+    assert!(h.is_empty());
+
     let slices: &[&str] = &[A, B, C];
     let h = H::join(slices, ",");
     assert_eq!(h, "a,b,c");

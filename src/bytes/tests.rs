@@ -1091,11 +1091,10 @@ fn test_concat_bad_iter() {
 
 #[test]
 fn test_join_slices() {
-    let slices: &[&[_]] = &[A, B, C];
-
     let h = H::join_slices(&[], b",");
     assert!(h.is_empty());
 
+    let slices: &[&[_]] = &[A, B, C];
     let h = H::join_slices(slices, b",");
     assert_eq!(h, b"a,b,c");
     assert!(h.is_inline());
@@ -1109,6 +1108,10 @@ fn test_join_slices() {
 
 #[test]
 fn test_join() {
+    let slices: &[&[u8]] = &[];
+    let h = H::join(slices, b",");
+    assert!(h.is_empty());
+
     let slices: &[&[_; 1]] = &[b"a", b"b", b"c"];
     let h = H::join(slices, b",");
     assert_eq!(h, b"a,b,c");
