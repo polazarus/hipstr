@@ -1002,6 +1002,11 @@ fn test_spare_capacity_mut() {
 
     let mut h = H::with_capacity(42);
     assert_eq!(h.spare_capacity_mut().len(), 42);
+
+    let mut h = H::from(ABC);
+    let h2 = h.clone();
+    assert!(h.spare_capacity_mut().is_empty());
+    let _ = h2;
 }
 
 #[test]
