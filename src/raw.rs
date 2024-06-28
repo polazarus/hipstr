@@ -752,12 +752,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
     pub unsafe fn set_len(&mut self, new_len: usize) {
         match self.split_mut() {
             RawSplitMut::Borrowed(borrowed) => {
-                debug_assert_ne!(borrowed.len(), new_len);
-                if borrowed.len() != new_len {
-                    unsafe {
-                        unreachable_unchecked();
-                    }
-                }
+                assert_eq!(borrowed.len(), new_len, "set_len on borrowed slice");
             }
             RawSplitMut::Inline(inline) => unsafe { inline.set_len(new_len) },
             RawSplitMut::Allocated(allocated) => unsafe { allocated.set_len(new_len) },

@@ -1032,6 +1032,9 @@ fn test_set_len_debug_panic() {
 
 #[test]
 fn test_concat_slices() {
+    let h = H::concat_slices(&[]);
+    assert!(h.is_empty());
+
     let slices: &[&[_]] = &[A, B, C];
     let h = H::concat_slices(slices);
     assert_eq!(h, slices.concat());
@@ -1077,6 +1080,10 @@ fn test_concat_bad_iter() {
 #[test]
 fn test_join_slices() {
     let slices: &[&[_]] = &[A, B, C];
+
+    let h = H::join_slices(&[], b",");
+    assert!(h.is_empty());
+
     let h = H::join_slices(slices, b",");
     assert_eq!(h, b"a,b,c");
     assert!(h.is_inline());
