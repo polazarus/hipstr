@@ -4,6 +4,7 @@
 
 use core::borrow::Borrow;
 use core::hash::Hash;
+use core::mem::transmute;
 use core::ops::{Deref, DerefMut, Range, RangeBounds};
 use core::str::{Lines, SplitAsciiWhitespace, SplitWhitespace, Utf8Error};
 
@@ -1420,6 +1421,48 @@ where
     pub fn lines(&self) -> IterWrapper<'_, 'borrow, B, Lines> {
         IterWrapper::new(self, self.as_str().lines())
     }
+
+    pub fn concat_slices(slices: &[&str]) -> Self {
+        let slices: &[&[u8]] = unsafe { core::mem::transmute(slices) };
+        Self(HipByt::concat_slices(slices))
+    }
+
+    /// Concatenates string slices together.
+    ///
+    /// # Panics
+    ///
+    /// During the concatenation the iterator is ran twice: once to get the
+    /// expected new length, and again to do the actual copy.
+    /// If the returned strings are not the same and the new length is greater
+    /// than the expected length, the function panics (before actually
+    /// overflowing).
+    ///
+    /// This behavior differs from [`std::slice::Concat`] that reallocates when
+    /// needed.
+    pub fn concat<E, I>(slices: I) -> Self
+    where
+        E: AsRef<str>,
+        I: IntoIterator<Item = E>,
+        I::IntoIter: Clone,
+    {
+        Self(HipByt::concat(slices.into_iter().map(AsBytes)))
+    }
+
+    pub fn join_slices(slices: &[&str], sep: impl AsRef<str>) -> Self {
+        let slices: &[&[u8]] = unsafe { transmute(slices) };
+
+        Self(HipByt::join_slices(slices, sep.as_ref().as_bytes()))
+    }
+
+    pub fn join<E, I>(slices: I, sep: impl AsRef<str>) -> Self
+    where
+        E: AsRef<str>,
+        I: IntoIterator<Item = E>,
+        I::IntoIter: Clone,
+    {
+        let iter = slices.into_iter().map(AsBytes);
+        Self(HipByt::join(iter, sep.as_ref().as_bytes()))
+    }
 }
 
 impl<B> HipStr<'static, B>
@@ -1892,5 +1935,15 @@ where
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.owned
+    }
+}
+
+#[derive(Clone, Copy)]
+struct AsBytes<T>(T);
+
+impl<T: AsRef<str>> AsRef<[u8]> for AsBytes<T> {
+    #[inline(always)]
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref().as_bytes()
     }
 }

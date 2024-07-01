@@ -22,7 +22,7 @@ pub trait Count {
     fn get(&self) -> usize;
 }
 
-/// Local (not thread-safe) reference counter.
+/// Local (thread-unsafe) reference counter.
 pub struct Local(Cell<usize>);
 
 /// Thread-safe reference counter.
@@ -86,31 +86,33 @@ impl Count for ThreadSafe {
 }
 
 /// Reference counting inner cell.
-struct Inner<T, C: Count> {
+struct Inner<T, C> {
     count: C,
     value: T,
 }
 
 /// Non-null raw pointer to a reference counting inner cell.
 ///
-/// Using this raw pointer, rather than a full fledge Rc, can be error-prone.
+/// Using this raw pointer, rather than a full fledge `Rc``, can be error-prone.
 /// Please follow the following rules:
 ///
 /// - it should not be copied meaningfully (typically it excludes temporary
 ///   stack copies) without `incr()`-ing it
-/// - it should not be dropped (except for temporary copies) without `decr()`-ing it
-pub struct Raw<T, C: Count>(NonNull<Inner<T, C>>);
+/// - it should not be dropped (except for temporary copies) without
+///   `decr()`-ing it
+pub struct Raw<T, C>(NonNull<Inner<T, C>>);
 
-impl<T, C: Count> Copy for Raw<T, C> {}
+impl<T, C> Copy for Raw<T, C> {}
 
-impl<T, C: Count> Clone for Raw<T, C> {
+impl<T, C> Clone for Raw<T, C> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
 impl<T, C: Count> Raw<T, C> {
-    /// Creates a new raw pointer to a reference counting cell containing the provided value.
+    /// Creates a new raw pointer to a reference counting cell containing the
+    /// provided value.
     ///
     /// The created raw pointer is valid.
     #[inline]
