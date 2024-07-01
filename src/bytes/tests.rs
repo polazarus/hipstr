@@ -21,6 +21,7 @@ const ABC: &[u8] = b"abc";
 const A: &[u8] = b"a";
 const B: &[u8] = b"b";
 const C: &[u8] = b"c";
+const SLICE_42_42: &[u8] = &[42; 42];
 
 #[test]
 fn test_new_default() {
@@ -1002,8 +1003,11 @@ fn test_spare_capacity_mut() {
 
     let mut h = H::with_capacity(42);
     assert_eq!(h.spare_capacity_mut().len(), 42);
+}
 
-    let mut h = H::from(ABC);
+#[test]
+fn test_spare_capacity_mut_shared() {
+    let mut h = H::from(SLICE_42_42);
     let h2 = h.clone();
     assert!(h.spare_capacity_mut().is_empty());
     let _ = h2;
