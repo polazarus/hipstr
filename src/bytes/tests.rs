@@ -1,3 +1,4 @@
+use alloc::borrow::ToOwned;
 use alloc::rc::Rc;
 use core::cell::Cell;
 use core::mem::MaybeUninit;
