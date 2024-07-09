@@ -871,6 +871,9 @@ fn test_join_slices() {
     let h = H::join_slices(&[], ",");
     assert!(h.is_empty());
 
+    let h = H::join_slices(&[EMPTY_SLICE, EMPTY_SLICE], EMPTY_SLICE);
+    assert!(h.is_empty());
+
     let slices: &[S] = &[A, B, C];
     let h = H::join_slices(slices, ",");
     assert_eq!(h, "a,b,c");
