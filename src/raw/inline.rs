@@ -212,4 +212,21 @@ impl<const INLINE_CAPACITY: usize> Inline<INLINE_CAPACITY> {
 
         self.len = TaggedLen::encode(new_len);
     }
+
+    /// Returns the spare capacity of this inline vector as a slice of `MaybeUninit<u8>`.
+    pub fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<u8>] {
+        let start = self.len();
+        &mut self.data[start..]
+    }
+
+    /// Forces the length of the vector to `new_len`.
+    ///
+    /// # Safety
+    ///
+    /// * `new_len` should be must be less than or equal to `INLINE_CAPACITY`.
+    /// * The elements at `old_len..new_len` must be initialized.
+    pub unsafe fn set_len(&mut self, new_len: usize) {
+        debug_assert!(new_len <= INLINE_CAPACITY);
+        self.len = TaggedLen::encode(new_len);
+    }
 }

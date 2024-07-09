@@ -1,7 +1,7 @@
 //! Allocated representation.
 
 use core::marker::PhantomData;
-use core::mem::transmute;
+use core::mem::{transmute, MaybeUninit};
 use core::ops::Range;
 use core::panic::{RefUnwindSafe, UnwindSafe};
 
@@ -322,6 +322,53 @@ impl<B: Backend> Allocated<B> {
         // SAFETY: shift to within the vector range (the shift was already
         // in the old range).
         self.ptr = unsafe { v.as_ptr().add(shift) };
+    }
+
+    /// Returns the remaining spare capacity of the unique vector as a slice of `MaybeUnit<u8>`.
+    /// If the vector is actually shared, returns an empty slice.
+    ///
+    /// The returned slice can be used to fill the vector with data
+    /// (e.g. by reading from a file) before marking the data as initialized
+    /// using the `set_len` method.
+    pub fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<u8>] {
+        debug_assert!(self.is_valid());
+
+        if !self.is_unique() {
+            return &mut [];
+        }
+
+        let owner = self.owner();
+        let v = unsafe { owner.as_mut() };
+
+        // SAFETY: compute the shift from within the vector range (type invariant)
+        #[allow(clippy::cast_sign_loss)]
+        let start = unsafe { self.ptr.offset_from(v.as_ptr()) as usize };
+        v.truncate(start + self.len);
+        v.spare_capacity_mut()
+    }
+
+    /// Forces the length of the vector to `new_len`.
+    ///
+    /// # Safety
+    ///
+    /// * `new_len` should be must be less than or equal to `capacity()`.
+    /// * The elements at `old_len..new_len` must be initialized.
+    /// * The vector should be uniquely owned, not shared.
+    pub unsafe fn set_len(&mut self, new_len: usize) {
+        if new_len == self.len {
+            return;
+        }
+
+        debug_assert!(self.is_unique());
+        debug_assert!(new_len <= self.capacity());
+
+        let owner = self.owner();
+        let v = unsafe { owner.as_mut() };
+        // SAFETY: compute the shift from within the vector range (type invariant)
+        #[allow(clippy::cast_sign_loss)]
+        let start = unsafe { self.ptr.offset_from(v.as_ptr()).abs_diff(0) };
+        unsafe { v.set_len(start + new_len) };
+        self.len = new_len;
     }
 }
 
