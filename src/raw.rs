@@ -647,16 +647,6 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
         }
     }
 
-    /// Returns `true` if the data is uniquely owned.
-    #[inline]
-    pub fn is_unique(&self) -> bool {
-        match self.split() {
-            RawSplit::Inline(_) => true,
-            RawSplit::Allocated(allocated) => allocated.is_unique(),
-            RawSplit::Borrowed(_) => false,
-        }
-    }
-
     /// Returns `true` if the representation is normalized.
     ///
     /// For now, borrowed representation are not inlined.
