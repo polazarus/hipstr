@@ -613,37 +613,37 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
     /// Makes the underlying data uniquely owned, copying if needed.
     #[inline]
     pub fn make_unique(&mut self) {
-        if !self.is_unique() {
-            let old = replace(self, Self::empty());
-            let tag = old.tag();
-            let old = old.union_move(); // self is not dropped!
+        let tag = self.tag();
+        match tag {
+            Tag::Inline => {}
+            Tag::Borrowed => {
+                let old = replace(self, Self::empty()).union_move();
 
-            *self = match tag {
-                // Inline is always unique
-                Tag::Inline => unsafe { unreachable_unchecked() },
+                // SAFETY: representation is checked above
+                let borrowed = unsafe { old.borrowed };
 
-                Tag::Allocated => {
-                    // SAFETY: representation is allocated by the function precondition
-                    // and the previous check
-                    let allocated = unsafe { old.allocated };
-
-                    // SAFETY: by the type invariant
-                    // allocated len must be > INLINE_CAPACITY
-                    let new = Self::from_vec(allocated.as_slice().to_vec());
-
-                    // manual decrement of the reference count
-                    let _dropped = allocated.decr_ref_count();
-
-                    new
+                *self = Self::from_slice(borrowed.as_slice());
+            }
+            Tag::Allocated => {
+                // SAFETY: representation checked above
+                if unsafe { self.union().allocated }.is_unique() {
+                    return;
                 }
 
-                Tag::Borrowed => {
-                    // SAFETY: representation is checked above
-                    let borrowed = unsafe { old.borrowed };
+                let old = replace(self, Self::empty());
 
-                    Self::from_slice(borrowed.as_slice())
-                }
-            };
+                // SAFETY: representation checked above
+                let allocated = unsafe { old.union_move().allocated };
+
+                // SAFETY: by the type invariant
+                // allocated len must be > INLINE_CAPACITY
+                let new = Self::from_vec(allocated.as_slice().to_vec());
+
+                // manual decrement of the reference count
+                let _dropped = allocated.decr_ref_count();
+
+                *self = new;
+            }
         }
     }
 

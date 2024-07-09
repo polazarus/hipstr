@@ -10,13 +10,28 @@ use crate::alloc::string::{String, ToString};
 use crate::alloc::{format, vec};
 use crate::{HipByt, HipStr as H};
 
+type S<'a> = &'a str;
+type Owned = String;
 const INLINE_CAPACITY: usize = H::inline_capacity();
 
-const EMPTY_SLICE: &str = "";
-const ABC: &str = "abc";
-const A: &str = "a";
-const B: &str = "b";
-const C: &str = "c";
+const EMPTY_SLICE: S = "";
+const ABC: S = "abc";
+const A: S = "a";
+const B: S = "b";
+const C: S = "c";
+const ALPHABET: &str = "abcdefghijklmnopqrstuvwxyz";
+const MEDIUM: &str = {
+    let Ok(s) = core::str::from_utf8(&[42; 42]) else {
+        panic!()
+    };
+    s
+};
+const BIG: &str = {
+    let Ok(s) = core::str::from_utf8(&[42; 1024]) else {
+        panic!()
+    };
+    s
+};
 
 #[test]
 fn test_new_default() {
@@ -42,39 +57,55 @@ fn test_borrow_and_hash() {
 
 #[test]
 fn test_fmt() {
-    let source = "Rust \u{1F980}";
+    let source = ABC;
+
     let a = H::borrowed(source);
-    assert_eq!(format!("{}", a), source);
-    assert_eq!(format!("{:?}", a), format!("{:?}", source),);
+    assert_eq!(format!("{a}"), source);
+    assert_eq!(format!("{a:?}"), format!("{source:?}"));
+
+    let a = H::from(source);
+    assert_eq!(format!("{a}"), source);
+    assert_eq!(format!("{a:?}"), format!("{source:?}"));
 }
 
 #[test]
-fn test_from_string() {
-    let s = "A".repeat(42);
-    let hs = H::from(s.clone());
-    assert!(!hs.is_borrowed());
-    assert!(!hs.is_inline());
-    assert!(hs.is_allocated());
-    assert_eq!(hs.len(), 42);
-    assert_eq!(hs.as_str(), s.as_str());
+fn test_from_owned() {
+    let s = Owned::from(MEDIUM);
+    let h = H::from(s.clone());
+    assert!(!h.is_inline());
+    assert!(!h.is_borrowed());
+    assert!(h.is_allocated());
+    assert_eq!(h.len(), 42);
+    assert_eq!(h.as_str(), s.as_str());
+
+    let o = Owned::from(ABC);
+    let h = H::from(o);
+    assert!(h.is_inline());
+    assert!(!h.is_borrowed());
+    assert!(!h.is_allocated());
+    assert_eq!(h.len(), 3);
+    assert_eq!(h.as_str(), ABC);
 }
 
 #[test]
 fn test_borrowed() {
-    let s = "0123456789";
-    let string = H::borrowed(s);
-    assert!(string.is_borrowed());
-    assert!(!string.is_inline());
-    assert_eq!(string.len(), s.len());
-    assert_eq!(string.as_str(), s);
-    assert_eq!(string.as_ptr(), s.as_ptr());
+    let s = BIG;
+
+    for size in [0, 1, INLINE_CAPACITY, INLINE_CAPACITY + 1, 256, 1024] {
+        let h = H::borrowed(&s[..size]);
+        assert!(!h.is_inline());
+        assert!(h.is_borrowed());
+        assert!(!h.is_allocated());
+        assert_eq!(h.len(), size);
+        assert_eq!(h.as_ptr(), s.as_ptr());
+    }
 }
 
 #[test]
 fn test_from_static() {
     fn is_static_type<T: 'static>(_: &T) {}
 
-    let s = "abcdefghijklmnopqrstuvwxyz";
+    let s = ALPHABET;
     let h = H::from_static(s);
 
     // compiler check
@@ -90,8 +121,7 @@ fn test_from_static() {
 
 #[test]
 fn test_from_slice() {
-    static V: &[u8] = &[b'a'; 1024];
-    let s = core::str::from_utf8(V).unwrap();
+    let s = BIG;
 
     for size in [0, 1, INLINE_CAPACITY, INLINE_CAPACITY + 1, 256, 1024] {
         let h = H::from(&s[..size]);
@@ -121,12 +151,11 @@ fn test_as_slice() {
     }
     // allocated
     {
-        let s = "A".repeat(42);
-        let a = H::from(s.as_str());
+        let a = H::from(String::from(MEDIUM));
         assert!(!a.is_borrowed());
         assert!(!a.is_inline());
         assert!(a.is_allocated());
-        assert_eq!(a.as_str(), s.as_str());
+        assert_eq!(a.as_str(), MEDIUM);
     }
 }
 
@@ -153,19 +182,19 @@ fn test_clone() {
 
     // allocated
     {
-        let v = A.repeat(42);
+        let v = Owned::from(MEDIUM);
         let p = v.as_ptr();
         let a = H::from(v);
         assert!(a.is_allocated());
         let b = a.clone();
         drop(a);
-        assert_eq!(b.as_str(), A.repeat(42).as_str());
+        assert_eq!(b.as_str(), MEDIUM);
         assert_eq!(b.as_ptr(), p);
     }
 }
 
 #[test]
-fn test_into_static() {
+fn test_into_borrowed() {
     // static
     let a = H::borrowed(ABC);
     assert_eq!(a.into_borrowed(), Ok(ABC));
@@ -176,7 +205,7 @@ fn test_into_static() {
     assert_eq!(a.into_borrowed(), Err(b));
 
     // heap
-    let a = H::from(A.repeat(42).as_str());
+    let a = H::from(MEDIUM);
     let b = a.clone();
     assert_eq!(a.into_borrowed(), Err(b));
 }
@@ -190,74 +219,75 @@ fn test_as_mut_str() {
     // inline
     let mut a = H::from(ABC);
     assert!(a.is_inline());
-    assert_eq!(a.as_mut_str(), Some(String::from(ABC).as_mut_str()));
+    assert_eq!(a.as_mut_str().unwrap(), ABC);
 
     // heap
-    let mut a = H::from(A.repeat(42).as_str());
+    let mut a = H::from(MEDIUM);
     {
-        let sl = a.as_mut_str();
-        assert_eq!(sl, Some(A.repeat(42).as_mut_str()));
+        let sl = a.as_mut_str().unwrap();
+        assert_eq!(sl, MEDIUM);
         unsafe {
-            sl.unwrap().as_bytes_mut()[0] = b'b';
+            sl.as_bytes_mut()[0] = b'+';
         }
     }
     let mut b = a.clone();
-    assert!(b.starts_with(B));
+    assert!(b.starts_with('+'));
     assert_eq!(b.as_mut_str(), None);
     let _ = a.as_str();
 }
 
 #[test]
-fn test_to_mut_str() {
-    {
-        // static
-        let mut a = H::borrowed(ABC);
-        assert!(a.is_borrowed());
-        assert_eq!(a.to_mut_str(), ABC.to_string().as_mut_str());
-        assert!(a.is_inline());
-    }
+fn test_to_mut_str_static() {
+    let mut a = H::borrowed(ABC);
+    assert!(a.is_borrowed());
+    assert_eq!(a.to_mut_str(), ABC.to_string().as_mut_str());
+    assert!(a.is_inline());
+}
 
-    {
-        // inline
-        let mut a = H::from(ABC);
-        assert!(a.is_inline());
-        assert_eq!(a.to_mut_str(), ABC.to_string().as_mut_str());
-        assert!(a.is_inline());
-    }
+#[test]
+fn test_to_mut_str_inline() {
+    let mut a = H::from(ABC);
+    assert!(a.is_inline());
+    assert_eq!(a.to_mut_str(), ABC);
+    assert!(a.is_inline());
+}
 
+#[test]
+fn test_to_mut_str_allocated() {
+    let mut a = H::from(MEDIUM);
+    assert!(a.is_allocated());
     {
-        // heap
-        let mut a = H::from(A.repeat(42).as_str());
-        assert!(a.is_allocated());
-        {
-            let sl = a.to_mut_str();
-            assert_eq!(sl, A.repeat(42).as_mut_str());
-            sl.make_ascii_uppercase();
+        let sl = a.to_mut_str();
+        assert_eq!(sl, MEDIUM);
+        unsafe {
+            sl.as_bytes_mut()[0] = b'+';
         }
-
-        let mut b = a.clone();
-        assert_eq!(b, "A".repeat(42));
-        let _ = b.to_mut_str();
-        assert_ne!(b.as_ptr(), a.as_ptr());
-        assert!(b.is_allocated());
     }
+
+    let mut b = a.clone();
+    assert!(b.starts_with('+'));
+    let _ = b.to_mut_str();
+    assert!(b.is_allocated());
+    assert_ne!(b.as_ptr(), a.as_ptr());
 }
 
 #[test]
 fn test_slice_inline() {
-    let v = A.repeat(INLINE_CAPACITY);
-    let s = H::from(&v[..]);
+    let v = &MEDIUM[0..INLINE_CAPACITY];
+    let s = H::from(v);
     let sl = s.slice(0..10);
     assert_eq!(&sl, &v[0..10]);
+    let sl = s.slice(..);
+    assert_eq!(&sl, v);
 }
 
 #[test]
 fn test_slice_borrowed() {
-    let v = A.repeat(42);
-    let s = H::borrowed(&v);
+    let m = MEDIUM;
+    let s = H::borrowed(m);
 
     let sl1 = s.slice(4..30);
-    assert_eq!(&sl1, &v[4..30]);
+    assert_eq!(&sl1, &m[4..30]);
     assert_eq!(sl1.as_ptr(), s[4..30].as_ptr());
 
     let p = s[9..12].as_ptr();
@@ -265,14 +295,14 @@ fn test_slice_borrowed() {
 
     let sl2 = sl1.slice(5..8);
     drop(sl1);
-    assert_eq!(&sl2, &v[9..12]);
+    assert_eq!(&sl2, &m[9..12]);
     assert_eq!(sl2.as_ptr(), p);
 }
 
 #[test]
 fn test_slice_allocated() {
-    let v = A.repeat(42);
-    let s = H::from(&v[..]);
+    let v = MEDIUM;
+    let s = H::from(v);
     assert!(s.is_allocated());
 
     let sl1 = s.slice(4..30);
@@ -563,41 +593,39 @@ fn test_from_utf16_lossy() {
     assert_eq!(H::from_utf16_lossy(&[0xD834]), "\u{FFFD}");
 }
 
-const FORTY_TWOS: &str = unsafe { core::str::from_utf8_unchecked(&[42; 42]) };
-
 #[test]
 fn test_push_slice_allocated() {
     // borrowed, not unique
-    let mut a = H::borrowed(FORTY_TWOS);
+    let mut a = H::borrowed(MEDIUM);
     a.push_str(ABC);
-    assert_eq!(&a[0..42], FORTY_TWOS);
+    assert_eq!(&a[0..42], MEDIUM);
     assert_eq!(&a[42..], ABC);
 
     // allocated, unique
-    let mut a = H::from(FORTY_TWOS);
+    let mut a = H::from(MEDIUM);
     a.push_str(ABC);
-    assert_eq!(&a[0..42], FORTY_TWOS);
+    assert_eq!(&a[0..42], MEDIUM);
     assert_eq!(&a[42..], ABC);
 
     // allocated, not unique
-    let mut a = H::from(FORTY_TWOS);
+    let mut a = H::from(MEDIUM);
     let pa = a.as_ptr();
     let b = a.clone();
     assert_eq!(pa, b.as_ptr());
     a.push_str(ABC);
     assert_ne!(a.as_ptr(), pa);
-    assert_eq!(&a[0..42], FORTY_TWOS);
+    assert_eq!(&a[0..42], MEDIUM);
     assert_eq!(&a[42..], ABC);
-    assert_eq!(b, FORTY_TWOS);
+    assert_eq!(b, MEDIUM);
 
     // allocated, unique but shifted
     let mut a = {
-        let x = H::from(FORTY_TWOS);
+        let x = H::from(MEDIUM);
         x.slice(1..39)
     };
     let p = a.as_ptr();
     a.push_str(ABC);
-    assert_eq!(&a[..38], &FORTY_TWOS[1..39]);
+    assert_eq!(&a[..38], &MEDIUM[1..39]);
     assert_eq!(&a[38..], ABC);
     assert_eq!(a.as_ptr(), p);
     // => the underlying vector is big enough
@@ -675,7 +703,7 @@ fn test_repeat() {
     assert_eq!(h50.len(), 0);
     assert!(!h50.is_allocated());
 
-    let h = H::from("*".repeat(42));
+    let h = H::from(MEDIUM);
     let h1 = h.repeat(1);
     assert_eq!(h1.len(), h.len());
     assert_eq!(h.as_ptr(), h1.as_ptr());
@@ -756,13 +784,12 @@ fn test_concat_slices() {
     let h = H::concat_slices(&[]);
     assert!(h.is_empty());
 
-    let slices: &[&str] = &[A, B, C];
+    let slices: &[S] = &[A, B, C];
     let h = H::concat_slices(slices);
     assert_eq!(h, slices.concat());
     assert!(h.is_inline());
 
-    let long = "*".repeat(42);
-    let slices: &[&str] = &[A, B, C, &long];
+    let slices: &[S] = &[A, B, C, MEDIUM];
     let h = H::concat_slices(slices);
     assert_eq!(h, slices.concat());
     assert!(h.is_allocated());
@@ -770,12 +797,16 @@ fn test_concat_slices() {
 
 #[test]
 fn test_concat() {
-    let slices: &[&str] = &[A, B, C];
+    let slices: &[S] = &[];
+    let h = H::concat(slices);
+    assert_eq!(h, EMPTY_SLICE);
+
+    let slices: &[S] = &[A, B, C];
     let h = H::concat(slices);
     assert_eq!(h, ABC);
     assert!(h.is_inline());
 
-    let long = "*".repeat(42);
+    let long = MEDIUM.to_owned();
     let slices: &[String] = &[A.into(), B.into(), C.into(), long.clone()];
     let h = H::concat(slices);
     assert_eq!(h, [ABC, long.as_str()].concat());
@@ -803,13 +834,13 @@ fn test_join_slices() {
     let h = H::join_slices(&[], ",");
     assert!(h.is_empty());
 
-    let slices: &[&str] = &[A, B, C];
+    let slices: &[S] = &[A, B, C];
     let h = H::join_slices(slices, ",");
     assert_eq!(h, "a,b,c");
     assert!(h.is_inline());
 
     let long = "*".repeat(42);
-    let slices: &[&str] = &[A, B, C, &long];
+    let slices: &[S] = &[A, B, C, &long];
     let h = H::join_slices(slices, ",");
     assert_eq!(h, slices.join(","));
     assert!(h.is_allocated());
@@ -817,11 +848,11 @@ fn test_join_slices() {
 
 #[test]
 fn test_join() {
-    let slices: &[&str] = &[];
+    let slices: &[S] = &[];
     let h = H::join(slices, ",");
     assert!(h.is_empty());
 
-    let slices: &[&str] = &[A, B, C];
+    let slices: &[S] = &[A, B, C];
     let h = H::join(slices, ",");
     assert_eq!(h, "a,b,c");
     assert!(h.is_inline());
