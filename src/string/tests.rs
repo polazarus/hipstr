@@ -1,5 +1,5 @@
-use alloc::rc::Rc;
 use alloc::borrow::ToOwned;
+use alloc::rc::Rc;
 use core::cell::Cell;
 use core::ops::Bound;
 use core::ptr;
@@ -20,6 +20,9 @@ const ABC: S = "abc";
 const A: S = "a";
 const B: S = "b";
 const C: S = "c";
+const AB: S = "ab";
+const ABCDEF: S = "abcdef";
+static H_ABCDEF: H = H::borrowed(ABCDEF);
 const ALPHABET: &str = "abcdefghijklmnopqrstuvwxyz";
 const MEDIUM: &str = {
     let Ok(s) = core::str::from_utf8(&[42; 42]) else {
@@ -369,6 +372,30 @@ fn test_slice_unchecked() {
 #[test]
 #[cfg(debug_assertions)]
 #[should_panic]
+fn test_slice_unchecked_debug_panic_start() {
+    let a = H::borrowed(ABC);
+    let _ = unsafe { a.slice_unchecked(4..) };
+}
+
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic]
+fn test_slice_unchecked_debug_panic_end() {
+    let a = H::borrowed(ABC);
+    let _ = unsafe { a.slice_unchecked(..5) };
+}
+
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic]
+fn test_slice_unchecked_debug_panic_mixed() {
+    let a = H::borrowed(ABC);
+    let _ = unsafe { a.slice_unchecked(3..2) };
+}
+
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic]
 fn test_slice_unchecked_debug_start_char_boundary_panic() {
     let a = H::borrowed("\u{1F980}");
     let _ = unsafe { a.slice_unchecked(1..) };
@@ -380,6 +407,15 @@ fn test_slice_unchecked_debug_start_char_boundary_panic() {
 fn test_slice_unchecked_debug_end_char_boundary_panic() {
     let a = H::borrowed("\u{1F980}");
     let _ = unsafe { a.slice_unchecked(..1) };
+}
+
+#[test]
+fn test_slice_ok() {
+    assert_eq!(H_ABCDEF.slice(..), ABCDEF);
+    assert_eq!(H_ABCDEF.slice(..1), A);
+    assert_eq!(H_ABCDEF.slice(..=1), AB);
+    assert_eq!(H_ABCDEF.slice(1..2), B);
+    assert_eq!(H_ABCDEF.slice((Bound::Excluded(0), Bound::Included(1))), B);
 }
 
 static RUST_CRAB: H = H::borrowed("Rust \u{1F980}");
@@ -719,7 +755,7 @@ fn test_repeat() {
 
 #[test]
 fn test_slice_ref_unchecked() {
-    let s = String::from(ABC);
+    let s = Owned::from(ABC);
     let a = H::borrowed(s.as_str());
 
     unsafe {
@@ -749,7 +785,7 @@ fn test_slice_ref_unchecked() {
 
 #[test]
 fn test_try_slice_ref() {
-    let s = String::from(ABC);
+    let s = Owned::from(ABC);
     let a = H::borrowed(s.as_str());
 
     assert_eq!(a.try_slice_ref(&a[0..1]).unwrap(), A);
@@ -765,7 +801,7 @@ fn test_try_slice_ref() {
 
 #[test]
 fn test_slice_ref() {
-    let s = String::from(ABC);
+    let s = Owned::from(ABC);
     let a = H::borrowed(s.as_str());
     assert_eq!(a.slice_ref(&a[0..1]), A);
     assert_eq!(a.slice_ref(&a[0..0]), EMPTY_SLICE);
@@ -775,7 +811,7 @@ fn test_slice_ref() {
 #[test]
 #[should_panic]
 fn test_slice_ref_panic() {
-    let s = String::from(ABC);
+    let s = Owned::from(ABC);
     let a = H::borrowed(s.as_str());
     let _ = a.slice_ref(ABC);
 }

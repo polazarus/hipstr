@@ -24,6 +24,9 @@ const ABC: S = b"abc";
 const A: S = b"a";
 const B: S = b"b";
 const C: S = b"c";
+const AB: S = b"ab";
+const ABCDEF: S = b"abcdef";
+static H_ABCDEF: H = H::borrowed(ABCDEF);
 const ALPHABET: &[u8] = b"abcdefghijklmnopqrstuvwxyz";
 const MEDIUM: &[u8] = &[42; 42];
 const BIG: &[u8] = &[42; 1024];
@@ -396,25 +399,23 @@ fn test_slice_unchecked_debug_panic_mixed() {
     let _ = unsafe { a.slice_unchecked(3..2) };
 }
 
-static ABCDEF: H = H::borrowed(b"abcdef");
-
 #[test]
 fn test_slice_ok() {
-    assert_eq!(ABCDEF.slice(..), b"abcdef");
-    assert_eq!(ABCDEF.slice(..1), A);
-    assert_eq!(ABCDEF.slice(..=1), b"ab");
-    assert_eq!(ABCDEF.slice(1..2), B);
-    assert_eq!(ABCDEF.slice((Bound::Excluded(0), Bound::Included(1))), B);
+    assert_eq!(H_ABCDEF.slice(..), ABCDEF);
+    assert_eq!(H_ABCDEF.slice(..1), A);
+    assert_eq!(H_ABCDEF.slice(..=1), AB);
+    assert_eq!(H_ABCDEF.slice(1..2), B);
+    assert_eq!(H_ABCDEF.slice((Bound::Excluded(0), Bound::Included(1))), B);
 }
 
 #[test]
 fn test_try_slice_start_out_of_bounds() {
-    let err = ABCDEF.try_slice(7..).unwrap_err();
+    let err = H_ABCDEF.try_slice(7..).unwrap_err();
     assert_eq!(err.kind(), SliceErrorKind::StartOutOfBounds);
     assert_eq!(err.start(), 7);
     assert_eq!(err.end(), 6);
     assert_eq!(err.range(), 7..6);
-    assert!(ptr::eq(err.source(), &ABCDEF));
+    assert!(ptr::eq(err.source(), &H_ABCDEF));
     assert_eq!(format!("{err:?}"), "SliceError { kind: StartOutOfBounds, start: 7, end: 6, bytes: [97, 98, 99, 100, 101, 102] }");
     assert_eq!(
         format!("{err}"),
@@ -425,7 +426,7 @@ fn test_try_slice_start_out_of_bounds() {
 
 #[test]
 fn test_try_slice_end_out_of_bounds() {
-    let err = ABCDEF.try_slice(..7).unwrap_err();
+    let err = H_ABCDEF.try_slice(..7).unwrap_err();
     assert_eq!(err.kind(), SliceErrorKind::EndOutOfBounds);
     assert_eq!(
         format!("{err:?}"),
@@ -440,7 +441,7 @@ fn test_try_slice_end_out_of_bounds() {
 
 #[test]
 fn test_try_slice_start_greater_than_end() {
-    let err = ABCDEF.try_slice(1..0).unwrap_err();
+    let err = H_ABCDEF.try_slice(1..0).unwrap_err();
     assert_eq!(err.kind(), SliceErrorKind::StartGreaterThanEnd);
     assert_eq!(format!("{err:?}"), "SliceError { kind: StartGreaterThanEnd, start: 1, end: 0, bytes: [97, 98, 99, 100, 101, 102] }");
     assert_eq!(format!("{err}"), "range starts at 1 but ends at 0");
@@ -449,14 +450,14 @@ fn test_try_slice_start_greater_than_end() {
 
 #[test]
 fn test_try_slice_ok() {
-    assert_eq!(ABCDEF.try_slice(..).unwrap(), b"abcdef");
-    assert_eq!(ABCDEF.try_slice(..5).unwrap(), b"abcde");
-    assert_eq!(ABCDEF.try_slice(1..4).unwrap(), b"bcd");
-    assert_eq!(ABCDEF.try_slice(0..=5).unwrap(), b"abcdef");
-    assert_eq!(ABCDEF.try_slice(..=1).unwrap(), b"ab");
-    assert_eq!(ABCDEF.try_slice(1..).unwrap(), b"bcdef");
+    assert_eq!(H_ABCDEF.try_slice(..).unwrap(), b"abcdef");
+    assert_eq!(H_ABCDEF.try_slice(..5).unwrap(), b"abcde");
+    assert_eq!(H_ABCDEF.try_slice(1..4).unwrap(), b"bcd");
+    assert_eq!(H_ABCDEF.try_slice(0..=5).unwrap(), b"abcdef");
+    assert_eq!(H_ABCDEF.try_slice(..=1).unwrap(), b"ab");
+    assert_eq!(H_ABCDEF.try_slice(1..).unwrap(), b"bcdef");
     assert_eq!(
-        ABCDEF
+        H_ABCDEF
             .try_slice((Bound::Excluded(0), Bound::Included(1)))
             .unwrap(),
         B
@@ -942,7 +943,7 @@ fn test_simplify_range() {
 
 #[test]
 fn test_slice_ref_unchecked() {
-    let s = Vec::from(ABC);
+    let s = Owned::from(ABC);
     let a = H::borrowed(s.as_slice());
 
     unsafe {
@@ -972,7 +973,7 @@ fn test_slice_ref_unchecked() {
 
 #[test]
 fn test_try_slice_ref() {
-    let s = Vec::from(ABC);
+    let s = Owned::from(ABC);
     let a = H::borrowed(s.as_slice());
 
     assert_eq!(a.try_slice_ref(&a[0..1]).unwrap(), A);
@@ -988,7 +989,7 @@ fn test_try_slice_ref() {
 
 #[test]
 fn test_slice_ref() {
-    let s = Vec::from(ABC);
+    let s = Owned::from(ABC);
     let a = H::borrowed(s.as_slice());
     assert_eq!(a.slice_ref(&a[0..1]), A);
     assert_eq!(a.slice_ref(&a[0..0]), EMPTY_SLICE);
@@ -998,7 +999,7 @@ fn test_slice_ref() {
 #[test]
 #[should_panic]
 fn test_slice_ref_panic() {
-    let s = Vec::from(ABC);
+    let s = Owned::from(ABC);
     let a = H::borrowed(s.as_slice());
     let _ = a.slice_ref(ABC);
 }
