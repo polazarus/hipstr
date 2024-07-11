@@ -1422,23 +1422,51 @@ where
         IterWrapper::new(self, self.as_str().lines())
     }
 
+    /// Concatenates some byte slices into a single `HipByt`.
+    ///
+    /// The related constructor [`HipStr::concat`] is more general but may be
+    /// less efficient due to the absence of specialization in Rust.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use hipstr::HipByt;
+    /// let c = HipByt::concat_slices(&[b"hello", b" world", b"!"]);
+    /// assert_eq!(c, b"hello world!");
+    /// ```
     pub fn concat_slices(slices: &[&str]) -> Self {
-        let slices: &[&[u8]] = unsafe { core::mem::transmute(slices) };
+        let slices: &[&[u8]] = unsafe { transmute(slices) };
+
         Self(HipByt::concat_slices(slices))
     }
 
-    /// Concatenates string slices together.
+    /// Concatenates string slices (or things than can be seen as string slices)
+    /// together into a new `HipStr`.
     ///
     /// # Panics
     ///
-    /// During the concatenation the iterator is ran twice: once to get the
+    /// During the concatenation, the iterator is ran twice: once to get the
     /// expected new length, and again to do the actual copy.
-    /// If the returned strings are not the same and the new length is greater
+    /// If the returned slices are not the same and the new length is greater
     /// than the expected length, the function panics (before actually
     /// overflowing).
     ///
     /// This behavior differs from [`std::slice::Concat`] that reallocates when
     /// needed.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use hipstr::HipStr;
+    /// let c  = HipStr::concat(&["hello", " world", "!"]);
+    /// assert_eq!(c, "hello world!");
+    ///
+    /// let c2 = HipStr::concat(["hello".to_string(), " world".to_string(), "!".to_string()]);
+    /// assert_eq!(c2, "hello world!");
+    ///
+    /// let c3 = HipStr::concat(vec!["hello", " world", "!"].iter());
+    /// assert_eq!(c3, "hello world!");
+    /// ```
     pub fn concat<E, I>(slices: I) -> Self
     where
         E: AsRef<str>,
@@ -1448,12 +1476,57 @@ where
         Self(HipByt::concat(slices.into_iter().map(AsBytes)))
     }
 
-    pub fn join_slices(slices: &[&str], sep: impl AsRef<str>) -> Self {
+    /// Joins some string slices with the given separator string slice into a
+    /// new `HipByt`, that is, concatenates the strings inserting the
+    /// separator between each pair of adjacent strings.
+    ///
+    /// The related constructor [`HipStr::join`] is more general but may be less
+    /// efficient due to the absence of specialization in Rust.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use hipstr::HipStr;
+    /// let s = HipStr::join_slices(&["hello", "world", "rust"], ", ");
+    /// assert_eq!(s, "hello, world, rust");
+    /// ```
+    pub fn join_slices(slices: &[&str], sep: &str) -> Self {
         let slices: &[&[u8]] = unsafe { transmute(slices) };
 
-        Self(HipByt::join_slices(slices, sep.as_ref().as_bytes()))
+        Self(HipByt::join_slices(slices, sep.as_bytes()))
     }
 
+    /// Joins strings together with the given separator string into a new `HipStr`,
+    /// that is, concatenates the strings inserting the separator between each pair of
+    /// adjacent strings.
+    ///
+    /// # Panics
+    ///
+    /// During the concatenation the iterator is ran twice: once to get the
+    /// expected new length, and again to do the actual copy.
+    /// If the returned strings are not the same and the new length is greater
+    /// than the expected length, the function panics (before actually
+    /// overflowing).
+    ///
+    /// This behavior differs from [`std::slice::Join`] that reallocates if needed.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// # use hipstr::HipStr;
+    /// let slices = &["hello", "world", "rust"];
+    /// let sep = ", ";
+    /// let joined = HipStr::join(slices, sep);
+    /// assert_eq!(joined, "hello, world, rust");
+    ///
+    /// let joined = HipStr::join(["hello".to_string(), "world".to_string(), "rust".to_string()].iter(), sep.to_string());
+    /// assert_eq!(joined, "hello, world, rust");
+    ///
+    /// let joined = HipStr::join(slices.to_vec().iter(), sep);
+    /// assert_eq!(joined, "hello, world, rust");
+    /// ```
     pub fn join<E, I>(slices: I, sep: impl AsRef<str>) -> Self
     where
         E: AsRef<str>,

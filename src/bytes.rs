@@ -708,6 +708,18 @@ where
         unsafe { self.0.set_len(new_len) }
     }
 
+    /// Concatenates some byte slices into a single `HipByt`.
+    ///
+    /// The related constructor [`HipByt::concat`] is more general but may be
+    /// less efficient due to the absence of specialization in Rust.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use hipstr::HipByt;
+    /// let c = HipByt::concat_slices(&[b"hello", b" world", b"!"]);
+    /// assert_eq!(c, b"hello world!");
+    /// ```
     pub fn concat_slices(slices: &[&[u8]]) -> Self {
         let new_len = slices.iter().map(|e| e.len()).sum();
 
@@ -735,6 +747,32 @@ where
         Self(raw)
     }
 
+    /// Concatenates some byte slices (or things than can be seen as byte slice) into a new `HipByt`.
+    ///
+    /// # Panics
+    ///
+    /// During the concatenation, the iterator is ran twice: once to get the
+    /// expected new length, and again to do the actual copy.
+    /// If the returned slices are not the same and the new length is greater
+    /// than the expected length, the function panics (before actually
+    /// overflowing).
+    ///
+    /// This behavior differs from [`std::slice::Concat`] that reallocates when
+    /// needed.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use hipstr::HipByt;
+    /// let c  = HipByt::concat(&[b"hello".as_slice(), b" world", b"!"]);
+    /// assert_eq!(c, b"hello world!");
+    ///
+    /// let c2 = HipByt::concat([b"hello".to_vec(), b" world".to_vec(), b"!".to_vec()]);
+    /// assert_eq!(c2, b"hello world!");
+    ///
+    /// let c3 = HipByt::concat(vec![b"hello".as_slice(), b" world", b"!"].iter());
+    /// assert_eq!(c3, b"hello world!");
+    /// ```
     pub fn concat<E, I>(slices: I) -> Self
     where
         E: AsRef<[u8]>,
@@ -771,6 +809,22 @@ where
         Self(raw)
     }
 
+    /// Joins some byte slices with the given separator into a new `HipByt`, i.e.
+    /// concatenates some byte slices, with a separator byte inserted between
+    /// each pair of byte slices.
+    ///
+    /// The related constructor [`HipByt::join`] is more general but may be less
+    /// efficient due to the absence of specialization in Rust.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::HipByt;
+    /// let slices: &[&[u8]] = &[b"hello", b"world", b"rust"];
+    /// let sep = b", ";
+    /// let joined = HipByt::join_slices(slices, sep);
+    /// assert_eq!(joined, b"hello, world, rust");
+    /// ```
     pub fn join_slices(slices: &[&[u8]], sep: impl AsRef<[u8]>) -> Self {
         let slices_len = slices.len();
         if slices_len == 0 {
@@ -834,6 +888,35 @@ where
         Self(raw)
     }
 
+    /// Joins some byte slices (or things than can be seen as byte slice) with
+    /// the given separator into a new `HipByt`.
+    ///
+    ///
+    /// # Panics
+    ///
+    /// During the concatenation the iterator is ran twice: once to get the
+    /// expected new length, and again to do the actual copy.
+    /// If the returned strings are not the same and the new length is greater
+    /// than the expected length, the function panics (before actually
+    /// overflowing).
+    ///
+    /// This behavior differs from [`std::slice::Join`] that reallocates if needed.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use hipstr::HipByt;
+    /// let slices: &[&[u8]] = &[b"hello", b"world", b"rust"];
+    /// let sep = b", ";
+    /// let joined = HipByt::join(slices, sep);
+    /// assert_eq!(joined, b"hello, world, rust");
+    ///
+    /// let joined = HipByt::join([b"hello".to_vec(), b"world".to_vec(), b"rust".to_vec()], sep.to_vec());
+    /// assert_eq!(joined, b"hello, world, rust");
+    ///
+    /// let joined = HipByt::join(slices.to_vec().iter(), sep);
+    /// assert_eq!(joined, b"hello, world, rust");
+    /// ```
     pub fn join<E, I>(slices: I, sep: impl AsRef<[u8]>) -> Self
     where
         E: AsRef<[u8]>,
