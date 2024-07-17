@@ -93,7 +93,7 @@ struct Inner<T, C> {
 
 /// Non-null raw pointer to a reference counting inner cell.
 ///
-/// Using this raw pointer, rather than a full fledge `Rc``, can be error-prone.
+/// Using this raw pointer, rather than a full fledge `Rc`, can be error-prone.
 /// Please follow the following rules:
 ///
 /// - it should not be copied meaningfully (typically it excludes temporary
@@ -175,9 +175,7 @@ impl<T, C: Count> Raw<T, C> {
     pub unsafe fn incr(self) {
         let inner = unsafe { self.inner() };
 
-        if inner.count.incr() {
-            panic!("ref count overflow")
-        }
+        assert!(!inner.count.incr(), "ref count overflow");
     }
 
     /// Decrements the current reference count, deallocating the smart pointer
