@@ -83,4 +83,16 @@ impl<'borrow> Borrowed<'borrow> {
     pub const fn is_valid(&self) -> bool {
         self.tag.get() == TAG_BORROWED
     }
+
+    /// Sets the length
+    ///
+    /// # Safety
+    ///
+    /// `new_len` must be less than or equal to the current length.
+    pub unsafe fn set_len(&mut self, new_len: usize) {
+        debug_assert!(self.len() >= new_len, "set_len on borrowed slice");
+
+        // SAFETY: function's safety precondition
+        self.slice = unsafe { self.slice.get_unchecked(0..new_len) };
+    }
 }

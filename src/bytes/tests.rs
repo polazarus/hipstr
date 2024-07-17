@@ -1048,8 +1048,9 @@ fn test_set_len() {
 
     let mut x = H::borrowed(b"abc");
     unsafe {
-        x.set_len(3);
+        x.set_len(2);
     }
+    assert_eq!(x, b"ab");
 }
 
 #[test]

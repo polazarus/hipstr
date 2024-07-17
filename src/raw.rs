@@ -734,16 +734,18 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
 
     /// Forces the length of the vector to `new_len`.
     ///
+    /// Does not normalize!
+    ///
     /// # Safety
     ///
-    /// * `new_len` should be must be less than or equal to `INLINE_CAPACITY`.
+    /// * If the repr is inline, `new_len` should be must be less than or equal to `INLINE_CAPACITY`.
     /// * The elements at `old_len..new_len` must be initialized.
-    /// * The vector should not be shared (if `new_len != old_len`).
+    /// * The vector should not be shared (if `new_len > old_len`).
     pub unsafe fn set_len(&mut self, new_len: usize) {
         match self.split_mut() {
-            RawSplitMut::Borrowed(borrowed) => {
-                assert_eq!(borrowed.len(), new_len, "set_len on borrowed slice");
-            }
+            RawSplitMut::Borrowed(borrowed) => unsafe {
+                borrowed.set_len(new_len);
+            },
             RawSplitMut::Inline(inline) => unsafe { inline.set_len(new_len) },
             RawSplitMut::Allocated(allocated) => unsafe { allocated.set_len(new_len) },
         }
