@@ -14,7 +14,7 @@ use super::{MASK, TAG_BITS, TAG_INLINE};
 mod tests;
 
 const TAG: u8 = TAG_INLINE;
-const SHIFT: u8 = TAG_BITS as u8;
+const SHIFT: u8 = TAG_BITS;
 const MAX_LEN: usize = 1 << (8 - SHIFT);
 
 #[derive(Clone, Copy, Debug)]

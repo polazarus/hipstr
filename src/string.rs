@@ -415,11 +415,8 @@ where
     pub unsafe fn slice_unchecked(&self, range: impl RangeBounds<usize>) -> Self {
         #[cfg(debug_assertions)]
         {
-            let range = simplify_range(
-                (range.start_bound().clone(), range.end_bound().clone()),
-                self.len(),
-            )
-            .unwrap();
+            let range =
+                simplify_range((range.start_bound(), range.end_bound()), self.len()).unwrap();
             assert!(self.is_char_boundary(range.start));
             assert!(self.is_char_boundary(range.end));
         }
@@ -1490,6 +1487,8 @@ where
     /// let s = HipStr::join_slices(&["hello", "world", "rust"], ", ");
     /// assert_eq!(s, "hello, world, rust");
     /// ```
+    #[inline]
+    #[must_use]
     pub fn join_slices(slices: &[&str], sep: &str) -> Self {
         let slices: &[&[u8]] = unsafe { transmute(slices) };
 
@@ -2015,7 +2014,7 @@ where
 struct AsBytes<T>(T);
 
 impl<T: AsRef<str>> AsRef<[u8]> for AsBytes<T> {
-    #[inline(always)]
+    #[inline]
     fn as_ref(&self) -> &[u8] {
         self.0.as_ref().as_bytes()
     }

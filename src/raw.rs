@@ -150,8 +150,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
     /// Extracts the union without dropping the `Raw`.
     fn union_move(self) -> Union<'borrow, B> {
         // SAFETY: same layout and same niche hopefully, same mutability
-        let union = unsafe { transmute(self) };
-        union
+        unsafe { transmute(self) }
     }
 
     // basic constructors
@@ -243,7 +242,6 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
     /// # Safety
     ///
     /// The input slice's length MUST be at most `INLINE_CAPACITY`.
-    #[inline(never)]
     pub unsafe fn inline_unchecked(bytes: &[u8]) -> Self {
         debug_assert!(bytes.len() <= INLINE_CAPACITY);
 
