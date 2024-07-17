@@ -757,6 +757,67 @@ where
         }
     }
 
+    /// Shortens this string to the specified length.
+    ///
+    /// If `new_len` is greater than the string's current length, this has no
+    /// effect.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `new_len` is not a char boundary.
+    ///
+    /// # Examples
+    /// ```
+    /// # use hipstr::HipStr;
+    /// let mut s = HipStr::from("abc");
+    /// s.truncate(1);
+    /// assert_eq!(s, "a");
+    /// ```
+    #[inline]
+    pub fn truncate(&mut self, new_len: usize) {
+        if new_len <= self.len() {
+            assert!(self.is_char_boundary(new_len), "char boundary");
+            self.0.truncate(new_len);
+        }
+    }
+
+    /// Truncates this `HipStr`, removing all contents.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::HipStr;
+    /// let mut s = HipStr::from("foo");
+    ///
+    /// s.clear();
+    ///
+    /// assert!(s.is_empty());
+    /// assert_eq!(0, s.len());
+    /// ```
+    #[inline]
+    pub fn clear(&mut self) {
+        self.0.clear();
+    }
+
+    /// Removes the last character from the string and returns it.
+    ///
+    /// Returns `None` if the string is empty.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::HipStr;
+    /// let mut s = HipStr::from("abc");
+    /// assert_eq!(s.pop(), Some('c'));
+    /// assert_eq!(s, "ab");
+    /// ```
+    #[inline]
+    pub fn pop(&mut self) -> Option<char> {
+        let (i, ch) = self.as_str().char_indices().next_back()?;
+        self.truncate(i);
+        Some(ch)
+    }
+
     /// Appends a given string slice onto the end of this `HipStr`.
     ///
     /// # Examples
@@ -1431,6 +1492,8 @@ where
     /// let c = HipByt::concat_slices(&[b"hello", b" world", b"!"]);
     /// assert_eq!(c, b"hello world!");
     /// ```
+    #[inline]
+    #[must_use]
     pub fn concat_slices(slices: &[&str]) -> Self {
         let slices: &[&[u8]] = unsafe { transmute(slices) };
 

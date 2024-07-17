@@ -26,3 +26,13 @@ fn test_union() {
     };
     let _: R = union.into_raw();
 }
+
+#[cfg(debug_assertions)]
+#[should_panic]
+#[test]
+fn test_to_mut_slice_unchecked_panic() {
+    let mut r = R::borrowed(b"abc");
+    unsafe {
+        let _sl = r.as_mut_slice_unchecked();
+    }
+}
