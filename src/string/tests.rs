@@ -615,19 +615,70 @@ fn test_mutate_allocated() {
 }
 
 #[test]
-fn test_from_utf16() {
-    let v = [b'a' as u16].repeat(42);
-    assert_eq!(H::from_utf16(&v[0..4]).unwrap(), A.repeat(4));
-    assert_eq!(H::from_utf16(&v).unwrap(), A.repeat(42));
-    assert!(H::from_utf16(&[0xD834]).is_err());
+fn test_truncate() {
+    let mut h = H::borrowed(MEDIUM);
+    h.truncate(MEDIUM.len() + 1);
+    assert_eq!(h, MEDIUM);
+
+    let mut h = H::borrowed(MEDIUM);
+    h.truncate(1);
+    assert_eq!(h, &MEDIUM[..1]);
+
+    let mut h = H::from(MEDIUM);
+    h.truncate(1);
+    assert!(h.is_inline());
+    assert_eq!(h, &MEDIUM[..1]);
+
+    let mut h = H::from(&MEDIUM[..INLINE_CAPACITY]);
+    h.truncate(1);
+    assert_eq!(h, &MEDIUM[..1]);
 }
 
 #[test]
-fn test_from_utf16_lossy() {
-    let v = [b'a' as u16].repeat(42);
-    assert_eq!(H::from_utf16_lossy(&v[0..4]), A.repeat(4));
-    assert_eq!(H::from_utf16_lossy(&v), A.repeat(42));
-    assert_eq!(H::from_utf16_lossy(&[0xD834]), "\u{FFFD}");
+#[should_panic]
+fn test_truncate_char_boundary() {
+    let mut h = H::borrowed("\u{1F980}");
+    h.truncate(1);
+}
+
+#[test]
+fn test_clear() {
+    let mut h = H::borrowed(MEDIUM);
+    h.clear();
+    assert!(h.is_empty());
+    assert!(!h.is_allocated());
+
+    let mut h = H::from(MEDIUM);
+    h.clear();
+    assert!(h.is_empty());
+    assert!(!h.is_allocated());
+
+    let mut h = H::from(&MEDIUM[..INLINE_CAPACITY]);
+    h.clear();
+    assert!(h.is_empty());
+    assert!(!h.is_allocated());
+}
+
+#[test]
+fn test_pop() {
+    let mut h = H::borrowed(MEDIUM);
+    assert_eq!(h.pop(), Some('*'));
+    assert_eq!(h, &MEDIUM[..MEDIUM.len() - 1]);
+
+    let mut h = H::from(MEDIUM);
+    assert_eq!(h.pop(), Some('*'));
+    assert_eq!(h, &MEDIUM[..MEDIUM.len() - 1]);
+
+    let mut h = H::from(&MEDIUM[..INLINE_CAPACITY]);
+    assert_eq!(h.pop(), Some('*'));
+    assert_eq!(h, &MEDIUM[..INLINE_CAPACITY - 1]);
+
+    let mut h = H::from(&MEDIUM[..INLINE_CAPACITY + 1]);
+    assert_eq!(h.pop(), Some('*'));
+    assert!(h.is_inline());
+    assert_eq!(h, &MEDIUM[..INLINE_CAPACITY]);
+
+    assert_eq!(H::new().pop(), None);
 }
 
 #[test]
@@ -1132,4 +1183,20 @@ fn test_into_bytes() {
     let bytes = s.into_bytes();
     assert_eq!(bytes.len(), 42);
     assert_eq!(bytes.as_slice(), [b'A'; 42]);
+}
+
+#[test]
+fn test_from_utf16() {
+    let v = [b'a' as u16].repeat(42);
+    assert_eq!(H::from_utf16(&v[0..4]).unwrap(), A.repeat(4));
+    assert_eq!(H::from_utf16(&v).unwrap(), A.repeat(42));
+    assert!(H::from_utf16(&[0xD834]).is_err());
+}
+
+#[test]
+fn test_from_utf16_lossy() {
+    let v = [b'a' as u16].repeat(42);
+    assert_eq!(H::from_utf16_lossy(&v[0..4]), A.repeat(4));
+    assert_eq!(H::from_utf16_lossy(&v), A.repeat(42));
+    assert_eq!(H::from_utf16_lossy(&[0xD834]), "\u{FFFD}");
 }

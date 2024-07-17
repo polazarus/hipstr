@@ -188,6 +188,16 @@ impl<B: Backend> Allocated<B> {
         }
     }
 
+    /// Returns a mutable slice.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the `Allocated` is actually uniquely shared.
+    #[inline]
+    pub unsafe fn as_mut_slice_unchecked(&mut self) -> &mut [u8] {
+        unsafe { core::slice::from_raw_parts_mut(self.ptr.cast_mut(), self.len) }
+    }
+
     /// Creates a new `Allocated` for some range with the same owner.
     ///
     /// # Safety

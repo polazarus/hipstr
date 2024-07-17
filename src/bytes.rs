@@ -291,11 +291,11 @@ where
     /// assert_eq!(b"bar", slice);
     /// ```
     #[inline]
+    #[doc(alias = "make_mut")]
     pub fn to_mut_slice(&mut self) -> &mut [u8] {
         self.0.make_unique();
-        let slice = self.0.as_mut_slice();
         // SAFETY: `make_unique` above ensures that it is uniquely owned
-        unsafe { slice.unwrap_unchecked() }
+        unsafe { self.0.as_mut_slice_unchecked() }
     }
 
     /// Extracts a slice as its own `HipByt`.
@@ -496,6 +496,66 @@ where
         }
     }
 
+    /// Shortens this `HipByt` to the specified length.
+    ///
+    /// If the new length is greater than the current length, this has no effect.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// # use hipstr::HipByt;
+    /// let mut a = HipByt::from(b"abc");
+    /// a.truncate(1);
+    /// assert_eq!(a, b"a");
+    /// ```
+    #[inline]
+    pub fn truncate(&mut self, new_len: usize) {
+        self.0.truncate(new_len);
+    }
+
+    /// Truncates this `HipByt`, removing all contents.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::HipByt;
+    /// let mut s = HipByt::from(b"foo");
+    ///
+    /// s.clear();
+    ///
+    /// assert!(s.is_empty());
+    /// assert_eq!(0, s.len());
+    /// ```
+    #[inline]
+    pub fn clear(&mut self) {
+        self.0.truncate(0);
+    }
+
+    /// Removes the last element from this `HipByt` and returns it, or [`None`]
+    /// if it is empty.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::HipByt;
+    ///
+    /// let mut h = HipByt::from(&[1, 2, 3]);
+    /// assert_eq!(h.pop(), Some(3));
+    /// assert_eq!(h, [1, 2]);
+    /// ```
+    pub fn pop(&mut self) -> Option<u8> {
+        let len = self.len();
+        if len == 0 {
+            None
+        } else {
+            let result = unsafe { *self.as_slice().get_unchecked(len - 1) };
+            self.truncate(len - 1);
+            Some(result)
+        }
+    }
+
     /// Appends all bytes of the slice to this `HipByt`.
     ///
     /// # Examples
@@ -530,6 +590,10 @@ where
     }
 
     /// Makes the data owned, copying it if the data is actually borrowed.
+    ///
+    /// Returns a new `HipByt` consuming this one.
+    ///
+    /// # Examples
     ///
     /// ```
     /// # use hipstr::HipByt;
@@ -721,6 +785,7 @@ where
     /// let c = HipByt::concat_slices(&[b"hello", b" world", b"!"]);
     /// assert_eq!(c, b"hello world!");
     /// ```
+    #[must_use]
     pub fn concat_slices(slices: &[&[u8]]) -> Self {
         let new_len = slices.iter().map(|e| e.len()).sum();
 
@@ -774,6 +839,7 @@ where
     /// let c3 = HipByt::concat(vec![b"hello".as_slice(), b" world", b"!"].iter());
     /// assert_eq!(c3, b"hello world!");
     /// ```
+    #[must_use]
     pub fn concat<E, I>(slices: I) -> Self
     where
         E: AsRef<[u8]>,
@@ -826,6 +892,7 @@ where
     /// let joined = HipByt::join_slices(slices, sep);
     /// assert_eq!(joined, b"hello, world, rust");
     /// ```
+    #[must_use]
     pub fn join_slices(slices: &[&[u8]], sep: impl AsRef<[u8]>) -> Self {
         let slices_len = slices.len();
         if slices_len == 0 {
@@ -849,12 +916,11 @@ where
         // compute the final pointer
         let final_ptr = unsafe { dst_ptr.add(new_len) };
 
-        let mut iter = slices.iter();
+        let mut iter = slices.iter().copied();
 
         // get first slice
         // SAFETY: segments > 0 is checked above
         let slice = unsafe { iter.next().unwrap_unchecked() };
-        let slice = slice.as_ref();
         let len = slice.len();
         // SAFETY: dst_ptr + len cannot overflow
         let end_ptr = unsafe { dst_ptr.add(len) };
@@ -872,7 +938,6 @@ where
             }
             dst_ptr = end_ptr;
 
-            let slice = slice.as_ref();
             let len = slice.len();
             let end_ptr = unsafe { dst_ptr.add(len) };
             debug_assert!(end_ptr <= final_ptr, "slices changed during concat");
@@ -918,6 +983,7 @@ where
     /// let joined = HipByt::join(slices.to_vec().iter(), sep);
     /// assert_eq!(joined, b"hello, world, rust");
     /// ```
+    #[must_use]
     pub fn join<E, I>(slices: I, sep: impl AsRef<[u8]>) -> Self
     where
         E: AsRef<[u8]>,

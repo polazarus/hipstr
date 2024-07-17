@@ -290,6 +290,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
     /// Creates a new `Raw` from a slice.
     ///
     /// Will normalize the representation depending on the size of the slice.
+    #[inline]
     pub fn from_slice(bytes: &[u8]) -> Self {
         let len = bytes.len();
         if len <= INLINE_CAPACITY {
@@ -460,12 +461,36 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
         result
     }
 
+    /// Returns a mutable slice if this `Raw` is neither borrowed nor shared.
     #[inline]
     pub fn as_mut_slice(&mut self) -> Option<&mut [u8]> {
         match self.split_mut() {
             RawSplitMut::Inline(inline) => Some(inline.as_mut_slice()),
             RawSplitMut::Allocated(allocated) => allocated.as_mut_slice(),
             RawSplitMut::Borrowed(_) => None,
+        }
+    }
+
+    /// Returns a mutable slice of the underlying string.
+    ///
+    /// # Safety
+    ///
+    /// This `Raw` should not be shared or borrowed.
+    #[inline]
+    pub unsafe fn as_mut_slice_unchecked(&mut self) -> &mut [u8] {
+        match self.split_mut() {
+            RawSplitMut::Inline(inline) => inline.as_mut_slice(),
+            RawSplitMut::Allocated(allocated) => unsafe { allocated.as_mut_slice_unchecked() },
+            RawSplitMut::Borrowed(_) => {
+                #[cfg(debug_assertions)]
+                {
+                    panic!("mutable slice of borrowed string");
+                }
+                #[cfg(not(debug_assertions))]
+                {
+                    unsafe { unreachable_unchecked() }
+                }
+            }
         }
     }
 
@@ -510,8 +535,6 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
 
         // SAFETY: vec's len (new_len) is checked above to be > INLINE_CAPACITY
         *self = Self::from_vec(vec);
-
-        return;
     }
 
     /// Takes a vector representation of this raw byte string.
@@ -747,6 +770,22 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
             RawSplitMut::Inline(inline) => unsafe { inline.set_len(new_len) },
             RawSplitMut::Allocated(allocated) => unsafe { allocated.set_len(new_len) },
         }
+    }
+
+    /// Shortens and normalizes the vector keeping the first `new_len` elements.
+    ///
+    /// Do nothing is `new_len` is greater than the current length.
+    pub fn truncate(&mut self, new_len: usize) {
+        if new_len < self.len() {
+            if self.is_allocated() && new_len <= INLINE_CAPACITY {
+                let new =
+                    unsafe { Self::inline_unchecked(self.as_slice().get_unchecked(..new_len)) };
+                *self = new;
+            } else {
+                unsafe { self.set_len(new_len) }
+            }
+        }
+        debug_assert!(self.is_normalized());
     }
 }
 

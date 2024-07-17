@@ -259,35 +259,49 @@ fn test_as_mut_slice() {
 }
 
 #[test]
-fn test_to_mut_slice_static() {
+fn test_to_mut_slice_borrowed() {
     let mut a = H::borrowed(ABC);
     assert!(a.is_borrowed());
-    assert_eq!(a.to_mut_slice(), ABC.to_vec().as_mut_slice());
+    assert_eq!(a.to_mut_slice(), ABC);
     assert!(a.is_inline());
+
+    let mut a = H::borrowed(MEDIUM);
+    assert!(a.is_borrowed());
+    assert_eq!(a.to_mut_slice(), MEDIUM);
+    assert!(a.is_allocated());
 }
 
 #[test]
 fn test_to_mut_slice_inline() {
     let mut a = H::from(ABC);
+    let p = a.as_ptr();
     assert!(a.is_inline());
     assert_eq!(a.to_mut_slice(), ABC);
     assert!(a.is_inline());
+    assert_eq!(a.as_ptr(), p);
 }
 
 #[test]
 fn test_to_mut_slice_allocated() {
     let mut a = H::from(MEDIUM);
+    let p = a.as_ptr();
     assert!(a.is_allocated());
     {
         let sl = a.to_mut_slice();
         assert_eq!(sl, MEDIUM);
+        assert_eq!(sl.as_ptr(), p);
         sl[0] = 43;
     }
+
     let mut b = a.clone();
     assert_eq!(b[0], 43);
-    let _ = b.to_mut_slice();
+    {
+        let sl = b.to_mut_slice();
+        sl[0] = 42;
+    }
+    assert_eq!(b, MEDIUM);
     assert!(b.is_allocated());
-    assert_ne!(b.as_ptr(), a.as_ptr());
+    assert_ne!(b.as_ptr(), p);
 }
 
 #[test]
@@ -618,6 +632,60 @@ fn test_mutate_allocated() {
         assert_ne!(a.as_ptr(), b.as_ptr());
         assert!(a.is_normalized());
     }
+}
+
+#[test]
+fn test_truncate() {
+    let mut h = H::borrowed(MEDIUM);
+    h.truncate(MEDIUM.len() + 1);
+    assert_eq!(h, MEDIUM);
+
+    let mut h = H::borrowed(MEDIUM);
+    h.truncate(1);
+    assert_eq!(h, &MEDIUM[..1]);
+
+    let mut h = H::from(MEDIUM);
+    h.truncate(1);
+    assert_eq!(h, &MEDIUM[..1]);
+
+    let mut h = H::from(&MEDIUM[..INLINE_CAPACITY]);
+    h.truncate(1);
+    assert_eq!(h, &MEDIUM[..1]);
+}
+
+#[test]
+fn test_clear() {
+    let mut h = H::borrowed(MEDIUM);
+    h.clear();
+    assert!(h.is_empty());
+    assert!(!h.is_allocated());
+
+    let mut h = H::from(MEDIUM);
+    h.clear();
+    assert!(h.is_empty());
+    assert!(!h.is_allocated());
+
+    let mut h = H::from(&MEDIUM[..INLINE_CAPACITY]);
+    h.clear();
+    assert!(h.is_empty());
+    assert!(!h.is_allocated());
+}
+
+#[test]
+fn test_pop() {
+    let mut h = H::borrowed(MEDIUM);
+    assert_eq!(h.pop(), Some(MEDIUM[0]));
+    assert_eq!(h, &MEDIUM[..MEDIUM.len() - 1]);
+
+    let mut h = H::from(MEDIUM);
+    assert_eq!(h.pop(), Some(MEDIUM[0]));
+    assert_eq!(h, &MEDIUM[..MEDIUM.len() - 1]);
+
+    let mut h = H::from(&MEDIUM[..INLINE_CAPACITY]);
+    assert_eq!(h.pop(), Some(MEDIUM[0]));
+    assert_eq!(h, &MEDIUM[..INLINE_CAPACITY - 1]);
+
+    assert_eq!(H::new().pop(), None);
 }
 
 #[test]
