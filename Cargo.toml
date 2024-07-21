@@ -17,6 +17,7 @@ default = ["std"]
 std = ["serde/std"]
 unstable = []
 serde = ["dep:serde", "dep:serde_bytes"]
+bstr = ["dep:bstr"]
 
 [dev-dependencies]
 fastrand = "2.0.0"
@@ -25,6 +26,7 @@ serde = { version = "1.0.69", default-features = false, features = ["derive", "a
 serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
 
 [dependencies]
+bstr = { version = "1.9.1", optional = true, features = ["alloc"] }
 serde = { version = "1.0.69", optional = true, default-features = false, features = [] }
 serde_bytes = { version = "0.11.5", optional = true, default-features = false, features = [
     "alloc",
