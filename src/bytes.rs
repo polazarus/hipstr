@@ -20,8 +20,23 @@ mod convert;
 #[cfg(feature = "serde")]
 pub mod serde;
 
+#[cfg(feature = "bstr")]
+mod bstr;
+
 #[cfg(test)]
 mod tests;
+
+#[cfg(feature = "bstr")]
+type Owned = ::bstr::BString;
+
+#[cfg(not(feature = "bstr"))]
+type Owned = Vec<u8>;
+
+#[cfg(feature = "bstr")]
+type Slice = ::bstr::BStr;
+
+#[cfg(not(feature = "bstr"))]
+type Slice = [u8];
 
 /// Smart bytes, i.e. cheaply clonable and sliceable byte string.
 ///
@@ -490,6 +505,10 @@ where
     #[must_use]
     pub fn mutate(&mut self) -> RefMut<'_, 'borrow, B> {
         let owned = self.0.take_vec();
+
+        #[cfg(feature = "bstr")]
+        let owned = owned.into();
+
         RefMut {
             result: self,
             owned,
@@ -1095,11 +1114,11 @@ impl<'borrow, B> Deref for HipByt<'borrow, B>
 where
     B: Backend,
 {
-    type Target = [u8];
+    type Target = Slice;
 
     #[inline]
     fn deref(&self) -> &Self::Target {
-        self.as_slice()
+        self.as_ref()
     }
 }
 
@@ -1323,7 +1342,7 @@ where
     B: Backend,
 {
     result: &'a mut HipByt<'borrow, B>,
-    owned: Vec<u8>,
+    owned: Owned,
 }
 
 impl<'a, 'borrow, B> Drop for RefMut<'a, 'borrow, B>
@@ -1340,7 +1359,8 @@ impl<'a, 'borrow, B> Deref for RefMut<'a, 'borrow, B>
 where
     B: Backend,
 {
-    type Target = Vec<u8>;
+    type Target = Owned;
+
     fn deref(&self) -> &Self::Target {
         &self.owned
     }
