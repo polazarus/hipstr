@@ -2,25 +2,38 @@
 
 Notable changes only.
 
-## [0.5.0] - unreleased
+## [unreleased]
 
-## Added
+### Added
+
+- add optional `bstr` crate support
+- add `truncate`, `pop`, and `clear`
+- add `concat` and `join`
+
+### Fixed
+
+- some clippy lints
+- fix truncating `set_len` on borrowed
+
+## [0.5.0] - 2024-06-24
+
+### Added
 
 - new conversion to `Cow`s
 - a niche to make `Option<HipStr>` the same size as `HipStr`
 
-## Changed
+### Changed
 
 - update MSRV to 1.77
 - backend complete overall with its own custom RC implementation
 
-## Fixed
+### Fixed
 
 - fixed some clippy lints
 
 ## [0.4.0] - 2023-12-01
 
-## Added
+### Added
 
 - add `HipPath` and `HipOsStr` (#11)
 - more methods to keep working with `Hip*` types when possible (#13)
@@ -29,21 +42,21 @@ Notable changes only.
 
 Most of those addition are breaking because they shadows `str`'s methods.
 
-## Changed
+### Changed
 
 - make equality more efficient (#12 then #18)
 - better coverage with more tests (#14)
 
 ## [0.3.3] - 2023-10-30
 
-## Fixed
+### Fixed
 
 - fix clippy lint in `bytes/cmp.rs`
 - fix missing `std::error::Error` impl for `string::SliceError`
 
 ## [0.3.2] - 2023-08-18
 
-## Added
+### Added
 
 - Add trait impls for OsStr/Path compatibility
 - Add push_str and push
@@ -94,6 +107,8 @@ Most of those addition are breaking because they shadows `str`'s methods.
 
 Initial release
 
+[unreleased]: https://github.com/polazarus/hipstr/compare/0.4.0...HEAD
+[0.5.0]: https://github.com/polazarus/hipstr/compare/0.4.0...0.5.0
 [0.4.0]: https://github.com/polazarus/hipstr/compare/0.3.3...0.4.0
 [0.3.3]: https://github.com/polazarus/hipstr/compare/0.3.2...0.3.3
 [0.3.2]: https://github.com/polazarus/hipstr/compare/0.3.1...0.3.2
