@@ -49,6 +49,26 @@ fn test_new_default() {
 }
 
 #[test]
+fn test_with_capacity() {
+    let h = H::with_capacity(0);
+    assert_eq!(h, EMPTY_SLICE);
+    assert!(h.is_empty());
+    assert_eq!(h.capacity(), INLINE_CAPACITY);
+
+    let mut h = H::with_capacity(42);
+    let p = h.as_ptr();
+    assert_eq!(h, EMPTY_SLICE);
+    assert!(h.is_empty());
+    assert_eq!(h.capacity(), 42);
+    for _ in 0..42 {
+        h.push_str(A);
+    }
+    assert_eq!(h.len(), 42);
+    assert_eq!(h, A.repeat(42));
+    assert_eq!(h.as_ptr(), p);
+}
+
+#[test]
 #[cfg(feature = "std")]
 fn test_borrow_and_hash() {
     let mut set = HashSet::new();

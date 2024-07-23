@@ -105,8 +105,27 @@ where
         Self(Raw::empty())
     }
 
-    pub(crate) fn with_capacity(new_len: usize) -> Self {
-        Self(Raw::with_capacity(new_len))
+    /// Creates a new `HipByt` with the given capacity.
+    ///
+    /// The underlying representation is not **normalized**.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// # use hipstr::HipByt;
+    /// let mut s = HipByt::with_capacity(42);
+    /// let p = s.as_ptr();
+    /// for _ in 0..42 {
+    ///     s.push(b'*');
+    /// }
+    /// assert_eq!(s, [b'*'; 42]);
+    /// assert_eq!(s.as_ptr(), p);
+    /// ```
+    #[inline]
+    pub fn with_capacity(cap: usize) -> Self {
+        Self(Raw::with_capacity(cap))
     }
 
     /// Creates a new `HipByt` from a borrowed slice without copying the slice.
