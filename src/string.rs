@@ -93,6 +93,29 @@ where
         Self(HipByt::new())
     }
 
+    /// Creates a new `HipStr` with the given capacity.
+    ///
+    /// The returned `HipStr` will be able to hold at least `capacity` bytes
+    /// without reallocating or changing representation.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// # use hipstr::HipStr;
+    /// let mut s = HipStr::with_capacity(42);
+    /// for _ in 0..42 {
+    ///     s.push('*');
+    /// }
+    /// assert_eq!(s, "*".repeat(42));
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn with_capacity(cap: usize) -> Self {
+        Self(HipByt::with_capacity(cap))
+    }
+
     /// Creates a new `HipStr` from a static string slice without copying the slice.
     ///
     /// # Examples
