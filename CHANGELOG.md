@@ -9,6 +9,7 @@ Notable changes only.
 - add optional `bstr` crate support
 - add `truncate`, `pop`, and `clear`
 - add `concat` and `join`
+- add `with_capacity`
 
 ### Fixed
 
