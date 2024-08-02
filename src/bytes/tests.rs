@@ -668,6 +668,11 @@ fn test_truncate() {
     h.truncate(1);
     assert_eq!(h, &MEDIUM[..1]);
 
+    let mut h = H::from(MEDIUM);
+    h.truncate(INLINE_CAPACITY + 1);
+    assert!(h.is_allocated());
+    assert_eq!(h, &MEDIUM[..(INLINE_CAPACITY + 1)]);
+
     let mut h = H::from(&MEDIUM[..INLINE_CAPACITY]);
     h.truncate(1);
     assert_eq!(h, &MEDIUM[..1]);
