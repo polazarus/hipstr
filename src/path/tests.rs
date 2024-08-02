@@ -4,6 +4,7 @@ use std::path::Path;
 
 use crate::alloc::format;
 use crate::alloc::string::String;
+use crate::os_string::HipOsStr;
 use crate::HipPath;
 
 const INLINE_CAPACITY: usize = HipPath::inline_capacity();
@@ -315,4 +316,39 @@ fn test_to_owned() {
     let p = a.0.as_ptr();
     let a = a.into_owned();
     assert_eq!(a.0.as_ptr(), p);
+}
+
+#[test]
+fn test_shrink_to_fit() {
+    let h = HipOsStr::with_capacity(INLINE_CAPACITY + 1);
+    let mut h = HipPath::from(h);
+    h.shrink_to_fit();
+    assert_eq!(h.capacity(), INLINE_CAPACITY);
+
+    let mut h = HipPath::from("abc");
+    h.shrink_to_fit();
+    assert_eq!(h.capacity(), INLINE_CAPACITY);
+
+    let mut h = HipPath::from_static("abc");
+    h.shrink_to_fit();
+    assert_eq!(h.capacity(), 3);
+}
+
+#[test]
+fn test_shrink_to() {
+    let mut h = HipOsStr::with_capacity(INLINE_CAPACITY + 1);
+    h.push("a");
+    let mut h = HipPath::from(h);
+    h.shrink_to(0);
+    assert_eq!(h.capacity(), INLINE_CAPACITY);
+    assert_eq!(h.as_os_str().len(), 1);
+
+    let mut h = HipPath::from("abc");
+    h.shrink_to(4);
+    assert_eq!(h.capacity(), INLINE_CAPACITY);
+
+    let mut h = HipPath::from_static("abc");
+    assert_eq!(h.capacity(), 3);
+    h.shrink_to(0);
+    assert_eq!(h.capacity(), 3);
 }

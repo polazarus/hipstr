@@ -655,6 +655,81 @@ fn test_mutate_allocated() {
 }
 
 #[test]
+fn test_shrink_to_fit() {
+    let mut h = H::borrowed(MEDIUM);
+    h.shrink_to_fit();
+    assert_eq!(h, MEDIUM);
+    assert!(core::ptr::eq(h.as_slice(), MEDIUM));
+
+    let mut h = H::from(MEDIUM);
+    h.truncate(INLINE_CAPACITY);
+    h.shrink_to_fit();
+    assert!(h.is_inline());
+    assert_eq!(h, &MEDIUM[..INLINE_CAPACITY]);
+
+    let mut h = H::from(MEDIUM);
+    let h2 = h.clone();
+    h.truncate(INLINE_CAPACITY + 1);
+    assert_eq!(h.as_ptr(), h2.as_ptr());
+    h.shrink_to_fit();
+    assert_ne!(h.as_ptr(), h2.as_ptr());
+    assert_eq!(h, &MEDIUM[..(INLINE_CAPACITY + 1)]);
+
+    let mut h = H::from(&MEDIUM[..INLINE_CAPACITY]);
+    assert!(h.is_inline());
+    h.shrink_to_fit();
+    assert!(h.is_inline());
+    assert_eq!(h, &MEDIUM[..INLINE_CAPACITY]);
+}
+
+#[test]
+fn test_shrink_to() {
+    // borrowed no-op
+    let mut h = H::borrowed(MEDIUM);
+    h.shrink_to(0);
+    assert_eq!(h, MEDIUM);
+    assert!(core::ptr::eq(h.as_slice(), MEDIUM));
+
+    // allocated with capacity < length
+    let mut h = H::from(MEDIUM);
+    h.shrink_to(0);
+    assert_eq!(h, MEDIUM);
+    assert!(h.capacity() >= MEDIUM.len());
+
+    // allocated with capacity > actual capacity
+    let mut h = H::from(MEDIUM);
+    let old_capacity = h.capacity();
+    h.shrink_to(1024);
+    assert_eq!(h, MEDIUM);
+    assert_eq!(h.capacity(), old_capacity);
+
+    // allocated that switches to inline
+    let mut h = H::from(MEDIUM);
+    h.truncate(INLINE_CAPACITY);
+    h.shrink_to(INLINE_CAPACITY);
+    assert!(h.is_inline());
+    assert_eq!(h, &MEDIUM[..INLINE_CAPACITY]);
+
+    // allocated that reallocates
+    let mut h = H::from(MEDIUM);
+    let h2 = h.clone();
+    h.truncate(INLINE_CAPACITY + 1);
+    assert_eq!(h.as_ptr(), h2.as_ptr());
+    assert!(h.capacity() >= INLINE_CAPACITY + 2);
+    h.shrink_to(INLINE_CAPACITY + 2);
+    assert_ne!(h.as_ptr(), h2.as_ptr());
+    assert!(h.capacity() >= INLINE_CAPACITY + 2);
+
+    // inline no-op
+    let mut h = H::from(&MEDIUM[..INLINE_CAPACITY]);
+    assert!(h.is_inline());
+    h.truncate(0);
+    h.shrink_to(INLINE_CAPACITY / 4);
+    assert!(h.is_inline());
+    assert_eq!(h.capacity(), INLINE_CAPACITY);
+}
+
+#[test]
 fn test_truncate() {
     let mut h = H::borrowed(MEDIUM);
     h.truncate(MEDIUM.len() + 1);

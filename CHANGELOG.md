@@ -10,6 +10,7 @@ Notable changes only.
 - add `truncate`, `pop`, and `clear`
 - add `concat` and `join`
 - add `with_capacity`
+- add `shrink_to_fit` and `shrink`
 
 ### Fixed
 

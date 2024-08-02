@@ -485,3 +485,36 @@ fn test_slice_ref_panic() {
     let a = HipOsStr::borrowed(&s);
     let _ = a.slice_ref("abc".as_ref());
 }
+
+#[test]
+fn test_shrink_to_fit() {
+    let mut h = H::with_capacity(INLINE_CAPACITY + 1);
+    h.shrink_to_fit();
+    assert_eq!(h.capacity(), INLINE_CAPACITY);
+
+    let mut h = H::from("abc");
+    h.shrink_to_fit();
+    assert_eq!(h.capacity(), INLINE_CAPACITY);
+
+    let mut h = H::from_static("abc");
+    h.shrink_to_fit();
+    assert_eq!(h.capacity(), 3);
+}
+
+#[test]
+fn test_shrink_to() {
+    let mut h = H::with_capacity(INLINE_CAPACITY + 1);
+    h.push("a");
+    h.shrink_to(0);
+    assert_eq!(h.capacity(), INLINE_CAPACITY);
+    assert_eq!(h.len(), 1);
+
+    let mut h = H::from("abc");
+    h.shrink_to(4);
+    assert_eq!(h.capacity(), INLINE_CAPACITY);
+
+    let mut h = H::from_static("abc");
+    assert_eq!(h.capacity(), 3);
+    h.shrink_to(0);
+    assert_eq!(h.capacity(), 3);
+}

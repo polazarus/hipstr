@@ -647,6 +647,55 @@ where
         HipByt(self.0.into_owned())
     }
 
+    /// Shrinks the capacity of the vector as much as possible.
+    ///
+    /// The capacity will remain at least as large as the actual length of the
+    /// vector.
+    ///
+    /// No-op if the representation is not allocated.
+    ///
+    /// # Representation stability
+    ///
+    /// The allocated representation may change to *inline* if the required
+    /// capacity is smaller thant the inline capacity.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use hipstr::HipByt;
+    /// let mut s = HipByt::with_capacity(100);
+    /// s.push_slice(b"abc");
+    /// s.shrink_to_fit();
+    /// assert_eq!(s.capacity(), HipByt::inline_capacity());
+    /// ```
+    pub fn shrink_to_fit(&mut self) {
+        self.0.shrink_to(self.len());
+    }
+
+    /// Shrinks the capacity of the vector with a lower bound.
+    ///
+    /// The capacity will remain at least as large as the given bound and the
+    /// actual length of the vector.
+    ///
+    /// No-op if the representation is not allocated.
+    ///
+    /// # Representation stability
+    ///
+    /// The representation may change to inline if the required capacity is
+    /// smaller than the inline capacity.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use hipstr::HipByt;
+    /// let mut s = HipByt::with_capacity(100);
+    /// s.shrink_to(4);
+    /// assert_eq!(s.capacity(), HipByt::inline_capacity());
+    /// ```
+    pub fn shrink_to(&mut self, min_capacity: usize) {
+        self.0.shrink_to(min_capacity)
+    }
+
     pub(crate) fn take_vec(&mut self) -> Vec<u8> {
         self.0.take_vec()
     }
