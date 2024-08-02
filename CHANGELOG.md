@@ -15,6 +15,7 @@ Notable changes only.
 
 - some clippy lints
 - fix truncating `set_len` on borrowed
+- fix truncating `set_len` on allocated
 
 ## [0.5.0] - 2024-06-24
 

@@ -804,7 +804,7 @@ where
     ///
     /// * If inline, `new_len` should be must be less than or equal to `INLINE_CAPACITY`.
     /// * If borrowed, `new_len` must be less than or equal to the current length.
-    /// * If allocated, the vector should not be shared.
+    /// * If allocated and `new_len` is greater than the current length, the vector should not be shared.
     /// * The elements at `old_len..new_len` must be initialized.
     pub unsafe fn set_len(&mut self, new_len: usize) {
         // SAFETY: precondition

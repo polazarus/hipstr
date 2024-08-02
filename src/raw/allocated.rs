@@ -362,10 +362,12 @@ impl<B: Backend> Allocated<B> {
     /// # Safety
     ///
     /// * `new_len` should be must be less than or equal to `capacity()`.
-    /// * The elements at `old_len..new_len` must be initialized.
-    /// * The vector should be uniquely owned, not shared.
+    /// * If `new_len` is greater or equal to the current length:
+    ///   * The elements at `old_len..new_len` must be initialized.
+    ///   * The vector should be uniquely owned, not shared.
     pub unsafe fn set_len(&mut self, new_len: usize) {
-        if new_len == self.len {
+        if new_len <= self.len {
+            self.len = new_len;
             return;
         }
 
