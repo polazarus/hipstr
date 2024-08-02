@@ -783,10 +783,36 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
                     unsafe { Self::inline_unchecked(self.as_slice().get_unchecked(..new_len)) };
                 *self = new;
             } else {
+                // SAFETY: `new_len` is checked above
                 unsafe { self.set_len(new_len) }
             }
         }
         debug_assert!(self.is_normalized());
+    }
+
+    /// Shrinks the capacity of the vector with a lower bound.
+    ///
+    /// The capacity will remain at least as large as the given bound and the
+    /// given length.
+    ///
+    /// No-op if the representation is not allocated.
+    ///
+    /// # Representation stability
+    ///
+    /// The representation may change to inline if the required capacity is
+    /// smaller than the inline capacity.
+    pub fn shrink_to(&mut self, min_capacity: usize) {
+        if self.is_allocated() {
+            let min_capacity = min_capacity.max(self.len());
+
+            if min_capacity > INLINE_CAPACITY {
+                let allocated = unsafe { &mut self.union_mut().allocated };
+                allocated.shrink_to(min_capacity);
+            } else {
+                let new = unsafe { Self::inline_unchecked(self.as_slice()) };
+                *self = new;
+            }
+        }
     }
 }
 

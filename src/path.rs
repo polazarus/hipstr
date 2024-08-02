@@ -436,6 +436,60 @@ where
     pub fn into_str(self) -> Result<HipStr<'borrow, B>, Self> {
         self.0.into_str().map_err(Self)
     }
+
+    /// Shrinks the capacity of the string as much as possible.
+    ///
+    /// The capacity will remain at least as large as the actual length of the
+    /// string.
+    ///
+    /// No-op if the representation is not allocated.
+    ///
+    /// # Representation stability
+    ///
+    /// The allocated representation may change to *inline* if the required
+    /// capacity is smaller thant the inline capacity.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use hipstr::{HipOsStr, HipPath};
+    /// let mut s = HipOsStr::with_capacity(100);
+    /// s.push("abc");
+    /// let mut p = HipPath::from(s);
+    /// assert!(p.capacity() >= 100);
+    /// p.shrink_to_fit();
+    /// assert_eq!(p.capacity(), HipPath::inline_capacity());
+    /// ```
+    #[inline]
+    pub fn shrink_to_fit(&mut self) {
+        self.0.shrink_to_fit();
+    }
+
+    /// Shrinks the capacity of the string with a lower bound.
+    ///
+    /// The capacity will remain at least as large as the given lower bound and
+    /// the actual length of the string.
+    ///
+    /// No-op if the representation is not allocated.
+    ///
+    /// # Representation stability
+    ///
+    /// The allocated representation may change to *inline* if the required
+    /// capacity is smaller thant the inline capacity.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use hipstr::{HipOsStr, HipPath};
+    /// let s = HipOsStr::with_capacity(100);
+    /// let mut p = HipPath::from(s);
+    /// p.shrink_to(4);
+    /// assert_eq!(p.capacity(), HipPath::inline_capacity());
+    /// ```
+    #[inline]
+    pub fn shrink_to(&mut self, min_capacity: usize) {
+        self.0.shrink_to(min_capacity);
+    }
 }
 
 impl<B> HipPath<'static, B>

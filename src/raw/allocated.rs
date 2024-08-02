@@ -382,6 +382,19 @@ impl<B: Backend> Allocated<B> {
         unsafe { v.set_len(start + new_len) };
         self.len = new_len;
     }
+
+    pub fn shrink_to(&mut self, min_capacity: usize) {
+        let min_capacity = min_capacity.max(self.len);
+
+        if self.capacity() <= min_capacity {
+            return;
+        }
+
+        let mut new_vec = Vec::with_capacity(min_capacity);
+        new_vec.extend_from_slice(self.as_slice());
+        let old = core::mem::replace(self, Self::new(new_vec));
+        let _ignore = old.decr_ref_count();
+    }
 }
 
 #[cfg(test)]

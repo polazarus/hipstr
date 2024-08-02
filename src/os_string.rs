@@ -605,6 +605,57 @@ where
         // SAFETY
         unsafe { Self(self.0.slice_ref_unchecked(slice.as_encoded_bytes())) }
     }
+
+    /// Shrinks the capacity of the string as much as possible.
+    ///
+    /// The capacity will remain at least as large as the actual length of the
+    /// string.
+    ///
+    /// No-op if the representation is not allocated.
+    ///
+    /// # Representation stability
+    ///
+    /// The allocated representation may change to *inline* if the required
+    /// capacity is smaller thant the inline capacity.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use hipstr::HipOsStr;
+    /// let mut s = HipOsStr::with_capacity(100);
+    /// s.push("abc");
+    /// s.shrink_to_fit();
+    /// assert_eq!(s.capacity(), HipOsStr::inline_capacity());
+    /// ```
+    #[inline]
+    pub fn shrink_to_fit(&mut self) {
+        self.0.shrink_to_fit();
+    }
+
+    /// Shrinks the capacity of the string with a lower bound.
+    ///
+    /// The capacity will remain at least as large as the given lower bound and
+    /// the actual length of the string.
+    ///
+    /// No-op if the representation is not allocated.
+    ///
+    /// # Representation stability
+    ///
+    /// The allocated representation may change to *inline* if the required
+    /// capacity is smaller thant the inline capacity.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use hipstr::HipOsStr;
+    /// let mut s = HipOsStr::with_capacity(100);
+    /// s.shrink_to(4);
+    /// assert_eq!(s.capacity(), HipOsStr::inline_capacity());
+    /// ```
+    #[inline]
+    pub fn shrink_to(&mut self, min_capacity: usize) {
+        self.0.shrink_to(min_capacity);
+    }
 }
 
 impl<B> HipOsStr<'static, B>
