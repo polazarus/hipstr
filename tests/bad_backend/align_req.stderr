@@ -1,0 +1,17 @@
+error[E0080]: evaluation of constant value failed
+  --> src/backend.rs
+   |
+   |         assert!(align_of::<B::RawPointer>() > 1);
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the evaluated program panicked at 'assertion failed: align_of::<B::RawPointer>() > 1', $DIR/src/backend.rs:134:9
+   |
+note: inside `check_backend::<BadBackend>`
+  --> src/backend.rs
+   |
+   |         assert!(align_of::<B::RawPointer>() > 1);
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+note: inside `_`
+  --> tests/bad_backend/align_req.rs:62:5
+   |
+62 |     hipstr::check_backend::<BadBackend>();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = note: this error originates in the macro `assert` (in Nightly builds, run with -Z macro-backtrace for more info)
