@@ -128,7 +128,9 @@ where
         Self(Raw::with_capacity(cap))
     }
 
-    /// Creates a new `HipByt` from a borrowed slice without copying the slice.
+    /// Creates a new `HipByt` from a byte slice.
+    /// No heap allocation is performed.
+    /// **The slice is not copied.**
     ///
     /// # Examples
     ///
