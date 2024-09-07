@@ -116,7 +116,9 @@ where
         Self(HipByt::with_capacity(cap))
     }
 
-    /// Creates a new `HipStr` from a static string slice without copying the slice.
+    /// Creates a new `HipStr` from a string slice.
+    /// No heap allocation is performed.
+    /// **The string is not copied.**
     ///
     /// # Examples
     ///
