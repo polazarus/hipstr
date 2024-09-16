@@ -67,13 +67,20 @@ impl<'de> de::Visitor<'de> for CowVisitor {
 
 /// Deserializes a `HipPath` as a borrow if possible.
 ///
-/// ```ignore
-/// use hipstr::HipStr;
+/// # Examples
+///
+/// Basic usage:
+///
+/// ```
+/// # use hipstr::HipPath;
+/// use serde::Deserialize;
+///
 /// #[derive(Deserialize)]
 /// struct MyStruct<'a> {
 ///     #[serde(borrow, deserialize_with = "hipstr::path::serde::borrow_deserialize")]
 ///     field: HipPath<'a>,
 /// }
+///
 /// # fn main() {
 /// let s: MyStruct = serde_json::from_str(r#"{"field": "abc"}"#).unwrap();
 /// assert!(s.field.is_borrowed());
@@ -82,7 +89,7 @@ impl<'de> de::Visitor<'de> for CowVisitor {
 ///
 /// # Errors
 ///
-/// Returns a deserializer if either the serialization is incorrect or an unexpected value is encountered.
+/// Returns a deserializer error if either the serialization is incorrect or an unexpected value is encountered.
 #[inline]
 pub fn borrow_deserialize<'de: 'a, 'a, D, B>(deserializer: D) -> Result<HipPath<'a, B>, D::Error>
 where

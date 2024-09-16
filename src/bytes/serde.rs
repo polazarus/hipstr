@@ -32,13 +32,21 @@ where
 
 /// Deserializes a `HipByt` as a borrow if possible.
 ///
-/// ```ignore
-/// use hipstr::HipByt;
+///
+/// # Examples
+///
+/// Basic usage:
+///
+/// ```
+/// # use hipstr::HipByt;
+/// use serde::Deserialize;
+///
 /// #[derive(Deserialize)]
 /// struct MyStruct<'a> {
-///     #[serde(borrow, deserialize_with = "hipstr::bytes::serde::borrowg_deserialize")]
+///     #[serde(borrow, deserialize_with = "hipstr::bytes::serde::borrow_deserialize")]
 ///     field: HipByt<'a>,
 /// }
+///
 /// # fn main() {
 /// let s: MyStruct = serde_json::from_str(r#"{"field": "abc"}"#).unwrap();
 /// assert!(s.field.is_borrowed());
@@ -47,7 +55,7 @@ where
 ///
 /// # Errors
 ///
-/// Returns a deserializer if either the serialization is incorrect or an unexpected value is encountered.
+/// Returns a deserializer error if either the serialization is incorrect or an unexpected value is encountered.
 #[inline]
 pub fn borrow_deserialize<'de: 'a, 'a, D, B>(deserializer: D) -> Result<HipByt<'a, B>, D::Error>
 where
