@@ -5,71 +5,78 @@ use core::mem::{transmute, MaybeUninit};
 use core::ops::Range;
 use core::panic::{RefUnwindSafe, UnwindSafe};
 
+// TODO remove once provenance API stabilized
+use sptr::Strict;
+
 use crate::alloc::vec::Vec;
+use crate::backend::rc::Inner;
 use crate::backend::{rc, Backend};
 
 const MASK: usize = super::MASK as usize;
 const TAG: usize = super::TAG_ALLOCATED as usize;
 
-struct TaggedRaw<B: Backend>(*mut (), PhantomData<rc::Raw<Vec<u8>, B>>);
+struct TaggedRawRc<B: Backend>(usize, PhantomData<rc::Raw<Vec<u8>, B>>);
 
-impl<B: Backend> Clone for TaggedRaw<B> {
+impl<B: Backend> Clone for TaggedRawRc<B> {
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<B: Backend> Copy for TaggedRaw<B> {}
+impl<B: Backend> Copy for TaggedRawRc<B> {}
 
-impl<B: Backend> TaggedRaw<B> {
+impl<B: Backend> TaggedRawRc<B> {
+    /// Constructed a tagged rc from a `rc::Raw`.
     #[inline]
+    #[allow(unstable_name_collisions)]
     fn from(raw: rc::Raw<Vec<u8>, B>) -> Self {
         // SAFETY: add a 2-bit tag to a non-null pointer with the same alignment
         // requirement as usize (typically 4 bytes on 32-bit architectures, and
         // more on 64-bit architectures)
         unsafe {
-            let ptr: *mut () = transmute(raw);
+            let ptr: *mut Inner<Vec<u8>, B> = transmute(raw);
             debug_assert!((ptr as usize) & MASK == 0);
             debug_assert!(!ptr.is_null());
 
-            // Strict provenance API, nightly only, for now just for MIRI
-            #[cfg(miri)]
-            let new_ptr = ptr.map_addr(|addr| addr | TAG);
+            // TODO use strict and exposed provenance API once stabilized
+            let addr = ptr.map_addr(|addr| addr | TAG).expose_addr();
 
-            #[cfg(not(miri))]
-            let new_ptr = ((ptr as usize) | TAG) as *mut ();
-
-            Self(new_ptr, PhantomData)
+            Self(addr, PhantomData)
         }
     }
 
+    /// Converts back into the `rc::Raw`.
     #[inline]
+    #[allow(unstable_name_collisions)]
     fn into(self) -> rc::Raw<Vec<u8>, B> {
         let this: rc::Raw<Vec<u8>, B>;
 
-        debug_assert!((self.0 as usize) & MASK == TAG);
+        debug_assert!(self.0 & MASK == TAG);
 
         // SAFETY: remove a 2-bit tag to a non-null pointer with the same
         // alignment as usize (typically 4 bytes on 32-bit architectures, and
         // more on 64-bit architectures)
         unsafe {
-            // Strict provenance API, nightly only, for now just for MIRI
-            #[cfg(miri)]
-            let new_ptr = self.0.map_addr(|addr| addr ^ TAG);
-
-            #[cfg(not(miri))]
-            let new_ptr = ((self.0 as usize) ^ TAG) as *mut ();
+            // TODO use strict and exposed provenance API once stabilized
+            let new_ptr = sptr::from_exposed_addr_mut::<Inner<Vec<u8>, B>>(self.0)
+                .map_addr(|addr| addr ^ TAG);
 
             debug_assert!(!new_ptr.is_null());
 
             this = transmute(new_ptr);
+
+            #[cfg(miri)]
+            let _ = this.as_ref(); // check provenance early
+
             debug_assert!(this.is_valid());
         }
 
         this
     }
 
+    /// Checks if the tag is valid.
+    #[inline]
     fn check_tag(self) -> bool {
         self.0 as usize & MASK == TAG
     }
@@ -84,13 +91,18 @@ impl<B: Backend> TaggedRaw<B> {
 #[repr(C)]
 pub struct Allocated<B: Backend> {
     #[cfg(target_endian = "little")]
-    owner: TaggedRaw<B>,
+    /// Tagged smart pointer of the owning vector
+    owner: TaggedRawRc<B>,
 
+    /// Pointer to the slice's start
     ptr: *const u8,
+
+    /// Length of the slice
     len: usize,
 
     #[cfg(target_endian = "big")]
-    owner: TaggedRaw<B>,
+    /// Tagged smart pointer of the owning vector
+    owner: TaggedRawRc<B>,
 }
 
 impl<B: Backend> Copy for Allocated<B> {}
@@ -129,7 +141,7 @@ impl<B: Backend> Allocated<B> {
         let this = Self {
             ptr,
             len,
-            owner: TaggedRaw::from(owner),
+            owner: TaggedRawRc::from(owner),
         };
 
         debug_assert!(this.is_unique());
@@ -404,14 +416,9 @@ mod tests {
     use crate::Local;
 
     #[test]
-    fn test_clone() {
-        // let allocated = Allocated::<Local>::new(vec![]);
-        // let _clone = allocated.clone();
-        // let local = unsafe { Local::from_raw(allocated.owner()) };
-        // let count = Local::strong_count(&local);
-        // let _ = Local::into_raw(local);
-        // assert_eq!(count, 1);
-        // allocated.decr_ref_count();
+    fn test_alloc() {
+        let allocated = Allocated::<Local>::new(vec![]);
+        let _ = allocated.decr_ref_count();
     }
 
     #[test]
