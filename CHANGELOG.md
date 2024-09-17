@@ -7,6 +7,7 @@ Notable changes only.
 ### Fixed
 
 - fix doc issue [#28](https://github.com/polazarus/hipstr/issues/28)
+- fix MIRI check due to provenance [#32](https://github.com/polazarus/hipstr/pull/32)
 
 ## [0.5.1] - 2024-08-02
 

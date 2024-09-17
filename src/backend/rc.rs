@@ -86,7 +86,7 @@ impl Count for ThreadSafe {
 }
 
 /// Reference counting inner cell.
-struct Inner<T, C> {
+pub struct Inner<T, C> {
     count: C,
     value: T,
 }
@@ -100,6 +100,7 @@ struct Inner<T, C> {
 ///   stack copies) without `incr()`-ing it
 /// - it should not be dropped (except for temporary copies) without
 ///   `decr()`-ing it
+#[repr(transparent)]
 pub struct Raw<T, C>(NonNull<Inner<T, C>>);
 
 impl<T, C> Copy for Raw<T, C> {}
