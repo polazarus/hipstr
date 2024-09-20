@@ -4,10 +4,16 @@ Notable changes only.
 
 ## [unreleased]
 
+### Changed
+
+- implement `core::error:Error` for custom errors, rather than
+  `std::error::Error` and bump msrv
+
 ### Fixed
 
 - fix doc issue [#28](https://github.com/polazarus/hipstr/issues/28)
-- fix MIRI check due to provenance [#32](https://github.com/polazarus/hipstr/pull/32)
+- fix MIRI check due to provenance loss
+  [#32](https://github.com/polazarus/hipstr/pull/32)
 
 ## [0.5.1] - 2024-08-02
 
@@ -103,7 +109,8 @@ Most of those addition are breaking because they shadows `str`'s methods.
 
 ### Added
 
-- Add mutable accessor (may clone data) `to_mut_slice` for `HipByt`, `to_mut_str` for `HipStr`
+- Add mutable accessor (may clone data) `to_mut_slice` for `HipByt`,
+  `to_mut_str` for `HipStr`
 - Add forced inlining (`inline` method)
 - More docs
 - More CI
