@@ -10,7 +10,7 @@ categories = ["memory-management", "data-structures"]
 license = "MIT OR Apache-2.0"
 edition = "2021"
 readme = "README.md"
-rust-version = "1.77.0"
+rust-version = "1.81.0"
 
 [features]
 default = ["std"]

@@ -3,6 +3,7 @@
 //! This module provides the [`HipStr`] type as well as the associated helper and error types.
 
 use core::borrow::Borrow;
+use core::error::Error;
 use core::hash::Hash;
 use core::mem::transmute;
 use core::ops::{Deref, DerefMut, Range, RangeBounds};
@@ -1941,8 +1942,7 @@ where
     }
 }
 
-#[cfg(feature = "std")]
-impl<'a, 'borrow, B> std::error::Error for SliceError<'a, 'borrow, B> where B: Backend {}
+impl<'a, 'borrow, B> Error for SliceError<'a, 'borrow, B> where B: Backend {}
 
 /// A possible error value when converting a [`HipStr`] from a [`HipByt`].
 ///
@@ -2108,8 +2108,7 @@ where
     }
 }
 
-#[cfg(feature = "std")]
-impl<'borrow, B> std::error::Error for FromUtf8Error<'borrow, B> where B: Backend {}
+impl<'borrow, B> Error for FromUtf8Error<'borrow, B> where B: Backend {}
 
 /// A wrapper type for a mutably borrowed [`String`] out of a [`HipStr`].
 pub struct RefMut<'a, 'borrow, B>

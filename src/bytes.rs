@@ -3,6 +3,7 @@
 //! This module provides the [`HipByt`] type as well as the associated helper and error types.
 
 use core::borrow::Borrow;
+use core::error::Error;
 use core::hash::Hash;
 use core::mem::MaybeUninit;
 use core::ops::{Bound, Deref, DerefMut, Range, RangeBounds};
@@ -1403,8 +1404,7 @@ where
     }
 }
 
-#[cfg(feature = "std")]
-impl<'a, 'borrow, B> std::error::Error for SliceError<'a, 'borrow, B> where B: Backend {}
+impl<'a, 'borrow, B> Error for SliceError<'a, 'borrow, B> where B: Backend {}
 
 /// A wrapper type for a mutably borrowed vector out of a [`HipByt`].
 pub struct RefMut<'a, 'borrow, B>
