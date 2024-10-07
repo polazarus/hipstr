@@ -39,30 +39,37 @@ const TAG_ALLOCATED: u8 = 3;
 /// Maximal byte capacity of an inline [`HipStr`](super::HipStr) or [`HipByt`](super::HipByt).
 const INLINE_CAPACITY: usize = size_of::<Borrowed>() - 1;
 
+/// Size of word minus a tagged byte.
+const WORD_SIZE_M1: usize = size_of::<usize>() - 1;
+
 /// Alias type for `Inline` with set inline capacity
 type Inline = inline::Inline<INLINE_CAPACITY>;
 
 /// Raw byte sequence.
-#[cfg(target_endian = "little")]
 #[repr(C)]
 pub struct Raw<'borrow, B: Backend> {
-    tag_byte: NonZeroU8,
-    _word_remainder: MaybeUninit<[u8; size_of::<usize>() - 1]>,
-    _word1: MaybeUninit<*mut ()>,
-    _word2: MaybeUninit<*mut ()>,
-
+    pivot: Pivot,
     _marker: PhantomData<&'borrow B>,
 }
 
-#[cfg(target_endian = "big")]
+#[derive(Clone, Copy)]
 #[repr(C)]
-pub struct Raw<'borrow, B: Backend> {
-    _word2: MaybeUninit<*mut ()>,
-    _word1: MaybeUninit<*mut ()>,
-    _word_remainder: MaybeUninit<[u8; size_of::<usize>() - 1]>,
+struct Pivot {
+    #[cfg(target_endian = "little")]
     tag_byte: NonZeroU8,
+    #[cfg(target_endian = "little")]
+    _word_remainder: MaybeUninit<[u8; WORD_SIZE_M1]>,
+    #[cfg(target_endian = "little")]
+    _word1: MaybeUninit<*mut ()>,
 
-    _marker: PhantomData<&'borrow B>,
+    _word2: MaybeUninit<*mut ()>,
+
+    #[cfg(target_endian = "big")]
+    _word1: MaybeUninit<*mut ()>,
+    #[cfg(target_endian = "big")]
+    _word_remainder: MaybeUninit<[u8; WORD_SIZE_M1]>,
+    #[cfg(target_endian = "big")]
+    tag_byte: NonZeroU8,
 }
 
 unsafe impl<B: Backend + Sync> Sync for Raw<'_, B> {}
@@ -75,10 +82,15 @@ unsafe impl<B: Backend + Send> Send for Raw<'_, B> {}
 union Union<'borrow, B: Backend> {
     /// Inline representation
     inline: Inline,
+
     /// Allocated and shared representation
     allocated: Allocated<B>,
+
     /// Borrowed slice representation
     borrowed: Borrowed<'borrow>,
+
+    /// Pivot representation with niche
+    pivot: Pivot,
 }
 
 impl<'borrow, B: Backend> Union<'borrow, B> {
@@ -93,7 +105,11 @@ impl<'borrow, B: Backend> Union<'borrow, B> {
         let () = Self::ASSERTS;
 
         // SAFETY: same layout and same niche hopefully
-        unsafe { transmute(self) }
+        let pivot = unsafe { self.pivot };
+        Raw {
+            pivot,
+            _marker: PhantomData,
+        }
     }
 }
 
@@ -132,7 +148,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
     /// Retrieves a reference on the union.
     #[inline]
     const fn union(&self) -> &Union<'borrow, B> {
-        let raw_ptr: *const _ = self;
+        let raw_ptr: *const _ = &self.pivot;
         let union_ptr: *const Union<'borrow, B> = raw_ptr.cast();
         // SAFETY: same layout and same niche hopefully, same immutability
         unsafe { &*union_ptr }
@@ -141,7 +157,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
     /// Retrieves a mutable reference on the union.
     #[inline]
     fn union_mut(&mut self) -> &mut Union<'borrow, B> {
-        let raw_ptr: *mut _ = self;
+        let raw_ptr: *mut _ = &mut self.pivot;
         let union_ptr: *mut Union<'borrow, B> = raw_ptr.cast();
         // SAFETY: same layout and same niche hopefully, same mutability
         unsafe { &mut *union_ptr }
@@ -149,8 +165,9 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
 
     /// Extracts the union without dropping the `Raw`.
     fn union_move(self) -> Union<'borrow, B> {
-        // SAFETY: same layout and same niche hopefully, same mutability
-        unsafe { transmute(self) }
+        // Do not drop free!
+        let this = ManuallyDrop::new(self);
+        Union { pivot: this.pivot }
     }
 
     // basic constructors
@@ -177,7 +194,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
 
     /// Retrieves the tag.
     const fn tag(&self) -> Tag {
-        match self.tag_byte.get() & MASK {
+        match self.pivot.tag_byte.get() & MASK {
             TAG_INLINE => Tag::Inline,
             TAG_BORROWED => Tag::Borrowed,
             TAG_ALLOCATED => Tag::Allocated,
