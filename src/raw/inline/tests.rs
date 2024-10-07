@@ -17,8 +17,8 @@ fn test_zeroed() {
     assert_eq!(inline.as_slice(), &[0; 5]);
 }
 
-#[test]
 #[should_panic]
+#[test]
 fn test_zeroed_panic() {
     let _ = I::zeroed(N + 1);
 }

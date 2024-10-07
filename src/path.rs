@@ -518,7 +518,7 @@ where
 }
 
 // Manual implementation needed to remove trait bound on B::RawPointer.
-impl<'borrow, B> Clone for HipPath<'borrow, B>
+impl<B> Clone for HipPath<'_, B>
 where
     B: Backend,
 {
@@ -529,7 +529,7 @@ where
 }
 
 // Manual implementation needed to remove trait bound on B::RawPointer.
-impl<'borrow, B> Default for HipPath<'borrow, B>
+impl<B> Default for HipPath<'_, B>
 where
     B: Backend,
 {
@@ -539,7 +539,7 @@ where
     }
 }
 
-impl<'borrow, B> Deref for HipPath<'borrow, B>
+impl<B> Deref for HipPath<'_, B>
 where
     B: Backend,
 {
@@ -551,7 +551,7 @@ where
     }
 }
 
-impl<'borrow, B> Hash for HipPath<'borrow, B>
+impl<B> Hash for HipPath<'_, B>
 where
     B: Backend,
 {
@@ -563,7 +563,7 @@ where
 
 // Formatting
 
-impl<'borrow, B> fmt::Debug for HipPath<'borrow, B>
+impl<B> fmt::Debug for HipPath<'_, B>
 where
     B: Backend,
 {
@@ -582,7 +582,7 @@ where
     owned: PathBuf,
 }
 
-impl<'a, 'borrow, B> fmt::Debug for RefMut<'a, 'borrow, B>
+impl<B> fmt::Debug for RefMut<'_, '_, B>
 where
     B: Backend,
 {
@@ -591,7 +591,7 @@ where
     }
 }
 
-impl<'a, 'borrow, B> Drop for RefMut<'a, 'borrow, B>
+impl<B> Drop for RefMut<'_, '_, B>
 where
     B: Backend,
 {
@@ -601,7 +601,7 @@ where
     }
 }
 
-impl<'a, 'borrow, B> Deref for RefMut<'a, 'borrow, B>
+impl<B> Deref for RefMut<'_, '_, B>
 where
     B: Backend,
 {
@@ -611,7 +611,7 @@ where
     }
 }
 
-impl<'a, 'borrow, B> DerefMut for RefMut<'a, 'borrow, B>
+impl<B> DerefMut for RefMut<'_, '_, B>
 where
     B: Backend,
 {

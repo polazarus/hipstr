@@ -7,7 +7,7 @@ use crate::alloc::vec::Vec;
 use crate::raw::Raw;
 use crate::Backend;
 
-impl<'borrow, B> AsRef<[u8]> for HipByt<'borrow, B>
+impl<B> AsRef<[u8]> for HipByt<'_, B>
 where
     B: Backend,
 {
@@ -19,7 +19,7 @@ where
 
 // Infallible conversions
 
-impl<'borrow, B> From<&[u8]> for HipByt<'borrow, B>
+impl<B> From<&[u8]> for HipByt<'_, B>
 where
     B: Backend,
 {
@@ -29,7 +29,7 @@ where
     }
 }
 
-impl<'borrow, B, const N: usize> From<&[u8; N]> for HipByt<'borrow, B>
+impl<B, const N: usize> From<&[u8; N]> for HipByt<'_, B>
 where
     B: Backend,
 {
@@ -39,7 +39,7 @@ where
     }
 }
 
-impl<'borrow, B> From<Box<[u8]>> for HipByt<'borrow, B>
+impl<B> From<Box<[u8]>> for HipByt<'_, B>
 where
     B: Backend,
 {
@@ -49,7 +49,7 @@ where
     }
 }
 
-impl<'borrow, B> From<Vec<u8>> for HipByt<'borrow, B>
+impl<B> From<Vec<u8>> for HipByt<'_, B>
 where
     B: Backend,
 {
@@ -72,7 +72,7 @@ where
     }
 }
 
-impl<'borrow, B> From<HipByt<'borrow, B>> for Vec<u8>
+impl<B> From<HipByt<'_, B>> for Vec<u8>
 where
     B: Backend,
 {

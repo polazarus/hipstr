@@ -65,8 +65,8 @@ pub struct Raw<'borrow, B: Backend> {
     _marker: PhantomData<&'borrow B>,
 }
 
-unsafe impl<'borrow, B: Backend + Sync> Sync for Raw<'borrow, B> {}
-unsafe impl<'borrow, B: Backend + Send> Send for Raw<'borrow, B> {}
+unsafe impl<B: Backend + Sync> Sync for Raw<'_, B> {}
+unsafe impl<B: Backend + Send> Send for Raw<'_, B> {}
 
 /// Equivalent union representation.
 ///
@@ -336,7 +336,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
     ///
     /// Return the raw byte string if the actual representation is not a borrow.
     #[inline]
-    pub fn into_borrowed(self) -> Result<&'borrow [u8], Self> {
+    pub const fn into_borrowed(self) -> Result<&'borrow [u8], Self> {
         match self.split() {
             RawSplit::Allocated(_) | RawSplit::Inline(_) => Err(self),
             RawSplit::Borrowed(borrowed) => {
@@ -816,7 +816,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
     }
 }
 
-impl<'borrow, B: Backend> Drop for Raw<'borrow, B> {
+impl<B: Backend> Drop for Raw<'_, B> {
     #[inline]
     fn drop(&mut self) {
         // Formally drops this `Raw` decreasing the ref count if needed
@@ -826,7 +826,7 @@ impl<'borrow, B: Backend> Drop for Raw<'borrow, B> {
     }
 }
 
-impl<'borrow, B: Backend> Clone for Raw<'borrow, B> {
+impl<B: Backend> Clone for Raw<'_, B> {
     fn clone(&self) -> Self {
         // Duplicates this `Raw` increasing the ref count if needed.
         match self.split() {

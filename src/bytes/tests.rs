@@ -119,7 +119,7 @@ fn test_borrowed() {
 
 #[test]
 fn test_from_static() {
-    fn is_static_type<T: 'static>(_: &T) {}
+    const fn is_static_type<T: 'static>(_: &T) {}
 
     let s = ALPHABET;
     let h = H::from_static(s);
@@ -229,7 +229,7 @@ fn test_clone_drop() {
                 let clones = rand.usize(..drops.min(vs.len()));
                 // println!("clones {clones}");
                 for _ in 0..clones {
-                    vs.push(vs[0].clone())
+                    vs.push(vs[0].clone());
                 }
             }
         }
@@ -560,7 +560,7 @@ fn test_into_vec() {
         // allocated, unique, sliced at start
         let v = v.clone();
         let p = v.as_ptr();
-        let a = H::from(v).slice(0..INLINE_CAPACITY + 1);
+        let a = H::from(v).slice(0..=INLINE_CAPACITY);
         let v = a.into_vec().unwrap();
         assert_eq!(v.len(), INLINE_CAPACITY + 1);
         assert_eq!(v.as_ptr(), p);
@@ -673,7 +673,7 @@ fn test_shrink_to_fit() {
     assert_eq!(h.as_ptr(), h2.as_ptr());
     h.shrink_to_fit();
     assert_ne!(h.as_ptr(), h2.as_ptr());
-    assert_eq!(h, &MEDIUM[..(INLINE_CAPACITY + 1)]);
+    assert_eq!(h, &MEDIUM[..=INLINE_CAPACITY]);
 
     let mut h = H::from(&MEDIUM[..INLINE_CAPACITY]);
     assert!(h.is_inline());
@@ -746,7 +746,7 @@ fn test_truncate() {
     let mut h = H::from(MEDIUM);
     h.truncate(INLINE_CAPACITY + 1);
     assert!(h.is_allocated());
-    assert_eq!(h, &MEDIUM[..(INLINE_CAPACITY + 1)]);
+    assert_eq!(h, &MEDIUM[..=INLINE_CAPACITY]);
 
     let mut h = H::from(&MEDIUM[..INLINE_CAPACITY]);
     h.truncate(1);
@@ -812,7 +812,7 @@ fn test_push_slice_borrowed() {
 
     for i in 0..(INLINE_CAPACITY - 1) {
         // add one byte to a byte string of variable length (< inline capacity)
-        should_inline(&MEDIUM[..i], &[42], &MEDIUM[..i + 1]);
+        should_inline(&MEDIUM[..i], &[42], &MEDIUM[..=i]);
 
         // fill to inline capacity
         should_inline(
@@ -824,8 +824,8 @@ fn test_push_slice_borrowed() {
         // overfill by one
         should_allocate(
             &MEDIUM[..i],
-            &MEDIUM[..INLINE_CAPACITY - i + 1],
-            &MEDIUM[..INLINE_CAPACITY + 1],
+            &MEDIUM[..=(INLINE_CAPACITY - i)],
+            &MEDIUM[..=INLINE_CAPACITY],
         );
     }
 
@@ -833,7 +833,7 @@ fn test_push_slice_borrowed() {
     should_allocate(
         &MEDIUM[..INLINE_CAPACITY],
         &MEDIUM[..1],
-        &MEDIUM[..INLINE_CAPACITY + 1],
+        &MEDIUM[..=INLINE_CAPACITY],
     );
 
     let mut a = H::borrowed(MEDIUM);
@@ -870,7 +870,7 @@ fn test_push_slice_inline() {
 
     for i in 0..(INLINE_CAPACITY - 1) {
         // add one byte to an inline byte string of variable length
-        should_stay_inline(&MEDIUM[..i], &[42], &MEDIUM[..i + 1]);
+        should_stay_inline(&MEDIUM[..i], &[42], &MEDIUM[..=i]);
 
         // fill to inline capacity
         should_stay_inline(
@@ -882,8 +882,8 @@ fn test_push_slice_inline() {
         // overfill by one
         should_allocate(
             &MEDIUM[..i],
-            &MEDIUM[..INLINE_CAPACITY - i + 1],
-            &MEDIUM[..INLINE_CAPACITY + 1],
+            &MEDIUM[..=(INLINE_CAPACITY - i)],
+            &MEDIUM[..=INLINE_CAPACITY],
         );
     }
 
@@ -891,7 +891,7 @@ fn test_push_slice_inline() {
     should_allocate(
         &MEDIUM[..INLINE_CAPACITY],
         &MEDIUM[..1],
-        &MEDIUM[..INLINE_CAPACITY + 1],
+        &MEDIUM[..=INLINE_CAPACITY],
     );
 }
 

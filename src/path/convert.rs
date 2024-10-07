@@ -14,7 +14,7 @@ use crate::Backend;
 
 // AsRef
 
-impl<'borrow, B> AsRef<Path> for HipPath<'borrow, B>
+impl<B> AsRef<Path> for HipPath<'_, B>
 where
     B: Backend,
 {
@@ -24,7 +24,7 @@ where
     }
 }
 
-impl<'borrow, B> AsRef<OsStr> for HipPath<'borrow, B>
+impl<B> AsRef<OsStr> for HipPath<'_, B>
 where
     B: Backend,
 {
@@ -36,7 +36,7 @@ where
 
 // Borrow
 
-impl<'borrow, B> Borrow<Path> for HipPath<'borrow, B>
+impl<B> Borrow<Path> for HipPath<'_, B>
 where
     B: Backend,
 {
@@ -46,7 +46,7 @@ where
     }
 }
 
-impl<'borrow, B> Borrow<OsStr> for HipPath<'borrow, B>
+impl<B> Borrow<OsStr> for HipPath<'_, B>
 where
     B: Backend,
 {
@@ -59,7 +59,7 @@ where
 // Infallible conversions
 // From
 
-impl<'borrow, B> From<&Path> for HipPath<'borrow, B>
+impl<B> From<&Path> for HipPath<'_, B>
 where
     B: Backend,
 {
@@ -69,7 +69,7 @@ where
     }
 }
 
-impl<'borrow, B> From<&str> for HipPath<'borrow, B>
+impl<B> From<&str> for HipPath<'_, B>
 where
     B: Backend,
 {
@@ -79,7 +79,7 @@ where
     }
 }
 
-impl<'borrow, B> From<&OsStr> for HipPath<'borrow, B>
+impl<B> From<&OsStr> for HipPath<'_, B>
 where
     B: Backend,
 {
@@ -89,7 +89,7 @@ where
     }
 }
 
-impl<'borrow, B> From<Box<str>> for HipPath<'borrow, B>
+impl<B> From<Box<str>> for HipPath<'_, B>
 where
     B: Backend,
 {
@@ -99,7 +99,7 @@ where
     }
 }
 
-impl<'borrow, B> From<String> for HipPath<'borrow, B>
+impl<B> From<String> for HipPath<'_, B>
 where
     B: Backend,
 {
@@ -109,7 +109,7 @@ where
     }
 }
 
-impl<'borrow, B> From<OsString> for HipPath<'borrow, B>
+impl<B> From<OsString> for HipPath<'_, B>
 where
     B: Backend,
 {
@@ -119,7 +119,7 @@ where
     }
 }
 
-impl<'borrow, B> From<PathBuf> for HipPath<'borrow, B>
+impl<B> From<PathBuf> for HipPath<'_, B>
 where
     B: Backend,
 {
@@ -210,7 +210,7 @@ where
 
 // Into
 
-impl<'borrow, B> From<HipPath<'borrow, B>> for PathBuf
+impl<B> From<HipPath<'_, B>> for PathBuf
 where
     B: Backend,
 {
@@ -222,7 +222,7 @@ where
     }
 }
 
-impl<'borrow, B> From<HipPath<'borrow, B>> for OsString
+impl<B> From<HipPath<'_, B>> for OsString
 where
     B: Backend,
 {

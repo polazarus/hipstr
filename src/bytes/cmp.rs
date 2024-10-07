@@ -9,9 +9,9 @@ use crate::Backend;
 
 // Equality
 
-impl<'borrow, B> Eq for HipByt<'borrow, B> where B: Backend {}
+impl<B> Eq for HipByt<'_, B> where B: Backend {}
 
-impl<'b1, 'b2, B1, B2> PartialEq<HipByt<'b1, B1>> for HipByt<'b2, B2>
+impl<'b1, B1, B2> PartialEq<HipByt<'b1, B1>> for HipByt<'_, B2>
 where
     B1: Backend,
     B2: Backend,
@@ -54,7 +54,7 @@ symmetric_eq! {
 
 // Order
 
-impl<'borrow, B> Ord for HipByt<'borrow, B>
+impl<B> Ord for HipByt<'_, B>
 where
     B: Backend,
 {
@@ -64,7 +64,7 @@ where
     }
 }
 
-impl<'borrow, B> PartialOrd for HipByt<'borrow, B>
+impl<B> PartialOrd for HipByt<'_, B>
 where
     B: Backend,
 {

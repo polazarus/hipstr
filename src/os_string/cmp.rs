@@ -11,9 +11,9 @@ use crate::Backend;
 
 // Equality
 
-impl<'borrow, B> Eq for HipOsStr<'borrow, B> where B: Backend {}
+impl<B> Eq for HipOsStr<'_, B> where B: Backend {}
 
-impl<'b1, 'b2, B1, B2> PartialEq<HipOsStr<'b1, B1>> for HipOsStr<'b2, B2>
+impl<B1, B2> PartialEq<HipOsStr<'_, B1>> for HipOsStr<'_, B2>
 where
     B1: Backend,
     B2: Backend,
@@ -89,14 +89,14 @@ symmetric_eq! {
     }
 }
 
-impl<'borrow, B: Backend> Ord for HipOsStr<'borrow, B> {
+impl<B: Backend> Ord for HipOsStr<'_, B> {
     #[inline]
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         OsStr::cmp(self, other)
     }
 }
 
-impl<'borrow, B: Backend> PartialOrd for HipOsStr<'borrow, B> {
+impl<B: Backend> PartialOrd for HipOsStr<'_, B> {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         Some(self.cmp(other))

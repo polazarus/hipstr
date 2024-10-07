@@ -684,7 +684,7 @@ where
 }
 
 // Manual implementation needed to remove trait bound on B::RawPointer.
-impl<'borrow, B> Clone for HipOsStr<'borrow, B>
+impl<B> Clone for HipOsStr<'_, B>
 where
     B: Backend,
 {
@@ -695,7 +695,7 @@ where
 }
 
 // Manual implementation needed to remove trait bound on B::RawPointer.
-impl<'borrow, B> Default for HipOsStr<'borrow, B>
+impl<B> Default for HipOsStr<'_, B>
 where
     B: Backend,
 {
@@ -705,7 +705,7 @@ where
     }
 }
 
-impl<'borrow, B> Deref for HipOsStr<'borrow, B>
+impl<B> Deref for HipOsStr<'_, B>
 where
     B: Backend,
 {
@@ -717,7 +717,7 @@ where
     }
 }
 
-impl<'borrow, B> Hash for HipOsStr<'borrow, B>
+impl<B> Hash for HipOsStr<'_, B>
 where
     B: Backend,
 {
@@ -729,7 +729,7 @@ where
 
 // Formatting
 
-impl<'borrow, B> fmt::Debug for HipOsStr<'borrow, B>
+impl<B> fmt::Debug for HipOsStr<'_, B>
 where
     B: Backend,
 {
@@ -748,7 +748,7 @@ where
     owned: OsString,
 }
 
-impl<'a, 'borrow, B> fmt::Debug for RefMut<'a, 'borrow, B>
+impl<B> fmt::Debug for RefMut<'_, '_, B>
 where
     B: Backend,
 {
@@ -757,7 +757,7 @@ where
     }
 }
 
-impl<'a, 'borrow, B> Drop for RefMut<'a, 'borrow, B>
+impl<B> Drop for RefMut<'_, '_, B>
 where
     B: Backend,
 {
@@ -767,7 +767,7 @@ where
     }
 }
 
-impl<'a, 'borrow, B> Deref for RefMut<'a, 'borrow, B>
+impl<B> Deref for RefMut<'_, '_, B>
 where
     B: Backend,
 {
@@ -777,7 +777,7 @@ where
     }
 }
 
-impl<'a, 'borrow, B> DerefMut for RefMut<'a, 'borrow, B>
+impl<B> DerefMut for RefMut<'_, '_, B>
 where
     B: Backend,
 {

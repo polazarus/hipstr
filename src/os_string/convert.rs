@@ -14,7 +14,7 @@ use crate::Backend;
 
 // AsRef
 
-impl<'borrow, B> AsRef<OsStr> for HipOsStr<'borrow, B>
+impl<B> AsRef<OsStr> for HipOsStr<'_, B>
 where
     B: Backend,
 {
@@ -24,7 +24,7 @@ where
     }
 }
 
-impl<'borrow, B> AsRef<std::path::Path> for HipOsStr<'borrow, B>
+impl<B> AsRef<std::path::Path> for HipOsStr<'_, B>
 where
     B: Backend,
 {
@@ -35,7 +35,7 @@ where
 
 // Borrow
 
-impl<'borrow, B> Borrow<OsStr> for HipOsStr<'borrow, B>
+impl<B> Borrow<OsStr> for HipOsStr<'_, B>
 where
     B: Backend,
 {
@@ -48,7 +48,7 @@ where
 // Infallible conversions
 // From
 
-impl<'borrow, B> From<&str> for HipOsStr<'borrow, B>
+impl<B> From<&str> for HipOsStr<'_, B>
 where
     B: Backend,
 {
@@ -58,7 +58,7 @@ where
     }
 }
 
-impl<'borrow, B> From<Box<str>> for HipOsStr<'borrow, B>
+impl<B> From<Box<str>> for HipOsStr<'_, B>
 where
     B: Backend,
 {
@@ -68,7 +68,7 @@ where
     }
 }
 
-impl<'borrow, B> From<String> for HipOsStr<'borrow, B>
+impl<B> From<String> for HipOsStr<'_, B>
 where
     B: Backend,
 {
@@ -78,7 +78,7 @@ where
     }
 }
 
-impl<'borrow, B> From<&OsStr> for HipOsStr<'borrow, B>
+impl<B> From<&OsStr> for HipOsStr<'_, B>
 where
     B: Backend,
 {
@@ -88,7 +88,7 @@ where
     }
 }
 
-impl<'borrow, B> From<OsString> for HipOsStr<'borrow, B>
+impl<B> From<OsString> for HipOsStr<'_, B>
 where
     B: Backend,
 {
@@ -133,7 +133,7 @@ where
 
 // Into
 
-impl<'borrow, B> From<HipOsStr<'borrow, B>> for OsString
+impl<B> From<HipOsStr<'_, B>> for OsString
 where
     B: Backend,
 {
@@ -155,7 +155,7 @@ where
     }
 }
 
-impl<'borrow, B> From<HipOsStr<'borrow, B>> for Vec<u8>
+impl<B> From<HipOsStr<'_, B>> for Vec<u8>
 where
     B: Backend,
 {

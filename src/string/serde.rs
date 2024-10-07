@@ -6,7 +6,7 @@ use crate::alloc::fmt;
 use crate::alloc::string::{String, ToString};
 use crate::Backend;
 
-impl<'borrow, B> Serialize for HipStr<'borrow, B>
+impl<B> Serialize for HipStr<'_, B>
 where
     B: Backend,
 {
@@ -19,7 +19,7 @@ where
     }
 }
 
-impl<'de, 'borrow, B> Deserialize<'de> for HipStr<'borrow, B>
+impl<'de, B> Deserialize<'de> for HipStr<'_, B>
 where
     B: Backend,
 {

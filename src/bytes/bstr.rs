@@ -6,7 +6,7 @@ use bstr::{BStr, BString};
 use super::HipByt;
 use crate::Backend;
 
-impl<'borrow, B> Borrow<BStr> for HipByt<'borrow, B>
+impl<B> Borrow<BStr> for HipByt<'_, B>
 where
     B: Backend,
 {
@@ -16,7 +16,7 @@ where
     }
 }
 
-impl<'borrow, B> AsRef<BStr> for HipByt<'borrow, B>
+impl<B> AsRef<BStr> for HipByt<'_, B>
 where
     B: Backend,
 {
@@ -36,7 +36,7 @@ where
     }
 }
 
-impl<'borrow, B> From<BString> for HipByt<'borrow, B>
+impl<B> From<BString> for HipByt<'_, B>
 where
     B: Backend,
 {
@@ -59,16 +59,15 @@ where
     }
 }
 
-impl<'borrow, B> From<HipByt<'borrow, B>> for BString
+impl<B> From<HipByt<'_, B>> for BString
 where
     B: Backend,
 {
     #[inline]
-    fn from(value: HipByt<'borrow, B>) -> Self {
+    fn from(value: HipByt<'_, B>) -> Self {
         value
             .into_vec()
-            .map(Self::from)
-            .unwrap_or_else(|h| Self::from(h.as_slice()))
+            .map_or_else(|h| Self::from(h.as_slice()), Self::from)
     }
 }
 
