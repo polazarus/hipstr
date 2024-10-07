@@ -11,7 +11,7 @@ use crate::alloc::vec::Vec;
 use crate::bytes::HipByt;
 use crate::Backend;
 
-impl<'borrow, B> AsRef<str> for HipStr<'borrow, B>
+impl<B> AsRef<str> for HipStr<'_, B>
 where
     B: Backend,
 {
@@ -21,7 +21,7 @@ where
     }
 }
 
-impl<'borrow, B> AsRef<[u8]> for HipStr<'borrow, B>
+impl<B> AsRef<[u8]> for HipStr<'_, B>
 where
     B: Backend,
 {
@@ -32,7 +32,7 @@ where
 }
 
 #[cfg(feature = "std")]
-impl<'borrow, B> AsRef<std::ffi::OsStr> for HipStr<'borrow, B>
+impl<B> AsRef<std::ffi::OsStr> for HipStr<'_, B>
 where
     B: Backend,
 {
@@ -42,7 +42,7 @@ where
 }
 
 #[cfg(feature = "std")]
-impl<'borrow, B> AsRef<std::path::Path> for HipStr<'borrow, B>
+impl<B> AsRef<std::path::Path> for HipStr<'_, B>
 where
     B: Backend,
 {
@@ -53,7 +53,7 @@ where
 
 // Infallible conversions
 
-impl<'borrow, B> From<&str> for HipStr<'borrow, B>
+impl<B> From<&str> for HipStr<'_, B>
 where
     B: Backend,
 {
@@ -63,7 +63,7 @@ where
     }
 }
 
-impl<'borrow, B> From<Box<str>> for HipStr<'borrow, B>
+impl<B> From<Box<str>> for HipStr<'_, B>
 where
     B: Backend,
 {
@@ -73,7 +73,7 @@ where
     }
 }
 
-impl<'borrow, B> From<String> for HipStr<'borrow, B>
+impl<B> From<String> for HipStr<'_, B>
 where
     B: Backend,
 {
@@ -96,7 +96,7 @@ where
     }
 }
 
-impl<'borrow, B> From<HipStr<'borrow, B>> for String
+impl<B> From<HipStr<'_, B>> for String
 where
     B: Backend,
 {
@@ -109,7 +109,7 @@ where
 }
 
 #[cfg(feature = "std")]
-impl<'borrow, B> From<HipStr<'borrow, B>> for std::ffi::OsString
+impl<B> From<HipStr<'_, B>> for std::ffi::OsString
 where
     B: Backend,
 {
@@ -132,7 +132,7 @@ where
     }
 }
 
-impl<'borrow, B> From<HipStr<'borrow, B>> for Vec<u8>
+impl<B> From<HipStr<'_, B>> for Vec<u8>
 where
     B: Backend,
 {
@@ -180,7 +180,7 @@ where
     }
 }
 
-impl<'a, 'borrow, B> TryFrom<&'a [u8]> for HipStr<'borrow, B>
+impl<'a, B> TryFrom<&'a [u8]> for HipStr<'_, B>
 where
     B: Backend,
 {
@@ -192,7 +192,7 @@ where
     }
 }
 
-impl<'borrow, B> TryFrom<Vec<u8>> for HipStr<'borrow, B>
+impl<B> TryFrom<Vec<u8>> for HipStr<'_, B>
 where
     B: Backend,
 {
@@ -206,7 +206,7 @@ where
 }
 
 #[cfg(feature = "std")]
-impl<'borrow, B> ToSocketAddrs for HipStr<'borrow, B>
+impl<B> ToSocketAddrs for HipStr<'_, B>
 where
     B: Backend,
 {

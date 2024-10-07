@@ -435,8 +435,11 @@ where
     ///
     /// `range` must be a equivalent to some `a..b` with `a <= b <= len`.
     /// Also, both ends should be **character boundaries**.
+    /// UB in release mode.
     ///
-    /// Panics in debug mode. UB in release mode.
+    /// # Panics
+    ///
+    /// Panics in debug mode if the safety condition is not ensured.
     #[must_use]
     pub unsafe fn slice_unchecked(&self, range: impl RangeBounds<usize>) -> Self {
         #[cfg(debug_assertions)]
@@ -1572,6 +1575,7 @@ where
     #[inline]
     #[must_use]
     pub fn concat_slices(slices: &[&str]) -> Self {
+        #[expect(clippy::transmute_ptr_to_ptr)]
         let slices: &[&[u8]] = unsafe { transmute(slices) };
 
         Self(HipByt::concat_slices(slices))
@@ -1630,6 +1634,7 @@ where
     #[inline]
     #[must_use]
     pub fn join_slices(slices: &[&str], sep: &str) -> Self {
+        #[expect(clippy::transmute_ptr_to_ptr)]
         let slices: &[&[u8]] = unsafe { transmute(slices) };
 
         Self(HipByt::join_slices(slices, sep.as_bytes()))
@@ -1702,7 +1707,7 @@ where
 }
 
 // Manual implementation needed to remove trait bound on B::RawPointer.
-impl<'borrow, B> Clone for HipStr<'borrow, B>
+impl<B> Clone for HipStr<'_, B>
 where
     B: Backend,
 {
@@ -1713,7 +1718,7 @@ where
 }
 
 // Manual implementation needed to remove trait bound on B::RawPointer.
-impl<'borrow, B> Default for HipStr<'borrow, B>
+impl<B> Default for HipStr<'_, B>
 where
     B: Backend,
 {
@@ -1723,7 +1728,7 @@ where
     }
 }
 
-impl<'borrow, B> Deref for HipStr<'borrow, B>
+impl<B> Deref for HipStr<'_, B>
 where
     B: Backend,
 {
@@ -1735,7 +1740,7 @@ where
     }
 }
 
-impl<'borrow, B> Borrow<str> for HipStr<'borrow, B>
+impl<B> Borrow<str> for HipStr<'_, B>
 where
     B: Backend,
 {
@@ -1745,7 +1750,7 @@ where
     }
 }
 
-impl<'borrow, B> Hash for HipStr<'borrow, B>
+impl<B> Hash for HipStr<'_, B>
 where
     B: Backend,
 {
@@ -1757,7 +1762,7 @@ where
 
 // Formatting
 
-impl<'borrow, B> fmt::Debug for HipStr<'borrow, B>
+impl<B> fmt::Debug for HipStr<'_, B>
 where
     B: Backend,
 {
@@ -1767,7 +1772,7 @@ where
     }
 }
 
-impl<'borrow, B> fmt::Display for HipStr<'borrow, B>
+impl<B> fmt::Display for HipStr<'_, B>
 where
     B: Backend,
 {
@@ -1809,9 +1814,9 @@ where
     string: &'a HipStr<'borrow, B>,
 }
 
-impl<'a, 'borrow, B> Eq for SliceError<'a, 'borrow, B> where B: Backend {}
+impl<B> Eq for SliceError<'_, '_, B> where B: Backend {}
 
-impl<'a, 'borrow, B> PartialEq for SliceError<'a, 'borrow, B>
+impl<B> PartialEq for SliceError<'_, '_, B>
 where
     B: Backend,
 {
@@ -1823,7 +1828,7 @@ where
     }
 }
 
-impl<'a, 'borrow, B> Clone for SliceError<'a, 'borrow, B>
+impl<B> Clone for SliceError<'_, '_, B>
 where
     B: Backend,
 {
@@ -1832,7 +1837,7 @@ where
     }
 }
 
-impl<'a, 'borrow, B> Copy for SliceError<'a, 'borrow, B> where B: Backend {}
+impl<B> Copy for SliceError<'_, '_, B> where B: Backend {}
 
 impl<'a, 'borrow, B> SliceError<'a, 'borrow, B>
 where
@@ -1893,7 +1898,7 @@ where
     }
 }
 
-impl<'a, 'borrow, B> fmt::Debug for SliceError<'a, 'borrow, B>
+impl<B> fmt::Debug for SliceError<'_, '_, B>
 where
     B: Backend,
 {
@@ -1907,7 +1912,7 @@ where
     }
 }
 
-impl<'a, 'borrow, B> fmt::Display for SliceError<'a, 'borrow, B>
+impl<B> fmt::Display for SliceError<'_, '_, B>
 where
     B: Backend,
 {
@@ -1942,7 +1947,7 @@ where
     }
 }
 
-impl<'a, 'borrow, B> Error for SliceError<'a, 'borrow, B> where B: Backend {}
+impl<B> Error for SliceError<'_, '_, B> where B: Backend {}
 
 /// A possible error value when converting a [`HipStr`] from a [`HipByt`].
 ///
@@ -1985,9 +1990,9 @@ where
     pub(super) error: Utf8Error,
 }
 
-impl<'borrow, B> Eq for FromUtf8Error<'borrow, B> where B: Backend {}
+impl<B> Eq for FromUtf8Error<'_, B> where B: Backend {}
 
-impl<'borrow, B> PartialEq for FromUtf8Error<'borrow, B>
+impl<B> PartialEq for FromUtf8Error<'_, B>
 where
     B: Backend,
 {
@@ -1996,7 +2001,7 @@ where
     }
 }
 
-impl<'borrow, B> Clone for FromUtf8Error<'borrow, B>
+impl<B> Clone for FromUtf8Error<'_, B>
 where
     B: Backend,
 {
@@ -2008,7 +2013,7 @@ where
     }
 }
 
-impl<'borrow, B> fmt::Debug for FromUtf8Error<'borrow, B>
+impl<B> fmt::Debug for FromUtf8Error<'_, B>
 where
     B: Backend,
 {
@@ -2063,7 +2068,7 @@ where
     ///
     /// assert_eq!(bytes, value.unwrap_err().into_bytes());
     /// ```
-    #[allow(clippy::missing_const_for_fn)] // cannot const it for now, clippy bug
+    // #[allow(clippy::missing_const_for_fn)] // cannot const it for now, clippy bug
     #[must_use]
     pub fn into_bytes(self) -> HipByt<'borrow, B> {
         self.bytes
@@ -2099,7 +2104,7 @@ where
     }
 }
 
-impl<'borrow, B> fmt::Display for FromUtf8Error<'borrow, B>
+impl<B> fmt::Display for FromUtf8Error<'_, B>
 where
     B: Backend,
 {
@@ -2108,7 +2113,7 @@ where
     }
 }
 
-impl<'borrow, B> Error for FromUtf8Error<'borrow, B> where B: Backend {}
+impl<B> Error for FromUtf8Error<'_, B> where B: Backend {}
 
 /// A wrapper type for a mutably borrowed [`String`] out of a [`HipStr`].
 pub struct RefMut<'a, 'borrow, B>
@@ -2119,7 +2124,7 @@ where
     owned: String,
 }
 
-impl<'a, 'borrow, B> Drop for RefMut<'a, 'borrow, B>
+impl<B> Drop for RefMut<'_, '_, B>
 where
     B: Backend,
 {
@@ -2129,7 +2134,7 @@ where
     }
 }
 
-impl<'a, 'borrow, B> Deref for RefMut<'a, 'borrow, B>
+impl<B> Deref for RefMut<'_, '_, B>
 where
     B: Backend,
 {
@@ -2139,7 +2144,7 @@ where
     }
 }
 
-impl<'a, 'borrow, B> DerefMut for RefMut<'a, 'borrow, B>
+impl<B> DerefMut for RefMut<'_, '_, B>
 where
     B: Backend,
 {

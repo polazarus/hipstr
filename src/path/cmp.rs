@@ -12,9 +12,9 @@ use crate::Backend;
 
 // Equality
 
-impl<'borrow, B> Eq for HipPath<'borrow, B> where B: Backend {}
+impl<B> Eq for HipPath<'_, B> where B: Backend {}
 
-impl<'b1, 'b2, B1, B2> PartialEq<HipPath<'b1, B1>> for HipPath<'b2, B2>
+impl<B1, B2> PartialEq<HipPath<'_, B1>> for HipPath<'_, B2>
 where
     B1: Backend,
     B2: Backend,
@@ -94,7 +94,7 @@ symmetric_eq! {
     }
 }
 
-impl<'borrow, B> Ord for HipPath<'borrow, B>
+impl<B> Ord for HipPath<'_, B>
 where
     B: Backend,
 {
@@ -104,7 +104,7 @@ where
     }
 }
 
-impl<'borrow, B> PartialOrd for HipPath<'borrow, B>
+impl<B> PartialOrd for HipPath<'_, B>
 where
     B: Backend,
 {

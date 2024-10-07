@@ -55,7 +55,7 @@ impl<B: Backend> TaggedRawRc<B> {
         debug_assert!(self.0 & MASK == TAG);
 
         // SAFETY: remove a 2-bit tag to a non-null pointer with the same
-        // alignment as usize (typically 4 bytes on 32-bit architectures, and
+        // alignment as usize (typically 4 on 32-bit architectures, and
         // more on 64-bit architectures)
         unsafe {
             // TODO use strict and exposed provenance API once stabilized
@@ -64,10 +64,10 @@ impl<B: Backend> TaggedRawRc<B> {
 
             debug_assert!(!new_ptr.is_null());
 
-            this = transmute(new_ptr);
-
             #[cfg(miri)]
-            let _ = this.as_ref(); // check provenance early
+            let _ = &*new_ptr; // check provenance early
+
+            this = transmute::<*mut rc::Inner<_, _>, rc::Raw<_, _>>(new_ptr);
 
             debug_assert!(this.is_valid());
         }
@@ -77,8 +77,8 @@ impl<B: Backend> TaggedRawRc<B> {
 
     /// Checks if the tag is valid.
     #[inline]
-    fn check_tag(self) -> bool {
-        self.0 as usize & MASK == TAG
+    const fn check_tag(self) -> bool {
+        self.0 & MASK == TAG
     }
 }
 

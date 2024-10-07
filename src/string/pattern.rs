@@ -37,7 +37,7 @@ where
     inner: I,
 }
 
-impl<'haystack, 'borrow, B, I: Clone> Clone for IterWrapper<'haystack, 'borrow, B, I>
+impl<B, I: Clone> Clone for IterWrapper<'_, '_, B, I>
 where
     B: Backend,
 {
@@ -58,7 +58,7 @@ where
     }
 }
 
-impl<'haystack, 'borrow, B, S> Iterator for IterWrapper<'haystack, 'borrow, B, S>
+impl<'borrow, B, S> Iterator for IterWrapper<'_, 'borrow, B, S>
 where
     B: Backend,
     S: Iterator,
@@ -74,7 +74,7 @@ where
     }
 }
 
-impl<'haystack, 'borrow, B, S> DoubleEndedIterator for IterWrapper<'haystack, 'borrow, B, S>
+impl<'borrow, B, S> DoubleEndedIterator for IterWrapper<'_, 'borrow, B, S>
 where
     B: Backend,
     S: Iterator + DoubleEndedIterator,

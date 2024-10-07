@@ -127,7 +127,7 @@ fn test_borrowed() {
 
 #[test]
 fn test_from_static() {
-    fn is_static_type<T: 'static>(_: &T) {}
+    const fn is_static_type<T: 'static>(_: &T) {}
 
     let s = ALPHABET;
     let h = H::from_static(s);
@@ -653,7 +653,7 @@ fn test_shrink_to_fit() {
     assert_eq!(h.as_ptr(), h2.as_ptr());
     h.shrink_to_fit();
     assert_ne!(h.as_ptr(), h2.as_ptr());
-    assert_eq!(h, &MEDIUM[..(INLINE_CAPACITY + 1)]);
+    assert_eq!(h, &MEDIUM[..=INLINE_CAPACITY]);
 
     let mut h = H::from(&MEDIUM[..INLINE_CAPACITY]);
     assert!(h.is_inline());
@@ -727,7 +727,7 @@ fn test_truncate() {
     let mut h = H::from(MEDIUM);
     h.truncate(INLINE_CAPACITY + 1);
     assert!(h.is_allocated());
-    assert_eq!(h, &MEDIUM[..(INLINE_CAPACITY + 1)]);
+    assert_eq!(h, &MEDIUM[..=INLINE_CAPACITY]);
 
     let mut h = H::from(&MEDIUM[..INLINE_CAPACITY]);
     h.truncate(1);
@@ -773,7 +773,7 @@ fn test_pop() {
     assert_eq!(h.pop(), Some('*'));
     assert_eq!(h, &MEDIUM[..INLINE_CAPACITY - 1]);
 
-    let mut h = H::from(&MEDIUM[..INLINE_CAPACITY + 1]);
+    let mut h = H::from(&MEDIUM[..=INLINE_CAPACITY]);
     assert_eq!(h.pop(), Some('*'));
     assert!(h.is_inline());
     assert_eq!(h, &MEDIUM[..INLINE_CAPACITY]);
@@ -847,9 +847,8 @@ fn test_to_owned() {
     drop(v);
     assert_eq!(a, &r[0..2]);
 
-    let v = r.clone();
-    let a = H::from(&v[..]);
-    drop(v);
+    let a = H::from(&r[..]);
+    drop(r);
     let p = a.as_ptr();
     let a = a.into_owned();
     assert_eq!(a.as_ptr(), p);
@@ -1068,7 +1067,7 @@ fn test_join_bad_iter() {
         }
     }
 
-    let _h = H::join(I(Some(Rc::new(Cell::new("long")))), ",".to_string());
+    let _h = H::join(I(Some(Rc::new(Cell::new("long")))), ",");
 }
 
 #[test]
@@ -1113,8 +1112,8 @@ fn option_eq<'a>(computed: Option<H<'a>>, expected: Option<&'a str>) {
 #[inline]
 #[track_caller]
 fn iter_eq_bidir<'a>(
-    computed: impl Iterator<Item = H<'a>> + DoubleEndedIterator + Clone,
-    expected: impl Iterator<Item = &'a str> + DoubleEndedIterator + Clone,
+    computed: impl DoubleEndedIterator<Item = H<'a>> + Clone,
+    expected: impl DoubleEndedIterator<Item = &'a str> + Clone,
 ) {
     iter_eq(computed.clone(), expected.clone());
     iter_eq(computed.rev(), expected.rev());
@@ -1287,7 +1286,7 @@ fn test_into_bytes() {
 
 #[test]
 fn test_from_utf16() {
-    let v = [b'a' as u16].repeat(42);
+    let v = [u16::from(b'a')].repeat(42);
     assert_eq!(H::from_utf16(&v[0..4]).unwrap(), A.repeat(4));
     assert_eq!(H::from_utf16(&v).unwrap(), A.repeat(42));
     assert!(H::from_utf16(&[0xD834]).is_err());
@@ -1295,7 +1294,7 @@ fn test_from_utf16() {
 
 #[test]
 fn test_from_utf16_lossy() {
-    let v = [b'a' as u16].repeat(42);
+    let v = [u16::from(b'a')].repeat(42);
     assert_eq!(H::from_utf16_lossy(&v[0..4]), A.repeat(4));
     assert_eq!(H::from_utf16_lossy(&v), A.repeat(42));
     assert_eq!(H::from_utf16_lossy(&[0xD834]), "\u{FFFD}");

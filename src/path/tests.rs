@@ -41,7 +41,7 @@ fn test_borrow_and_hash() {
 fn test_fmt() {
     let source: &OsStr = "Rust \u{1F980}".as_ref();
     let a = HipPath::borrowed(source);
-    assert_eq!(format!("{:?}", a), format!("{:?}", source));
+    assert_eq!(format!("{a:?}"), format!("{source:?}"));
 }
 
 #[test]
@@ -68,7 +68,7 @@ fn test_borrowed() {
 
 #[test]
 fn test_from_static() {
-    fn is_static_type<T: 'static>(_: &T) {}
+    const fn is_static_type<T: 'static>(_: &T) {}
 
     let s = "abcdefghijklmnopqrstuvwxyz";
     let path = HipPath::from_static(s);
@@ -205,7 +205,7 @@ fn test_into_str() {
     {
         use std::ffi::OsString;
         use std::os::windows::ffi::OsStringExt;
-        let shorts = [b'a' as u16, b'b' as u16, b'c' as u16, 0xD800];
+        let shorts = [u16::from(b'a'), u16::from(b'b'), u16::from(b'c'), 0xD800];
         let source = OsString::from_wide(&shorts);
         let hp = HipPath::from(source);
         let _ = hp.into_str().unwrap_err();
@@ -310,9 +310,8 @@ fn test_to_owned() {
     drop(v);
     assert_eq!(a, Path::new(&r[0..2]));
 
-    let v = r.clone();
-    let a = HipPath::from(&v[..]);
-    drop(v);
+    let a = HipPath::from(&r[..]);
+    drop(r);
     let p = a.0.as_ptr();
     let a = a.into_owned();
     assert_eq!(a.0.as_ptr(), p);

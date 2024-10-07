@@ -64,7 +64,7 @@ fn test_borrow_and_hash() {
 fn test_fmt() {
     let source: &OsStr = "Rust \u{1F980}".as_ref();
     let a = HipOsStr::borrowed(source);
-    assert_eq!(format!("{:?}", a), format!("{:?}", source));
+    assert_eq!(format!("{a:?}"), format!("{source:?}"));
 }
 
 #[test]
@@ -91,7 +91,7 @@ fn test_borrowed() {
 
 #[test]
 fn test_from_static() {
-    fn is_static_type<T: 'static>(_: &T) {}
+    const fn is_static_type<T: 'static>(_: &T) {}
 
     let s = "abcdefghijklmnopqrstuvwxyz";
     let string = HipOsStr::from_static(s);
@@ -307,7 +307,7 @@ fn test_to_owned() {
     drop(v);
     assert_eq!(a, &r[0..2]);
 
-    let v = r.clone();
+    let v = r;
     let a = HipOsStr::from(&v[..]);
     drop(v);
     let p = a.as_ptr();
@@ -327,7 +327,7 @@ fn test_into_str() {
     {
         use std::ffi::OsString;
         use std::os::windows::ffi::OsStringExt;
-        let shorts = [b'a' as u16, b'b' as u16, b'c' as u16, 0xD800];
+        let shorts = [u16::from(b'a'), u16::from(b'b'), u16::from(b'c'), 0xD800];
         let source = OsString::from_wide(&shorts);
         let ho = HipOsStr::from(source);
         let _ = ho.into_str().unwrap_err();
@@ -353,7 +353,7 @@ fn test_to_str() {
     {
         use std::ffi::OsString;
         use std::os::windows::ffi::OsStringExt;
-        let shorts = [b'a' as u16, b'b' as u16, b'c' as u16, 0xD800];
+        let shorts = [u16::from(b'a'), u16::from(b'b'), u16::from(b'c'), 0xD800];
         let source = OsString::from_wide(&shorts);
         let ho = HipOsStr::from(source);
         assert!(ho.to_str().is_none());
@@ -379,7 +379,7 @@ fn test_to_str_lossy() {
     {
         use std::ffi::OsString;
         use std::os::windows::ffi::OsStringExt;
-        let shorts = [b'a' as u16, b'b' as u16, b'c' as u16, 0xD800];
+        let shorts = [u16::from(b'a'), u16::from(b'b'), u16::from(b'c'), 0xD800];
         let source = OsString::from_wide(&shorts);
         let ho = HipOsStr::from(source);
         let hs = ho.to_str_lossy();
@@ -395,7 +395,7 @@ fn test_to_str_lossy() {
     }
 }
 
-/// Gets a OsStr slice out of an HipOsStr.
+/// Gets an `OsStr` slice out of a `HipOsStr`.
 ///
 /// # Safety
 ///

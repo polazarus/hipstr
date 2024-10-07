@@ -14,14 +14,14 @@ struct MyStruct<'a> {
 
 #[test]
 fn test_serde() {
-    let ref empty = HipByt::new();
+    let empty = &HipByt::new();
     assert_ser_tokens(empty, &[Token::Bytes(b"")]);
     assert_de_tokens(empty, &[Token::Bytes(b"")]);
     assert_de_tokens(empty, &[Token::ByteBuf(b"")]);
     assert_de_tokens(empty, &[Token::BorrowedBytes(b"")]);
     assert_de_tokens(empty, &[Token::Seq { len: Some(0) }, Token::SeqEnd]);
 
-    let ref small = HipByt::from(&[1, 2, 3]);
+    let small = &HipByt::from(&[1, 2, 3]);
     assert_tokens(small, &[Token::Bytes(b"\x01\x02\x03")]);
     assert_de_tokens(small, &[Token::ByteBuf(b"\x01\x02\x03")]);
     assert_de_tokens(small, &[Token::BorrowedBytes(b"\x01\x02\x03")]);

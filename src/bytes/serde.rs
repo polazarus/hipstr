@@ -5,7 +5,7 @@ use crate::alloc::borrow::Cow;
 use crate::alloc::vec::Vec;
 use crate::Backend;
 
-impl<'borrow, B> Serialize for HipByt<'borrow, B>
+impl<B> Serialize for HipByt<'_, B>
 where
     B: Backend,
 {
@@ -17,7 +17,7 @@ where
     }
 }
 
-impl<'de, 'borrow, B> Deserialize<'de> for HipByt<'borrow, B>
+impl<'de, B> Deserialize<'de> for HipByt<'_, B>
 where
     B: Backend,
 {

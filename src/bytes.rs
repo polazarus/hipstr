@@ -125,6 +125,7 @@ where
     /// assert_eq!(s.as_ptr(), p);
     /// ```
     #[inline]
+    #[must_use]
     pub fn with_capacity(cap: usize) -> Self {
         Self(Raw::with_capacity(cap))
     }
@@ -696,7 +697,7 @@ where
     /// assert_eq!(s.capacity(), HipByt::inline_capacity());
     /// ```
     pub fn shrink_to(&mut self, min_capacity: usize) {
-        self.0.shrink_to(min_capacity)
+        self.0.shrink_to(min_capacity);
     }
 
     pub(crate) fn take_vec(&mut self) -> Vec<u8> {
@@ -705,7 +706,7 @@ where
 
     #[cfg(test)]
     #[inline]
-    pub(crate) fn is_normalized(&self) -> bool {
+    pub(crate) const fn is_normalized(&self) -> bool {
         self.0.is_normalized()
     }
 
@@ -893,7 +894,15 @@ where
                 dst_ptr.add(len)
             }
         });
-        debug_assert_eq!(unsafe { final_ptr.offset_from(dst_ptr) } as usize, new_len);
+
+        debug_assert_eq!(
+            {
+                #[expect(clippy::cast_sign_loss)]
+                let diff_u = unsafe { final_ptr.offset_from(dst_ptr) } as usize;
+                diff_u
+            },
+            new_len
+        );
 
         unsafe { raw.set_len(new_len) };
 
@@ -1161,7 +1170,7 @@ where
     }
 }
 
-impl<'borrow, B> Clone for HipByt<'borrow, B>
+impl<B> Clone for HipByt<'_, B>
 where
     B: Backend,
 {
@@ -1171,7 +1180,7 @@ where
     }
 }
 
-impl<'borrow, B> Default for HipByt<'borrow, B>
+impl<B> Default for HipByt<'_, B>
 where
     B: Backend,
 {
@@ -1181,7 +1190,7 @@ where
     }
 }
 
-impl<'borrow, B> Deref for HipByt<'borrow, B>
+impl<B> Deref for HipByt<'_, B>
 where
     B: Backend,
 {
@@ -1193,7 +1202,7 @@ where
     }
 }
 
-impl<'borrow, B> Borrow<[u8]> for HipByt<'borrow, B>
+impl<B> Borrow<[u8]> for HipByt<'_, B>
 where
     B: Backend,
 {
@@ -1203,7 +1212,7 @@ where
     }
 }
 
-impl<'borrow, B> Hash for HipByt<'borrow, B>
+impl<B> Hash for HipByt<'_, B>
 where
     B: Backend,
 {
@@ -1215,7 +1224,7 @@ where
 
 // Formatting
 
-impl<'borrow, B> fmt::Debug for HipByt<'borrow, B>
+impl<B> fmt::Debug for HipByt<'_, B>
 where
     B: Backend,
 {
@@ -1289,7 +1298,7 @@ where
     bytes: &'a HipByt<'borrow, B>,
 }
 
-impl<'a, 'borrow, B> Clone for SliceError<'a, 'borrow, B>
+impl<B> Clone for SliceError<'_, '_, B>
 where
     B: Backend,
 {
@@ -1298,11 +1307,11 @@ where
     }
 }
 
-impl<'a, 'borrow, B> Copy for SliceError<'a, 'borrow, B> where B: Backend {}
+impl<B> Copy for SliceError<'_, '_, B> where B: Backend {}
 
-impl<'a, 'borrow, B> Eq for SliceError<'a, 'borrow, B> where B: Backend {}
+impl<B> Eq for SliceError<'_, '_, B> where B: Backend {}
 
-impl<'a, 'borrow, B> PartialEq for SliceError<'a, 'borrow, B>
+impl<B> PartialEq for SliceError<'_, '_, B>
 where
     B: Backend,
 {
@@ -1314,7 +1323,7 @@ where
     }
 }
 
-impl<'a, 'borrow, B> SliceError<'borrow, 'a, B>
+impl<'a, B> SliceError<'_, 'a, B>
 where
     B: Backend,
 {
@@ -1363,7 +1372,7 @@ where
     }
 }
 
-impl<'a, 'borrow, B> fmt::Debug for SliceError<'a, 'borrow, B>
+impl<B> fmt::Debug for SliceError<'_, '_, B>
 where
     B: Backend,
 {
@@ -1377,7 +1386,7 @@ where
     }
 }
 
-impl<'a, 'borrow, B> fmt::Display for SliceError<'a, 'borrow, B>
+impl<B> fmt::Display for SliceError<'_, '_, B>
 where
     B: Backend,
 {
@@ -1404,7 +1413,7 @@ where
     }
 }
 
-impl<'a, 'borrow, B> Error for SliceError<'a, 'borrow, B> where B: Backend {}
+impl<B> Error for SliceError<'_, '_, B> where B: Backend {}
 
 /// A wrapper type for a mutably borrowed vector out of a [`HipByt`].
 pub struct RefMut<'a, 'borrow, B>
@@ -1415,7 +1424,7 @@ where
     owned: Owned,
 }
 
-impl<'a, 'borrow, B> Drop for RefMut<'a, 'borrow, B>
+impl<B> Drop for RefMut<'_, '_, B>
 where
     B: Backend,
 {
@@ -1425,7 +1434,7 @@ where
     }
 }
 
-impl<'a, 'borrow, B> Deref for RefMut<'a, 'borrow, B>
+impl<B> Deref for RefMut<'_, '_, B>
 where
     B: Backend,
 {
@@ -1436,7 +1445,7 @@ where
     }
 }
 
-impl<'a, 'borrow, B> DerefMut for RefMut<'a, 'borrow, B>
+impl<B> DerefMut for RefMut<'_, '_, B>
 where
     B: Backend,
 {

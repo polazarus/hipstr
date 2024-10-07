@@ -6,7 +6,7 @@ type R = Raw<'static, Local>;
 #[test]
 fn test_niche() {
     type O = Option<R>;
-    assert_eq!(size_of::<O>(), size_of::<R>())
+    assert_eq!(size_of::<O>(), size_of::<R>());
 }
 
 #[test]
