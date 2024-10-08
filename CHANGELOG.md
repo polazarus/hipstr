@@ -2,7 +2,7 @@
 
 Notable changes only.
 
-## [unreleased]
+## [0.6.0] - 2024-10-08
 
 ### Changed
 
@@ -14,6 +14,8 @@ Notable changes only.
 - fix doc issue [#28](https://github.com/polazarus/hipstr/issues/28)
 - fix MIRI check due to provenance loss
   [#32](https://github.com/polazarus/hipstr/pull/32)
+
+- fix some new clippy lints (and some future lints)
 
 ## [0.5.1] - 2024-08-02
 
@@ -124,7 +126,8 @@ Most of those addition are breaking because they shadows `str`'s methods.
 
 Initial release
 
-[unreleased]: https://github.com/polazarus/hipstr/compare/0.5.1...HEAD
+<!-- [unreleased]: https://github.com/polazarus/hipstr/compare/0.6.1...HEAD -->
+[0.6.0]: https://github.com/polazarus/hipstr/compare/0.5.1...0.6.0
 [0.5.1]: https://github.com/polazarus/hipstr/compare/0.5.0...0.5.1
 [0.5.0]: https://github.com/polazarus/hipstr/compare/0.4.0...0.5.0
 [0.4.0]: https://github.com/polazarus/hipstr/compare/0.3.3...0.4.0
