@@ -35,10 +35,14 @@
 //!
 //! The shared reference can be thread-safe or not, depending on the backend.
 //!
+//! Most operations keep string **normalized**, that is, if the string is not
+//! borrowed, the inline representation is preferred when possible.
+//!
 //! ## ⚠️ Warning!
 //!
-//! The used representation of the empty string is **unspecified** and may change between patch versions!
-//! It may be _borrowed_ or _inlined_ but will never be allocated.
+//! The used representation of the empty string is **unspecified** and may
+//! change between patch versions! It may be _borrowed_ or _inlined_ but will
+//! never be allocated.
 //!
 //! # Two Backends
 //!
@@ -60,18 +64,24 @@
 //! - pointer alignment requirement is strictly greater than **2**.
 //!
 //! For now, most common architectures are like that. However, `hipstr` will not
-//! work on new and future architectures relying on large tagged pointers
-//! (e.g. CHERI 128-bit pointers).
+//! work on new and future architectures relying on large tagged pointers (e.g.
+//! CHERI 128-bit pointers).
 //!
 //! # Features
 //!
-//! * `std` (default): uses `std` rather than `core` and `alloc`, and also provides more trait implementations (for comparison, conversions, and errors)
+//! * `std` (default): uses `std` rather than `core` and `alloc`, and also
+//!   provides more trait implementations (for comparison, conversions)
 //! * `serde`: provides serialization/deserialization support with `serde` crate
-//! * `unstable`: exposes internal `Backend` trait that may change at any moment
+//! * `bstr`: provides compatibility with [BurntSushi's bstr
+//!   crate](https://github.com/BurntSushi/bstr) make `HipByt` deref to
+//!   [`&bstr::BStr`](bstr::BStr) rather than [`&[u8]`]
+//! * `unstable`: do nothing, used to reveal unstable implementation details
 
 #![cfg_attr(miri, feature(strict_provenance))]
 #![cfg_attr(miri, feature(exposed_provenance))]
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(not(feature = "std"), no_std)]
 #![warn(clippy::pedantic, clippy::nursery, clippy::cargo)]
 #![warn(unsafe_op_in_unsafe_fn)]
@@ -104,16 +114,16 @@ pub type HipOsStr<'borrow> = os_string::HipOsStr<'borrow, ThreadSafe>;
 #[cfg(feature = "std")]
 pub type HipPath<'borrow> = path::HipPath<'borrow, ThreadSafe>;
 
-/// Thread-local byte sequence.
+/// Thread-local shared byte sequence.
 pub type LocalHipByt<'borrow> = bytes::HipByt<'borrow, Local>;
 
-/// Thread-local string.
+/// Thread-local shared string.
 pub type LocalHipStr<'borrow> = string::HipStr<'borrow, Local>;
 
-/// Thread-local byte sequence.
+/// Thread-local shared byte sequence.
 #[cfg(feature = "std")]
 pub type LocalHipOsStr<'borrow> = os_string::HipOsStr<'borrow, Local>;
 
-/// Thread-local byte sequence.
+/// Thread-local shared byte sequence.
 #[cfg(feature = "std")]
 pub type LocalHipPath<'borrow> = path::HipPath<'borrow, Local>;
