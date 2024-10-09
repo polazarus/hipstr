@@ -12,6 +12,9 @@ edition = "2021"
 readme = "README.md"
 rust-version = "1.81.0"
 
+[package.metadata.docs.rs]
+all-features = true
+
 [features]
 default = ["std"]
 std = ["serde/std", "serde_bytes/std"]
@@ -52,4 +55,4 @@ default-features = false
 features = ["alloc"]
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage_nightly)'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage_nightly)', 'cfg(docsrs)'] }
