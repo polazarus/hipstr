@@ -12,10 +12,11 @@ pub trait Count {
     /// Creates a new counter that starts at one.
     fn one() -> Self;
 
-    /// Increments the counter and returns true iff the counter reaches `usize::MAX`.
+    /// Increments the counter and returns `true` iff the counter reaches
+    /// `usize::MAX`.
     fn incr(&self) -> bool;
 
-    /// Decrements the counter and returns true iff the counter reaches zero.
+    /// Decrements the counter and returns `true` iff the counter reaches zero.
     fn decr(&self) -> bool;
 
     /// Returns the current value of the counter.
@@ -25,7 +26,7 @@ pub trait Count {
 /// Local (thread-unsafe) reference counter.
 pub struct Local(Cell<usize>);
 
-/// Thread-safe reference counter.
+/// Atomic (thread-safe) reference counter.
 #[cfg(target_has_atomic = "ptr")]
 pub struct ThreadSafe(AtomicUsize);
 

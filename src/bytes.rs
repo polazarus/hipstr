@@ -509,8 +509,14 @@ where
     ///
     /// This operation may reallocate a new vector if either:
     ///
-    /// - the representation is not an allocated buffer (inline array or static borrow),
+    /// - the representation is not _allocated_ (i.e. _inline_ or _borrowed_),
     /// - the underlying buffer is shared.
+    ///
+    /// At the end, when the [`RefMut`] is dropped, the underlying
+    /// representation will be owned and normalized. That is, if the actual
+    /// required capacity is less than or equal to the maximal inline capacity,
+    /// the representation is _inline_; otherwise, the representation is
+    /// _allocated_.
     ///
     /// # Examples
     ///

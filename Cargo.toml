@@ -12,6 +12,9 @@ edition = "2021"
 readme = "README.md"
 rust-version = "1.81.0"
 
+[package.metadata.docs.rs]
+all-features = true
+
 [features]
 default = ["std"]
 std = ["serde/std"]
@@ -37,4 +40,4 @@ sptr = "0.3.2"
 members = ['string-comparison']
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage_nightly)'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage_nightly)', 'cfg(docsrs)'] }
