@@ -14,7 +14,7 @@ rust-version = "1.81.0"
 
 [features]
 default = ["std"]
-std = ["serde/std"]
+std = ["serde/std", "serde_bytes/std"]
 unstable = []
 serde = ["dep:serde", "dep:serde_bytes"]
 bstr = ["dep:bstr"]
@@ -22,19 +22,34 @@ bstr = ["dep:bstr"]
 [dev-dependencies]
 fastrand = "2.0.0"
 serde_test = "1.0.176"
-serde = { version = "1.0.69", default-features = false, features = ["derive", "alloc"] }
-serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
-
-[dependencies]
-bstr = { version = "1.9.1", optional = true, features = ["alloc"] }
-serde = { version = "1.0.69", optional = true, default-features = false, features = [] }
-serde_bytes = { version = "0.11.5", optional = true, default-features = false, features = [
+serde = { version = "1.0.100", default-features = false, features = [
+    "derive",
     "alloc",
 ] }
+serde_json = { version = "1.0.45", default-features = false, features = [
+    "alloc",
+] }
+
+[dependencies]
 sptr = "0.3.2"
 
-[workspace]
-members = ['string-comparison']
+[dependencies.bstr]
+version = "1"
+optional = true
+default-features = false
+features = ["alloc"]
+
+[dependencies.serde]
+version = "1.0.100"
+optional = true
+default-features = false
+features = ["alloc"]
+
+[dependencies.serde_bytes]
+version = "0.11.3"
+optional = true
+default-features = false
+features = ["alloc"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage_nightly)'] }
