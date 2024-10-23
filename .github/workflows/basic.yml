@@ -113,6 +113,12 @@ jobs:
       - name: Check with minimal versions
         run: cargo minimal-versions check
 
+      - name: Check with minimal versions (all-features)
+        run: cargo minimal-versions check --all-features
+
+      - name: Check with minimal versions (serde only)
+        run: cargo minimal-versions check --no-default-features -F serde
+
   no_std:
     runs-on: ubuntu-latest
 

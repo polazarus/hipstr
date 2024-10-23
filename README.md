@@ -121,7 +121,7 @@ cargo +nightly miri test --target i686-unknown-linux-gnu
 | [`smallstr`](https://github.com/murarth/smallstr)              | ❌                      | ❌                | 🟢     | ❌          | ❌     | ❌      |                                                                                                        |
 | [`smol_str`](https://github.com/rust-analyzer/smol_str)        | ❌                      | ❌                | 🟢\*   | ❌          | ❌     | ❌      | \*but only inline string, here for reference                                                           |
 
-skipping specialized string types like [`tinystr`](https://github.com/unicode-org/icu4x) (ASCII-only, bounded), or bstr, or bytestring, or...
+skipping specialized string types like [`tinystr`](https://github.com/unicode-org/icu4x) (ASCII-only, bounded), or `bstr`, or `bytestring`, or...
 
 In short, `HipStr`, one string type to rule them all 😉
 
@@ -131,9 +131,7 @@ In short, `HipStr`, one string type to rule them all 😉
 
 While speed is not the main motivator for `hipstr`, it seems to be doing OK on that front.
 
-On my i7-8550U, under Arch Linux over Windows 11/WSL 2 (yeah I know 😅), the creation of a `HipStr` from a slice is competitive with other crates and the `std`:
-
-![string-comparison/chart.svg](string-comparison/chart.svg)
+See some actual benchmarks on [Rust's String Rosetta](https://github.com/rosetta-rs/string-rosetta-rs).
 
 ## 📖 Author and licenses
 
