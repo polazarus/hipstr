@@ -1,15 +1,25 @@
 //! Sealed backend trait and the built-in implementations.
 
-pub mod rc;
-
-pub use rc::Local;
+/// Shared (thread-safe) reference counted backend.
 #[cfg(target_has_atomic = "ptr")]
-pub use rc::ThreadSafe;
+pub use crate::smart::Arc;
+/// Use a local reference counted backend.
+pub use crate::smart::Rc;
+/// Use a unique reference.
+pub use crate::smart::Unique;
+
+#[deprecated(note = "renamed to Rc")]
+pub type Local = crate::smart::Rc;
+
+#[deprecated(note = "renamed to Arc")]
+pub type ThreadSafe = crate::smart::Arc;
 
 /// Sealed marker trait for allocated backend.
-pub trait Backend: rc::Count + 'static {}
+pub trait Backend: crate::smart::Kind + 'static {}
 
-impl Backend for Local {}
+impl Backend for Rc {}
 
 #[cfg(target_has_atomic = "ptr")]
-impl Backend for ThreadSafe {}
+impl Backend for Arc {}
+
+impl Backend for Unique {}

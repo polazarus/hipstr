@@ -97,15 +97,11 @@ cargo +nightly miri test --target mips64-unknown-linux-gnuabi64
 cargo +nightly miri test --target i686-unknown-linux-gnu
 ```
 
-[Codecov]: https://app.codecov.io/gh/polazarus/hipstr
-[`cross`]: https://github.com/cross-rs/cross
-[Miri]: https://github.com/rust-lang/miri
-
 ## 📦 Similar crates
 
 `#[non_exhaustive]`
 
-| Name                                                           | Thread-safe cheap-clone | Local cheap-clone | Inline | Cheap slice | Bytes  | Cow<'a> | Comment                                                                                                |
+| Name                                                           | Thread-safe cheap-clone | Local cheap-clone | Inline | Cheap slice | Bytes  | Cow\<'a> | Comment                                                                                                |
 | -------------------------------------------------------------- | ----------------------- | ----------------- | ------ | ----------- | ------ | ------- | :----------------------------------------------------------------------------------------------------- |
 | `hipstr`                                                       | 🟢                      | 🟢                | 🟢     | 🟢          | 🟢     | 🟢      | obviously!                                                                                             |
 | [`arcstr`](https://github.com/thomcc/arcstr)                   | 🟢\*                    | ❌                | ❌     | ❌\*\*      | ❌     | ❌      | \*use a custom thin `Arc`, \*\*heavy slice (with dedicated substring type)                             |
@@ -139,3 +135,7 @@ For now, just me PoLazarus 👻 \
 Help welcome! 🚨
 
 MIT + Apache
+
+[codecov]: https://app.codecov.io/gh/polazarus/hipstr
+[miri]: https://github.com/rust-lang/miri
+[`cross`]: https://github.com/cross-rs/cross

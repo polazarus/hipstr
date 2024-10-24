@@ -2,6 +2,16 @@
 
 Notable changes only.
 
+## Unreleased
+
+###  Added
+
+- add new unique (non-shared) strings and byte vectors
+
+### Changed
+
+- refactor the backend to support unique
+
 ## [0.6.0] - 2024-10-08
 
 ### Changed

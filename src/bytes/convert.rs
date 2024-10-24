@@ -107,7 +107,7 @@ mod tests {
     use super::*;
     use crate::alloc::borrow::Cow;
     use crate::alloc::vec;
-    use crate::{HipByt, ThreadSafe};
+    use crate::{Arc, HipByt};
 
     #[test]
     fn test_as_ref() {
@@ -140,7 +140,7 @@ mod tests {
         assert_eq!(fv.as_slice(), &a);
         assert!(ptr::eq(fv.as_ptr(), ptr_b));
 
-        type H<'a> = crate::bytes::HipByt<'a, ThreadSafe>;
+        type H<'a> = crate::bytes::HipByt<'a, Arc>;
         let fc1 = H::from(c1);
         assert_eq!(fc1.as_slice(), &a);
 

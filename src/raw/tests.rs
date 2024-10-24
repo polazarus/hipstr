@@ -1,7 +1,7 @@
 use super::*;
-use crate::Local;
+use crate::Rc;
 
-type R = Raw<'static, Local>;
+type R = Raw<'static, Rc>;
 
 #[test]
 fn test_niche() {
@@ -21,7 +21,7 @@ fn test_union() {
     };
     let _: R = union.into_raw();
 
-    let union: Union<'static, Local> = Union {
+    let union: Union<'static, Rc> = Union {
         borrowed: Borrowed::new(b"abc"),
     };
     let _: R = union.into_raw();

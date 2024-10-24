@@ -74,11 +74,9 @@
 //! * `serde`: provides serialization/deserialization support with `serde` crate
 //! * `bstr`: provides compatibility with [BurntSushi's bstr
 //!   crate](https://github.com/BurntSushi/bstr) make `HipByt` deref to
-//!   [`&bstr::BStr`](bstr::BStr) rather than [`&[u8]`]
+//!   [`&bstr::BStr`](bstr::BStr) rather than [`&[u8]`](slice)
 //! * `unstable`: do nothing, used to reveal unstable implementation details
 
-#![cfg_attr(miri, feature(strict_provenance))]
-#![cfg_attr(miri, feature(exposed_provenance))]
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 #![cfg_attr(docsrs, feature(doc_cfg))]
@@ -91,6 +89,7 @@ pub(crate) mod backend;
 pub mod bytes;
 pub(crate) mod macros;
 mod raw;
+pub(crate) mod smart;
 pub mod string;
 
 #[cfg(feature = "std")]
@@ -98,32 +97,35 @@ pub mod os_string;
 #[cfg(feature = "std")]
 pub mod path;
 
-pub use backend::{Backend, Local, ThreadSafe};
+#[cfg(test)]
+pub mod tests;
+
+pub use backend::*;
 
 /// Thread-safe shared byte sequence.
-pub type HipByt<'borrow> = bytes::HipByt<'borrow, ThreadSafe>;
+pub type HipByt<'borrow> = bytes::HipByt<'borrow, Arc>;
 
 /// Thread-safe shared string.
-pub type HipStr<'borrow> = string::HipStr<'borrow, ThreadSafe>;
-
-/// Thread-safe shared string.
-#[cfg(feature = "std")]
-pub type HipOsStr<'borrow> = os_string::HipOsStr<'borrow, ThreadSafe>;
+pub type HipStr<'borrow> = string::HipStr<'borrow, Arc>;
 
 /// Thread-safe shared string.
 #[cfg(feature = "std")]
-pub type HipPath<'borrow> = path::HipPath<'borrow, ThreadSafe>;
+pub type HipOsStr<'borrow> = os_string::HipOsStr<'borrow, Arc>;
+
+/// Thread-safe shared path.
+#[cfg(feature = "std")]
+pub type HipPath<'borrow> = path::HipPath<'borrow, Arc>;
 
 /// Thread-local shared byte sequence.
-pub type LocalHipByt<'borrow> = bytes::HipByt<'borrow, Local>;
+pub type LocalHipByt<'borrow> = bytes::HipByt<'borrow, Rc>;
 
 /// Thread-local shared string.
-pub type LocalHipStr<'borrow> = string::HipStr<'borrow, Local>;
+pub type LocalHipStr<'borrow> = string::HipStr<'borrow, Rc>;
 
 /// Thread-local shared byte sequence.
 #[cfg(feature = "std")]
-pub type LocalHipOsStr<'borrow> = os_string::HipOsStr<'borrow, Local>;
+pub type LocalHipOsStr<'borrow> = os_string::HipOsStr<'borrow, Rc>;
 
-/// Thread-local shared byte sequence.
+/// Thread-local shared path.
 #[cfg(feature = "std")]
-pub type LocalHipPath<'borrow> = path::HipPath<'borrow, Local>;
+pub type LocalHipPath<'borrow> = path::HipPath<'borrow, Rc>;
