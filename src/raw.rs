@@ -399,6 +399,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
     /// # Safety
     ///
     /// `range` must be a range `a..b` with `a <= b <= len`.
+    ///
     /// Panics in debug build, UB in release.
     #[inline]
     pub unsafe fn slice_unchecked(&self, range: Range<usize>) -> Self {
@@ -678,7 +679,7 @@ impl<'borrow, B: Backend> Raw<'borrow, B> {
                 let new = Self::from_vec(allocated.as_slice().to_vec());
 
                 // manual decrement of the reference count
-                let _dropped = allocated.decr_ref_count();
+                allocated.explicit_drop();
 
                 *self = new;
             }
@@ -838,7 +839,7 @@ impl<B: Backend> Drop for Raw<'_, B> {
     fn drop(&mut self) {
         // Formally drops this `Raw` decreasing the ref count if needed
         if let Some(allocated) = self.take_allocated() {
-            let _dropped = allocated.decr_ref_count();
+            allocated.explicit_drop();
         }
     }
 }
@@ -849,9 +850,9 @@ impl<B: Backend> Clone for Raw<'_, B> {
         match self.split() {
             RawSplit::Inline(&inline) => Self::from_inline(inline),
             RawSplit::Borrowed(&borrowed) => Self::from_borrowed(borrowed),
-            RawSplit::Allocated(&allocated) => {
-                allocated.incr_ref_count();
-                Self::from_allocated(allocated)
+            RawSplit::Allocated(allocated) => {
+                let clone = allocated.explicit_clone();
+                Self::from_allocated(clone)
             }
         }
     }

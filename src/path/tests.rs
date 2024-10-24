@@ -12,7 +12,7 @@ const INLINE_CAPACITY: usize = HipPath::inline_capacity();
 #[test]
 fn test_deref() {
     let h = HipPath::borrowed("test");
-    let _: &Path = &*h;
+    let _: &Path = &h;
 }
 
 #[test]

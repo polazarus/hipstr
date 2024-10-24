@@ -294,7 +294,7 @@ where
     /// Converts a `HipOsStr` into a `HipByt`.
     ///
     /// It consumes the `HipOsStr` without copying the content
-    /// (if [shared][HipByt::is_allocated] or [static][HipByt::is_borrowed]).
+    /// (if [shared][Self::is_allocated] or [static][Self::is_borrowed]).
     ///
     /// # Examples
     ///
