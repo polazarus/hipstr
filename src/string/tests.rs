@@ -1262,6 +1262,7 @@ fn test_pattern() {
             hip.rmatch_indices([':'].as_slice()).map(|(_, v)| v),
             source.rmatches([':'].as_slice()),
         );
+        #[allow(clippy::manual_pattern_char_comparison)]
         iter_eq_bidir(
             hip.rmatch_indices(|c| c == ':').map(|(_, v)| v),
             source.rmatches(|c| c == ':'),

@@ -25,13 +25,8 @@ bstr = ["dep:bstr"]
 [dev-dependencies]
 fastrand = "2.0.0"
 serde_test = "1.0.176"
-serde = { version = "1.0.100", default-features = false, features = [
-    "derive",
-    "alloc",
-] }
-serde_json = { version = "1.0.45", default-features = false, features = [
-    "alloc",
-] }
+serde = { version = "1.0.100", default-features = false, features = ["derive", "alloc"] }
+serde_json = { version = "1.0.45", default-features = false, features = ["alloc"] }
 
 [dependencies]
 sptr = "0.3.2"
@@ -54,5 +49,12 @@ optional = true
 default-features = false
 features = ["alloc"]
 
+[target.'cfg(loom)'.dependencies]
+loom = "0.7"
+
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage_nightly)', 'cfg(docsrs)'] }
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(coverage_nightly)',
+    'cfg(docsrs)',
+    'cfg(loom)',
+] }

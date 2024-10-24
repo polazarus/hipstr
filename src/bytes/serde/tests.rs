@@ -50,11 +50,11 @@ fn test_serde_borrow() {
     use serde_json::Value;
 
     use super::super::HipByt;
-    use crate::Local;
+    use crate::Rc;
 
     let v = Value::from("abcdefghijklmnopqrstuvwxyz");
-    let h1: HipByt<'_, Local> = borrow_deserialize(&v).unwrap();
-    let h2: HipByt<'_, Local> = Deserialize::deserialize(&v).unwrap();
+    let h1: HipByt<'_, Rc> = borrow_deserialize(&v).unwrap();
+    let h2: HipByt<'_, Rc> = Deserialize::deserialize(&v).unwrap();
     assert!(h1.is_borrowed());
     assert!(!h2.is_borrowed());
 

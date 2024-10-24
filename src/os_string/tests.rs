@@ -15,7 +15,7 @@ const INLINE_CAPACITY: usize = HipOsStr::inline_capacity();
 #[test]
 fn test_deref() {
     let h = HipOsStr::borrowed("test");
-    let _: &OsStr = &*h;
+    let _: &OsStr = &h;
 }
 
 #[test]

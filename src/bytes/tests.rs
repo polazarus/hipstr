@@ -574,29 +574,28 @@ fn test_into_vec() {
 }
 
 #[test]
-fn test_capacity() {
-    {
-        // static
-        let a = H::borrowed(ABC);
-        assert_eq!(a.capacity(), a.len());
-    }
+fn test_capacity_static() {
+    // static
+    let a = H::borrowed(ABC);
+    assert_eq!(a.capacity(), a.len());
+}
 
-    {
-        // inline
-        let a = H::from(ABC);
-        assert_eq!(a.capacity(), H::inline_capacity());
-    }
+#[test]
+fn test_capacity_inline() {
+    let a = H::from(ABC);
+    assert_eq!(a.capacity(), H::inline_capacity());
+}
 
-    {
-        // allocated
-        let mut v = Vec::with_capacity(42);
-        v.extend_from_slice(&ABC.repeat(10));
-        let a = H::from(v);
-        assert_eq!(a.capacity(), 42);
+#[test]
+fn test_capacity_allocated() {
+    // allocated
+    let mut v = Vec::with_capacity(42);
+    v.extend_from_slice(&ABC.repeat(10));
+    let a = H::from(v);
+    assert_eq!(a.capacity(), 42);
 
-        let b = a.slice(1..);
-        assert_eq!(b.capacity(), 42);
-    }
+    let b = a.slice(1..);
+    assert_eq!(b.capacity(), 42);
 }
 
 #[test]

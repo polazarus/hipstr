@@ -13,7 +13,7 @@ use super::raw::Raw;
 use crate::alloc::fmt;
 use crate::alloc::vec::Vec;
 use crate::raw::try_range_of;
-use crate::{Backend, ThreadSafe};
+use crate::{Arc, Backend};
 
 mod cmp;
 mod convert;
@@ -75,7 +75,7 @@ type Slice = [u8];
 /// * inline string
 /// * shared heap allocated string
 #[repr(transparent)]
-pub struct HipByt<'borrow, B = ThreadSafe>(pub(crate) Raw<'borrow, B>)
+pub struct HipByt<'borrow, B = Arc>(pub(crate) Raw<'borrow, B>)
 where
     B: Backend;
 
