@@ -88,7 +88,7 @@ pub mod os_string;
 #[cfg(feature = "std")]
 pub mod path;
 
-pub use backend::{Backend, Local, ThreadSafe};
+pub use backend::{Backend, Local, ThreadSafe, Unique};
 
 /// Thread-safe shared byte sequence.
 pub type HipByt<'borrow> = bytes::HipByt<'borrow, ThreadSafe>;

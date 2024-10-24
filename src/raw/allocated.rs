@@ -1,56 +1,56 @@
 //! Allocated representation.
 
 use core::marker::PhantomData;
-use core::mem::{transmute, MaybeUninit};
+use core::mem::{forget, transmute, ManuallyDrop, MaybeUninit};
 use core::ops::Range;
 use core::panic::{RefUnwindSafe, UnwindSafe};
+use core::ptr::NonNull;
 
 // TODO remove once provenance API stabilized
 use sptr::Strict;
 
 use crate::alloc::vec::Vec;
-use crate::backend::rc::Inner;
-use crate::backend::{rc, Backend};
+use crate::backend::smart::{Inner, Smart};
+use crate::backend::{smart, Backend};
 
 const MASK: usize = super::MASK as usize;
 const TAG: usize = super::TAG_ALLOCATED as usize;
 
-struct TaggedRawRc<B: Backend>(usize, PhantomData<rc::Raw<Vec<u8>, B>>);
+struct TaggedSmart<B: Backend>(usize, PhantomData<Smart<Vec<u8>, B>>);
 
-impl<B: Backend> Clone for TaggedRawRc<B> {
+impl<B: Backend> Clone for TaggedSmart<B> {
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<B: Backend> Copy for TaggedRawRc<B> {}
+impl<B: Backend> Copy for TaggedSmart<B> {}
 
-impl<B: Backend> TaggedRawRc<B> {
+impl<B: Backend> TaggedSmart<B> {
     /// Constructed a tagged rc from a `rc::Raw`.
     #[inline]
     #[allow(unstable_name_collisions)]
-    fn from(raw: rc::Raw<Vec<u8>, B>) -> Self {
+    fn from(raw: Smart<Vec<u8>, B>) -> Self {
+        let ptr = raw.into_raw().as_ptr();
+        debug_assert!(ptr.is_aligned());
+        debug_assert!((ptr as usize) & MASK == 0);
+
+        // TODO use strict and exposed provenance API once stabilized
+
         // SAFETY: add a 2-bit tag to a non-null pointer with the same alignment
         // requirement as usize (typically 4 bytes on 32-bit architectures, and
         // more on 64-bit architectures)
-        unsafe {
-            let ptr: *mut Inner<Vec<u8>, B> = transmute(raw);
-            debug_assert!((ptr as usize) & MASK == 0);
-            debug_assert!(!ptr.is_null());
+        let addr = ptr.map_addr(|addr| addr | TAG).expose_addr();
 
-            // TODO use strict and exposed provenance API once stabilized
-            let addr = ptr.map_addr(|addr| addr | TAG).expose_addr();
-
-            Self(addr, PhantomData)
-        }
+        Self(addr, PhantomData)
     }
 
     /// Converts back into the `rc::Raw`.
     #[inline]
     #[allow(unstable_name_collisions)]
-    fn into(self) -> rc::Raw<Vec<u8>, B> {
-        let this: rc::Raw<Vec<u8>, B>;
+    fn into(self) -> smart::Smart<Vec<u8>, B> {
+        let this: smart::Smart<Vec<u8>, B>;
 
         debug_assert!(self.0 & MASK == TAG);
 
@@ -67,9 +67,7 @@ impl<B: Backend> TaggedRawRc<B> {
             #[cfg(miri)]
             let _ = &*new_ptr; // check provenance early
 
-            this = transmute::<*mut rc::Inner<_, _>, rc::Raw<_, _>>(new_ptr);
-
-            debug_assert!(this.is_valid());
+            this = smart::Smart::from_raw(NonNull::new_unchecked(new_ptr));
         }
 
         this
@@ -79,6 +77,11 @@ impl<B: Backend> TaggedRawRc<B> {
     #[inline]
     const fn check_tag(self) -> bool {
         self.0 & MASK == TAG
+    }
+
+    fn explicit_clone(self) -> Self {
+        let r = ManuallyDrop::new(self.into());
+        Self::from((*r).clone())
     }
 }
 
@@ -92,7 +95,7 @@ impl<B: Backend> TaggedRawRc<B> {
 pub struct Allocated<B: Backend> {
     #[cfg(target_endian = "little")]
     /// Tagged smart pointer of the owning vector
-    owner: TaggedRawRc<B>,
+    owner: TaggedSmart<B>,
 
     /// Pointer to the slice's start
     ptr: *const u8,
@@ -102,7 +105,7 @@ pub struct Allocated<B: Backend> {
 
     #[cfg(target_endian = "big")]
     /// Tagged smart pointer of the owning vector
-    owner: TaggedRawRc<B>,
+    owner: TaggedSmart<B>,
 }
 
 impl<B: Backend> Copy for Allocated<B> {}
@@ -125,8 +128,8 @@ impl<B: Backend + UnwindSafe> UnwindSafe for Allocated<B> {}
 impl<B: Backend + RefUnwindSafe> RefUnwindSafe for Allocated<B> {}
 
 impl<B: Backend> Allocated<B> {
-    fn owner(&self) -> rc::Raw<Vec<u8>, B> {
-        self.owner.into()
+    fn owner(&self) -> ManuallyDrop<Smart<Vec<u8>, B>> {
+        ManuallyDrop::new(self.owner.into())
     }
 
     /// Creates an allocated from a vector.
@@ -136,12 +139,12 @@ impl<B: Backend> Allocated<B> {
     pub fn new(v: Vec<u8>) -> Self {
         let ptr = v.as_ptr();
         let len = v.len();
-        let owner = rc::Raw::new(v);
+        let owner = Smart::new(v);
 
         let this = Self {
             ptr,
             len,
-            owner: TaggedRawRc::from(owner),
+            owner: TaggedSmart::from(owner),
         };
 
         debug_assert!(this.is_unique());
@@ -187,9 +190,7 @@ impl<B: Backend> Allocated<B> {
     pub fn as_mut_slice(&mut self) -> Option<&mut [u8]> {
         debug_assert!(self.is_valid());
 
-        // SAFETY: type invariant, valid owner
-        let is_unique = unsafe { self.owner().is_unique() };
-
+        let is_unique = self.owner().is_unique();
         if is_unique {
             // SAFETY:
             // * unique -> no one else can "see" the string
@@ -222,7 +223,7 @@ impl<B: Backend> Allocated<B> {
         debug_assert!(range.start <= self.len);
         debug_assert!(range.end <= self.len);
 
-        self.incr_ref_count();
+        let owner = self.owner.explicit_clone();
 
         // SAFETY: type invariant -> self.ptr..self.ptr+self.len is valid
         // also Rust like C specify you can move to the last + 1
@@ -231,7 +232,7 @@ impl<B: Backend> Allocated<B> {
         Self {
             ptr,
             len: range.len(),
-            owner: self.owner,
+            owner,
         }
     }
 
@@ -263,11 +264,6 @@ impl<B: Backend> Allocated<B> {
         }
 
         let owner = self.owner();
-        if unsafe { !owner.is_valid() } {
-            return false;
-        }
-
-        let owner = unsafe { owner.as_ref() };
         let owner_ptr = owner.as_ptr();
         let shift = unsafe { self.ptr.offset_from(owner_ptr) };
         shift >= 0 && {
@@ -282,9 +278,7 @@ impl<B: Backend> Allocated<B> {
     pub fn capacity(&self) -> usize {
         debug_assert!(self.is_valid());
 
-        // SAFETY: type invariant -> owner is valid.
-        let vec = unsafe { self.owner().as_ref() };
-        vec.capacity()
+        self.owner().capacity()
     }
 
     /// Unwraps the inner vector if it makes any sense.
@@ -293,46 +287,42 @@ impl<B: Backend> Allocated<B> {
         debug_assert!(self.is_valid());
 
         let owner = self.owner();
-        let vec = unsafe { owner.as_ref() };
-        let ptr = vec.as_ptr();
-
-        if self.ptr != ptr {
+        if self.ptr != owner.as_ptr() {
             // the starts differ, cannot truncate
             return Err(self);
         }
 
         let len = self.len();
 
-        // SAFETY: type invariant, the owner is valid
-        unsafe {
-            if owner.is_unique() {
-                let mut owner = owner.unwrap();
+        ManuallyDrop::into_inner(owner).try_unwrap().map_or_else(
+            |owner| {
+                forget(owner); // do not drop
+                Err(self)
+            },
+            |mut owner| {
                 owner.truncate(len);
                 Ok(owner)
-            } else {
-                Err(self)
-            }
-        }
+            },
+        )
     }
 
     /// Returns `true` if there is only one reference to the underlying vector.
     pub fn is_unique(&self) -> bool {
         debug_assert!(self.is_valid());
 
-        // SAFETY: type invariant -> owner is valid
-        unsafe { self.owner().is_unique() }
+        self.owner().is_unique()
     }
 
     /// Pushes a slice at the end of the underlying vector.
     ///
     /// # Safety
     ///
-    /// The reference must be unique.
+    /// The reference must be unique [`Self::is_unique`].
     pub unsafe fn push_slice_unchecked(&mut self, addition: &[u8]) {
         debug_assert!(self.is_valid());
 
-        let owner = self.owner();
-        let v = unsafe { owner.as_mut() };
+        let mut owner = self.owner();
+        let v = unsafe { owner.as_mut_unchecked() };
 
         // SAFETY: compute the shift from within the vector range (type invariant)
         #[allow(clippy::cast_sign_loss)]
