@@ -1,6 +1,7 @@
 //! String.
 //!
-//! This module provides the [`HipStr`] type as well as the associated helper and error types.
+//! This module provides the [`HipStr`] type as well as the associated helper
+//! and error types.
 
 use core::borrow::Borrow;
 use core::error::Error;
@@ -30,8 +31,8 @@ mod tests;
 ///
 /// # Examples
 ///
-/// You can create a `HipStr` from a [string slice (`&str`)][str], an owned string
-/// ([`String`], [`Box<str>`][Box]), or a clone-on-write smart pointer
+/// You can create a `HipStr` from a [string slice (`&str`)][str], an owned
+/// string ([`String`], [`Box<str>`][Box]), or a clone-on-write smart pointer
 /// ([`Cow<str>`][std::borrow::Cow]) with [`From`]:
 ///
 /// ```
@@ -39,16 +40,16 @@ mod tests;
 /// let hello = HipStr::from("Hello");
 /// ```
 ///
-/// When possible, `HipStr::from` takes ownership of the underlying string
-/// buffer:
+/// When possible, the `From` implementations of `HipStr` takes ownership of the
+/// underlying string buffer:
 ///
 /// ```
 /// # use hipstr::HipStr;
-/// let world = HipStr::from(String::from("World")); // here there is only one heap-allocation
+/// let world = HipStr::from(String::from("World")); // here the heap-allocation is reused
 /// ```
 ///
-/// For borrowing string slice, you can also use the no-copy [`HipStr::borrowed`]
-/// (like [`Cow::Borrowed`](std::borrow::Cow)):
+/// For borrowing string slice, you can also use the no-copy
+/// [`HipStr::borrowed`] (like [`Cow::Borrowed`](std::borrow::Cow)):
 ///
 /// ```
 /// # use hipstr::HipStr;
@@ -75,9 +76,9 @@ where
     ///
     /// Function provided for [`String::new`] replacement.
     ///
-    /// # ⚠️ Warning!
+    /// # Representation
     ///
-    /// The used representation of the empty string is unspecified.
+    /// ⚠️ Warning! The used representation of the empty string is unspecified.
     /// It may be *borrowed* or *inlined* but will never be allocated.
     ///
     /// # Examples
@@ -98,6 +99,15 @@ where
     ///
     /// The returned `HipStr` will be able to hold at least `capacity` bytes
     /// without reallocating or changing representation.
+    ///
+    /// # Representation
+    ///
+    /// If the capacity is less or equal to the inline capacity, the
+    /// representation will be *inline*.
+    ///
+    /// Otherwise, it will be *allocated*.
+    ///
+    /// The representation is **not normalized**.
     ///
     /// # Examples
     ///
