@@ -46,6 +46,11 @@ jobs:
       - name: Run tests
         run: cargo test --verbose --profile ${{matrix.profile}} ${{matrix.features}} -- --nocapture
 
+      - name: Run loom tests
+        env:
+          RUSTFLAGS: "--cfg loom"
+        run: cargo test --verbose --profile ${{matrix.profile}} ${{matrix.features}} loom -- --nocapture
+
   fmt:
     runs-on: ubuntu-latest
     steps:
