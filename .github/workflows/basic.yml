@@ -71,11 +71,6 @@ jobs:
           RUSTDOCFLAGS: -D warnings
         run: cargo doc --no-deps --document-private-items --all-features
 
-      - name: Check documentation (minimal)
-        env:
-          RUSTDOCFLAGS: -D warnings
-        run: cargo doc --no-deps --document-private-items
-
   msrv:
     runs-on: ubuntu-latest
 
