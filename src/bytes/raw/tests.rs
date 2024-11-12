@@ -1,7 +1,7 @@
 use super::*;
 use crate::Rc;
 
-type R = Raw<'static, Rc>;
+type R = HipByt<'static, Rc>;
 
 #[test]
 fn test_niche() {
