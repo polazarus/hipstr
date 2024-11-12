@@ -44,17 +44,18 @@
 //! change between patch versions! It may be _borrowed_ or _inlined_ but will
 //! never be allocated.
 //!
-//! # Two Backends
+//! # Three Backends
 //!
 //! The crate provides two backends:
 //!
 //! - `ThreadSafe` (atomic reference counting),
 //! - `Local` (reference counting).
 //!
-//! The crate root also provides some convenience type aliases:
+//! The crate root also provides some convenience type aliases, typically for
+//! strings:
 //!
-//! - `hipstr::HipByt` and `hipstr::HipStr` that set `B` to `ThreadSafe`,
-//! - `hipstr::LocalHipByt` and `hipstr::LocalHipStr` that set `B` to `Local`.
+//! - `hipstr::HipStr` with the `ThreadSafe` backend,
+//! - `hipstr::LocalHipStr` with the `Local` backend.
 //!
 //! # Platform Support
 //!

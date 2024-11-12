@@ -4,13 +4,21 @@ Notable changes only.
 
 ## Unreleased
 
-###  Added
+### Added
 
 - add new unique (non-shared) strings and byte vectors
+- add `as_borrowed`
+- add inline `const` constructors
 
 ### Changed
 
-- refactor the backend to support unique
+- refactor the backend to support unique references
+- remove low-level `Raw` type
+- improve deserialization for strings, bytes and paths, see [#38](https://github.com/polazarus/hipstr/pull/38) and follow-up work
+
+### Removed
+
+- dependency to `serde_bytes`
 
 ## [0.6.0] - 2024-10-08
 
@@ -19,7 +27,7 @@ Notable changes only.
 - implement `core::error:Error` for custom errors, rather than
   `std::error::Error` and bump msrv
 
-### Fixed
+### Fixe
 
 - fix doc issue [#28](https://github.com/polazarus/hipstr/issues/28)
 - fix MIRI check due to provenance loss
@@ -137,6 +145,7 @@ Most of those addition are breaking because they shadows `str`'s methods.
 Initial release
 
 <!-- [unreleased]: https://github.com/polazarus/hipstr/compare/0.6.1...HEAD -->
+
 [0.6.0]: https://github.com/polazarus/hipstr/compare/0.5.1...0.6.0
 [0.5.1]: https://github.com/polazarus/hipstr/compare/0.5.0...0.5.1
 [0.5.0]: https://github.com/polazarus/hipstr/compare/0.4.0...0.5.0
