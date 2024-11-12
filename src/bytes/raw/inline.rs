@@ -18,7 +18,7 @@ const SHIFT: u8 = TAG_BITS;
 const MAX_LEN: usize = 1 << (8 - SHIFT);
 
 #[derive(Clone, Copy, Debug)]
-pub(super) struct TaggedLen(NonZeroU8);
+struct TaggedLen(NonZeroU8);
 
 impl TaggedLen {
     #[allow(clippy::cast_possible_truncation)]
@@ -55,9 +55,12 @@ impl TaggedLen {
 /// For little-endian platform, the shifted length is **before** the data.
 #[derive(Clone, Copy)]
 #[repr(C)]
+#[cfg_attr(target_pointer_width = "64", repr(align(8)))]
+#[cfg_attr(target_pointer_width = "32", repr(align(4)))]
+#[cfg_attr(target_pointer_width = "16", repr(align(2)))]
 pub struct Inline<const INLINE_CAPACITY: usize> {
     #[cfg(target_endian = "little")]
-    pub(super) len: TaggedLen,
+    len: TaggedLen,
 
     data: [MaybeUninit<u8>; INLINE_CAPACITY],
 
@@ -102,8 +105,8 @@ impl<const INLINE_CAPACITY: usize> Inline<INLINE_CAPACITY> {
 
     /// Creates a new `Inline` string by copying a byte slice.
     #[inline]
-    #[allow(dead_code)]
-    pub fn new(sl: &[u8]) -> Self {
+    #[cfg(test)]
+    fn new(sl: &[u8]) -> Self {
         assert!(sl.len() <= INLINE_CAPACITY);
 
         // SAFETY: length check above
@@ -115,9 +118,10 @@ impl<const INLINE_CAPACITY: usize> Inline<INLINE_CAPACITY> {
     /// # Safety
     ///
     /// The input slice's length MUST be at most `INLINE_CAPACITY`.
-    #[inline]
     pub unsafe fn new_unchecked(sl: &[u8]) -> Self {
         let len = sl.len();
+        debug_assert!(len <= INLINE_CAPACITY);
+
         let mut data = [MaybeUninit::uninit(); INLINE_CAPACITY];
 
         // SAFETY: sl's length is a **function precondition**

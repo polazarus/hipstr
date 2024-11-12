@@ -184,6 +184,11 @@ impl<B: Backend> Allocated<B> {
         this
     }
 
+    /// Creates an allocated vector from a slice.
+    pub fn from_slice(slice: &[u8]) -> Self {
+        Self::new(slice.to_vec())
+    }
+
     /// Returns the length of this allocated string.
     #[inline]
     pub const fn len(&self) -> usize {
@@ -275,7 +280,7 @@ impl<B: Backend> Allocated<B> {
 
         let owner = self.owner();
         if owner.incr() == UpdateResult::Overflow {
-            Self::new(self.as_slice().to_vec())
+            Self::from_slice(self.as_slice())
         } else {
             *self
         }

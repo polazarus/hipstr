@@ -21,7 +21,7 @@ where
     #[inline]
     fn eq(&self, other: &HipOsStr<B1>) -> bool {
         // compare the encoded bytes.
-        self.0.eq(&other.0)
+        self.0 == other.0
     }
 }
 
