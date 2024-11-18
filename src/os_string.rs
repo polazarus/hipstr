@@ -244,6 +244,36 @@ where
             .map_err(Self)
     }
 
+    /// Returns the borrowed slice if this `HipOsStr` is actually borrowed,
+    /// `None` otherwise.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::HipOsStr;
+    /// # use std::ffi::OsStr;
+    /// let abc: &'static OsStr = OsStr::new("abc");
+    /// let s = HipOsStr::borrowed(abc);
+    /// let c: Option<&'static OsStr> = s.as_borrowed();
+    /// assert_eq!(c, Some(abc));
+    /// assert!(std::ptr::eq(abc, c.unwrap()));
+    ///
+    /// let s2 = HipOsStr::from(abc);
+    /// assert!(s2.as_borrowed().is_none());
+    /// ```
+    #[inline]
+    #[must_use]
+    pub const fn as_borrowed(&self) -> Option<&'borrow OsStr> {
+        match self.0.as_borrowed() {
+            Some(slice) => {
+                // SAFETY: type invariant
+                // transmute to be "const"
+                Some(unsafe { core::mem::transmute::<&[u8], &OsStr>(slice) })
+            }
+            None => None,
+        }
+    }
+
     /// Returns the length of this `HipOsStr`, in bytes, not [`char`]s or
     /// graphemes. In other words, it might not be what a human considers the
     /// length of the string.
