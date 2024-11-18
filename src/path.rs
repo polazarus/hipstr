@@ -218,6 +218,37 @@ where
         self.0.into_borrowed().map(Path::new).map_err(Self)
     }
 
+    /// Returns the borrowed slice if this `Path` is actually borrowed, `None`
+    /// otherwise.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::HipPath;
+    /// # use std::path::Path;
+    /// let abc: &'static Path = Path::new("abc");
+    /// let s = HipPath::borrowed(abc);
+    /// let c: Option<&'static Path> = s.as_borrowed();
+    /// assert_eq!(c, Some(abc));
+    /// assert!(std::ptr::eq(abc, c.unwrap()));
+    ///
+    /// let s2 = HipPath::from(abc);
+    /// assert!(s2.as_borrowed().is_none());
+    /// ```
+    #[inline]
+    #[must_use]
+    pub const fn as_borrowed(&self) -> Option<&'borrow Path> {
+        match self.0.as_borrowed() {
+            Some(slice) => {
+                // SAFETY: type invariant
+                // `transmute` used in order to be "const"
+                // `Path` is *transparent*
+                Some(unsafe { core::mem::transmute::<&OsStr, &Path>(slice) })
+            }
+            None => None,
+        }
+    }
+
     /// Converts a `HipPath` into a `HipOsStr`.
     ///
     /// It consumes the `HipPath` without copying the content

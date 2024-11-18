@@ -237,6 +237,31 @@ where
         }
     }
 
+    /// Returns the borrowed slice if this `HipByt` is actually borrowed, `None`
+    /// otherwise.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::HipByt;
+    /// static SEQ: &[u8] = &[1 ,2, 3];
+    /// let s = HipByt::borrowed(SEQ);
+    /// let c: Option<&'static [u8]> = s.as_borrowed();
+    /// assert_eq!(c, Some(SEQ));
+    /// assert!(std::ptr::eq(SEQ, c.unwrap()));
+    ///
+    /// let s2 = HipByt::from(SEQ);
+    /// assert!(s2.as_borrowed().is_none());
+    /// ```
+    #[inline]
+    #[must_use]
+    pub const fn as_borrowed(&self) -> Option<&'borrow [u8]> {
+        match self.split() {
+            RawSplit::Allocated(_) | RawSplit::Inline(_) => None,
+            RawSplit::Borrowed(borrowed) => Some(borrowed.as_slice()),
+        }
+    }
+
     /// Returns `true` if this `HipByt` is a shared heap-allocated byte sequence, `false` otherwise.
     ///
     /// # Examples

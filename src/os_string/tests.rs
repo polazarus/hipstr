@@ -185,8 +185,8 @@ fn test_clone() {
 }
 
 #[test]
-fn test_into_static() {
-    // static
+fn test_into_borrowed() {
+    // borrowed
     let a = HipOsStr::borrowed("abc");
     assert_eq!(a.into_borrowed(), Ok("abc".as_ref()));
 
@@ -199,6 +199,26 @@ fn test_into_static() {
     let a = HipOsStr::from("a".repeat(42).as_str());
     let b = a.clone();
     assert_eq!(a.into_borrowed(), Err(b));
+}
+
+#[test]
+fn test_as_borrowed() {
+    let abc: &'static OsStr = OsStr::new("abc");
+    let medium: &'static OsStr = OsStr::new("abcdefghijklmnopqrstuvwxyz");
+
+    // borrowed
+    let a = H::borrowed(abc);
+    let b = a.as_borrowed().unwrap();
+    assert_eq!(b, abc);
+    assert!(core::ptr::eq(b, abc));
+
+    // inline
+    let a = H::from(abc);
+    assert_eq!(a.as_borrowed(), None);
+
+    // heap
+    let a = H::from(medium);
+    assert_eq!(a.as_borrowed(), None);
 }
 
 #[test]
