@@ -409,6 +409,10 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
     /// # Safety
     ///
     /// The slice MUST be a part of this `HipByt`
+    ///
+    /// # Panics
+    ///
+    /// When in debug build, panics if the slice is not a part of this `HipByt`.
     #[must_use]
     pub unsafe fn slice_ref_unchecked(&self, slice: &[u8]) -> Self {
         #[cfg(debug_assertions)]
