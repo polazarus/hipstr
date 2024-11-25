@@ -219,9 +219,11 @@ fn test_clone() {
 
 #[test]
 fn test_into_borrowed() {
-    // static
+    // borrowed
     let a = H::borrowed(ABC);
-    assert_eq!(a.into_borrowed(), Ok(ABC));
+    let s = a.into_borrowed().unwrap();
+    assert_eq!(s, ABC);
+    assert!(core::ptr::eq(s, ABC));
 
     // inline
     let a = H::from(ABC);
@@ -232,6 +234,23 @@ fn test_into_borrowed() {
     let a = H::from(MEDIUM);
     let b = a.clone();
     assert_eq!(a.into_borrowed(), Err(b));
+}
+
+#[test]
+fn test_as_borrowed() {
+    // borrowed
+    let a = H::borrowed(ABC);
+    let b = a.as_borrowed().unwrap();
+    assert_eq!(b, ABC);
+    assert!(core::ptr::eq(b, ABC));
+
+    // inline
+    let a = H::from(ABC);
+    assert_eq!(a.as_borrowed(), None);
+
+    // heap
+    let a = H::from(MEDIUM);
+    assert_eq!(a.as_borrowed(), None);
 }
 
 #[test]

@@ -4,7 +4,6 @@ use super::HipByt;
 use crate::alloc::borrow::Cow;
 use crate::alloc::boxed::Box;
 use crate::alloc::vec::Vec;
-use crate::raw::Raw;
 use crate::Backend;
 
 impl<B> AsRef<[u8]> for HipByt<'_, B>
@@ -25,7 +24,7 @@ where
 {
     #[inline]
     fn from(value: &[u8]) -> Self {
-        Self(Raw::from_slice(value))
+        Self::from_slice(value)
     }
 }
 
@@ -35,7 +34,7 @@ where
 {
     #[inline]
     fn from(value: &[u8; N]) -> Self {
-        Self(Raw::from_slice(value))
+        Self::from_slice(value)
     }
 }
 
@@ -45,7 +44,7 @@ where
 {
     #[inline]
     fn from(value: Box<[u8]>) -> Self {
-        Self(Raw::normalized_from_vec(value.into_vec()))
+        Self::normalized_from_vec(value.into_vec())
     }
 }
 
@@ -55,7 +54,7 @@ where
 {
     #[inline]
     fn from(value: Vec<u8>) -> Self {
-        Self(Raw::normalized_from_vec(value))
+        Self::normalized_from_vec(value)
     }
 }
 

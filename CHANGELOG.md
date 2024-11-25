@@ -4,13 +4,15 @@ Notable changes only.
 
 ## Unreleased
 
-###  Added
+### Added
 
 - add new unique (non-shared) strings and byte vectors
+- add `as_borrowed`
 
 ### Changed
 
 - refactor the backend to support unique
+- remove low-level `Raw` type
 
 ## [0.6.0] - 2024-10-08
 
@@ -137,6 +139,7 @@ Most of those addition are breaking because they shadows `str`'s methods.
 Initial release
 
 <!-- [unreleased]: https://github.com/polazarus/hipstr/compare/0.6.1...HEAD -->
+
 [0.6.0]: https://github.com/polazarus/hipstr/compare/0.5.1...0.6.0
 [0.5.1]: https://github.com/polazarus/hipstr/compare/0.5.0...0.5.1
 [0.5.0]: https://github.com/polazarus/hipstr/compare/0.4.0...0.5.0

@@ -18,7 +18,7 @@ where
 {
     #[inline]
     fn eq(&self, other: &HipByt<'b1, B1>) -> bool {
-        self.0.eq(&other.0)
+        self.inherent_eq(other)
     }
 }
 

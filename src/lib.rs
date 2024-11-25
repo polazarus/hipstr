@@ -88,7 +88,6 @@ pub(crate) extern crate alloc;
 pub(crate) mod backend;
 pub mod bytes;
 pub(crate) mod macros;
-mod raw;
 pub(crate) mod smart;
 pub mod string;
 
