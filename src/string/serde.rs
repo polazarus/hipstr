@@ -1,4 +1,7 @@
-use serde::{de, Deserialize, Serialize};
+use core::marker::PhantomData;
+
+use serde::de::{Error, Visitor};
+use serde::{de, Deserialize, Deserializer, Serialize};
 
 use super::HipStr;
 use crate::alloc::borrow::Cow;
@@ -19,6 +22,26 @@ where
     }
 }
 
+struct HipStrVisitor<'b, B> {
+    data: PhantomData<&'b B>,
+}
+
+impl<'a, 'b, B: Backend> Visitor<'a> for HipStrVisitor<'b, B> {
+    type Value = HipStr<'b, B>;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("a string")
+    }
+
+    #[inline]
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+    where
+        E: Error,
+    {
+        Ok(HipStr::from(v))
+    }
+}
+
 impl<'de, B> Deserialize<'de> for HipStr<'_, B>
 where
     B: Backend,
@@ -26,10 +49,11 @@ where
     #[inline]
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: serde::Deserializer<'de>,
+        D: Deserializer<'de>,
     {
-        let s = String::deserialize(deserializer)?;
-        Ok(Self::from(s))
+        deserializer.deserialize_str(HipStrVisitor::<B> {
+            data: PhantomData::default(),
+        })
     }
 }
 
