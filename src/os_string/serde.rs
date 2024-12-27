@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 use super::HipOsStr;
 use crate::Backend;
 
-#[cfg(all(feature = "std", any(unix, windows)))]
 impl<B> Serialize for HipOsStr<'_, B>
 where
     B: Backend,
@@ -19,7 +18,6 @@ where
     }
 }
 
-#[cfg(all(feature = "std", any(unix, windows)))]
 impl<'de, B> Deserialize<'de> for HipOsStr<'_, B>
 where
     B: Backend,
@@ -54,7 +52,7 @@ mod tests {
                 Token::SeqEnd,
             ],
         );
-        #[cfg(not(windows))]
+        #[cfg(unix)]
         assert_tokens(
             &empty,
             &[
