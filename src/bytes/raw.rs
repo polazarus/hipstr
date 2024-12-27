@@ -158,7 +158,7 @@ pub enum Tag {
 }
 
 /// Helper enum to split this raw byte string into its possible representation.
-pub enum RawSplit<'a, 'borrow, B: Backend> {
+pub enum Split<'a, 'borrow, B: Backend> {
     /// Inline representation
     Inline(&'a Inline),
     /// Allocated and shared representation
@@ -168,7 +168,7 @@ pub enum RawSplit<'a, 'borrow, B: Backend> {
 }
 
 /// Helper enum to split this raw byte string into its possible representation mutably.
-pub enum RawSplitMut<'a, 'borrow, B: Backend> {
+pub enum SplitMut<'a, 'borrow, B: Backend> {
     /// Inline representation
     Inline(&'a mut Inline),
     /// Allocated and shared representation
@@ -239,42 +239,42 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
 
     /// Splits this raw into its possible representation.
     #[inline]
-    pub(super) const fn split(&self) -> RawSplit<'_, 'borrow, B> {
+    pub(super) const fn split(&self) -> Split<'_, 'borrow, B> {
         let tag = self.tag();
         let union = self.union();
         match tag {
             Tag::Inline => {
                 // SAFETY: representation checked
-                RawSplit::Inline(unsafe { &union.inline })
+                Split::Inline(unsafe { &union.inline })
             }
             Tag::Borrowed => {
                 // SAFETY: representation checked
-                RawSplit::Borrowed(unsafe { &union.borrowed })
+                Split::Borrowed(unsafe { &union.borrowed })
             }
             Tag::Allocated => {
                 // SAFETY: representation checked
-                RawSplit::Allocated(unsafe { &union.allocated })
+                Split::Allocated(unsafe { &union.allocated })
             }
         }
     }
 
     /// Splits this raw into its possible representation.
     #[inline]
-    pub(super) fn split_mut(&mut self) -> RawSplitMut<'_, 'borrow, B> {
+    pub(super) fn split_mut(&mut self) -> SplitMut<'_, 'borrow, B> {
         let tag = self.tag();
         let union = self.union_mut();
         match tag {
             Tag::Inline => {
                 // SAFETY: representation checked
-                RawSplitMut::Inline(unsafe { &mut union.inline })
+                SplitMut::Inline(unsafe { &mut union.inline })
             }
             Tag::Borrowed => {
                 // SAFETY: representation checked
-                RawSplitMut::Borrowed(unsafe { &mut union.borrowed })
+                SplitMut::Borrowed(unsafe { &mut union.borrowed })
             }
             Tag::Allocated => {
                 // SAFETY: representation checked
-                RawSplitMut::Allocated(unsafe { &mut union.allocated })
+                SplitMut::Allocated(unsafe { &mut union.allocated })
             }
         }
     }
@@ -296,7 +296,7 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
     /// # Safety
     ///
     /// The input slice's length MUST be at most `INLINE_CAPACITY`.
-    pub(super) unsafe fn inline_unchecked(bytes: &[u8]) -> Self {
+    pub(super) const unsafe fn inline_unchecked(bytes: &[u8]) -> Self {
         // SAFETY: see function precondition
         let inline = unsafe { Inline::new_unchecked(bytes) };
         Self::from_inline(inline)
@@ -349,9 +349,9 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
     #[must_use]
     pub const fn as_slice(&self) -> &[u8] {
         match self.split() {
-            RawSplit::Inline(inline) => inline.as_slice(),
-            RawSplit::Allocated(heap) => heap.as_slice(),
-            RawSplit::Borrowed(borrowed) => borrowed.as_slice(),
+            Split::Inline(inline) => inline.as_slice(),
+            Split::Allocated(heap) => heap.as_slice(),
+            Split::Borrowed(borrowed) => borrowed.as_slice(),
         }
     }
 
@@ -360,9 +360,9 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
     #[must_use]
     pub const fn as_ptr(&self) -> *const u8 {
         match self.split() {
-            RawSplit::Inline(inline) => inline.as_ptr(),
-            RawSplit::Allocated(heap) => heap.as_ptr(),
-            RawSplit::Borrowed(borrowed) => borrowed.as_ptr(),
+            Split::Inline(inline) => inline.as_ptr(),
+            Split::Allocated(heap) => heap.as_ptr(),
+            Split::Borrowed(borrowed) => borrowed.as_ptr(),
         }
     }
 
@@ -379,13 +379,13 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
         debug_assert!(range.end <= self.len());
 
         let result = match self.split() {
-            RawSplit::Inline(inline) => {
+            Split::Inline(inline) => {
                 // SAFETY: by `slice_unchecked` safety precondition and `split`
                 // range must be of a length <= self.len() <= `INLINE_CAPACITY`
                 unsafe { Self::inline_unchecked(&inline.as_slice()[range]) }
             }
-            RawSplit::Borrowed(borrowed) => Self::borrowed(&borrowed.as_slice()[range]),
-            RawSplit::Allocated(allocated) => {
+            Split::Borrowed(borrowed) => Self::borrowed(&borrowed.as_slice()[range]),
+            Split::Allocated(allocated) => {
                 // normalize to inline if possible
                 if range.len() <= INLINE_CAPACITY {
                     // SAFETY: length is checked above
@@ -424,18 +424,18 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
         }
 
         let result = match self.split() {
-            RawSplit::Inline(_) => {
+            Split::Inline(_) => {
                 // SAFETY: by the function precondition and the test above
                 // slice.len() <= self.len() <= INLINE_CAPACITY
                 unsafe { Self::inline_unchecked(slice) }
             }
-            RawSplit::Borrowed(_) => {
+            Split::Borrowed(_) => {
                 // SAFETY: by the function precondition and the type invariant
                 // slice must have at least the same dynamic lifetime
                 let sl: &'borrow [u8] = unsafe { transmute(slice) };
                 Self::borrowed(sl)
             }
-            RawSplit::Allocated(allocated) => {
+            Split::Allocated(allocated) => {
                 // normalize to inline if possible
                 if slice.len() <= INLINE_CAPACITY {
                     // SAFETY: length checked above
@@ -473,9 +473,9 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
     #[must_use]
     pub fn as_mut_slice(&mut self) -> Option<&mut [u8]> {
         match self.split_mut() {
-            RawSplitMut::Inline(inline) => Some(inline.as_mut_slice()),
-            RawSplitMut::Allocated(allocated) => allocated.as_mut_slice(),
-            RawSplitMut::Borrowed(_) => None,
+            SplitMut::Inline(inline) => Some(inline.as_mut_slice()),
+            SplitMut::Allocated(allocated) => allocated.as_mut_slice(),
+            SplitMut::Borrowed(_) => None,
         }
     }
 
@@ -487,9 +487,9 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
     #[inline]
     pub(super) unsafe fn as_mut_slice_unchecked(&mut self) -> &mut [u8] {
         match self.split_mut() {
-            RawSplitMut::Inline(inline) => inline.as_mut_slice(),
-            RawSplitMut::Allocated(allocated) => unsafe { allocated.as_mut_slice_unchecked() },
-            RawSplitMut::Borrowed(_) => {
+            SplitMut::Inline(inline) => inline.as_mut_slice(),
+            SplitMut::Allocated(allocated) => unsafe { allocated.as_mut_slice_unchecked() },
+            SplitMut::Borrowed(_) => {
                 #[cfg(debug_assertions)]
                 {
                     panic!("mutable slice of borrowed string");
@@ -531,7 +531,7 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
     #[inline]
     pub(super) fn take_allocated(&mut self) -> Option<Allocated<B>> {
         match self.split() {
-            RawSplit::Allocated(&allocated) => {
+            Split::Allocated(&allocated) => {
                 // Takes a copy of allocated
 
                 // replace `self` one by an empty raw
@@ -622,9 +622,9 @@ impl<B: Backend> Clone for HipByt<'_, B> {
     fn clone(&self) -> Self {
         // Duplicates this `Raw` increasing the ref count if needed.
         match self.split() {
-            RawSplit::Inline(&inline) => Self::from_inline(inline),
-            RawSplit::Borrowed(&borrowed) => Self::from_borrowed(borrowed),
-            RawSplit::Allocated(allocated) => {
+            Split::Inline(&inline) => Self::from_inline(inline),
+            Split::Borrowed(&borrowed) => Self::from_borrowed(borrowed),
+            Split::Allocated(allocated) => {
                 let clone = allocated.explicit_clone();
                 Self::from_allocated(clone)
             }
