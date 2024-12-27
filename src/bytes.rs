@@ -71,6 +71,52 @@ where
         Self::inline_empty()
     }
 
+    /// Creates a new inline `HipByt` by copying the given slice.
+    /// The slice **must not** be too large to be inlined.
+    ///
+    /// # Panics
+    ///
+    /// It panics if the slice is too large.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// # use hipstr::HipByt;
+    /// let s = HipByt::inline(b"hello\0");
+    /// assert_eq!(s, b"hello\0");
+    /// ```
+    #[must_use]
+    pub const fn inline(bytes: &[u8]) -> Self {
+        assert!(bytes.len() <= Self::inline_capacity(), "slice too large");
+
+        // SAFETY: length checked above
+        unsafe { Self::inline_unchecked(bytes) }
+    }
+
+    /// Creates a new inline `HipByt` by copying the given the slice.
+    /// Return `None` if the given slice is too large to be inlined.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// # use hipstr::HipByt;
+    /// let s = HipByt::try_inline(b"hello\0").unwrap();
+    /// assert_eq!(s, b"hello\0");
+    /// ```
+    #[must_use]
+    pub const fn try_inline(bytes: &[u8]) -> Option<Self> {
+        if bytes.len() <= Self::inline_capacity() {
+            // SAFETY: length checked above
+            Some(unsafe { Self::inline_unchecked(bytes) })
+        } else {
+            None
+        }
+    }
+
     /// Creates a new `HipByt` with the given capacity.
     ///
     /// The underlying representation is not **normalized**.
