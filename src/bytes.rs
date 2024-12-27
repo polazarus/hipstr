@@ -11,7 +11,7 @@ use core::ops::{Bound, Deref, DerefMut, Range, RangeBounds};
 use core::ptr;
 
 use raw::borrowed::Borrowed;
-use raw::{Inline, RawSplit, RawSplitMut, Tag, Union};
+use raw::{Inline, Split, SplitMut, Tag, Union};
 
 use self::raw::try_range_of;
 pub use self::raw::HipByt;
@@ -136,9 +136,9 @@ where
     #[must_use]
     pub const fn len(&self) -> usize {
         match self.split() {
-            RawSplit::Inline(inline) => inline.len(),
-            RawSplit::Allocated(heap) => heap.len(),
-            RawSplit::Borrowed(borrowed) => borrowed.len(),
+            Split::Inline(inline) => inline.len(),
+            Split::Allocated(heap) => heap.len(),
+            Split::Borrowed(borrowed) => borrowed.len(),
         }
     }
 
@@ -228,8 +228,8 @@ where
     /// ```
     pub const fn into_borrowed(self) -> Result<&'borrow [u8], Self> {
         match self.split() {
-            RawSplit::Allocated(_) | RawSplit::Inline(_) => Err(self),
-            RawSplit::Borrowed(borrowed) => {
+            Split::Allocated(_) | Split::Inline(_) => Err(self),
+            Split::Borrowed(borrowed) => {
                 let result = borrowed.as_slice();
                 core::mem::forget(self); // not needed
                 Ok(result)
@@ -257,8 +257,8 @@ where
     #[must_use]
     pub const fn as_borrowed(&self) -> Option<&'borrow [u8]> {
         match self.split() {
-            RawSplit::Allocated(_) | RawSplit::Inline(_) => None,
-            RawSplit::Borrowed(borrowed) => Some(borrowed.as_slice()),
+            Split::Allocated(_) | Split::Inline(_) => None,
+            Split::Borrowed(borrowed) => Some(borrowed.as_slice()),
         }
     }
 
@@ -318,9 +318,9 @@ where
     #[must_use]
     pub fn capacity(&self) -> usize {
         match self.split() {
-            RawSplit::Inline(_) => Self::inline_capacity(),
-            RawSplit::Borrowed(borrowed) => borrowed.len(), // provide something to simplify the API
-            RawSplit::Allocated(allocated) => allocated.capacity(),
+            Split::Inline(_) => Self::inline_capacity(),
+            Split::Borrowed(borrowed) => borrowed.len(), // provide something to simplify the API
+            Split::Allocated(allocated) => allocated.capacity(),
         }
     }
 
@@ -733,9 +733,9 @@ where
     #[inline]
     pub fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<u8>] {
         match self.split_mut() {
-            RawSplitMut::Borrowed(_) => &mut [],
-            RawSplitMut::Inline(inline) => inline.spare_capacity_mut(),
-            RawSplitMut::Allocated(allocated) => allocated.spare_capacity_mut(),
+            SplitMut::Borrowed(_) => &mut [],
+            SplitMut::Inline(inline) => inline.spare_capacity_mut(),
+            SplitMut::Allocated(allocated) => allocated.spare_capacity_mut(),
         }
     }
 
@@ -751,11 +751,11 @@ where
     ///   * The vector should not be shared.
     pub unsafe fn set_len(&mut self, new_len: usize) {
         match self.split_mut() {
-            RawSplitMut::Borrowed(borrowed) => unsafe {
+            SplitMut::Borrowed(borrowed) => unsafe {
                 borrowed.set_len(new_len);
             },
-            RawSplitMut::Inline(inline) => unsafe { inline.set_len(new_len) },
-            RawSplitMut::Allocated(allocated) => unsafe { allocated.set_len(new_len) },
+            SplitMut::Inline(inline) => unsafe { inline.set_len(new_len) },
+            SplitMut::Allocated(allocated) => unsafe { allocated.set_len(new_len) },
         }
     }
 
