@@ -63,6 +63,28 @@ fn test_with_capacity() {
 }
 
 #[test]
+fn test_inline() {
+    let h = H::inline(ABC);
+    assert_eq!(h, ABC);
+    assert_eq!(h.len(), 3);
+    assert!(h.is_inline());
+    assert!(!h.is_borrowed());
+    assert!(!h.is_allocated());
+}
+
+#[test]
+#[should_panic]
+fn test_inline_panic() {
+    let _ = H::inline(MEDIUM);
+}
+
+#[test]
+fn test_try_inline() {
+    assert_eq!(H::try_inline(ABC), Some(H::from(ABC)));
+    assert_eq!(H::try_inline(MEDIUM), None);
+}
+
+#[test]
 #[cfg(feature = "std")]
 fn test_borrow_and_hash() {
     let mut set = HashSet::new();

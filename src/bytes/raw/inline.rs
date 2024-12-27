@@ -106,11 +106,13 @@ impl<const INLINE_CAPACITY: usize> Inline<INLINE_CAPACITY> {
     /// Creates a new `Inline` string by copying a byte slice.
     #[inline]
     #[cfg(test)]
-    fn new(sl: &[u8]) -> Self {
-        assert!(sl.len() <= INLINE_CAPACITY);
-
-        // SAFETY: length check above
-        unsafe { Self::new_unchecked(sl) }
+    const fn new(sl: &[u8]) -> Option<Self> {
+        if sl.len() <= INLINE_CAPACITY {
+            // SAFETY: length check above
+            Some(unsafe { Self::new_unchecked(sl) })
+        } else {
+            None
+        }
     }
 
     /// Creates a new `Inline` string by copying a short byte slice.
@@ -118,7 +120,7 @@ impl<const INLINE_CAPACITY: usize> Inline<INLINE_CAPACITY> {
     /// # Safety
     ///
     /// The input slice's length MUST be at most `INLINE_CAPACITY`.
-    pub unsafe fn new_unchecked(sl: &[u8]) -> Self {
+    pub const unsafe fn new_unchecked(sl: &[u8]) -> Self {
         let len = sl.len();
         debug_assert!(len <= INLINE_CAPACITY);
 
@@ -167,9 +169,7 @@ impl<const INLINE_CAPACITY: usize> Inline<INLINE_CAPACITY> {
 
     /// Returns a mutable view of this inline string.
     #[inline]
-    pub fn as_mut_slice(&mut self) -> &mut [u8] {
-        // XXX should add const: waiting for const_mut_refs
-
+    pub const fn as_mut_slice(&mut self) -> &mut [u8] {
         debug_assert!(self.is_valid());
 
         // HACK could be done without less unsafe: maybe_uninit_slice
