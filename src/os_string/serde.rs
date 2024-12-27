@@ -52,7 +52,7 @@ mod tests {
                 Token::SeqEnd,
             ],
         );
-        #[cfg(not(windows))]
+        #[cfg(unix)]
         assert_tokens(
             &empty,
             &[

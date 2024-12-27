@@ -15,7 +15,8 @@ use crate::Backend;
 mod cmp;
 mod convert;
 
-#[cfg(feature = "serde")]
+// OsStr(ing) implements Serialize/Deserialize only on Unix and Windows. thx @dsherret
+#[cfg(all(feature = "serde", any(unix, windows)))]
 mod serde;
 
 #[cfg(test)]
