@@ -40,6 +40,14 @@ impl<'a, 'b, B: Backend> Visitor<'a> for HipStrVisitor<'b, B> {
     {
         Ok(HipStr::from(v))
     }
+
+    #[inline]
+    fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
+    where
+        E: Error,
+    {
+        Ok(HipStr::from(v))
+    }
 }
 
 impl<'de, B> Deserialize<'de> for HipStr<'_, B>
