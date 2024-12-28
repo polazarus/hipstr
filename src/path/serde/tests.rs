@@ -19,7 +19,7 @@ fn test_serde() {
 fn test_serde_err() {
     assert_de_tokens_error::<HipPath>(
         &[Token::I32(0)],
-        "invalid type: integer `0`, expected path string",
+        "invalid type: integer `0`, expected a string",
     );
 }
 
@@ -94,6 +94,6 @@ fn test_serde_borrow_err() {
             Token::I32(0),
             Token::StructEnd,
         ],
-        "invalid type: integer `0`, expected path string",
+        "invalid type: integer `0`, expected a string",
     );
 }

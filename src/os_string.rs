@@ -17,7 +17,7 @@ mod convert;
 
 // OsStr(ing) implements Serialize/Deserialize only on Unix and Windows. thx @dsherret
 #[cfg(all(feature = "serde", any(unix, windows)))]
-mod serde;
+pub mod serde;
 
 #[cfg(test)]
 mod tests;

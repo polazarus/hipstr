@@ -1,10 +1,35 @@
-use std::path::PathBuf;
+//! `serde` support for `HipPath`.
+//!
+//! This module provides support for serializing and deserializing `HipStr`
+//! using [`serde`]. It is enabled by default when the `serde` feature is
+//! enabled.
+//!
+//! # Examples
+//!
+//! ```
+//! use hipstr::HipPath;
+//!
+//! let s = HipPath::borrowed("/usr/bin");
+//! let serialized = serde_json::to_string(&s).unwrap();
+//! assert_eq!(serialized, r#""/usr/bin""#);
+//!
+//! let deserialized: HipPath = serde_json::from_str(&serialized).unwrap();
+//! assert_eq!(deserialized, s);
+//! ```
+//!
+//! # Notable aspects of the implementation
+//!
+//! During deserialization, this implementation minimizes allocations by reusing
+//! the deserializer's internal buffer if possible.
+//!
+//! Unlike `PathBuf`'s `Deserialize`, this implementation declares transparently
+//! that it's expecting a string. Indeed not reusing `HipStr`'s implementation
+//! just does not make any sense.
 
-use serde::{de, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
 use super::HipPath;
-use crate::alloc::borrow::Cow;
-use crate::alloc::fmt;
+use crate::string::HipStr;
 use crate::Backend;
 
 impl<B> Serialize for HipPath<'_, B>
@@ -29,39 +54,8 @@ where
     where
         D: serde::Deserializer<'de>,
     {
-        Ok(Self::from(PathBuf::deserialize(deserializer)?))
-    }
-}
-
-/// Minimal string cow visitor
-struct CowVisitor;
-
-impl<'de> de::Visitor<'de> for CowVisitor {
-    type Value = Cow<'de, str>;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        formatter.write_str("path string")
-    }
-
-    fn visit_borrowed_str<E>(self, v: &'de str) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(Cow::Borrowed(v))
-    }
-
-    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(Cow::Owned(v.to_string()))
-    }
-
-    fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(Cow::Owned(v))
+        let s = HipStr::deserialize(deserializer)?;
+        Ok(Self::from(s))
     }
 }
 
@@ -96,8 +90,7 @@ where
     D: serde::Deserializer<'de>,
     B: Backend,
 {
-    let cow: Cow<'de, str> = deserializer.deserialize_str(CowVisitor)?;
-    Ok(HipPath::from(cow))
+    crate::string::serde::borrow_deserialize(deserializer).map(HipPath::from)
 }
 
 #[cfg(test)]

@@ -16,11 +16,17 @@ fn test_serde() {
     assert_tokens(&empty_str, &[Token::Str("")]);
     assert_de_tokens(&empty_str, &[Token::BorrowedStr("")]);
     assert_de_tokens(&empty_str, &[Token::String("")]);
+    assert_de_tokens(&empty_str, &[Token::Bytes(b"")]);
+    assert_de_tokens(&empty_str, &[Token::BorrowedBytes(b"")]);
+    assert_de_tokens(&empty_str, &[Token::ByteBuf(b"")]);
 
     let small = HipStr::from("abc");
-    assert_de_tokens(&small, &[Token::Str("abc")]);
+    assert_tokens(&small, &[Token::Str("abc")]);
     assert_de_tokens(&small, &[Token::BorrowedStr("abc")]);
     assert_de_tokens(&small, &[Token::String("abc")]);
+    assert_de_tokens(&small, &[Token::Bytes(b"abc")]);
+    assert_de_tokens(&small, &[Token::BorrowedBytes(b"abc")]);
+    assert_de_tokens(&small, &[Token::ByteBuf(b"abc")]);
 }
 
 #[test]
@@ -28,6 +34,14 @@ fn test_serde_err() {
     assert_de_tokens_error::<HipStr>(
         &[Token::I32(0)],
         "invalid type: integer `0`, expected a string",
+    );
+    assert_de_tokens_error::<HipStr>(
+        &[Token::Bytes(b"\xFF")],
+        "invalid value: byte array, expected a string",
+    );
+    assert_de_tokens_error::<HipStr>(
+        &[Token::ByteBuf(b"\xFF")],
+        "invalid value: byte array, expected a string",
     );
 }
 
@@ -88,6 +102,51 @@ fn test_serde_borrow() {
             Token::StructEnd,
         ],
     );
+
+    assert_de_tokens(
+        &MyStruct {
+            field: HipStr::from("a"),
+        },
+        &[
+            Token::Struct {
+                name: "MyStruct",
+                len: 1,
+            },
+            Token::Str("field"),
+            Token::BorrowedBytes(b"a"),
+            Token::StructEnd,
+        ],
+    );
+
+    assert_de_tokens(
+        &MyStruct {
+            field: HipStr::from("a"),
+        },
+        &[
+            Token::Struct {
+                name: "MyStruct",
+                len: 1,
+            },
+            Token::Str("field"),
+            Token::Bytes(b"a"),
+            Token::StructEnd,
+        ],
+    );
+
+    assert_de_tokens(
+        &MyStruct {
+            field: HipStr::from("a"),
+        },
+        &[
+            Token::Struct {
+                name: "MyStruct",
+                len: 1,
+            },
+            Token::String("field"),
+            Token::ByteBuf(b"a"),
+            Token::StructEnd,
+        ],
+    );
 }
 
 #[test]
@@ -103,5 +162,44 @@ fn test_serde_borrow_err() {
             Token::StructEnd,
         ],
         "invalid type: integer `0`, expected a string",
+    );
+
+    assert_de_tokens_error::<MyStruct>(
+        &[
+            Token::Struct {
+                name: "MyStruct",
+                len: 1,
+            },
+            Token::Str("field"),
+            Token::Bytes(b"\xFF"),
+            Token::StructEnd,
+        ],
+        "invalid value: byte array, expected a string",
+    );
+
+    assert_de_tokens_error::<MyStruct>(
+        &[
+            Token::Struct {
+                name: "MyStruct",
+                len: 1,
+            },
+            Token::Str("field"),
+            Token::BorrowedBytes(b"\xFF"),
+            Token::StructEnd,
+        ],
+        "invalid value: byte array, expected a string",
+    );
+
+    assert_de_tokens_error::<MyStruct>(
+        &[
+            Token::Struct {
+                name: "MyStruct",
+                len: 1,
+            },
+            Token::Str("field"),
+            Token::ByteBuf(b"\xFF"),
+            Token::StructEnd,
+        ],
+        "invalid value: byte array, expected a string",
     );
 }

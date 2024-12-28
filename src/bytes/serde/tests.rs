@@ -20,6 +20,9 @@ fn test_serde() {
     assert_de_tokens(empty, &[Token::ByteBuf(b"")]);
     assert_de_tokens(empty, &[Token::BorrowedBytes(b"")]);
     assert_de_tokens(empty, &[Token::Seq { len: Some(0) }, Token::SeqEnd]);
+    assert_de_tokens(empty, &[Token::Str("")]);
+    assert_de_tokens(empty, &[Token::String("")]);
+    assert_de_tokens(empty, &[Token::BorrowedStr("")]);
 
     let small = &HipByt::from(&[1, 2, 3]);
     assert_tokens(small, &[Token::Bytes(b"\x01\x02\x03")]);
@@ -35,13 +38,16 @@ fn test_serde() {
             Token::SeqEnd,
         ],
     );
+    assert_de_tokens(small, &[Token::Str("\x01\x02\x03")]);
+    assert_de_tokens(small, &[Token::String("\x01\x02\x03")]);
+    assert_de_tokens(small, &[Token::BorrowedStr("\x01\x02\x03")]);
 }
 
 #[test]
 fn test_de_error() {
     assert_de_tokens_error::<HipByt>(
         &[Token::Bool(true)],
-        "invalid type: boolean `true`, expected byte array",
+        "invalid type: boolean `true`, expected a byte array",
     );
 }
 
@@ -87,6 +93,38 @@ fn test_serde_borrow() {
             },
             Token::Str("field"),
             Token::BorrowedBytes(b"a"),
+            Token::StructEnd,
+        ],
+    );
+
+    assert_de_tokens(
+        &MyStruct {
+            field: HipByt::from(b"a"),
+        },
+        &[
+            Token::Struct {
+                name: "MyStruct",
+                len: 1,
+            },
+            Token::Str("field"),
+            Token::ByteBuf(b"a"),
+            Token::StructEnd,
+        ],
+    );
+
+    assert_de_tokens(
+        &MyStruct {
+            field: HipByt::from(b"a"),
+        },
+        &[
+            Token::Struct {
+                name: "MyStruct",
+                len: 1,
+            },
+            Token::Str("field"),
+            Token::Seq { len: None },
+            Token::U8(b'a'),
+            Token::SeqEnd,
             Token::StructEnd,
         ],
     );

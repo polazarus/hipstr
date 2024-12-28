@@ -1,3 +1,27 @@
+//! `serde` support for `HipOsStr`.
+//!
+//! This module provides support for serializing and deserializing `HipStr`
+//! using [`serde`]. It is enabled by default when the `serde` feature is
+//! enabled and on supported platforms (`unix` and `windows`).
+//!
+//! # Examples
+//!
+//! ```
+//! use hipstr::HipStr;
+//!
+//! let s = HipStr::from("hello");
+//! let serialized = serde_json::to_string(&s).unwrap();
+//! assert_eq!(serialized, r#""hello""#);
+//!
+//! let deserialized: HipStr = serde_json::from_str(&serialized).unwrap();
+//! assert_eq!(deserialized, s);
+//! ```
+//!
+//! # Notable aspects of the implementation
+//!
+//! Due to the overall weirdness of `OsString` and their support in `serde`, no
+//! attempt is made to improve on `OsString` standard `serde` implementation.
+
 use std::ffi::OsString;
 
 use serde::{Deserialize, Serialize};
