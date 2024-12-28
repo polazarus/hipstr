@@ -17,9 +17,9 @@ all-features = true
 
 [features]
 default = ["std"]
-std = ["serde/std", "serde_bytes/std"]
+std = ["serde/std"]
 unstable = []
-serde = ["dep:serde", "dep:serde_bytes"]
+serde = ["dep:serde"]
 bstr = ["dep:bstr"]
 
 [dev-dependencies]
@@ -40,12 +40,6 @@ features = ["alloc"]
 
 [dependencies.serde]
 version = "1.0.100"
-optional = true
-default-features = false
-features = ["alloc"]
-
-[dependencies.serde_bytes]
-version = "0.11.3"
 optional = true
 default-features = false
 features = ["alloc"]
