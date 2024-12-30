@@ -46,16 +46,20 @@
 //!
 //! # Three Backends
 //!
-//! The crate provides two backends:
+//! The crate provides three backends:
 //!
-//! - `ThreadSafe` (atomic reference counting),
-//! - `Local` (reference counting).
+//! - `Arc` (atomic reference counting), formerly `ThreadSafe`
+//! - `Rc` (reference counting), formerly `Local`
+//! - `Unique` (unique reference)
+//!
+//! The last backend, `Unique`, is mostly an experiment in pushing what
+//! constitutes a hipstr backend and has **no practical use**.
 //!
 //! The crate root also provides some convenience type aliases, typically for
 //! strings:
 //!
-//! - `hipstr::HipStr` with the `ThreadSafe` backend,
-//! - `hipstr::LocalHipStr` with the `Local` backend.
+//! - `hipstr::HipStr` with the `Arc` backend,
+//! - `hipstr::LocalHipStr` with the `Rc` backend.
 //!
 //! # Platform Support
 //!
