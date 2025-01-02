@@ -1,5 +1,6 @@
 use crate::{HipStr, LocalHipStr};
 
+#[test]
 fn test_unique() {
     type UniqueHipStr<'b> = crate::string::HipStr<'b, crate::Unique>;
     let r = UniqueHipStr::from("*".repeat(42));
