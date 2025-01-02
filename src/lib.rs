@@ -76,7 +76,8 @@
 //!
 //! * `std` (default): uses `std` rather than `core` and `alloc`, and also
 //!   provides more trait implementations (for comparison, conversions)
-//! * `serde`: provides serialization/deserialization support with `serde` crate
+//! * `serde`: provides serialization/deserialization support with [`serde`](https://serde.rs)
+//! * `borsh`: provides serialization/deserialization support with [`borsh`](https://borsh.io)
 //! * `bstr`: provides compatibility with [BurntSushi's bstr
 //!   crate](https://github.com/BurntSushi/bstr) make `HipByt` deref to
 //!   [`&bstr::BStr`](bstr::BStr) rather than [`&[u8]`](slice)

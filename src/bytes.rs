@@ -23,11 +23,12 @@ mod cmp;
 mod convert;
 mod raw;
 
-#[cfg(feature = "serde")]
-pub mod serde;
-
+#[cfg(feature = "borsh")]
+mod borsh;
 #[cfg(feature = "bstr")]
 mod bstr;
+#[cfg(feature = "serde")]
+pub mod serde;
 
 #[cfg(test)]
 mod tests;

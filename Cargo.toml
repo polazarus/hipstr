@@ -21,6 +21,7 @@ std = ["serde/std"]
 unstable = []
 serde = ["dep:serde"]
 bstr = ["dep:bstr"]
+borsh = ["dep:borsh"]
 
 [dev-dependencies]
 fastrand = "2.0.0"
@@ -43,6 +44,12 @@ version = "1.0.100"
 optional = true
 default-features = false
 features = ["alloc"]
+
+[dependencies.borsh]
+version = "1.5"
+optional = true
+default-features = false
+features = []
 
 [target.'cfg(loom)'.dependencies]
 loom = "0.7"

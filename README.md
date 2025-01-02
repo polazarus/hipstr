@@ -35,8 +35,9 @@ let chars = user.chars().count(); // "inherits" `&str` methods
 ## ✏️ Features
 
 - `std` (default): uses `std` rather than `core` and `alloc`, and also provides more trait implementations (for comparison and conversions)
-- `serde`: provides serialization/deserialization support with `serde` crate
-- `unstable`: exposes internal `Backend` trait that may change at any moment
+- `serde`: provides serialization/deserialization support with [`serde`](https://serde.rs)
+- `borsh`: provides serialization/deserialization support with [`borsh`](https://borsh.io)
+- `bstr`: provides compatibility with [BurntSushi's `bstr` crate](https://github.com/BurntSushi/bstr) - `unstable`: do nothing, used to reveal unstable implementation details
 
 ## ☣️ Safety of `hipstr`
 
