@@ -20,8 +20,12 @@ use crate::Backend;
 mod cmp;
 mod convert;
 mod pattern;
+
+#[cfg(feature = "borsh")]
+mod borsh;
 #[cfg(feature = "serde")]
 pub mod serde;
+
 #[cfg(test)]
 mod tests;
 

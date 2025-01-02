@@ -9,6 +9,7 @@ Notable changes only.
 - add new unique (non-shared) strings and byte vectors
 - add `as_borrowed`
 - add inline `const` constructors
+- add opt-in borsh serialization support for bytes and strings
 
 ### Changed
 
