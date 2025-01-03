@@ -1,7 +1,7 @@
 use arcstr::ArcStr;
 use divan::Bencher;
 use ecow::EcoString;
-use hipstr::{HipStr, UniqueHipStr};
+use hipstr::HipStr;
 use kstring::KString;
 
 fn main() {
@@ -18,11 +18,6 @@ mod from_slice {
     #[divan::bench(args = [0, 1, 16, 23, 32, 42])]
     fn bench_hipstr_from_slice(n: usize) -> HipStr<'static> {
         HipStr::from(&S2[0..n])
-    }
-
-    #[divan::bench(args = [0, 1, 16, 23, 32, 42])]
-    fn bench_unique_hipstr_from_slice(n: usize) -> UniqueHipStr<'static> {
-        UniqueHipStr::from(&S2[0..n])
     }
 
     #[divan::bench(args = [0, 1, 16, 23, 32, 42])]
@@ -49,11 +44,6 @@ mod from_string {
     fn bench_hipstr_from_string(b: Bencher, n: usize) {
         b.with_inputs(|| String::from(&S2[0..n]))
             .bench_local_values(|s| HipStr::from(s));
-    }
-    #[divan::bench(args = [0, 1, 16, 23, 32, 42])]
-    fn bench_uhipstr_from_string(b: Bencher, n: usize) {
-        b.with_inputs(|| String::from(&S2[0..n]))
-            .bench_local_values(|s| UniqueHipStr::from(s));
     }
 
     #[divan::bench(args = [0, 1, 16, 23, 32, 42])]
