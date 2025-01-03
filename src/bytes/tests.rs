@@ -1,3 +1,7 @@
+use alloc::borrow::ToOwned;
+use alloc::rc::Rc;
+use alloc::vec::Vec;
+use alloc::{format, vec};
 use core::cell::Cell;
 use core::mem::MaybeUninit;
 use core::ops::Bound;
@@ -9,10 +13,6 @@ use std::collections::HashSet;
 use fastrand::Rng;
 
 use super::{simplify_range, SliceErrorKind};
-use crate::alloc::borrow::ToOwned;
-use crate::alloc::rc::Rc;
-use crate::alloc::vec::Vec;
-use crate::alloc::{format, vec};
 use crate::HipByt as H;
 
 type S<'a> = &'a [u8];

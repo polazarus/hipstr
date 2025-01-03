@@ -1,4 +1,5 @@
 use alloc::borrow::Cow;
+use alloc::vec::Vec;
 use core::borrow::Borrow;
 
 use bstr::{BStr, BString};

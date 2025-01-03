@@ -83,14 +83,16 @@
 //!   [`&bstr::BStr`](bstr::BStr) rather than [`&[u8]`](slice)
 //! * `unstable`: do nothing, used to reveal unstable implementation details
 
+#![no_std]
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 #![cfg_attr(docsrs, feature(doc_cfg))]
-#![cfg_attr(not(feature = "std"), no_std)]
 #![warn(clippy::pedantic, clippy::nursery, clippy::cargo)]
 #![warn(unsafe_op_in_unsafe_fn)]
 
-pub(crate) extern crate alloc;
+extern crate alloc;
+#[cfg(feature = "std")]
+extern crate std;
 pub(crate) mod backend;
 pub mod bytes;
 pub(crate) mod macros;

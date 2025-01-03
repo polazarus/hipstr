@@ -2,12 +2,12 @@
 //!
 //! This module provides the [`HipOsStr`] as well as the associated helper type [`RefMut`].
 
+use alloc::borrow::Cow;
+use alloc::fmt;
 use core::hash::Hash;
 use core::ops::{Deref, DerefMut};
 use std::ffi::{OsStr, OsString};
 
-use crate::alloc::borrow::Cow;
-use crate::alloc::fmt;
 use crate::bytes::HipByt;
 use crate::string::HipStr;
 use crate::Backend;

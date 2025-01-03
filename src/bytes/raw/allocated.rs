@@ -1,5 +1,6 @@
 //! Allocated representation.
 
+use alloc::vec::Vec;
 use core::marker::PhantomData;
 use core::mem::{forget, ManuallyDrop, MaybeUninit};
 use core::ops::{Deref, DerefMut, Range};
@@ -9,7 +10,6 @@ use core::ptr::NonNull;
 // TODO remove once provenance API stabilized
 use sptr::Strict;
 
-use crate::alloc::vec::Vec;
 use crate::backend::Backend;
 use crate::smart::{self, Inner, Smart, UpdateResult};
 
@@ -466,8 +466,9 @@ impl<B: Backend> Allocated<B> {
 
 #[cfg(test)]
 mod tests {
+    use alloc::vec;
+
     use super::Allocated;
-    use crate::alloc::vec;
     use crate::Rc;
 
     #[test]

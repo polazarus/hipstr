@@ -1,12 +1,12 @@
 //! Comparison trait implementations for `HipPath`
 
+use alloc::borrow::Cow;
+use alloc::boxed::Box;
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::ptr;
 
 use super::HipPath;
-use crate::alloc::borrow::Cow;
-use crate::alloc::boxed::Box;
 use crate::macros::symmetric_eq;
 use crate::Backend;
 
@@ -116,12 +116,12 @@ where
 
 #[cfg(test)]
 mod tests {
+    use alloc::borrow::Cow;
+    use alloc::boxed::Box;
     use core::cmp::Ordering;
     use std::ffi::OsStr;
     use std::path::Path;
 
-    use crate::alloc::borrow::Cow;
-    use crate::alloc::boxed::Box;
     use crate::HipPath;
 
     #[test]

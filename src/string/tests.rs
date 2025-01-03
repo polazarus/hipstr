@@ -1,3 +1,7 @@
+use alloc::borrow::ToOwned;
+use alloc::rc::Rc;
+use alloc::string::{String, ToString};
+use alloc::{format, vec};
 use core::cell::Cell;
 use core::ops::Bound;
 use core::ptr;
@@ -5,10 +9,6 @@ use core::ptr;
 use std::collections::HashSet;
 
 use super::SliceErrorKind;
-use crate::alloc::borrow::ToOwned;
-use crate::alloc::rc::Rc;
-use crate::alloc::string::{String, ToString};
-use crate::alloc::{format, vec};
 use crate::{HipByt, HipStr as H};
 
 type S<'a> = &'a str;

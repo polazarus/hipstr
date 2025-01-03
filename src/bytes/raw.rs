@@ -2,6 +2,7 @@
 //!
 //! Provides only the core features for the sequence of bytes.
 
+use alloc::vec::Vec;
 use core::hint::unreachable_unchecked;
 use core::marker::PhantomData;
 use core::mem::{align_of, forget, replace, size_of, transmute, ManuallyDrop, MaybeUninit};
@@ -11,7 +12,6 @@ use core::ops::Range;
 use allocated::Allocated;
 use borrowed::Borrowed;
 
-use crate::alloc::vec::Vec;
 use crate::Backend;
 
 pub mod allocated;

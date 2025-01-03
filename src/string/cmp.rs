@@ -1,9 +1,10 @@
 //! Comparison trait implementations for `HipStr`
 
+use alloc::borrow::Cow;
+use alloc::boxed::Box;
+use alloc::string::String;
+
 use super::HipStr;
-use crate::alloc::borrow::Cow;
-use crate::alloc::boxed::Box;
-use crate::alloc::string::String;
 use crate::macros::{symmetric_eq, symmetric_ord};
 use crate::Backend;
 
@@ -110,10 +111,10 @@ symmetric_ord! {
 
 #[cfg(test)]
 mod tests {
+    use alloc::borrow::Cow;
+    use alloc::boxed::Box;
     use core::cmp::Ordering;
 
-    use crate::alloc::borrow::Cow;
-    use crate::alloc::boxed::Box;
     use crate::HipStr;
 
     #[test]
@@ -205,7 +206,7 @@ mod tests {
 
     #[test]
     fn test_cmp_string() {
-        use crate::alloc::string::String;
+        use alloc::string::String;
 
         assert!(BB_H < String::from("bc"));
         assert!(BB_H > String::from("ba"));

@@ -1,3 +1,6 @@
+use alloc::string::String;
+use alloc::vec::Vec;
+
 use super::*;
 use crate::{HipByt, HipStr as H};
 

@@ -1,5 +1,7 @@
 //! Borsh support for `HipStr`.
 
+use alloc::string::ToString;
+
 use borsh::io::{Error, ErrorKind};
 use borsh::{io, BorshDeserialize, BorshSerialize};
 

@@ -1,9 +1,10 @@
 //! Conversion trait implementations for `HipByt`.
 
+use alloc::borrow::Cow;
+use alloc::boxed::Box;
+use alloc::vec::Vec;
+
 use super::HipByt;
-use crate::alloc::borrow::Cow;
-use crate::alloc::boxed::Box;
-use crate::alloc::vec::Vec;
 use crate::Backend;
 
 impl<B> AsRef<[u8]> for HipByt<'_, B>
@@ -101,11 +102,11 @@ where
 
 #[cfg(test)]
 mod tests {
+    use alloc::borrow::Cow;
+    use alloc::vec;
     use core::ptr;
 
     use super::*;
-    use crate::alloc::borrow::Cow;
-    use crate::alloc::vec;
     use crate::{Arc, HipByt};
 
     #[test]

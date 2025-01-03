@@ -30,15 +30,15 @@
 //!
 //! [`serde_bytes`]: https://docs.rs/serde_bytes
 
+use alloc::fmt;
+use alloc::string::String;
+use alloc::vec::Vec;
 use core::marker::PhantomData;
 
 use serde::de::Visitor;
 use serde::{Deserialize, Serialize};
 
 use super::HipByt;
-use crate::alloc::fmt;
-use crate::alloc::string::String;
-use crate::alloc::vec::Vec;
 use crate::Backend;
 
 const EXPECTING: &str = "a byte array";
