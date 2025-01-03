@@ -1,9 +1,9 @@
+use alloc::format;
+use alloc::string::String;
 use core::ops::Range;
 use std::collections::HashSet;
 use std::ffi::OsStr;
 
-use crate::alloc::format;
-use crate::alloc::string::String;
 use crate::HipOsStr;
 
 type H<'borrow> = HipOsStr<'borrow>;

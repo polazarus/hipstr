@@ -1,13 +1,13 @@
 //! Conversion trait implementations for `HipOsStr`.
 
+use alloc::borrow::Cow;
+use alloc::boxed::Box;
+use alloc::string::String;
+use alloc::vec::Vec;
 use core::borrow::Borrow;
 use std::ffi::{OsStr, OsString};
 
 use super::HipOsStr;
-use crate::alloc::borrow::Cow;
-use crate::alloc::boxed::Box;
-use crate::alloc::string::String;
-use crate::alloc::vec::Vec;
 use crate::bytes::HipByt;
 use crate::string::HipStr;
 use crate::Backend;
@@ -183,15 +183,15 @@ where
 
 #[cfg(test)]
 mod tests {
+    use alloc::borrow::Cow;
+    use alloc::boxed::Box;
+    use alloc::string::String;
+    use alloc::vec::Vec;
     use core::borrow::Borrow;
     use core::ptr;
     use std::ffi::{OsStr, OsString};
     use std::path::Path;
 
-    use crate::alloc::borrow::Cow;
-    use crate::alloc::boxed::Box;
-    use crate::alloc::string::String;
-    use crate::alloc::vec::Vec;
     use crate::{HipByt, HipOsStr, HipStr};
 
     #[test]

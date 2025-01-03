@@ -3,6 +3,8 @@
 //! This module provides the [`HipByt`] type as well as the associated helper
 //! and error types.
 
+use alloc::fmt;
+use alloc::vec::Vec;
 use core::borrow::Borrow;
 use core::error::Error;
 use core::hash::Hash;
@@ -15,8 +17,6 @@ use raw::{Inline, Split, SplitMut, Tag, Union};
 
 use self::raw::try_range_of;
 pub use self::raw::HipByt;
-use crate::alloc::fmt;
-use crate::alloc::vec::Vec;
 use crate::Backend;
 
 mod cmp;

@@ -2,6 +2,7 @@
 //!
 //! Provides only the core features for the sequence of bytes.
 
+use alloc::vec::Vec;
 use core::hint::unreachable_unchecked;
 use core::marker::PhantomData;
 use core::mem::{align_of, forget, replace, size_of, transmute, ManuallyDrop, MaybeUninit};
@@ -11,7 +12,6 @@ use core::ops::Range;
 use allocated::Allocated;
 use borrowed::Borrowed;
 
-use crate::alloc::vec::Vec;
 use crate::Backend;
 
 pub mod allocated;
@@ -49,7 +49,7 @@ pub type Inline = inline::Inline<INLINE_CAPACITY>;
 /// # Examples
 ///
 /// You can create a `HipStr` from a [byte slice (&`[u8]`)][slice], an owned byte string
-/// ([`Vec<u8>`], [`Box<[u8]>`][Box]), or a clone-on-write smart pointer
+/// ([`Vec<u8>`], [`Box<[u8]>`][std::boxed::Box]), or a clone-on-write smart pointer
 /// ([`Cow<[u8]>`][std::borrow::Cow]) with [`From`]:
 ///
 /// ```

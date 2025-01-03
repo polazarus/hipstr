@@ -6,6 +6,7 @@
 //! - reference counted,
 //! - atomically reference counted.
 
+use alloc::boxed::Box;
 use core::cell::Cell;
 use core::mem::ManuallyDrop;
 use core::ops::Deref;
@@ -15,8 +16,6 @@ use core::sync::atomic::{fence, AtomicUsize, Ordering};
 
 #[cfg(loom)]
 use loom::sync::atomic::{fence, AtomicUsize, Ordering};
-
-use crate::alloc::boxed::Box;
 
 #[cfg(test)]
 mod tests;

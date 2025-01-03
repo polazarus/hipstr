@@ -3,6 +3,9 @@
 //! This module provides the [`HipStr`] type as well as the associated helper
 //! and error types.
 
+use alloc::borrow::Cow;
+use alloc::fmt;
+use alloc::string::{FromUtf16Error, String};
 use core::borrow::Borrow;
 use core::error::Error;
 use core::hash::Hash;
@@ -11,9 +14,6 @@ use core::ops::{Deref, DerefMut, Range, RangeBounds};
 use core::str::{Lines, SplitAsciiWhitespace, SplitWhitespace, Utf8Error};
 
 use self::pattern::{DoubleEndedPattern, IterWrapper, Pattern, ReversePattern};
-use crate::alloc::borrow::Cow;
-use crate::alloc::fmt;
-use crate::alloc::string::{FromUtf16Error, String};
 use crate::bytes::{simplify_range, HipByt, SliceErrorKind as ByteSliceErrorKind};
 use crate::Backend;
 
@@ -36,7 +36,7 @@ mod tests;
 /// # Examples
 ///
 /// You can create a `HipStr` from a [string slice (`&str`)][str], an owned
-/// string ([`String`], [`Box<str>`][Box]), or a clone-on-write smart pointer
+/// string ([`String`], [`Box<str>`][std::boxed::Box]), or a clone-on-write smart pointer
 /// ([`Cow<str>`][std::borrow::Cow]) with [`From`]:
 ///
 /// ```

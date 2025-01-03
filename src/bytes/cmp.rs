@@ -1,9 +1,10 @@
 //! Comparison trait implementations for `HipByt`
 
+use alloc::borrow::Cow;
+use alloc::boxed::Box;
+use alloc::vec::Vec;
+
 use super::HipByt;
-use crate::alloc::borrow::Cow;
-use crate::alloc::boxed::Box;
-use crate::alloc::vec::Vec;
 use crate::macros::{symmetric_eq, symmetric_ord};
 use crate::Backend;
 
@@ -101,11 +102,11 @@ symmetric_ord! {
 
 #[cfg(test)]
 mod tests {
+    use alloc::borrow::Cow;
+    use alloc::boxed::Box;
+    use alloc::vec::Vec;
     use core::cmp::Ordering;
 
-    use crate::alloc::borrow::Cow;
-    use crate::alloc::boxed::Box;
-    use crate::alloc::vec::Vec;
     use crate::HipByt;
 
     #[test]
