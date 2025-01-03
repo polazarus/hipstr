@@ -27,6 +27,8 @@
 
 #![allow(clippy::option_if_let_else)]
 
+use alloc::string::String;
+use alloc::vec::Vec;
 use core::fmt;
 use core::marker::PhantomData;
 
@@ -34,8 +36,6 @@ use serde::de::{Error, Unexpected, Visitor};
 use serde::{de, Deserialize, Deserializer, Serialize};
 
 use super::HipStr;
-use crate::alloc::string::String;
-use crate::alloc::vec::Vec;
 use crate::bytes::HipByt;
 use crate::Backend;
 

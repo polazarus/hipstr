@@ -2,12 +2,12 @@
 //!
 //! This module provides the [`HipOsStr`] as well as the associated helper type [`RefMut`].
 
+use alloc::borrow::Cow;
+use alloc::fmt;
 use core::hash::Hash;
 use core::ops::{Deref, DerefMut};
 use std::ffi::{OsStr, OsString};
 
-use crate::alloc::borrow::Cow;
-use crate::alloc::fmt;
 use crate::bytes::HipByt;
 use crate::string::HipStr;
 use crate::Backend;
@@ -70,6 +70,8 @@ mod tests;
 ///
 /// [`&OsStr`]: std::ffi::OsStr
 /// [`&Path`]: std::path::Path
+/// [`String`]: std::string::String
+/// [Box]: std::boxed::Box
 /// [`PathBuf`]: std::path::PathBuf
 /// [`HipStr`]: crate::string::HipStr
 /// [`HipPath`]: crate::path::HipPath
@@ -407,7 +409,7 @@ where
             .map_err(Self)
     }
 
-    /// Returns a mutable handle to the underlying [`String`].
+    /// Returns a mutable handle to the underlying [`OsString`].
     ///
     /// This operation may reallocate a new string if either:
     ///
@@ -770,7 +772,7 @@ where
     }
 }
 
-/// A wrapper type for a mutably borrowed [`String`] out of a [`HipOsStr`].
+/// A wrapper type for a mutably borrowed [`OsString`] out of a [`HipOsStr`].
 pub struct RefMut<'a, 'borrow, B>
 where
     B: Backend,

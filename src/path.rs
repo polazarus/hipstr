@@ -2,12 +2,12 @@
 //!
 //! This module provides the [`HipPath`] type as well as the associated helper type [`RefMut`].
 
+use alloc::fmt;
 use core::hash::Hash;
 use core::ops::{Deref, DerefMut};
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 
-use crate::alloc::fmt;
 use crate::bytes::HipByt;
 use crate::os_string::HipOsStr;
 use crate::string::HipStr;
@@ -70,6 +70,8 @@ mod tests;
 ///
 /// [`&OsStr`]: std::ffi::OsStr
 /// [`&Path`]: std::path::Path
+/// [`String`]: std::string::String
+/// [Box]: std::boxed::Box
 /// [`HipStr`]: crate::string::HipStr
 /// [`HipOsStr``]: crate::string::HipOsStr
 #[repr(transparent)]
@@ -604,7 +606,7 @@ where
     }
 }
 
-/// A wrapper type for a mutably borrowed [`String`] out of a [`HipPath`].
+/// A wrapper type for a mutably borrowed [`PathBuf`] out of a [`HipPath`].
 pub struct RefMut<'a, 'borrow, B>
 where
     B: Backend,

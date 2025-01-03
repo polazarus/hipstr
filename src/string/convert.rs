@@ -1,13 +1,13 @@
 //! Conversion trait implementations for `HipStr`.
 
+use alloc::borrow::Cow;
+use alloc::boxed::Box;
+use alloc::string::String;
+use alloc::vec::Vec;
 #[cfg(feature = "std")]
 use std::net::ToSocketAddrs;
 
 use super::HipStr;
-use crate::alloc::borrow::Cow;
-use crate::alloc::boxed::Box;
-use crate::alloc::string::String;
-use crate::alloc::vec::Vec;
 use crate::bytes::HipByt;
 use crate::Backend;
 
@@ -196,7 +196,7 @@ impl<B> TryFrom<Vec<u8>> for HipStr<'_, B>
 where
     B: Backend,
 {
-    type Error = crate::alloc::string::FromUtf8Error;
+    type Error = alloc::string::FromUtf8Error;
 
     #[inline]
     fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
@@ -219,14 +219,14 @@ where
 
 #[cfg(test)]
 mod tests {
+    use alloc::borrow::Cow;
+    use alloc::boxed::Box;
+    use alloc::string::String;
+    use alloc::vec::Vec;
     use core::ptr;
     #[cfg(feature = "std")]
     use std::net::ToSocketAddrs;
 
-    use crate::alloc::borrow::Cow;
-    use crate::alloc::boxed::Box;
-    use crate::alloc::string::String;
-    use crate::alloc::vec::Vec;
     use crate::{HipByt, HipStr};
 
     #[test]
