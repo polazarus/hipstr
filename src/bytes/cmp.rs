@@ -24,31 +24,31 @@ where
 }
 
 symmetric_eq! {
-    <'borrow> <B> <> [where B: Backend] (a : [u8], b : HipByt<'borrow, B>) {
+    <> <B> <> [where B: Backend] (a : [u8], b : HipByt<'_, B>) {
         a == b.as_slice()
     }
 
-    <'a, 'borrow> <B> <> [where B: Backend] (a : &'a [u8], b : HipByt<'borrow, B>) {
+    <> <B> <> [where B: Backend] (a : &[u8], b : HipByt<'_, B>) {
         *a == b.as_slice()
     }
 
-    <'borrow> <B> <> [where B: Backend] (a : Vec<u8>, b : HipByt<'borrow, B>) {
+    <> <B> <> [where B: Backend] (a : Vec<u8>, b : HipByt<'_, B>) {
         a.as_slice() == b.as_slice()
     }
 
-    <'borrow> <B> <> [where B: Backend] (a : Box<[u8]>, b : HipByt<'borrow, B>) {
+    <> <B> <> [where B: Backend] (a : Box<[u8]>, b : HipByt<'_, B>) {
         a.as_ref() == b.as_slice()
     }
 
-    <'a, 'borrow> <B> <> [where B: Backend] (a : Cow<'a, [u8]>, b : HipByt<'borrow, B>) {
+    <> <B> <> [where B: Backend] (a : Cow<'_, [u8]>, b : HipByt<'_, B>) {
         a.as_ref() == b.as_slice()
     }
 }
 symmetric_eq! {
-    <'borrow> <B> <const N: usize> [where B: Backend] (a : [u8; N], b : HipByt<'borrow, B>) {
+    <> <B> <const N: usize> [where B: Backend] (a : [u8; N], b : HipByt<'_, B>) {
         a == b.as_slice()
     }
-    <'a, 'borrow> <B> <const N: usize> [where B: Backend] (a : &'a [u8; N], b : HipByt<'borrow, B>) {
+    <> <B> <const N: usize> [where B: Backend] (a : &[u8; N], b : HipByt<'_, B>) {
         a.as_slice() == b.as_slice()
     }
 }
@@ -76,26 +76,26 @@ where
 }
 
 symmetric_ord! {
-    <'borrow> <B> <> [where B: Backend] (a: [u8], b: HipByt<'borrow, B>) {
+    <> <B> <> [where B: Backend] (a: [u8], b: HipByt<'_, B>) {
         <[u8] as PartialOrd>::partial_cmp(a, b.as_slice())
     }
 
-    <'a, 'borrow> <B> <> [where B: Backend] (a: &'a [u8], b: HipByt<'borrow, B>) {
+    <> <B> <> [where B: Backend] (a: &[u8], b: HipByt<'_, B>) {
         <[u8] as PartialOrd>::partial_cmp(a, b.as_slice())
     }
 
-    <'borrow> <B> <const N: usize> [where B: Backend] (a: [u8; N], b: HipByt<'borrow, B>) {
+    <> <B> <const N: usize> [where B: Backend] (a: [u8; N], b: HipByt<'_, B>) {
         <[u8] as PartialOrd>::partial_cmp(a, b.as_slice())
     }
 
-    <'a, 'borrow> <B> <const N: usize> [where B: Backend] (a: &'a [u8; N], b: HipByt<'borrow, B>) {
+    <> <B> <const N: usize> [where B: Backend] (a: &[u8; N], b: HipByt<'_, B>) {
         <[u8] as PartialOrd>::partial_cmp(*a, b.as_slice())
     }
 
-    <'borrow> <B> <> [where B: Backend] (a: Vec<u8>, b: HipByt<'borrow, B>) {
+    <> <B> <> [where B: Backend] (a: Vec<u8>, b: HipByt<'_, B>) {
         <[u8] as PartialOrd>::partial_cmp(a, b.as_slice())
     }
-    <'a, 'borrow> <B> <> [where B: Backend] (a: Cow<'a, [u8]>, b: HipByt<'borrow, B>) {
+    <> <B> <> [where B: Backend] (a: Cow<'_, [u8]>, b: HipByt<'_, B>) {
         <[u8] as PartialOrd>::partial_cmp(a, b.as_slice())
     }
 }
