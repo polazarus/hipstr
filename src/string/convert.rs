@@ -168,26 +168,26 @@ where
     }
 }
 
-impl<'a, 'borrow, B> TryFrom<&'a HipByt<'borrow, B>> for HipStr<'borrow, B>
+impl<'borrow, B> TryFrom<&HipByt<'borrow, B>> for HipStr<'borrow, B>
 where
     B: Backend,
 {
     type Error = super::FromUtf8Error<'borrow, B>;
 
     #[inline]
-    fn try_from(value: &'a HipByt<'borrow, B>) -> Result<Self, Self::Error> {
+    fn try_from(value: &HipByt<'borrow, B>) -> Result<Self, Self::Error> {
         Self::from_utf8(value.clone())
     }
 }
 
-impl<'a, B> TryFrom<&'a [u8]> for HipStr<'_, B>
+impl<B> TryFrom<&[u8]> for HipStr<'_, B>
 where
     B: Backend,
 {
     type Error = core::str::Utf8Error;
 
     #[inline]
-    fn try_from(value: &'a [u8]) -> Result<Self, Self::Error> {
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
         Ok(Self::from(core::str::from_utf8(value)?))
     }
 }
