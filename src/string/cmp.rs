@@ -159,6 +159,28 @@ mod tests {
         assert_eq!(oss, h);
     }
 
+    #[cfg(feature = "bstr")]
+    #[test]
+    fn test_eq_bstr() {
+        let s = "abc";
+        let b: &bstr::BStr = s.as_ref();
+        let h = HipStr::from(s);
+        assert_eq!(h, b);
+        assert_eq!(b, h);
+        assert_eq!(&h, b);
+        assert_eq!(b, &h);
+    }
+
+    #[cfg(feature = "bstr")]
+    #[test]
+    fn test_eq_bstring() {
+        let s = "abc";
+        let bs = bstr::BString::from(s);
+        let h = HipStr::from(s);
+        assert_eq!(h, bs);
+        assert_eq!(bs, h);
+    }
+
     static BB_H: HipStr = HipStr::borrowed("bb");
     static BC_H: HipStr = HipStr::borrowed("bc");
 
@@ -240,5 +262,41 @@ mod tests {
         assert!(BB_H < OsString::from("bc"));
         assert!(BB_H > OsString::from("ba"));
         assert!(BB_H >= OsString::from("bb"));
+    }
+
+    #[cfg(feature = "bstr")]
+    #[test]
+    fn test_cmp_bstr() {
+        use bstr::BStr;
+
+        assert!(BStr::new("bc") > &BB_H);
+        assert!(BStr::new("ba") < &BB_H);
+        assert!(BStr::new("bb") <= &BB_H);
+
+        assert!(&BB_H < BStr::new("bc"));
+        assert!(&BB_H > BStr::new("ba"));
+        assert!(&BB_H >= BStr::new("bb"));
+
+        assert!(BStr::new("bc") > BB_H);
+        assert!(BStr::new("ba") < BB_H);
+        assert!(BStr::new("bb") <= BB_H);
+
+        assert!(BB_H < BStr::new("bc"));
+        assert!(BB_H > BStr::new("ba"));
+        assert!(BB_H >= BStr::new("bb"));
+    }
+
+    #[cfg(feature = "bstr")]
+    #[test]
+    fn test_cmp_bstring() {
+        use bstr::BString;
+
+        assert!(BString::from("bc") > BB_H);
+        assert!(BString::from("ba") < BB_H);
+        assert!(BString::from("bb") <= BB_H);
+
+        assert!(BB_H < BString::from("bc"));
+        assert!(BB_H > BString::from("ba"));
+        assert!(BB_H >= BString::from("bb"));
     }
 }
