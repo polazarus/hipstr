@@ -68,13 +68,10 @@ where
     }
 }
 
-impl<B> PartialOrd for HipPath<'_, B>
-where
-    B: Backend,
-{
+impl<B1: Backend, B2: Backend> PartialOrd<HipPath<'_, B1>> for HipPath<'_, B2> {
     #[inline]
-    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
-        Some(self.cmp(other))
+    fn partial_cmp(&self, other: &HipPath<'_, B1>) -> Option<core::cmp::Ordering> {
+        self.as_os_str().partial_cmp(other.as_os_str())
     }
 }
 

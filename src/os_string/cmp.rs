@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 
 use super::HipOsStr;
 use crate::macros::{symmetric_eq, symmetric_ord};
+use crate::path::HipPath;
 use crate::Backend;
 
 // Equality
@@ -56,19 +57,25 @@ symmetric_eq! {
     [B] [where B: Backend] (&Cow<'_, Path>, HipOsStr<'_, B>) = path_eq;
     [B] [where B: Backend] (PathBuf, HipOsStr<'_, B>) = path_eq;
     [B] [where B: Backend] (&PathBuf, HipOsStr<'_, B>) = path_eq;
+
+    [B1: Backend, B2: Backend] (HipPath<'_, B1>, HipOsStr<'_, B2>) = path_eq;
 }
 
 impl<B: Backend> Ord for HipOsStr<'_, B> {
     #[inline]
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
-        OsStr::cmp(self, other)
+        self.as_os_str().cmp(other.as_os_str())
     }
 }
 
-impl<B: Backend> PartialOrd for HipOsStr<'_, B> {
+impl<B1, B2> PartialOrd<HipOsStr<'_, B1>> for HipOsStr<'_, B2>
+where
+    B1: Backend,
+    B2: Backend,
+{
     #[inline]
-    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
-        Some(self.cmp(other))
+    fn partial_cmp(&self, other: &HipOsStr<'_, B1>) -> Option<core::cmp::Ordering> {
+        self.as_os_str().partial_cmp(other.as_os_str())
     }
 }
 
@@ -98,11 +105,16 @@ symmetric_ord! {
     [B] [where B: Backend] (Path, HipOsStr<'_, B>) = path_partial_cmp;
     [B] [where B: Backend] (&Path, HipOsStr<'_, B>) = path_partial_cmp;
 
+    [B] [where B: Backend] (Box<Path>, HipOsStr<'_, B>) = path_partial_cmp;
+    [B] [where B: Backend] (&Box<Path>, HipOsStr<'_, B>) = path_partial_cmp;
+
     [B] [where B: Backend] (Cow<'_, Path>, HipOsStr<'_, B>) = path_partial_cmp;
     [B] [where B: Backend] (&Cow<'_, Path>, HipOsStr<'_, B>) = path_partial_cmp;
 
     [B] [where B: Backend] (PathBuf, HipOsStr<'_, B>) = path_partial_cmp;
     [B] [where B: Backend] (&PathBuf, HipOsStr<'_, B>) = path_partial_cmp;
+
+    [B1: Backend, B2: Backend] (HipPath<'_, B1>, HipOsStr<'_, B2>) = path_partial_cmp;
 }
 
 #[cfg(test)]

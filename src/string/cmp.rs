@@ -62,13 +62,14 @@ where
     }
 }
 
-impl<B> PartialOrd for HipStr<'_, B>
+impl<B1, B2> PartialOrd<HipStr<'_, B1>> for HipStr<'_, B2>
 where
-    B: Backend,
+    B1: Backend,
+    B2: Backend,
 {
     #[inline]
-    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
-        Some(self.cmp(other))
+    fn partial_cmp(&self, other: &HipStr<'_, B1>) -> Option<core::cmp::Ordering> {
+        self.as_str().partial_cmp(other.as_str())
     }
 }
 
