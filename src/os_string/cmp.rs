@@ -123,51 +123,55 @@ mod tests {
     use alloc::boxed::Box;
     use core::cmp::Ordering;
     use std::ffi::OsStr;
+    use std::path::Path;
 
     use crate::HipOsStr;
 
     #[test]
     fn test_eq() {
         let string = "A".repeat(42);
-        let slice = OsStr::new(&string);
-        let b: Box<OsStr> = Box::from(slice);
-        let c: Cow<OsStr> = Cow::Borrowed(slice);
-        let h = HipOsStr::from(slice);
 
-        assert_eq!(h, slice);
-        assert_eq!(slice, h);
+        let os_str = OsStr::new(&string);
+        let box_os_str: Box<OsStr> = Box::from(os_str);
+        let cow_os_str: Cow<OsStr> = Cow::Borrowed(os_str);
+        let os_string = os_str.to_os_string();
 
-        assert_eq!(h, *slice);
-        assert_eq!(*slice, h);
+        let path = Path::new(&string);
+        let box_path: Box<Path> = Box::from(path);
+        let cow_path = Cow::Borrowed(path);
+        let path_buf = path.to_path_buf();
 
-        assert_eq!(h, b);
-        assert_eq!(b, h);
+        let hip_os_str = HipOsStr::from(os_str);
 
-        assert_eq!(h, c);
-        assert_eq!(c, h);
-    }
+        assert_eq!(hip_os_str, os_str);
+        assert_eq!(os_str, hip_os_str);
 
-    #[test]
-    #[cfg(feature = "std")]
-    fn test_eq_os_str() {
-        let s = "abc";
-        let os: &std::ffi::OsStr = s.as_ref();
-        let h = HipOsStr::from(s);
-        assert_eq!(h, os);
-        assert_eq!(os, h);
-        assert_eq!(&h, os);
-        assert_eq!(os, &h);
-    }
+        assert_eq!(hip_os_str, *os_str);
+        assert_eq!(*os_str, hip_os_str);
 
-    #[test]
-    #[cfg(feature = "std")]
-    fn test_eq_os_string() {
-        let s = "abc";
-        let os: &std::ffi::OsStr = s.as_ref();
-        let oss = os.to_os_string();
-        let h = HipOsStr::from(s);
-        assert_eq!(h, oss);
-        assert_eq!(oss, h);
+        assert_eq!(hip_os_str, box_os_str);
+        assert_eq!(box_os_str, hip_os_str);
+
+        assert_eq!(hip_os_str, cow_os_str);
+        assert_eq!(cow_os_str, hip_os_str);
+
+        assert_eq!(hip_os_str, os_string);
+        assert_eq!(os_string, hip_os_str);
+
+        assert_eq!(hip_os_str, path);
+        assert_eq!(path, hip_os_str);
+
+        assert_eq!(hip_os_str, *path);
+        assert_eq!(*path, hip_os_str);
+
+        assert_eq!(hip_os_str, box_path);
+        assert_eq!(box_path, hip_os_str);
+
+        assert_eq!(hip_os_str, cow_path);
+        assert_eq!(cow_path, hip_os_str);
+
+        assert_eq!(hip_os_str, path_buf);
+        assert_eq!(path_buf, hip_os_str);
     }
 
     #[test]
