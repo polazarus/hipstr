@@ -58,13 +58,14 @@ where
     }
 }
 
-impl<B> PartialOrd for HipByt<'_, B>
+impl<B1, B2> PartialOrd<HipByt<'_, B1>> for HipByt<'_, B2>
 where
-    B: Backend,
+    B1: Backend,
+    B2: Backend,
 {
     #[inline]
-    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
-        Some(self.cmp(other))
+    fn partial_cmp(&self, other: &HipByt<'_, B1>) -> Option<core::cmp::Ordering> {
+        self.as_slice().partial_cmp(other.as_slice())
     }
 }
 
