@@ -23,6 +23,8 @@ mod pattern;
 
 #[cfg(feature = "borsh")]
 mod borsh;
+#[cfg(feature = "bstr")]
+pub(crate) mod bstr;
 #[cfg(feature = "serde")]
 pub mod serde;
 

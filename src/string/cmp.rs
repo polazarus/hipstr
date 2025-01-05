@@ -50,6 +50,8 @@ symmetric_eq! {
     [B] [where B: Backend] (&std::ffi::OsString, HipStr<'_, B>) = os_str_eq;
 }
 
+// Order
+
 impl<B> Ord for HipStr<'_, B>
 where
     B: Backend,

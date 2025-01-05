@@ -34,7 +34,7 @@ divan = "0.1.15"
 sptr = "0.3.2"
 
 [dependencies.bstr]
-version = "1"
+version = "1.3"
 optional = true
 default-features = false
 features = ["alloc"]

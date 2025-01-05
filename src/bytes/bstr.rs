@@ -1,10 +1,14 @@
+//! `Bstr` support for bytes.
+
 use alloc::borrow::Cow;
 use alloc::vec::Vec;
 use core::borrow::Borrow;
 
 use bstr::{BStr, BString};
 
+use super::cmp::{cmp_slice, eq_slice};
 use super::HipByt;
+use crate::macros::{symmetric_eq, symmetric_ord};
 use crate::Backend;
 
 impl<B> Borrow<BStr> for HipByt<'_, B>
@@ -72,6 +76,22 @@ where
     }
 }
 
+symmetric_eq! {
+    [B] [where B: Backend] (bstr::BStr, HipByt<'_, B>) = eq_slice;
+    [B] [where B: Backend] (&bstr::BStr, HipByt<'_, B>) = eq_slice;
+
+    [B] [where B: Backend] (bstr::BString, HipByt<'_, B>) = eq_slice;
+    [B] [where B: Backend] (&bstr::BString, HipByt<'_, B>) = eq_slice;
+}
+
+symmetric_ord! {
+    [B] [where B: Backend] (bstr::BStr, HipByt<'_, B>) = cmp_slice;
+    [B] [where B: Backend] (&bstr::BStr, HipByt<'_, B>) = cmp_slice;
+
+    [B] [where B: Backend] (bstr::BString, HipByt<'_, B>) = cmp_slice;
+    [B] [where B: Backend] (&bstr::BString, HipByt<'_, B>) = cmp_slice;
+}
+
 #[cfg(test)]
 mod tests {
     use bstr::{ByteSlice, ByteVec};
@@ -132,5 +152,67 @@ mod tests {
             assert_eq!(r, "Hello, World!!");
         }
         assert_eq!(b, b"Hello, World!!");
+    }
+
+    #[test]
+    fn test_eq() {
+        for (a, b) in [
+            ("abc", "abc"),
+            ("abc", "def"),
+            (&"a".repeat(40), &"a".repeat(40)),
+            ("other", &"a".repeat(40)),
+        ] {
+            let a = a.as_bytes();
+            let b = b.as_bytes();
+            let a_h = HipByt::from(a);
+            let bstr = BStr::new(b);
+            let bstring = BString::from(b);
+
+            let expected = a == b;
+            assert_eq!(a_h == *bstr, expected);
+            assert_eq!(a_h != *bstr, !expected);
+            assert_eq!(a_h == bstr, expected);
+            assert_eq!(a_h != bstr, !expected);
+
+            assert_eq!(a_h == bstring, expected);
+            assert_eq!(a_h != bstring, !expected);
+            assert_eq!(a_h == &bstring, expected);
+            assert_eq!(a_h != &bstring, !expected);
+        }
+    }
+
+    #[test]
+    fn test_ord() {
+        for (a, b) in [
+            ("abc", "abc"),
+            ("abc", "abd"),
+            ("abc", "abb"),
+            ("abc", "ab"),
+            ("abc", "def"),
+            (&"a".repeat(40), &"a".repeat(40)),
+            ("other", &"a".repeat(40)),
+        ] {
+            let a = a.as_bytes();
+            let b = b.as_bytes();
+            let a_hb = HipByt::from(a);
+            let b_hb = HipByt::from(b);
+            let a_bstr = BStr::new(a);
+            let b_bstr = BStr::new(b);
+            let a_bstring = BString::from(a);
+            let b_bstring = BString::from(b);
+            let expected = a.cmp(b);
+
+            assert_eq!(a_hb.partial_cmp(b_bstr), Some(expected));
+            assert_eq!(a_hb.partial_cmp(&b_bstr), Some(expected));
+
+            assert_eq!(a_hb.partial_cmp(&b_bstring), Some(expected));
+            assert_eq!(a_hb.partial_cmp(&&b_bstring), Some(expected));
+
+            assert_eq!(a_bstr.partial_cmp(&b_hb), Some(expected));
+            assert_eq!((*a_bstr).partial_cmp(&b_hb), Some(expected));
+
+            assert_eq!(a_bstring.partial_cmp(&b_hb), Some(expected));
+            assert_eq!((&a_bstring).partial_cmp(&b_hb), Some(expected));
+        }
     }
 }
