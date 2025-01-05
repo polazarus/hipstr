@@ -24,22 +24,26 @@ where
 }
 
 #[inline]
-fn eq_slice(a: impl AsRef<[u8]>, b: impl AsRef<[u8]>) -> bool {
+pub(super) fn eq_slice(a: impl AsRef<[u8]>, b: impl AsRef<[u8]>) -> bool {
     a.as_ref() == b.as_ref()
 }
 
 symmetric_eq! {
     [B] [where B: Backend] ([u8], HipByt<'_, B>) = eq_slice;
     [B] [where B: Backend] (&[u8], HipByt<'_, B>) = eq_slice;
-    [B] [where B: Backend] (Vec<u8>, HipByt<'_, B>) = eq_slice;
-    [B] [where B: Backend] (&Vec<u8>, HipByt<'_, B>) = eq_slice;
-    [B] [where B: Backend] (Box<[u8]>, HipByt<'_, B>) = eq_slice;
-    [B] [where B: Backend] (&Box<[u8]>, HipByt<'_, B>) = eq_slice;
-    [B] [where B: Backend] (Cow<'_, [u8]>, HipByt<'_, B>) = eq_slice;
-    [B] [where B: Backend] (&Cow<'_, [u8]>, HipByt<'_, B>) = eq_slice;
 
     [B, const N: usize] [where B: Backend] ([u8; N], HipByt<'_, B>) = eq_slice;
     [B, const N: usize] [where B: Backend] (&[u8; N], HipByt<'_, B>) = eq_slice;
+
+    [B] [where B: Backend] (Vec<u8>, HipByt<'_, B>) = eq_slice;
+    [B] [where B: Backend] (&Vec<u8>, HipByt<'_, B>) = eq_slice;
+
+    [B] [where B: Backend] (Box<[u8]>, HipByt<'_, B>) = eq_slice;
+    [B] [where B: Backend] (&Box<[u8]>, HipByt<'_, B>) = eq_slice;
+
+    [B] [where B: Backend] (Cow<'_, [u8]>, HipByt<'_, B>) = eq_slice;
+    [B] [where B: Backend] (&Cow<'_, [u8]>, HipByt<'_, B>) = eq_slice;
+
 }
 
 // Order
@@ -65,22 +69,25 @@ where
 }
 
 #[inline]
-fn cmp_slice(a: impl AsRef<[u8]>, b: impl AsRef<[u8]>) -> Option<core::cmp::Ordering> {
+pub(super) fn cmp_slice(a: impl AsRef<[u8]>, b: impl AsRef<[u8]>) -> Option<core::cmp::Ordering> {
     a.as_ref().partial_cmp(b.as_ref())
 }
 
 symmetric_ord! {
     [B] [where B: Backend] ([u8], HipByt<'_, B>) = cmp_slice;
-
     [B] [where B: Backend] (&[u8], HipByt<'_, B>) = cmp_slice;
 
     [B, const N: usize] [where B: Backend] ([u8; N], HipByt<'_, B>) = cmp_slice;
-
     [B, const N: usize] [where B: Backend] (&[u8; N], HipByt<'_, B>) = cmp_slice;
 
     [B] [where B: Backend] (Vec<u8>, HipByt<'_, B>) = cmp_slice;
+    [B] [where B: Backend] (&Vec<u8>, HipByt<'_, B>) = cmp_slice;
+
+    [B] [where B: Backend] (Box<[u8]>, HipByt<'_, B>) = cmp_slice;
+    [B] [where B: Backend] (&Box<[u8]>, HipByt<'_, B>) = cmp_slice;
 
     [B] [where B: Backend] (Cow<'_, [u8]>, HipByt<'_, B>) = cmp_slice;
+    [B] [where B: Backend] (&Cow<'_, [u8]>, HipByt<'_, B>) = cmp_slice;
 }
 
 #[cfg(test)]
