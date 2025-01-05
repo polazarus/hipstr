@@ -64,14 +64,14 @@ where
 {
     #[inline]
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
-        self.as_os_str().cmp(other.as_os_str())
+        self.as_path().cmp(other.as_path())
     }
 }
 
 impl<B1: Backend, B2: Backend> PartialOrd<HipPath<'_, B1>> for HipPath<'_, B2> {
     #[inline]
     fn partial_cmp(&self, other: &HipPath<'_, B1>) -> Option<core::cmp::Ordering> {
-        self.as_os_str().partial_cmp(other.as_os_str())
+        self.as_path().partial_cmp(other.as_path())
     }
 }
 
