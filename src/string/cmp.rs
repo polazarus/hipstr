@@ -23,41 +23,31 @@ where
     }
 }
 
+#[inline]
+fn str_eq(a: impl AsRef<str>, b: impl AsRef<str>) -> bool {
+    a.as_ref() == b.as_ref()
+}
+
 symmetric_eq! {
-    <> <B> <> [where B: Backend] (a : str, b : HipStr<'_, B>) {
-        a == b.as_str()
-    }
+    [B] [where B: Backend] (str, HipStr<'_, B>) = str_eq;
+    [B] [where B: Backend] (&str, HipStr<'_, B>) = str_eq;
+    [B] [where B: Backend] (String, HipStr<'_, B>) = str_eq;
+    [B] [where B: Backend] (Box<str>, HipStr<'_, B>) = str_eq;
+    [B] [where B: Backend] (Cow<'_, str>, HipStr<'_, B>) = str_eq;
+}
 
-    <> <B> <> [where B: Backend] (a : &str, b : HipStr<'_, B>) {
-        *a == b.as_str()
-    }
-
-    <> <B> <> [where B: Backend] (a : String, b : HipStr<'_, B>) {
-        a.as_str() == b.as_str()
-    }
-
-    <> <B> <> [where B: Backend] (a : Box<str>, b : HipStr<'_, B>) {
-        a.as_ref() == b.as_str()
-    }
-
-    <> <B> <> [where B: Backend] (a : Cow<'_, str>, b : HipStr<'_, B>) {
-        a.as_ref() == b.as_str()
-    }
+#[cfg(feature = "std")]
+#[inline]
+fn os_str_eq(a: impl AsRef<std::ffi::OsStr>, b: impl AsRef<str>) -> bool {
+    a.as_ref() == b.as_ref()
 }
 
 #[cfg(feature = "std")]
 symmetric_eq! {
-    <> <B> <> [where B: Backend] (a : std::ffi::OsStr, b : HipStr<'_, B>) {
-        a == b.as_str()
-    }
-
-    <> <B> <> [where B: Backend] (a : &std::ffi::OsStr, b : HipStr<'_, B>) {
-        *a == b.as_str()
-    }
-
-    <> <B> <> [where B: Backend] (a : std::ffi::OsString, b : HipStr<'_, B>) {
-        a == b.as_str()
-    }
+    [B] [where B: Backend] (std::ffi::OsStr, HipStr<'_, B>) = os_str_eq;
+    [B] [where B: Backend] (&std::ffi::OsStr, HipStr<'_, B>) = os_str_eq;
+    [B] [where B: Backend] (std::ffi::OsString, HipStr<'_, B>) = os_str_eq;
+    [B] [where B: Backend] (&std::ffi::OsString, HipStr<'_, B>) = os_str_eq;
 }
 
 impl<B> Ord for HipStr<'_, B>
@@ -80,33 +70,29 @@ where
     }
 }
 
+#[inline]
+fn str_cmp(a: impl AsRef<str>, b: impl AsRef<str>) -> Option<core::cmp::Ordering> {
+    a.as_ref().partial_cmp(b.as_ref())
+}
+
 symmetric_ord! {
-    <> <B> <> [where B: Backend] (a: str, b: HipStr<'_, B>) {
-        str::partial_cmp(a, b.as_str())
-    }
+    [B] [where B: Backend] (str, HipStr<'_, B>) = str_cmp;
+    [B] [where B: Backend] (&str, HipStr<'_, B>) = str_cmp;
+    [B] [where B: Backend] (String, HipStr<'_, B>) = str_cmp;
+}
 
-    <> <B> <> [where B: Backend] (a: &str, b: HipStr<'_, B>) {
-        str::partial_cmp(a, b.as_str())
-    }
-
-    <> <B> <> [where B: Backend] (a: String, b: HipStr<'_, B>) {
-        str::partial_cmp(a.as_str(), b.as_str())
-    }
+#[cfg(feature = "std")]
+#[inline]
+fn os_str_cmp(a: impl AsRef<std::ffi::OsStr>, b: impl AsRef<str>) -> Option<core::cmp::Ordering> {
+    a.as_ref().partial_cmp(b.as_ref())
 }
 
 #[cfg(feature = "std")]
 symmetric_ord! {
-    <> <B> <> [where B: Backend] (a: std::ffi::OsStr, b: HipStr<'_, B>) {
-        std::ffi::OsStr::partial_cmp(a, b.as_str())
-    }
-
-    <> <B> <> [where B: Backend] (a: &std::ffi::OsStr, b: HipStr<'_, B>) {
-        std::ffi::OsStr::partial_cmp(a, b.as_str())
-    }
-
-    <> <B> <> [where B: Backend] (a: std::ffi::OsString, b: HipStr<'_, B>) {
-        std::ffi::OsString::partial_cmp(a, b.as_str())
-    }
+    [B] [where B: Backend] (std::ffi::OsStr, HipStr<'_, B>) = os_str_cmp;
+    [B] [where B: Backend] (&std::ffi::OsStr, HipStr<'_, B>) = os_str_cmp;
+    [B] [where B: Backend] (std::ffi::OsString, HipStr<'_, B>) = os_str_cmp;
+    [B] [where B: Backend] (&std::ffi::OsString, HipStr<'_, B>) = os_str_cmp;
 }
 
 #[cfg(test)]

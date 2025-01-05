@@ -3,11 +3,12 @@ use alloc::string::String;
 use core::ops::Range;
 use std::collections::HashSet;
 use std::ffi::OsStr;
+use std::sync::LazyLock;
 
 use crate::HipOsStr;
 
 type H<'borrow> = HipOsStr<'borrow>;
-const EMPTY_SLICE: &str = "";
+const EMPTY_SLICE: LazyLock<&OsStr> = LazyLock::new(|| OsStr::new(""));
 const A: &str = "A";
 
 const INLINE_CAPACITY: usize = HipOsStr::inline_capacity();
@@ -21,31 +22,31 @@ fn test_deref() {
 #[test]
 fn test_new_default() {
     let new = HipOsStr::new();
-    assert_eq!(new, "");
+    assert_eq!(new, OsStr::new(""));
     assert!(new.is_empty());
 
     let new = HipOsStr::default();
-    assert_eq!(new, "");
+    assert_eq!(new, OsStr::new(""));
     assert!(new.is_empty());
 }
 
 #[test]
 fn test_with_capacity() {
     let h = H::with_capacity(0);
-    assert_eq!(h, EMPTY_SLICE);
+    assert_eq!(h, *EMPTY_SLICE);
     assert!(h.is_empty());
     assert_eq!(h.capacity(), INLINE_CAPACITY);
 
     let mut h = H::with_capacity(42);
     let p = h.as_ptr();
-    assert_eq!(h, EMPTY_SLICE);
+    assert_eq!(h, *EMPTY_SLICE);
     assert!(h.is_empty());
     assert_eq!(h.capacity(), 42);
     for _ in 0..42 {
         h.push(A);
     }
     assert_eq!(h.len(), 42);
-    assert_eq!(h, A.repeat(42).as_str());
+    assert_eq!(h, OsStr::new(&A.repeat(42)));
     assert_eq!(h.as_ptr(), p);
 }
 
@@ -263,7 +264,7 @@ fn test_mutate_borrowed() {
         r.push("def");
     }
     assert!(!a.is_borrowed());
-    assert_eq!(a, "abcdef");
+    assert_eq!(a, OsStr::new("abcdef"));
 }
 
 #[test]
@@ -271,7 +272,7 @@ fn test_mutate_inline() {
     let mut a = HipOsStr::from("abc");
     assert!(a.is_inline());
     a.mutate().push("def");
-    assert_eq!(a, "abcdef");
+    assert_eq!(a, OsStr::new("abcdef"));
 }
 
 #[test]
@@ -285,7 +286,7 @@ fn test_mutate_allocated() {
         assert!(a.is_allocated());
         a.mutate().push("0123456789");
         assert!(a.is_allocated());
-        assert_eq!(a, "abcdefghijklmnopqrstuvwxyz0123456789",);
+        assert_eq!(a, OsStr::new("abcdefghijklmnopqrstuvwxyz0123456789"));
         assert_eq!(a.as_ptr(), p);
     }
 
@@ -298,8 +299,8 @@ fn test_mutate_allocated() {
         let b = a.clone();
         a.mutate().push("0123456789");
         assert!(a.is_allocated());
-        assert_eq!(a, "abcdefghijklmnopqrstuvwxyz0123456789",);
-        assert_eq!(b, "abcdefghijklmnopqrstuvwxyz");
+        assert_eq!(a, OsStr::new("abcdefghijklmnopqrstuvwxyz0123456789"),);
+        assert_eq!(b, OsStr::new("abcdefghijklmnopqrstuvwxyz"));
         assert_ne!(a.as_ptr(), b.as_ptr());
     }
 }
@@ -308,7 +309,7 @@ fn test_mutate_allocated() {
 fn test_push() {
     let mut a = HipOsStr::from("abc");
     a.push("def");
-    assert_eq!(a, "abcdef");
+    assert_eq!(a, OsStr::new("abcdef"));
 }
 
 #[test]
@@ -325,7 +326,7 @@ fn test_to_owned() {
     let a = HipOsStr::borrowed(&v[0..2]);
     let a = a.into_owned();
     drop(v);
-    assert_eq!(a, &r[0..2]);
+    assert_eq!(a, OsStr::new(&r[0..2]));
 
     let v = r;
     let a = HipOsStr::from(&v[..]);
