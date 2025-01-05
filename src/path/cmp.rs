@@ -111,7 +111,6 @@ symmetric_ord! {
 mod tests {
     use alloc::borrow::Cow;
     use alloc::boxed::Box;
-    use core::cmp::Ordering;
     use std::ffi::{OsStr, OsString};
     use std::path::{Path, PathBuf};
 
@@ -170,16 +169,85 @@ mod tests {
 
     #[test]
     fn test_ord() {
-        let h1 = HipPath::borrowed("abc");
-        let h2 = HipPath::from("abd");
+        for (a, b) in [
+            ("abc", "abd"),
+            ("abc", "abc"),
+            ("ab", "abc"),
+            ("a//", "a/"),
+            ("/a//b/", "/a/b/c"),
+        ] {
+            let a_os_str = OsStr::new(a);
+            let a_cow_os_str = Cow::Borrowed(a_os_str);
+            let a_box_os_str: Box<OsStr> = Box::from(a_os_str);
+            let a_os_string = a_os_str.to_os_string();
 
-        assert_eq!(h1.partial_cmp(&h1), Some(Ordering::Equal));
-        assert_eq!(h1.cmp(&h1), Ordering::Equal);
+            let b_os_str = OsStr::new(b);
+            let b_cow_os_str = Cow::Borrowed(b_os_str);
+            let b_box_os_str: Box<OsStr> = Box::from(b_os_str);
+            let b_os_string = b_os_str.to_os_string();
 
-        assert!(h1 < h2);
-        assert_eq!(h1.cmp(&h2), Ordering::Less);
-        assert_eq!(h1.partial_cmp(&h2), Some(Ordering::Less));
-        assert_eq!(h2.cmp(&h1), Ordering::Greater);
-        assert_eq!(h2.partial_cmp(&h1), Some(Ordering::Greater));
+            let a_hip_path = HipPath::from(a_os_str);
+            let a_hip_path_borrow = HipPath::borrowed(a_os_str);
+            let b_hip_path = HipPath::from(b_os_str);
+
+            let a_path = Path::new(a);
+            let a_box_path: Box<Path> = Box::from(a_path);
+            let a_cow_path = Cow::Borrowed(a_path);
+            let a_path_buf = a_path.to_path_buf();
+
+            let b_path = Path::new(b);
+            let b_box_path: Box<Path> = Box::from(b_path);
+            let b_cow_path = Cow::Borrowed(b_path);
+            let b_path_buf = b_path.to_path_buf();
+
+            let expected = a_path.cmp(b_path);
+            assert_eq!(Some(expected), a_path.partial_cmp(b_os_str));
+            let expected_os_str = expected;
+
+            if expected == core::cmp::Ordering::Equal {
+                assert_eq!(a_hip_path, b_hip_path);
+            } else {
+                assert_ne!(a_hip_path, b_hip_path);
+            }
+
+            assert_eq!(a_hip_path.cmp(&b_hip_path), expected);
+
+            assert_eq!(a_hip_path.partial_cmp(&b_hip_path), Some(expected));
+
+            assert_eq!(a_hip_path_borrow.cmp(&b_hip_path), expected);
+
+            assert_eq!(a_hip_path.partial_cmp(&b_hip_path), Some(expected));
+            assert_eq!(a_hip_path.partial_cmp(&b_hip_path), Some(expected));
+
+            assert_eq!(a_os_str.partial_cmp(&b_hip_path), Some(expected_os_str));
+            assert_eq!(a_hip_path.partial_cmp(b_os_str), Some(expected_os_str));
+
+            assert_eq!((&a_os_str).partial_cmp(&b_hip_path), Some(expected_os_str));
+            assert_eq!(a_hip_path.partial_cmp(&b_os_str), Some(expected_os_str));
+
+            assert_eq!(a_box_os_str.partial_cmp(&b_hip_path), Some(expected_os_str));
+            assert_eq!(a_hip_path.partial_cmp(&b_box_os_str), Some(expected_os_str));
+
+            assert_eq!(a_cow_os_str.partial_cmp(&b_hip_path), Some(expected_os_str));
+            assert_eq!(a_hip_path.partial_cmp(&b_cow_os_str), Some(expected_os_str));
+
+            assert_eq!(a_os_string.partial_cmp(&b_hip_path), Some(expected_os_str));
+            assert_eq!(a_hip_path.partial_cmp(&b_os_string), Some(expected_os_str));
+
+            assert_eq!(a_path.partial_cmp(&b_hip_path), Some(expected));
+            assert_eq!(a_hip_path.partial_cmp(b_path), Some(expected));
+
+            assert_eq!((&a_path).partial_cmp(&b_hip_path), Some(expected));
+            assert_eq!(a_hip_path.partial_cmp(&b_path), Some(expected));
+
+            assert_eq!(a_box_path.partial_cmp(&b_hip_path), Some(expected));
+            assert_eq!(a_hip_path.partial_cmp(&b_box_path), Some(expected));
+
+            assert_eq!(a_cow_path.partial_cmp(&b_hip_path), Some(expected));
+            assert_eq!(a_hip_path.partial_cmp(&b_cow_path), Some(expected));
+
+            assert_eq!(a_path_buf.partial_cmp(&b_hip_path), Some(expected));
+            assert_eq!(a_hip_path.partial_cmp(&b_path_buf), Some(expected));
+        }
     }
 }
