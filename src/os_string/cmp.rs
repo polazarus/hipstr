@@ -1,7 +1,7 @@
 //! Comparison trait implementations for `HipOsStr`
 
-use alloc::borrow::Cow;
-use alloc::boxed::Box;
+use std::borrow::Cow;
+use std::boxed::Box;
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 
@@ -25,68 +25,37 @@ where
     }
 }
 
+#[inline]
+fn os_str_eq(a: impl AsRef<OsStr>, b: impl AsRef<OsStr>) -> bool {
+    a.as_ref() == b.as_ref()
+}
+
+#[inline]
+fn path_eq(a: impl AsRef<Path>, b: impl AsRef<OsStr>) -> bool {
+    a.as_ref() == b.as_ref()
+}
+
 symmetric_eq! {
 
-    // str
-    <> <B> <> [where B: Backend] (a: str, b: HipOsStr<'_, B>) {
-        a == b.as_os_str()
-    }
-
-    <> <B> <> [where B: Backend] (a: &str, b: HipOsStr<'_, B>) {
-        *a == b.as_os_str()
-    }
-
-    <> <B> <> [where B: Backend] (a: Box<str>, b: HipOsStr<'_, B>) {
-        **a == *b.as_os_str()
-    }
-
-    <> <B> <> [where B: Backend] (a: Cow<'_, str>, b: HipOsStr<'_, B>) {
-        **a == *b.as_os_str()
-    }
-
     // OsStr
-    <> <B> <> [where B: Backend] (a: OsStr, b: HipOsStr<'_, B>) {
-        a == b.as_os_str()
-    }
+    [B] [where B: Backend] (OsStr, HipOsStr<'_, B>) = os_str_eq;
+    [B] [where B: Backend] (&OsStr, HipOsStr<'_, B>) = os_str_eq;
+    [B] [where B: Backend] (Box<OsStr>, HipOsStr<'_, B>) = os_str_eq;
+    [B] [where B: Backend] (&Box<OsStr>, HipOsStr<'_, B>) = os_str_eq;
+    [B] [where B: Backend] (Cow<'_, OsStr>, HipOsStr<'_, B>) = os_str_eq;
+    [B] [where B: Backend] (&Cow<'_, OsStr>, HipOsStr<'_, B>) = os_str_eq;
+    [B] [where B: Backend] (OsString, HipOsStr<'_, B>) = os_str_eq;
+    [B] [where B: Backend] (&OsString, HipOsStr<'_, B>) = os_str_eq;
 
-    <> <B> <> [where B: Backend] (a: &OsStr, b: HipOsStr<'_, B>) {
-        *a == b.as_os_str()
-    }
-
-    <> <B> <> [where B: Backend] (a: OsStr, b: &HipOsStr<'_, B>) {
-        a == b.as_os_str()
-    }
-
-    <> <B> <> [where B: Backend] (a: Cow<'_, OsStr>, b: HipOsStr<'_, B>) {
-        &**a == b.as_os_str()
-    }
-
-    // OsString
-    <> <B> <> [where B: Backend] (a: OsString, b: HipOsStr<'_, B>) {
-        a.as_os_str() == b.as_os_str()
-    }
-
-    // Path
-    <> <B> <> [where B: Backend] (a: Path, b: HipOsStr<'_, B>) {
-        a.as_os_str() == b.as_os_str()
-    }
-
-    <> <B> <> [where B: Backend] (a: &Path, b: HipOsStr<'_, B>) {
-        a.as_os_str() == b.as_os_str()
-    }
-
-    <> <B> <> [where B: Backend] (a: Path, b: &HipOsStr<'_, B>) {
-        a.as_os_str() == b.as_os_str()
-    }
-
-    <> <B> <> [where B: Backend] (a: Cow<'_, Path>, b: HipOsStr<'_, B>) {
-        a.as_os_str() == b.as_os_str()
-    }
-
-    // PathBuf
-    <> <B> <> [where B: Backend] (a: PathBuf, b: HipOsStr<'_, B>) {
-        a.as_os_str() == b.as_os_str()
-    }
+    // Path variants
+    [B] [where B: Backend] (Path, HipOsStr<'_, B>) = path_eq;
+    [B] [where B: Backend] (&Path, HipOsStr<'_, B>) = path_eq;
+    [B] [where B: Backend] (Box<Path>, HipOsStr<'_, B>) = path_eq;
+    [B] [where B: Backend] (&Box<Path>, HipOsStr<'_, B>) = path_eq;
+    [B] [where B: Backend] (Cow<'_, Path>, HipOsStr<'_, B>) = path_eq;
+    [B] [where B: Backend] (&Cow<'_, Path>, HipOsStr<'_, B>) = path_eq;
+    [B] [where B: Backend] (PathBuf, HipOsStr<'_, B>) = path_eq;
+    [B] [where B: Backend] (&PathBuf, HipOsStr<'_, B>) = path_eq;
 }
 
 impl<B: Backend> Ord for HipOsStr<'_, B> {
@@ -103,38 +72,37 @@ impl<B: Backend> PartialOrd for HipOsStr<'_, B> {
     }
 }
 
+#[inline]
+fn os_str_partial_cmp(a: impl AsRef<OsStr>, b: impl AsRef<OsStr>) -> Option<core::cmp::Ordering> {
+    a.as_ref().partial_cmp(b.as_ref())
+}
+
+#[inline]
+fn path_partial_cmp(a: impl AsRef<Path>, b: impl AsRef<OsStr>) -> Option<core::cmp::Ordering> {
+    a.as_ref().partial_cmp(b.as_ref())
+}
+
 symmetric_ord! {
-    <> <B> <> [where B: Backend] (a: OsStr, b: HipOsStr<'_, B>) {
-        <OsStr as PartialOrd<OsStr>>::partial_cmp(a, b)
-    }
+    [B] [where B: Backend] (OsStr, HipOsStr<'_, B>) = os_str_partial_cmp;
+    [B] [where B: Backend] (&OsStr, HipOsStr<'_, B>) = os_str_partial_cmp;
 
-    <> <B> <> [where B: Backend] (a: &OsStr, b: HipOsStr<'_, B>) {
-        <OsStr as PartialOrd>::partial_cmp(a, b)
-    }
+    [B] [where B: Backend] (Box<OsStr>, HipOsStr<'_, B>) = os_str_partial_cmp;
+    [B] [where B: Backend] (&Box<OsStr>, HipOsStr<'_, B>) = os_str_partial_cmp;
 
-    <> <B> <> [where B: Backend] (a: Cow<'_, OsStr>, b: HipOsStr<'_, B>) {
-        <OsStr as PartialOrd>::partial_cmp(a, b)
-    }
+    [B] [where B: Backend] (Cow<'_, OsStr>, HipOsStr<'_, B>) = os_str_partial_cmp;
+    [B] [where B: Backend] (&Cow<'_, OsStr>, HipOsStr<'_, B>) = os_str_partial_cmp;
 
-    <> <B> <> [where B: Backend] (a: OsString, b: HipOsStr<'_, B>) {
-        <OsStr as PartialOrd>::partial_cmp(a, b)
-    }
+    [B] [where B: Backend] (OsString, HipOsStr<'_, B>) = os_str_partial_cmp;
+    [B] [where B: Backend] (&OsString, HipOsStr<'_, B>) = os_str_partial_cmp;
 
-    <> <B> <> [where B: Backend] (a: Path, b: HipOsStr<'_, B>) {
-        <Path as PartialOrd<OsStr>>::partial_cmp(a, b)
-    }
+    [B] [where B: Backend] (Path, HipOsStr<'_, B>) = path_partial_cmp;
+    [B] [where B: Backend] (&Path, HipOsStr<'_, B>) = path_partial_cmp;
 
-    <> <B> <> [where B: Backend] (a: &Path, b: HipOsStr<'_, B>) {
-        <Path as PartialOrd<OsStr>>::partial_cmp(a, b)
-    }
+    [B] [where B: Backend] (Cow<'_, Path>, HipOsStr<'_, B>) = path_partial_cmp;
+    [B] [where B: Backend] (&Cow<'_, Path>, HipOsStr<'_, B>) = path_partial_cmp;
 
-    <> <B> <> [where B: Backend] (a: Cow<'_, Path>, b: HipOsStr<'_, B>) {
-        <Path as PartialOrd<OsStr>>::partial_cmp(a, b)
-    }
-
-    <> <B> <> [where B: Backend] (a: PathBuf, b: HipOsStr<'_, B>) {
-        <Path as PartialOrd<OsStr>>::partial_cmp(a, b)
-    }
+    [B] [where B: Backend] (PathBuf, HipOsStr<'_, B>) = path_partial_cmp;
+    [B] [where B: Backend] (&PathBuf, HipOsStr<'_, B>) = path_partial_cmp;
 }
 
 #[cfg(test)]
@@ -149,9 +117,9 @@ mod tests {
     #[test]
     fn test_eq() {
         let string = "A".repeat(42);
-        let slice: &str = &string;
-        let b: Box<str> = Box::from(slice);
-        let c: Cow<str> = Cow::Borrowed(slice);
+        let slice = OsStr::new(&string);
+        let b: Box<OsStr> = Box::from(slice);
+        let c: Cow<OsStr> = Cow::Borrowed(slice);
         let h = HipOsStr::from(slice);
 
         assert_eq!(h, slice);

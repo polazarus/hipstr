@@ -118,11 +118,12 @@ where
     ///
     /// ```
     /// # use hipstr::HipOsStr;
+    /// # use std::ffi::OsStr;
     /// let mut s = HipOsStr::with_capacity(42);
     /// for _ in 0..42 {
     ///     s.push("*");
     /// }
-    /// assert_eq!(s, "*".repeat(42).as_str());
+    /// assert_eq!(s, OsStr::new(&"*".repeat(42)));
     /// ```
     #[inline]
     #[must_use]
@@ -420,13 +421,14 @@ where
     ///
     /// ```rust
     /// # use hipstr::HipOsStr;
+    /// # use std::ffi::OsStr;
     /// let mut s = HipOsStr::borrowed("abc");
     /// {
     ///     let mut r = s.mutate();
     ///     r.push("def");
-    ///     assert_eq!(r.as_os_str(), "abcdef");
+    ///     assert_eq!(r.as_os_str(), OsStr::new("abcdef"));
     /// }
-    /// assert_eq!(s, "abcdef");
+    /// assert_eq!(s, OsStr::new("abcdef"));
     /// ```
     #[inline]
     #[must_use]
@@ -447,9 +449,10 @@ where
     ///
     /// ```
     /// # use hipstr::HipOsStr;
+    /// # use std::ffi::OsStr;
     /// let mut s = HipOsStr::from("cork");
     /// s.push("screw");
-    /// assert_eq!(s, "corkscrew");
+    /// assert_eq!(s, OsStr::new("corkscrew"));
     /// ```
     #[inline]
     pub fn push(&mut self, addition: impl AsRef<OsStr>) {
@@ -460,13 +463,14 @@ where
     ///
     /// ```
     /// # use hipstr::HipOsStr;
+    /// # use std::ffi::OsStr;
     /// let s: String = ('a'..'z').collect();
     /// let s2 = s.clone();
     /// let h = HipOsStr::borrowed(&s[..]);
     /// // drop(s); // err, s is borrowed
     /// let h = h.into_owned();
     /// drop(s); // ok
-    /// assert_eq!(h, s2.as_str());
+    /// assert_eq!(h, OsStr::new(&s2));
     /// ```
     #[must_use]
     pub fn into_owned(self) -> HipOsStr<'static, B> {

@@ -262,10 +262,11 @@ where
     ///
     /// ```
     /// # use hipstr::HipPath;
+    /// # use std::path::Path;
     /// let s = HipPath::from("hello");
     /// let b = s.into_os_str();
     ///
-    /// assert_eq!(b, "hello");
+    /// assert_eq!(b, Path::new("hello"));
     /// ```
     #[allow(clippy::missing_const_for_fn)] // cannot const it for now, clippy bug
     #[must_use]
@@ -300,9 +301,10 @@ where
     ///
     /// ```
     /// # use hipstr::HipPath;
+    /// # use std::path::Path;
     /// let s = HipPath::from("foobar");
     ///
-    /// assert_eq!("foobar", s.as_os_str());
+    /// assert_eq!(Path::new("foobar"), s.as_os_str());
     /// ```
     #[inline]
     #[must_use]
