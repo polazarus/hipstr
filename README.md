@@ -34,10 +34,14 @@ let chars = user.chars().count(); // "inherits" `&str` methods
 
 ## ✏️ Features
 
-- `std` (default): uses `std` rather than `core` and `alloc`, and also provides more trait implementations (for comparison and conversions)
-- `serde`: provides serialization/deserialization support with [`serde`](https://serde.rs)
-- `borsh`: provides serialization/deserialization support with [`borsh`](https://borsh.io)
-- `bstr`: provides compatibility with [BurntSushi's `bstr` crate](https://github.com/BurntSushi/bstr) - `unstable`: do nothing, used to reveal unstable implementation details
+- `std` (default): provides `HipOsStr` and `HipPath` types, and more trait
+  implementations (for comparison and conversions)
+- `serde`: provides serialization/deserialization support with
+  [`serde`](https://serde.rs)
+- `borsh`: provides serialization/deserialization support with
+  [`borsh`](https://borsh.io)
+- `bstr`: provides compatibility with [BurntSushi's `bstr` crate](https://github.com/BurntSushi/bstr)
+- `unstable`: do nothing, used to reveal unstable implementation details
 
 ## ☣️ Safety of `hipstr`
 
@@ -58,7 +62,7 @@ To ensure safety and reliability, this crate undergoes thorough testing:
 
 In addition, this crate is checked with advanced dynamic verification methods:
 
-- Concurrency testing using the [Tokio's loom crate][loom]
+- Concurrency testing using the [Tokio's `loom` crate][loom]
 - Undefined behavior detection using [Miri] (the MIR interpreter)
 
 ### ☔ Coverage
@@ -92,11 +96,14 @@ cross test --target i686-unknown-linux-gnu          # 32-bit LE
 cross test --target x86_64-unknown-linux-gnu        # 64-bit LE
 ```
 
-NB: previously I used MIPS targets for big endian, but due to some LLVM-related issue they are not working anymore… see [Rust issue #113065](https://github.com/rust-lang/rust/issues/113065)
+NB: previously I used MIPS targets for big endian, but due to some LLVM-related
+issue they are not working anymore… see
+[Rust issue #113065](https://github.com/rust-lang/rust/issues/113065)
 
 ### 🧵 [Loom]
 
-This crates uses the `loom` crate to check the custom "Arc" implementation. To run the tests:
+This crates uses the `loom` crate to check the custom "Arc" implementation. To
+run the tests:
 
 ```bash
 RUSTFLAGS='--cfg loom' cargo test --release loom
