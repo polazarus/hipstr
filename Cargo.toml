@@ -10,7 +10,7 @@ categories = ["memory-management", "data-structures"]
 license = "MIT OR Apache-2.0"
 edition = "2021"
 readme = "README.md"
-rust-version = "1.83.0"
+rust-version = "1.84.0"
 
 [package.metadata.docs.rs]
 all-features = true
@@ -26,12 +26,14 @@ borsh = ["dep:borsh"]
 [dev-dependencies]
 fastrand = "2.0.0"
 serde_test = "1.0.176"
-serde = { version = "1.0.100", default-features = false, features = ["derive", "alloc"] }
-serde_json = { version = "1.0.45", default-features = false, features = ["alloc"] }
+serde = { version = "1.0.100", default-features = false, features = [
+    "derive",
+    "alloc",
+] }
+serde_json = { version = "1.0.45", default-features = false, features = [
+    "alloc",
+] }
 divan = "0.1.15"
-
-[dependencies]
-sptr = "0.3.2"
 
 [dependencies.bstr]
 version = "1.3"
