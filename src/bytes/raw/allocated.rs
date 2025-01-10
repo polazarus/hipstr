@@ -7,9 +7,6 @@ use core::ops::{Deref, DerefMut, Range};
 use core::panic::{RefUnwindSafe, UnwindSafe};
 use core::ptr::NonNull;
 
-// TODO remove once provenance API stabilized
-use sptr::Strict;
-
 use crate::backend::Backend;
 use crate::smart::{self, Inner, Smart, UpdateResult};
 
@@ -43,12 +40,10 @@ impl<B: Backend> TaggedSmart<B> {
         debug_assert!(ptr.is_aligned());
         debug_assert!((ptr as usize) & MASK == 0);
 
-        // TODO use strict and exposed provenance API once stabilized
-
         // SAFETY: add a 2-bit tag to a non-null pointer with the same alignment
         // requirement as usize (typically 4 bytes on 32-bit architectures, and
         // more on 64-bit architectures)
-        let addr = ptr.map_addr(|addr| addr | TAG).expose_addr();
+        let addr = ptr.map_addr(|addr| addr | TAG).expose_provenance();
 
         Self(addr, PhantomData)
     }
@@ -65,9 +60,7 @@ impl<B: Backend> TaggedSmart<B> {
         // alignment as usize (typically 4 on 32-bit architectures, and
         // more on 64-bit architectures)
         unsafe {
-            // TODO use strict and exposed provenance API once stabilized
-            let new_ptr = sptr::from_exposed_addr_mut::<Inner<Vec<u8>, B>>(self.0)
-                .map_addr(|addr| addr ^ TAG);
+            let new_ptr = core::ptr::with_exposed_provenance_mut::<Inner<Vec<u8>, B>>(self.0 ^ TAG);
 
             debug_assert!(!new_ptr.is_null());
 
