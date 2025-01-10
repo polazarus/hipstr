@@ -2,7 +2,7 @@
 
 Notable changes only.
 
-## Unreleased
+## [0.7.0] - 2025-01-10
 
 ### Added
 
@@ -10,16 +10,24 @@ Notable changes only.
 - add `as_borrowed`
 - add inline `const` constructors
 - add opt-in borsh serialization support for bytes and strings
+- add new comparisons with `bstr` types
+- add some missing comparisons
 
 ### Changed
 
 - refactor the backend to support unique references
 - remove low-level `Raw` type
 - improve deserialization for strings, bytes and paths, see [#38](https://github.com/polazarus/hipstr/pull/38) and follow-up work
+- bump minimum supported Rust version (msrv) to 1.84
 
 ### Removed
 
-- dependency to `serde_bytes`
+- remove `serde_bytes` dependency
+- remove `sptr` dependency (following provenance API stabilization in Rust 1.84)
+
+## Fixed
+
+- compilation with `serde` for non-Windows non-Unix targets, in particular wasm
 
 ## [0.6.0] - 2024-10-08
 
@@ -145,8 +153,9 @@ Most of those addition are breaking because they shadows `str`'s methods.
 
 Initial release
 
-<!-- [unreleased]: https://github.com/polazarus/hipstr/compare/0.6.1...HEAD -->
+<!-- [unreleased]: https://github.com/polazarus/hipstr/compare/0.7.0...HEAD -->
 
+[0.7.0]: https://github.com/polazarus/hipstr/compare/0.6.0...0.7.0
 [0.6.0]: https://github.com/polazarus/hipstr/compare/0.5.1...0.6.0
 [0.5.1]: https://github.com/polazarus/hipstr/compare/0.5.0...0.5.1
 [0.5.0]: https://github.com/polazarus/hipstr/compare/0.4.0...0.5.0
