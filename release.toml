@@ -1,0 +1,2 @@
+allow-branch = ["main"]
+tag-name = "{{version}}"
