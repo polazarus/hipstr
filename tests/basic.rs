@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::hint::black_box;
 
-use hipstr::HipStr;
+use hipstr::{HipByt, HipStr};
 
 #[inline(never)]
 pub fn new(slice: &str) -> HipStr<'static> {
@@ -12,6 +12,11 @@ pub fn new(slice: &str) -> HipStr<'static> {
 pub fn new_inline(slice: &str) -> HipStr<'static> {
     assert!(slice.len() < HipStr::inline_capacity());
     HipStr::from(slice)
+}
+
+#[inline(never)]
+pub fn klone<'a>(slice: &HipByt<'a>) -> HipByt<'a> {
+    slice.clone()
 }
 
 #[test]
@@ -37,4 +42,10 @@ fn test_borrow() {
     assert!(h.is_borrowed());
     let h_arr = [h, HipStr::borrowed("abc")];
     assert!(h_arr[1].is_borrowed());
+}
+
+#[test]
+fn test_clone() {
+    let h: HipByt<'static> = b"a".into();
+    let _ = black_box(klone(&h));
 }
