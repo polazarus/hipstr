@@ -114,11 +114,11 @@ RUSTFLAGS='--cfg loom' cargo test --release loom
 This crate runs successfully with Miri:
 
 ```bash
-MIRIFLAGS=-Zmiri-symbolic-alignment-check cargo +nightly miri test
+MIRIFLAGS='-Zmiri-symbolic-alignment-check -Zmiri-permissive-provenance' cargo +nightly miri test
 
 for SEED in $(seq 0 10); do
   echo "Trying seed: $SEED"
-  MIRIFLAGS="-Zmiri-seed=$SEED" cargo +nightly miri test || { echo "Failing seed: $SEED"; break; };
+  MIRIFLAGS="-Zmiri-seed=$SEED -Zmiri-permissive-provenance" cargo +nightly miri test || { echo "Failing seed: $SEED"; break; };
 done
 ```
 
@@ -132,6 +132,8 @@ cargo +nightly miri test --target i686-unknown-linux-gnu
 ```
 
 Note: this crate leverages the "exposed provenance" semantics.
+`MIRIFLAGS=-Zmiri-permissive-provenance` silences the warning related to the use
+of exposed provenance.
 
 ## 📦 Similar crates
 
