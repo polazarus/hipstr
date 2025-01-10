@@ -8,7 +8,7 @@ use core::panic::{RefUnwindSafe, UnwindSafe};
 use core::ptr::NonNull;
 
 use crate::backend::Backend;
-use crate::smart::{self, Inner, Smart, UpdateResult};
+use crate::smart::{Inner, Smart, UpdateResult};
 
 const MASK: usize = super::MASK as usize;
 const TAG: usize = super::TAG_ALLOCATED as usize;
@@ -32,9 +32,8 @@ impl<B: Backend> Clone for TaggedSmart<B> {
 impl<B: Backend> Copy for TaggedSmart<B> {}
 
 impl<B: Backend> TaggedSmart<B> {
-    /// Constructed a tagged rc from a `rc::Raw`.
+    /// Constructed a tagged smart pointer from a [`Smart`].
     #[inline]
-    #[allow(unstable_name_collisions)]
     fn from(raw: Smart<Vec<u8>, B>) -> Self {
         let ptr = raw.into_raw().as_ptr();
         debug_assert!(ptr.is_aligned());
@@ -48,11 +47,10 @@ impl<B: Backend> TaggedSmart<B> {
         Self(addr, PhantomData)
     }
 
-    /// Converts back into the `rc::Raw`.
+    /// Converts back into the [`Smart`].
     #[inline]
-    #[allow(unstable_name_collisions)]
-    fn into(self) -> smart::Smart<Vec<u8>, B> {
-        let this: smart::Smart<Vec<u8>, B>;
+    fn into(self) -> Smart<Vec<u8>, B> {
+        let this: Smart<Vec<u8>, B>;
 
         debug_assert!(self.0 & MASK == TAG);
 
@@ -67,7 +65,7 @@ impl<B: Backend> TaggedSmart<B> {
             #[cfg(miri)]
             let _ = &*new_ptr; // check provenance early
 
-            this = smart::Smart::from_raw(NonNull::new_unchecked(new_ptr));
+            this = Smart::from_raw(NonNull::new_unchecked(new_ptr));
         }
 
         this
@@ -185,7 +183,7 @@ impl<B: Backend> Allocated<B> {
     /// Returns the length of this allocated string.
     #[inline]
     pub const fn len(&self) -> usize {
-        // NOTE: must be const to be used in Raw::len even if there is no
+        // NOTE: must be const to be used in `HipByt::len` even if there is no
         // way the allocated representation will be used in the const case
 
         // debug_assert!(self.is_valid()); // not const
@@ -196,7 +194,7 @@ impl<B: Backend> Allocated<B> {
     /// Returns as a byte slice.
     #[inline]
     pub const fn as_slice(&self) -> &[u8] {
-        // NOTE: must be const to be used in Raw::as_slice even if there is no
+        // NOTE: must be const to be used in `HipByt::as_slice` even if there is no
         // way the allocated representation will be used in the const case
 
         // debug_assert!(self.is_valid()); // not const
@@ -208,7 +206,7 @@ impl<B: Backend> Allocated<B> {
     /// Returns a raw pointer to the first element.
     #[inline]
     pub const fn as_ptr(&self) -> *const u8 {
-        // NOTE: must be const to be used in Raw::as_ptr even if there is no way
+        // NOTE: must be const to be used in `HipByt::as_ptr` even if there is no way
         // the allocated representation will be used in the const case
 
         // debug_assert!(self.is_valid()); // is_valid is not const!

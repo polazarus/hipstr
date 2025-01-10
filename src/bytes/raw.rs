@@ -611,7 +611,7 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
 impl<B: Backend> Drop for HipByt<'_, B> {
     #[inline]
     fn drop(&mut self) {
-        // Formally drops this `Raw` decreasing the ref count if needed
+        // formally drops the allocated decreasing the ref count if needed
         if let Some(allocated) = self.take_allocated() {
             allocated.explicit_drop();
         }
@@ -620,11 +620,11 @@ impl<B: Backend> Drop for HipByt<'_, B> {
 
 impl<B: Backend> Clone for HipByt<'_, B> {
     fn clone(&self) -> Self {
-        // Duplicates this `Raw` increasing the ref count if needed.
         match self.split() {
             Split::Inline(&inline) => Self::from_inline(inline),
             Split::Borrowed(&borrowed) => Self::from_borrowed(borrowed),
             Split::Allocated(allocated) => {
+                // increase the ref count or clone if overflow
                 let clone = allocated.explicit_clone();
                 Self::from_allocated(clone)
             }

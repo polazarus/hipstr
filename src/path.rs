@@ -552,7 +552,7 @@ where
     }
 }
 
-// Manual implementation needed to remove trait bound on B::RawPointer.
+// Manual implementation needed to remove trait bound on B.
 impl<B> Clone for HipPath<'_, B>
 where
     B: Backend,
@@ -563,7 +563,7 @@ where
     }
 }
 
-// Manual implementation needed to remove trait bound on B::RawPointer.
+// Manual implementation needed to remove trait bound on B.
 impl<B> Default for HipPath<'_, B>
 where
     B: Backend,
