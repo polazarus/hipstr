@@ -52,7 +52,7 @@ jobs:
     strategy:
       matrix:
         platform:
-          - s390x-unknown-linux-gnu # 32-bit LE
+          - s390x-unknown-linux-gnu # 32-bit BE
           - powerpc64-unknown-linux-gnu # 64-bit BE
           - i686-unknown-linux-gnu
           - x86_64-unknown-linux-gnu
@@ -67,4 +67,8 @@ jobs:
           components: miri
 
       - name: Run tests under Miri
+        env:
+          MIRIFLAGS: >-
+            -Zmiri-permissive-provenance
+            -Zmiri-many-seeds
         run: cargo +nightly miri test --verbose --target ${{matrix.platform}} --all-features
