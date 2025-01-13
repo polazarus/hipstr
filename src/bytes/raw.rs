@@ -44,7 +44,7 @@ const WORD_SIZE_M1: usize = size_of::<usize>() - 1;
 /// Alias type for `Inline` with set inline capacity
 pub type Inline = inline::Inline<INLINE_CAPACITY>;
 
-/// Smart bytes, i.e. cheaply clonable and sliceable byte string.
+/// Smart bytes, i.e. cheaply cloneable and sliceable byte string.
 ///
 /// # Examples
 ///

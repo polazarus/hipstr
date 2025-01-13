@@ -31,7 +31,7 @@ pub mod serde;
 #[cfg(test)]
 mod tests;
 
-/// Smart string, i.e. cheaply clonable and sliceable string.
+/// Smart string, i.e. cheaply cloneable and sliceable string.
 ///
 /// Internally used the same representations as [`HipByt`].
 ///
@@ -888,7 +888,7 @@ where
     /// # Representation stability
     ///
     /// The allocated representation may change to *inline* if the required
-    /// capacity is smaller thant the inline capacity.
+    /// capacity is smaller than the inline capacity.
     ///
     /// # Examples
     ///
@@ -914,7 +914,7 @@ where
     /// # Representation stability
     ///
     /// The allocated representation may change to *inline* if the required
-    /// capacity is smaller thant the inline capacity.
+    /// capacity is smaller than the inline capacity.
     ///
     /// # Examples
     ///

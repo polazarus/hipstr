@@ -22,7 +22,7 @@ pub mod serde;
 #[cfg(test)]
 mod tests;
 
-/// Smart OS string, i.e. shared and cheaply clonable OS string.
+/// Smart OS string, i.e. shared and cheaply cloneable OS string.
 ///
 /// Internally used the same representations as [`HipByt`].
 ///
@@ -282,7 +282,7 @@ where
     /// length of the string.
     ///
     /// As noted in [`OsStr::len`], the length is not the number of bytes used
-    /// by the OS representation of this string, but by the Rust interoperabilty
+    /// by the OS representation of this string, but by the Rust interoperability
     /// format which may differ significantly from both the OS representation
     /// and the native Rust representation.
     ///
@@ -653,7 +653,7 @@ where
     /// # Representation stability
     ///
     /// The allocated representation may change to *inline* if the required
-    /// capacity is smaller thant the inline capacity.
+    /// capacity is smaller than the inline capacity.
     ///
     /// # Examples
     ///
@@ -679,7 +679,7 @@ where
     /// # Representation stability
     ///
     /// The allocated representation may change to *inline* if the required
-    /// capacity is smaller thant the inline capacity.
+    /// capacity is smaller than the inline capacity.
     ///
     /// # Examples
     ///
