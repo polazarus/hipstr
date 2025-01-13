@@ -22,7 +22,7 @@ pub mod serde;
 #[cfg(test)]
 mod tests;
 
-/// Smart path, i.e. shared and cheaply clonable path.
+/// Smart path, i.e. shared and cheaply cloneable path.
 ///
 /// Internally used the same representations as [`HipByt`].
 ///
@@ -482,7 +482,7 @@ where
     /// # Representation stability
     ///
     /// The allocated representation may change to *inline* if the required
-    /// capacity is smaller thant the inline capacity.
+    /// capacity is smaller than the inline capacity.
     ///
     /// # Examples
     ///
@@ -510,7 +510,7 @@ where
     /// # Representation stability
     ///
     /// The allocated representation may change to *inline* if the required
-    /// capacity is smaller thant the inline capacity.
+    /// capacity is smaller than the inline capacity.
     ///
     /// # Examples
     ///

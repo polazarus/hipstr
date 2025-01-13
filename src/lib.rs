@@ -31,7 +31,7 @@
 //!
 //! - Borrowed slice
 //! - Inline sequence (up to [`HipByt::inline_capacity()`])
-//! - Shared reference (cheaply clonable) _and slice_ (sliceable)
+//! - Shared reference (cheaply cloneable) _and slice_ (sliceable)
 //!
 //! The shared reference can be thread-safe or not, depending on the backend.
 //!

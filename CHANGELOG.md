@@ -36,7 +36,7 @@ Notable changes only.
 - implement `core::error:Error` for custom errors, rather than
   `std::error::Error` and bump msrv
 
-### Fixe
+### Fixed
 
 - fix doc issue [#28](https://github.com/polazarus/hipstr/issues/28)
 - fix MIRI check due to provenance loss

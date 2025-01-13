@@ -1,0 +1,22 @@
+# Configuration for https://github.com/crate-ci/typos
+
+[files]
+extend-exclude = [
+
+]
+
+[default]
+extend-ignore-re = [
+  "HipByt",
+
+  # often used as argument in tests
+  "\"ba\"",
+  "\"abd\"",
+  "\"fo",
+]
+
+[default.extend-words]
+
+[default.extend-identifiers]
+ths = "ths"
+byt = "byt"
