@@ -2,7 +2,7 @@
 
 Notable changes only.
 
-## Unreleased
+## [Unreleased]
 
 ### Changed
 
@@ -46,7 +46,7 @@ Notable changes only.
 - implement `core::error:Error` for custom errors, rather than
   `std::error::Error` and bump msrv
 
-### Fixe
+### Fixed
 
 - fix doc issue [#28](https://github.com/polazarus/hipstr/issues/28)
 - fix MIRI check due to provenance loss
@@ -163,8 +163,7 @@ Most of those addition are breaking because they shadows `str`'s methods.
 
 Initial release
 
-<!-- [unreleased]: https://github.com/polazarus/hipstr/compare/0.7.0...HEAD -->
-
+[unreleased]: https://github.com/polazarus/hipstr/compare/0.7.0...HEAD
 [0.7.0]: https://github.com/polazarus/hipstr/compare/0.6.0...0.7.0
 [0.6.0]: https://github.com/polazarus/hipstr/compare/0.5.1...0.6.0
 [0.5.1]: https://github.com/polazarus/hipstr/compare/0.5.0...0.5.1
