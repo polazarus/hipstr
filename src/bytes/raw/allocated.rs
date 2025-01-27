@@ -134,7 +134,7 @@ impl<B: Backend> Allocated<B> {
 
     /// Returns a reference to the owner.
     ///
-    /// This function buses the [`Copy`]-ness of [`Allocated`] to get a copy
+    /// This function abuses the [`Copy`]-ness of [`Allocated`] to get a copy
     /// (and not a clone) of the [`Smart`] reference wrapped in [`ManuallyDrop`]
     /// to ensure it's not dropped.
     fn owner(&self) -> impl Deref<Target = Smart<Vec<u8>, B>> {
@@ -143,7 +143,7 @@ impl<B: Backend> Allocated<B> {
 
     /// Returns a mutable reference to the owner.
     ///
-    /// This function buses the [`Copy`]-ness of [`Allocated`] to get a copy
+    /// This function abuses the [`Copy`]-ness of [`Allocated`] to get a copy
     /// (and not a clone) of the [`Smart`] reference wrapped in [`ManuallyDrop`]
     /// to ensure it's not dropped.
     ///

@@ -888,7 +888,7 @@ where
     /// # Representation stability
     ///
     /// The allocated representation may change to *inline* if the required
-    /// capacity is smaller thant the inline capacity.
+    /// capacity is smaller than the inline capacity.
     ///
     /// # Examples
     ///
@@ -914,7 +914,7 @@ where
     /// # Representation stability
     ///
     /// The allocated representation may change to *inline* if the required
-    /// capacity is smaller thant the inline capacity.
+    /// capacity is smaller than the inline capacity.
     ///
     /// # Examples
     ///
@@ -1545,7 +1545,7 @@ where
     /// Returns a string with the prefix removed.
     ///
     /// If the string starts with the pattern `prefix`, returns substring after the prefix, wrapped
-    /// in `Some`.  Unlike `trim_start_matches`, this method removes the prefix exactly once.
+    /// in `Some`. Unlike `trim_start_matches`, this method removes the prefix exactly once.
     ///
     /// If the string does not start with `prefix`, returns `None`.
     ///
