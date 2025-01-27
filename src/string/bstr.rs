@@ -1,9 +1,9 @@
 //! Bstr support for strings.
 
 use alloc::str;
+use alloc::string::String;
 use alloc::vec::Vec;
 use core::borrow::Borrow;
-use std::string::String;
 
 use bstr::{BStr, BString};
 
