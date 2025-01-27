@@ -137,6 +137,8 @@ where
     /// No heap allocation is performed.
     /// **The string is not copied.**
     ///
+    /// See also [`HipStr::from_static`] to ensure the borrow is `'static`.
+    ///
     /// # Examples
     ///
     /// Basic usage:
@@ -146,6 +148,7 @@ where
     /// let s = HipStr::borrowed("hello");
     /// assert_eq!(s.len(), 5);
     /// ```
+    #[inline]
     #[must_use]
     pub const fn borrowed(value: &'borrow str) -> Self {
         Self(HipByt::borrowed(value.as_bytes()))
@@ -335,7 +338,6 @@ where
     ///
     /// assert_eq!(&[104, 101, 108, 108, 111][..], &b[..]);
     /// ```
-    #[allow(clippy::missing_const_for_fn)] // cannot const it for now, clippy bug
     #[must_use]
     pub fn into_bytes(self) -> HipByt<'borrow, B> {
         self.0
@@ -398,7 +400,7 @@ where
     /// assert_eq!("FOO", slice);
     /// ```
     #[inline]
-    #[must_use]
+    #[doc(alias = "make_mut")]
     pub fn to_mut_str(&mut self) -> &mut str {
         let slice = self.0.to_mut_slice();
         // SAFETY: type invariant
