@@ -137,6 +137,8 @@ where
     /// No heap allocation is performed.
     /// **The string is not copied.**
     ///
+    /// See also [`HipStr::from_static`] to ensure the borrow is `'static`.
+    ///
     /// # Examples
     ///
     /// Basic usage:
@@ -146,6 +148,7 @@ where
     /// let s = HipStr::borrowed("hello");
     /// assert_eq!(s.len(), 5);
     /// ```
+    #[inline]
     #[must_use]
     pub const fn borrowed(value: &'borrow str) -> Self {
         Self(HipByt::borrowed(value.as_bytes()))
@@ -319,6 +322,88 @@ where
         self.0.is_empty()
     }
 
+    /// Extracts a raw pointer out of the `HipStr`.
+    ///
+    /// As strings are ultimately sequence of bytes, the raw pointer points to a
+    /// [`u8`]. This pointer will be pointing to the first byte of the string.
+    ///
+    /// It is your responsibility to make sure that:
+    ///
+    /// - This `HipStr` outlives the pointer this function returns.
+    ///
+    /// - This `HipStr` is not modified in another way before the use of the
+    ///   pointer. Modifying the byte sequence may change representation or
+    ///   reallocate, which would invalid the returned pointer.
+    ///
+    /// - The returned pointer is never written to. If you need to mutate the
+    ///   contents of the string slice, use [`as_mut_ptr`].
+    ///
+    /// [`as_mut_ptr`]: Self::as_mut_ptr
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::HipStr;
+    /// let s = HipStr::from("Hello");
+    /// let ptr = s.as_ptr();
+    /// ```
+    #[inline]
+    #[must_use]
+    pub const fn as_ptr(&self) -> *const u8 {
+        self.0.as_ptr()
+    }
+
+    /// Extracts a mutable raw pointer out of this `HipStr` if it is not shared
+    /// or borrowed, `None` otherwise.
+    ///
+    /// As strings are ultimately sequence of bytes, the raw pointer points to
+    /// a [`u8`]. This pointer will be pointing to the first byte of the string.
+    ///
+    /// It is your responsibility to make sure that:
+    ///
+    /// - This `HipStr` outlives the pointer this function returns.
+    ///
+    /// - This `HipStr` is not modified in another way before the use of the
+    ///   pointer. Modifying the byte sequence may change representation or
+    ///   reallocate, which would invalid the returned pointer.
+    ///
+    /// - The byte sequence gets modified in a way that it remains valid UTF-8.
+    #[inline]
+    #[must_use]
+    pub fn as_mut_ptr(&mut self) -> Option<*mut u8> {
+        self.0.as_mut_ptr()
+    }
+
+    /// Extracts a mutable raw pointer out of this `HipStr`.
+    ///
+    /// As strings are ultimately sequence of bytes, the raw pointer points to
+    /// a [`u8`]. This pointer will be pointing to the first byte of the string.
+    ///
+    /// It is your responsibility to make sure that:
+    ///
+    /// - This `HipStr` outlives the pointer this function returns.
+    ///
+    /// - This `HipStr` is not modified in another way before the use of the
+    ///   pointer. Modifying the byte sequence may change representation or
+    ///   reallocate, which would invalid the returned pointer.
+    ///
+    /// - The byte sequence gets modified in a way that it remains valid UTF-8.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure the sequence is actually unique: not shared and
+    /// not borrowed.
+    ///
+    /// # Panics
+    ///
+    /// In debug mode, this function panics if the sequence is borrowed or
+    /// shared.
+    #[inline]
+    #[must_use]
+    pub unsafe fn as_mut_ptr_unchecked(&mut self) -> *mut u8 {
+        unsafe { self.0.as_mut_ptr_unchecked() }
+    }
+
     /// Converts a `HipStr` into a `HipByt`.
     ///
     /// It consumes the `HipStr` without copying the content
@@ -335,7 +420,6 @@ where
     ///
     /// assert_eq!(&[104, 101, 108, 108, 111][..], &b[..]);
     /// ```
-    #[allow(clippy::missing_const_for_fn)] // cannot const it for now, clippy bug
     #[must_use]
     pub fn into_bytes(self) -> HipByt<'borrow, B> {
         self.0
@@ -398,7 +482,7 @@ where
     /// assert_eq!("FOO", slice);
     /// ```
     #[inline]
-    #[must_use]
+    #[doc(alias = "make_mut")]
     pub fn to_mut_str(&mut self) -> &mut str {
         let slice = self.0.to_mut_slice();
         // SAFETY: type invariant

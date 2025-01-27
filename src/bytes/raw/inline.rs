@@ -146,6 +146,20 @@ impl<const INLINE_CAPACITY: usize> Inline<INLINE_CAPACITY> {
         self.len.decode()
     }
 
+    /// Returns an immutable raw pointer to the start of this inline sequence.
+    #[inline]
+    pub const fn as_ptr(&self) -> *const u8 {
+        debug_assert!(self.is_valid());
+        self.data.as_ptr().cast()
+    }
+
+    /// Returns a mutable raw pointer to the start of this inline sequence.
+    #[inline]
+    pub const fn as_mut_ptr(&mut self) -> *mut u8 {
+        debug_assert!(self.is_valid());
+        self.data.as_mut_ptr().cast()
+    }
+
     /// Returns an immutable view of this inline string.
     #[inline]
     pub const fn as_slice(&self) -> &[u8] {
@@ -160,21 +174,11 @@ impl<const INLINE_CAPACITY: usize> Inline<INLINE_CAPACITY> {
         unsafe { core::slice::from_raw_parts(data.cast(), len) }
     }
 
-    /// Returns an immutable raw pointer of this inline string.
-    #[inline]
-    pub const fn as_ptr(&self) -> *const u8 {
-        debug_assert!(self.is_valid());
-        self.data.as_ptr().cast()
-    }
-
     /// Returns a mutable view of this inline string.
     #[inline]
     pub const fn as_mut_slice(&mut self) -> &mut [u8] {
-        debug_assert!(self.is_valid());
-
         // HACK could be done without less unsafe: maybe_uninit_slice
-        // and const-ly: const_mut_refs, const_slice_index
-        let data = self.data.as_mut_ptr();
+        let data = self.as_mut_ptr();
         let len = self.len();
 
         // SAFETY: type invariant (the first `len`-th bytes are initialized)
