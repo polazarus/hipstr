@@ -2,6 +2,16 @@
 
 Notable changes only.
 
+## Unreleased
+
+### Changed
+
+- improve feature testing in CI
+
+### Fixed
+
+- fix `bstr` feature in `no_std`
+
 ## [0.7.0] - 2025-01-10
 
 ### Added
@@ -25,7 +35,7 @@ Notable changes only.
 - remove `serde_bytes` dependency
 - remove `sptr` dependency (following provenance API stabilization in Rust 1.84)
 
-## Fixed
+### Fixed
 
 - compilation with `serde` for non-Windows non-Unix targets, in particular wasm
 

@@ -16,17 +16,10 @@ jobs:
         toolchain:
           - stable
           - nightly
-        profile:
-          - dev
-          - release
         os:
           - ubuntu-latest
           - windows-latest
           - macos-latest
-        features:
-          - ""
-          - "--no-default-features"
-          - "--all-features"
 
     runs-on: ${{matrix.os}}
 
@@ -37,19 +30,27 @@ jobs:
         with:
           toolchain: ${{matrix.toolchain}}
 
+      - uses: taiki-e/install-action@cargo-hack
+
       - name: Show version
         run: cargo version
 
+      - name: Check
+        run: cargo hack check -v --feature-powerset --no-dev-deps
+
       - name: Build
-        run: cargo build --verbose --profile ${{matrix.profile}} ${{matrix.features}}
+        run: cargo hack build -v --each-feature
 
       - name: Run tests
-        run: cargo test --verbose --profile ${{matrix.profile}} ${{matrix.features}} -- --nocapture
+        run: cargo hack test -v --each-feature -- --nocapture
+
+      - name: Run tests (release)
+        run: cargo hack test -v --each-feature --release -- --nocapture
 
       - name: Run loom tests
         env:
           RUSTFLAGS: "--cfg loom"
-        run: cargo test --verbose --profile ${{matrix.profile}} ${{matrix.features}} loom -- --nocapture
+        run: cargo hack test -v --each-feature --release loom -- --nocapture
 
   fmt:
     runs-on: ubuntu-latest
