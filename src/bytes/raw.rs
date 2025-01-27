@@ -189,7 +189,7 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
 
     /// Retrieves a mutable reference on the union.
     #[inline]
-    pub(super) fn union_mut(&mut self) -> &mut Union<'borrow, B> {
+    pub(super) const fn union_mut(&mut self) -> &mut Union<'borrow, B> {
         let raw_ptr: *mut _ = &mut self.pivot;
         let union_ptr: *mut Union<'borrow, B> = raw_ptr.cast();
         // SAFETY: same layout and same niche hopefully, same mutability
@@ -260,7 +260,7 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
 
     /// Splits this raw into its possible representation.
     #[inline]
-    pub(super) fn split_mut(&mut self) -> SplitMut<'_, 'borrow, B> {
+    pub(super) const fn split_mut(&mut self) -> SplitMut<'_, 'borrow, B> {
         let tag = self.tag();
         let union = self.union_mut();
         match tag {
@@ -333,40 +333,7 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
         }
     }
 
-    /// Extracts a slice of the entire `HipByt`.
-    ///
-    /// # Examples
-    ///
-    /// Basic usage:
-    ///
-    /// ```
-    /// # use hipstr::HipByt;
-    /// let s = HipByt::from(b"foobar");
-    ///
-    /// assert_eq!(b"foobar", s.as_slice());
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn as_slice(&self) -> &[u8] {
-        match self.split() {
-            Split::Inline(inline) => inline.as_slice(),
-            Split::Allocated(heap) => heap.as_slice(),
-            Split::Borrowed(borrowed) => borrowed.as_slice(),
-        }
-    }
-
-    /// Returns a pointer to the start of the raw byte string.
-    #[inline]
-    #[must_use]
-    pub const fn as_ptr(&self) -> *const u8 {
-        match self.split() {
-            Split::Inline(inline) => inline.as_ptr(),
-            Split::Allocated(heap) => heap.as_ptr(),
-            Split::Borrowed(borrowed) => borrowed.as_ptr(),
-        }
-    }
-
-    /// Slices the raw byte string.
+    /// Slices the raw byte sequence.
     ///
     /// # Safety
     ///
@@ -454,52 +421,6 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
 
         debug_assert!(self.is_normalized());
         result
-    }
-
-    /// Extracts a mutable slice of the entire `HipByt` if possible.
-    ///
-    /// # Examples
-    ///
-    /// Basic usage:
-    ///
-    /// ```
-    /// # use hipstr::HipByt;
-    /// let mut s = HipByt::from(b"foo");
-    /// let slice = s.as_mut_slice().unwrap();
-    /// slice.copy_from_slice(b"bar");
-    /// assert_eq!(b"bar", slice);
-    /// ```
-    #[inline]
-    #[must_use]
-    pub fn as_mut_slice(&mut self) -> Option<&mut [u8]> {
-        match self.split_mut() {
-            SplitMut::Inline(inline) => Some(inline.as_mut_slice()),
-            SplitMut::Allocated(allocated) => allocated.as_mut_slice(),
-            SplitMut::Borrowed(_) => None,
-        }
-    }
-
-    /// Returns a mutable slice of the underlying string.
-    ///
-    /// # Safety
-    ///
-    /// This `HipByt` should not be shared or borrowed.
-    #[inline]
-    pub(super) unsafe fn as_mut_slice_unchecked(&mut self) -> &mut [u8] {
-        match self.split_mut() {
-            SplitMut::Inline(inline) => inline.as_mut_slice(),
-            SplitMut::Allocated(allocated) => unsafe { allocated.as_mut_slice_unchecked() },
-            SplitMut::Borrowed(_) => {
-                #[cfg(debug_assertions)]
-                {
-                    panic!("mutable slice of borrowed string");
-                }
-                #[cfg(not(debug_assertions))]
-                {
-                    unsafe { unreachable_unchecked() }
-                }
-            }
-        }
     }
 
     /// Takes a vector representation of this raw byte string.

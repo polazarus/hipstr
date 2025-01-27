@@ -280,6 +280,51 @@ fn test_as_mut_str() {
 }
 
 #[test]
+fn test_ptr() {
+    let mut h = H::from(ABCDEF);
+    let p_const = h.as_ptr();
+    let p_mut = h.as_mut_ptr().unwrap();
+    assert_eq!(p_mut, unsafe { h.as_mut_ptr_unchecked() });
+    assert_eq!(p_const, h.as_str().as_ptr());
+    assert_eq!(p_mut, h.as_mut_str().unwrap().as_mut_ptr());
+
+    let mut h = H::from(MEDIUM);
+    let p_const = h.as_ptr();
+    let p_mut = h.as_mut_ptr().unwrap();
+    assert_eq!(p_mut, unsafe { h.as_mut_ptr_unchecked() });
+    assert_eq!(p_const, h.as_str().as_ptr());
+    assert_eq!(p_mut, h.as_mut_str().unwrap().as_mut_ptr());
+    let _h2 = h.clone();
+    assert!(h.as_mut_ptr().is_none());
+
+    let abcdef = ABCDEF;
+    let mut h = H::borrowed(ABCDEF);
+    assert_eq!(h.as_ptr(), abcdef.as_ptr());
+    assert_eq!(h.as_mut_ptr(), None);
+}
+
+/// Tests that `as_mut_ptr_unchecked` panics when the string is shared in debug.
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic]
+fn test_ptr_panic_shared() {
+    let mut h = H::from(MEDIUM);
+    let _h2 = h.clone();
+    assert!(h.as_mut_ptr().is_none());
+    let _ = unsafe { h.as_mut_ptr_unchecked() };
+}
+
+/// Tests that `as_mut_ptr_unchecked` panics when the string is borrowed in debug.
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic]
+fn test_ptr_panic_borrowed() {
+    let mut h = H::borrowed(MEDIUM);
+    assert!(h.as_mut_ptr().is_none());
+    let _ = unsafe { h.as_mut_ptr_unchecked() };
+}
+
+#[test]
 fn test_to_mut_str_static() {
     let mut a = H::borrowed(ABC);
     assert!(a.is_borrowed());

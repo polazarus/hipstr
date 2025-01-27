@@ -43,6 +43,51 @@ fn test_new_default() {
 }
 
 #[test]
+fn test_ptr() {
+    let mut h = H::inline(ABCDEF);
+    let p_const = h.as_ptr();
+    let p_mut = h.as_mut_ptr().unwrap();
+    assert_eq!(p_mut, unsafe { h.as_mut_ptr_unchecked() });
+    assert_eq!(p_const, h.as_slice().as_ptr());
+    assert_eq!(p_mut, h.as_mut_slice().unwrap().as_mut_ptr());
+
+    let mut h = H::from(MEDIUM);
+    let p_const = h.as_ptr();
+    let p_mut = h.as_mut_ptr().unwrap();
+    assert_eq!(p_mut, unsafe { h.as_mut_ptr_unchecked() });
+    assert_eq!(p_const, h.as_slice().as_ptr());
+    assert_eq!(p_mut, h.as_mut_slice().unwrap().as_mut_ptr());
+    let _h2 = h.clone();
+    assert!(h.as_mut_ptr().is_none());
+
+    let abcdef = ABCDEF;
+    let mut h = H::borrowed(ABCDEF);
+    assert_eq!(h.as_ptr(), abcdef.as_ptr());
+    assert_eq!(h.as_mut_ptr(), None);
+}
+
+/// Tests that `as_mut_ptr_unchecked` panics when the sequence is shared in debug.
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic]
+fn test_ptr_panic_shared() {
+    let mut h = H::from(MEDIUM);
+    let _h2 = h.clone();
+    assert!(h.as_mut_ptr().is_none());
+    let _ = unsafe { h.as_mut_ptr_unchecked() };
+}
+
+/// Tests that `as_mut_ptr_unchecked` panics when the sequence is borrowed in debug.
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic]
+fn test_ptr_panic_borrowed() {
+    let mut h = H::borrowed(MEDIUM);
+    assert!(h.as_mut_ptr().is_none());
+    let _ = unsafe { h.as_mut_ptr_unchecked() };
+}
+
+#[test]
 fn test_with_capacity() {
     let h = H::with_capacity(0);
     assert_eq!(h, EMPTY_SLICE);
