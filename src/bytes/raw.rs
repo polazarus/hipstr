@@ -48,9 +48,10 @@ pub type Inline = inline::Inline<INLINE_CAPACITY>;
 ///
 /// # Examples
 ///
-/// You can create a `HipStr` from a [byte slice (&`[u8]`)][slice], an owned byte string
-/// ([`Vec<u8>`], [`Box<[u8]>`][std::boxed::Box]), or a clone-on-write smart pointer
-/// ([`Cow<[u8]>`][std::borrow::Cow]) with [`From`]:
+/// You can create a `HipStr` from a [byte slice (&`[u8]`)][slice], an owned
+/// byte string ([`Vec<u8>`], [`Box<[u8]>`][std::boxed::Box]), or a
+/// clone-on-write smart pointer ([`Cow<[u8]>`][std::borrow::Cow]) with
+/// [`From`]:
 ///
 /// ```
 /// # use hipstr::HipByt;
@@ -65,7 +66,8 @@ pub type Inline = inline::Inline<INLINE_CAPACITY>;
 /// let world = HipByt::from(vec);
 /// ```
 ///
-/// To borrow a string slice, you can also use the no-copy constructor [`HipByt::borrowed`]:
+/// To borrow a string slice, you can also use the no-copy constructor
+/// [`HipByt::borrowed`]:
 ///
 /// ```
 /// # use hipstr::HipByt;
@@ -79,6 +81,21 @@ pub type Inline = inline::Inline<INLINE_CAPACITY>;
 /// * borrow
 /// * inline string
 /// * shared heap allocated string
+///
+/// # Notable features
+///
+/// `HipByt` dereferences through the [`Deref`] trait to either `&[u8]` ot
+/// [`&bstr::BStr`] if the feature flag `bstr` is set. [`bstr`] allows for
+/// efficient string-like manipulation on non-guaranteed UTF-8 data.
+///
+/// In the same manner, [`HipByt::mutate`] returns a mutable handle [`RefMut`]
+/// to a `Vec<[u8]>` or a [`bstr::BString`] if the flag `bstr` is set.
+///
+/// [`bstr`]: https://crates.io/crates/bstr
+/// [`&bstr::BStr`]: https://docs.rs/bstr/latest/bstr/struct.BStr.html
+/// [`bstr::BString`]: https://docs.rs/bstr/latest/bstr/struct.BString.html
+/// [`Deref`]: core::ops::Deref
+/// [`RefMut`]: super::RefMut
 #[repr(C)]
 pub struct HipByt<'borrow, B: Backend> {
     pivot: Pivot,
