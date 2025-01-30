@@ -1,6 +1,6 @@
 [package]
 name = "hipstr"
-version = "0.7.0"
+version = "0.8.0"
 authors = ["Polazarus <polazarus@users.noreply.github.com>"]
 description = """Yet another string for Rust: zero-cost borrow and slicing,
     inline representation for small strings, (atomic) reference counting"""
@@ -24,11 +24,11 @@ bstr = ["dep:bstr"]
 borsh = ["dep:borsh"]
 
 [dev-dependencies]
-fastrand = "2.0.0"
-serde_test = "1.0.176"
+fastrand = "2.3.0"
+serde_test = "1.0.177"
 serde = { version = "1.0.100", default-features = false, features = ["derive", "alloc"] }
 serde_json = { version = "1.0.45", default-features = false, features = ["alloc"] }
-divan = "0.1.15"
+divan = "0.1.17"
 
 [dependencies.bstr]
 version = "1.3"

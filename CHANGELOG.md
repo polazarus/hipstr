@@ -2,15 +2,24 @@
 
 Notable changes only.
 
-## [Unreleased]
+## [0.8.0] - 2025-02-10
+
+### Added
+
+- add `as_ptr` to strings.
+- add `as_mut_ptr` and `as_mut_ptr_unchecked` to strings and bytes
 
 ### Changed
 
 - improve feature testing in CI
+- improve doc
+- update some dev dependencies
 
 ### Fixed
 
+- remove accidentally mandatory dependency to `serde`
 - fix `bstr` feature in `no_std`
+- fix some clippy lints
 
 ## [0.7.0] - 2025-01-10
 
@@ -163,7 +172,9 @@ Most of those addition are breaking because they shadows `str`'s methods.
 
 Initial release
 
-[unreleased]: https://github.com/polazarus/hipstr/compare/0.7.0...HEAD
+<!-- [unreleased]: https://github.com/polazarus/hipstr/compare/0.8.0...HEAD -->
+
+[0.8.0]: https://github.com/polazarus/hipstr/compare/0.7.0...0.8.0
 [0.7.0]: https://github.com/polazarus/hipstr/compare/0.6.0...0.7.0
 [0.6.0]: https://github.com/polazarus/hipstr/compare/0.5.1...0.6.0
 [0.5.1]: https://github.com/polazarus/hipstr/compare/0.5.0...0.5.1
