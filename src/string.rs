@@ -103,8 +103,9 @@ where
 
     /// Creates a new `HipStr` with the given capacity.
     ///
-    /// The returned `HipStr` will be able to hold at least `capacity` bytes
-    /// without reallocating or changing representation.
+    /// The final capacity depends on the representation and is not guaranteed
+    /// to be exact. However, the returned `HipStr` will be able to hold at
+    /// least `capacity` bytes without reallocating or changing representation.
     ///
     /// # Representation
     ///
@@ -134,10 +135,15 @@ where
     }
 
     /// Creates a new `HipStr` from a string slice.
+    ///
     /// No heap allocation is performed.
-    /// **The string is not copied.**
+    /// **The string slice is borrowed and not copied.**
     ///
     /// See also [`HipStr::from_static`] to ensure the borrow is `'static`.
+    ///
+    /// # Representation
+    ///
+    /// The created `HipStr` is _borrowed_.
     ///
     /// # Examples
     ///
@@ -177,7 +183,7 @@ where
         self.0.is_inline()
     }
 
-    /// Returns `true` if this `HipStr` is a static string borrow, `false` otherwise.
+    /// Returns `true` if this `HipStr` is a string borrow, `false` otherwise.
     ///
     /// # Examples
     ///
@@ -223,11 +229,12 @@ where
         self.0.is_allocated()
     }
 
-    /// Converts `self` into a static string slice if this `HipStr` is backed by a static borrow.
+    /// Converts `self` into a string slice with the `'borrow` lifetime if this
+    /// `HipStr` is backed by a borrow.
     ///
     /// # Errors
     ///
-    /// Returns `Err(self)` if this `HipStr` is not a static borrow.
+    /// Returns `Err(self)` if this `HipStr` is not a borrow.
     ///
     /// # Examples
     ///
@@ -1820,9 +1827,13 @@ impl<B> HipStr<'static, B>
 where
     B: Backend,
 {
-    /// Creates a new `HipStr` from a static string slice without copying the slice.
+    /// Creates a new `HipStr` from a `'static` string slice without copying the slice.
     ///
     /// Handy shortcut to make a `HipStr<'static, _>` out of a `&'static str`.
+    ///
+    /// # Representation
+    ///
+    /// The created `HipStr` is _borrowed_.
     ///
     /// # Examples
     ///

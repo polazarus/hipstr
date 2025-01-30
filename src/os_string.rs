@@ -109,8 +109,18 @@ where
 
     /// Creates a new `HipOsStr` with the given capacity.
     ///
-    /// The returned `HipOsStr` will be able to hold at least `capacity` bytes
-    /// without reallocating or changing representation.
+    /// The final capacity depends on the representation and is not guaranteed
+    /// to be exact. However, the returned `HipOsStr` will be able to hold at
+    /// least `capacity` bytes without reallocating or changing representation.
+    ///
+    /// # Representation
+    ///
+    /// If the capacity is less or equal to the inline capacity, the
+    /// representation will be *inline*.
+    ///
+    /// Otherwise, it will be *allocated*.
+    ///
+    /// The representation is **not normalized**.
     ///
     /// # Examples
     ///
@@ -131,9 +141,18 @@ where
         Self(HipByt::with_capacity(cap))
     }
 
-    /// Creates a new `HipOsStr` from a static os string slice without copying the slice.
+    /// Creates a new `HipOsStr` from an OS string slice without copying the
+    /// slice.
     ///
-    /// Requires only `impl AsRef<OsStr>`: it accepts `&str`, `&OsStr`, and `&Path` for instance.
+    /// Requires only `impl AsRef<OsStr>`: it accepts `&str`, `&OsStr`, and
+    /// `&Path` for instance.
+    ///
+    /// To create a `HipOsStr` from a `'static` string slice `const`-ly, see
+    /// [`HipOsStr::from_static`].
+    ///
+    /// # Representation
+    ///
+    /// The created `HipOsStr` is _borrowed_.
     ///
     /// # Examples
     ///
@@ -218,11 +237,12 @@ where
         self.0.is_allocated()
     }
 
-    /// Converts `self` into a static string slice if this `HipOsStr` is backed by a static borrow.
+    /// Converts `self` into a string slice with the `'borrow` lifetime if this
+    /// `HipOsStr` is backed by a borrow.
     ///
     /// # Errors
     ///
-    /// Returns `Err(self)` if this `HipOsStr` is not a static borrow.
+    /// Returns `Err(self)` if this `HipOsStr` is not borrowed.
     ///
     /// # Examples
     ///
@@ -328,7 +348,7 @@ where
     /// Converts a `HipOsStr` into a `HipByt`.
     ///
     /// It consumes the `HipOsStr` without copying the content
-    /// (if [shared][Self::is_allocated] or [static][Self::is_borrowed]).
+    /// (if [shared][Self::is_allocated] or [borrowed][Self::is_borrowed]).
     ///
     /// # Examples
     ///
@@ -414,7 +434,7 @@ where
     ///
     /// This operation may reallocate a new string if either:
     ///
-    /// - the representation is not an allocated buffer (inline array or static borrow),
+    /// - the representation is not an allocated buffer (inline array or borrow),
     /// - the underlying buffer is shared.
     ///
     /// # Examples
@@ -699,9 +719,12 @@ impl<B> HipOsStr<'static, B>
 where
     B: Backend,
 {
-    /// Creates a new `HipOsStr` from a static string slice without copying the slice.
+    /// Creates a new `HipOsStr` from a `'static` string slice without copying
+    /// the slice.
     ///
-    /// Handy shortcut to make a `HipOsStr<'static, _>` out of a `&'static str`.
+    /// # Representation
+    ///
+    /// The created `HipOsStr` is _borrowed_.
     ///
     /// # Examples
     ///

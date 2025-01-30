@@ -26,7 +26,7 @@ let _clone = simple_greetings.clone(); // no copy
 
 let user = "John";
 let greetings = HipStr::from(format!("Hello {}", user));
-let user = greetings.slice(6..): // no copy
+let user = greetings.slice(6..); // no copy
 drop(greetings); // the slice is owned, it exists even if greetings disappear
 
 let chars = user.chars().count(); // "inherits" `&str` methods
@@ -96,7 +96,7 @@ cross test --target i686-unknown-linux-gnu          # 32-bit LE
 cross test --target x86_64-unknown-linux-gnu        # 64-bit LE
 ```
 
-NB: previously I used MIPS targets for big endian, but due to some LLVM-related
+Note: previously I used MIPS targets for big endian, but due to some LLVM-related
 issue they are not working anymore… see
 [Rust issue #113065](https://github.com/rust-lang/rust/issues/113065)
 
