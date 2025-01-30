@@ -237,7 +237,7 @@ impl<B: Backend> Allocated<B> {
         self.ptr.cast_mut()
     }
 
-    /// Returns a mutable slice if possible (unique non-static reference).
+    /// Returns a mutable slice if possible (unique owned reference).
     #[inline]
     pub fn as_mut_slice(&mut self) -> Option<&mut [u8]> {
         if self.is_unique() {

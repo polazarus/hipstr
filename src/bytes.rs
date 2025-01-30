@@ -54,10 +54,14 @@ where
     ///
     /// Function provided for [`Vec::new`] replacement.
     ///
-    /// # ⚠️ Warning!
+    /// # Representation
+    ///
+    /// <div class=warning>
     ///
     /// The used representation of the empty string is unspecified.
-    /// It may be *borrowed* or *inlined* but will never be allocated.
+    /// It may be _borrowed_ or _inlined_ but will never be allocated.
+    ///
+    /// </div>
     ///
     /// # Examples
     ///
@@ -75,6 +79,10 @@ where
 
     /// Creates a new inline `HipByt` by copying the given slice.
     /// The slice **must not** be too large to be inlined.
+    ///
+    /// # Representation
+    ///
+    /// The created `HipByt` is _inline_.
     ///
     /// # Panics
     ///
@@ -100,6 +108,10 @@ where
     /// Creates a new inline `HipByt` by copying the given the slice.
     /// Return `None` if the given slice is too large to be inlined.
     ///
+    /// # Representation
+    ///
+    /// In case of success, the created `HipByt` is _inline_.
+    ///
     /// # Examples
     ///
     /// Basic usage:
@@ -121,7 +133,18 @@ where
 
     /// Creates a new `HipByt` with the given capacity.
     ///
-    /// The underlying representation is not **normalized**.
+    /// The final capacity depends on the representation and is not guaranteed
+    /// to be exact. However, the returned `HipByt` will be able to hold at
+    /// least `capacity` bytes without reallocating or changing representation.
+    ///
+    /// # Representation
+    ///
+    /// If the capacity is less or equal to the inline capacity, the
+    /// representation will be *inline*.
+    ///
+    /// Otherwise, it will be *allocated*.
+    ///
+    /// The representation is **not normalized**.
     ///
     /// # Examples
     ///
@@ -422,7 +445,7 @@ where
     ///
     /// # Errors
     ///
-    /// Returns `Err(self)` if this `HipByt` is not a borrow.
+    /// Returns `Err(self)` if this `HipByt` is not borrowed.
     ///
     /// # Examples
     ///
@@ -1419,9 +1442,13 @@ impl<B> HipByt<'static, B>
 where
     B: Backend,
 {
-    /// Creates a new `HipByt` from a static slice without copying the slice.
+    /// Creates a new `HipByt` from a `'static` slice without copying the slice.
     ///
     /// Handy shortcut to make a `HipByt<'static, _>` out of a `&'static [u8]`.
+    ///
+    /// # Representation
+    ///
+    /// The created `HipByt` is _borrowed_.
     ///
     /// # Examples
     ///

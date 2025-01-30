@@ -107,9 +107,18 @@ where
         Self(HipOsStr::new())
     }
 
-    /// Creates a new `HipPath` from a static os string slice without copying the slice.
+    /// Creates a new `HipPath` from an OS string slice without copying the
+    /// slice.
     ///
-    /// Requires only `impl AsRef<Path>`: it accepts `&str`, `&OsStr`, and `&Path` for instance.
+    /// Requires only `impl AsRef<Path>`: it accepts `&str`, `&OsStr`, and
+    /// `&Path` for instance.
+    ///
+    /// To create a `HipPath` from a `'static` string slice `const`-ly, see
+    /// [`HipPath::from_static`].
+    ///
+    /// # Representation
+    ///
+    /// The created `HipPath` is _borrowed_.
     ///
     /// # Examples
     ///
@@ -196,11 +205,12 @@ where
         self.0.is_allocated()
     }
 
-    /// Converts `self` into a static string slice if this `HipPath` is backed by a static borrow.
+    /// Converts `self` into a path slice with the `'borrow` lifetime if this
+    /// `HipPath` is backed by a borrow.
     ///
     /// # Errors
     ///
-    /// Returns `Err(self)` if this `HipPath` is not a static borrow.
+    /// Returns `Err(self)` if this `HipPath` is not borrowed.
     ///
     /// # Examples
     ///
@@ -366,7 +376,7 @@ where
     ///
     /// This operation may reallocate a new buffer if either:
     ///
-    /// - the representation is not an allocated buffer (inline array or static borrow),
+    /// - the representation is not an allocated buffer (inline array or borrow),
     /// - the underlying buffer is shared.
     ///
     /// # Examples
@@ -533,7 +543,9 @@ where
 {
     /// Creates a new `HipPath` from a static string slice without copying the slice.
     ///
-    /// Handy shortcut to make a `HipPath<'static, _>` out of a `&'static str`.
+    /// # Representation
+    ///
+    /// The created `HipPath` is _borrowed_.
     ///
     /// # Examples
     ///
