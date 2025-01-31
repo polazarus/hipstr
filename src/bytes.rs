@@ -8,6 +8,7 @@ use alloc::vec::Vec;
 use core::borrow::Borrow;
 use core::error::Error;
 use core::hash::Hash;
+use core::hint::unreachable_unchecked;
 use core::mem::{ManuallyDrop, MaybeUninit};
 use core::ops::{Bound, Deref, DerefMut, Range, RangeBounds};
 use core::ptr;
@@ -53,10 +54,14 @@ where
     ///
     /// Function provided for [`Vec::new`] replacement.
     ///
-    /// # ⚠️ Warning!
+    /// # Representation
+    ///
+    /// <div class=warning>
     ///
     /// The used representation of the empty string is unspecified.
-    /// It may be *borrowed* or *inlined* but will never be allocated.
+    /// It may be _borrowed* or *inlined* but will never be allocated.
+    ///
+    /// </div>
     ///
     /// # Examples
     ///
@@ -74,6 +79,10 @@ where
 
     /// Creates a new inline `HipByt` by copying the given slice.
     /// The slice **must not** be too large to be inlined.
+    ///
+    /// # Representation
+    ///
+    /// The created `HipByt` is _inline_.
     ///
     /// # Panics
     ///
@@ -99,6 +108,10 @@ where
     /// Creates a new inline `HipByt` by copying the given the slice.
     /// Return `None` if the given slice is too large to be inlined.
     ///
+    /// # Representation
+    ///
+    /// In case of success, the created `HipByt` is _inline_.
+    ///
     /// # Examples
     ///
     /// Basic usage:
@@ -120,7 +133,18 @@ where
 
     /// Creates a new `HipByt` with the given capacity.
     ///
-    /// The underlying representation is not **normalized**.
+    /// The final capacity depends on the representation and is not guaranteed
+    /// to be exact. However, the returned `HipByt` will be able to hold at
+    /// least `capacity` bytes without reallocating or changing representation.
+    ///
+    /// # Representation
+    ///
+    /// If the capacity is less or equal to the inline capacity, the
+    /// representation will be *inline*.
+    ///
+    /// Otherwise, it will be *allocated*.
+    ///
+    /// The representation is **not normalized**.
     ///
     /// # Examples
     ///
@@ -208,6 +232,168 @@ where
         self.len() == 0
     }
 
+    /// Returns a raw pointer to the start of the byte sequence.
+    ///
+    /// The caller must ensure the `HipByt` outlives the pointer this function
+    /// returns, or else it will end up dangling.
+    /// Modifying the byte sequence may change representation or reallocate,
+    /// which would invalid the returned pointer.
+    #[inline]
+    #[must_use]
+    pub const fn as_ptr(&self) -> *const u8 {
+        match self.split() {
+            Split::Inline(inline) => inline.as_ptr(),
+            Split::Allocated(heap) => heap.as_ptr(),
+            Split::Borrowed(borrowed) => borrowed.as_ptr(),
+        }
+    }
+
+    /// Returns a raw mutable pointer to the start of the byte sequence.
+    ///
+    /// The caller must ensure the `HipByt` outlives the pointer this function
+    /// returns, or else it will end up dangling.
+    /// Modifying the byte sequence may change representation or reallocate,
+    /// which would invalid the returned pointer.
+    #[inline]
+    #[must_use]
+    pub fn as_mut_ptr(&mut self) -> Option<*mut u8> {
+        match self.split_mut() {
+            SplitMut::Inline(inline) => Some(inline.as_mut_ptr()),
+            SplitMut::Allocated(heap) => heap.as_mut_ptr(),
+            SplitMut::Borrowed(_) => None,
+        }
+    }
+
+    /// Returns a raw mutable pointer to the start of the byte sequence.
+    ///
+    /// The caller must ensure the `HipByt` outlives the pointer this function
+    /// returns, or else it will end up dangling. Modifying the byte sequence
+    /// may change representation or reallocate, which would invalid the
+    /// returned pointer.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure the sequence is actually unique: not shared and
+    /// not borrowed.
+    ///
+    /// # Panics
+    ///
+    /// In debug mode, this function panics if the sequence is borrowed or
+    /// shared.
+    #[inline]
+    #[must_use]
+    pub unsafe fn as_mut_ptr_unchecked(&mut self) -> *mut u8 {
+        match self.split_mut() {
+            SplitMut::Inline(inline) => inline.as_mut_ptr(),
+            SplitMut::Allocated(heap) => unsafe { heap.as_mut_ptr_unchecked() },
+            SplitMut::Borrowed(_) => {
+                #[cfg(debug_assertions)]
+                {
+                    panic!("mutable pointer of borrowed string");
+                }
+                #[cfg(not(debug_assertions))]
+                {
+                    unreachable_unchecked()
+                }
+            }
+        }
+    }
+
+    /// Extracts a slice of the entire `HipByt`.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// # use hipstr::HipByt;
+    /// let s = HipByt::from(b"foobar");
+    ///
+    /// assert_eq!(b"foobar", s.as_slice());
+    /// ```
+    #[inline]
+    #[must_use]
+    pub const fn as_slice(&self) -> &[u8] {
+        match self.split() {
+            Split::Inline(inline) => inline.as_slice(),
+            Split::Allocated(heap) => heap.as_slice(),
+            Split::Borrowed(borrowed) => borrowed.as_slice(),
+        }
+    }
+
+    /// Extracts a mutable slice of the entire `HipByt` if possible.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// # use hipstr::HipByt;
+    /// let mut s = HipByt::from(b"foo");
+    /// let slice = s.as_mut_slice().unwrap();
+    /// slice.copy_from_slice(b"bar");
+    /// assert_eq!(b"bar", slice);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn as_mut_slice(&mut self) -> Option<&mut [u8]> {
+        match self.split_mut() {
+            SplitMut::Inline(inline) => Some(inline.as_mut_slice()),
+            SplitMut::Allocated(allocated) => allocated.as_mut_slice(),
+            SplitMut::Borrowed(_) => None,
+        }
+    }
+
+    /// Extracts a mutable slice of the entire `HipByt`.
+    ///
+    /// # Safety
+    ///
+    /// This `HipByt` should not be shared or borrowed.
+    ///
+    /// # Panics
+    ///
+    /// In debug mode, panics if the sequence is borrowed or shared.
+    #[inline]
+    pub unsafe fn as_mut_slice_unchecked(&mut self) -> &mut [u8] {
+        match self.split_mut() {
+            SplitMut::Inline(inline) => inline.as_mut_slice(),
+            SplitMut::Allocated(allocated) => unsafe { allocated.as_mut_slice_unchecked() },
+            SplitMut::Borrowed(_) => {
+                #[cfg(debug_assertions)]
+                {
+                    panic!("mutable slice of borrowed string");
+                }
+                #[cfg(not(debug_assertions))]
+                {
+                    unsafe { unreachable_unchecked() }
+                }
+            }
+        }
+    }
+
+    /// Extracts a mutable slice of the entire `HipByt` changing the
+    /// representation (and thus _potentially reallocating_) if the current
+    /// representation cannot be mutated.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// # use hipstr::HipByt;
+    /// let mut s = HipByt::borrowed(b"foo");
+    /// let slice = s.to_mut_slice(); // change the representation to inline
+    /// slice.copy_from_slice(b"bar");
+    /// assert_eq!(b"bar", slice);
+    /// ```
+    #[inline]
+    #[doc(alias = "make_mut")]
+    pub fn to_mut_slice(&mut self) -> &mut [u8] {
+        self.make_unique();
+        // SAFETY: `make_unique` above ensures that it is uniquely owned
+        unsafe { self.as_mut_slice_unchecked() }
+    }
+
     /// Returns `true` if this `HipByt` uses the inline representation, `false` otherwise.
     ///
     /// # Examples
@@ -259,7 +445,7 @@ where
     ///
     /// # Errors
     ///
-    /// Returns `Err(self)` if this `HipByt` is not a borrow.
+    /// Returns `Err(self)` if this `HipByt` is not borrowed.
     ///
     /// # Examples
     ///
@@ -421,29 +607,6 @@ where
         }
     }
 
-    /// Extracts a mutable slice of the entire `HipByt` changing the
-    /// representation (and thus _potentially reallocating_) if the current
-    /// representation cannot be mutated.
-    ///
-    /// # Examples
-    ///
-    /// Basic usage:
-    ///
-    /// ```
-    /// # use hipstr::HipByt;
-    /// let mut s = HipByt::borrowed(b"foo");
-    /// let slice = s.to_mut_slice(); // change the representation to inline
-    /// slice.copy_from_slice(b"bar");
-    /// assert_eq!(b"bar", slice);
-    /// ```
-    #[inline]
-    #[doc(alias = "make_mut")]
-    pub fn to_mut_slice(&mut self) -> &mut [u8] {
-        self.make_unique();
-        // SAFETY: `make_unique` above ensures that it is uniquely owned
-        unsafe { self.as_mut_slice_unchecked() }
-    }
-
     /// Extracts a slice as its own `HipByt`.
     ///
     /// # Panics
@@ -496,7 +659,7 @@ where
     ///
     /// # Safety
     ///
-    /// `range` must be a equivalent to some `a..b` with `a <= b <= len`.
+    /// `range` must be equivalent to some `a..b` with `a <= b <= len`.
     ///
     /// Panics in debug mode. UB in release mode.
     #[must_use]
@@ -880,7 +1043,7 @@ where
     /// # Representation stability
     ///
     /// The allocated representation may change to *inline* if the required
-    /// capacity is smaller thant the inline capacity.
+    /// capacity is smaller than the inline capacity.
     ///
     /// # Examples
     ///
@@ -1279,9 +1442,13 @@ impl<B> HipByt<'static, B>
 where
     B: Backend,
 {
-    /// Creates a new `HipByt` from a static slice without copying the slice.
+    /// Creates a new `HipByt` from a `'static` slice without copying the slice.
     ///
     /// Handy shortcut to make a `HipByt<'static, _>` out of a `&'static [u8]`.
+    ///
+    /// # Representation
+    ///
+    /// The created `HipByt` is _borrowed_.
     ///
     /// # Examples
     ///

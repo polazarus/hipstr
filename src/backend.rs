@@ -1,12 +1,8 @@
 //! Sealed backend trait and the built-in implementations.
 
-/// Shared (thread-safe) reference counted backend.
 #[cfg(target_has_atomic = "ptr")]
 pub use crate::smart::Arc;
-/// Use a local reference counted backend.
-pub use crate::smart::Rc;
-/// Use a unique reference.
-pub use crate::smart::Unique;
+pub use crate::smart::{Rc, Unique};
 
 #[deprecated(note = "renamed to Rc")]
 pub type Local = crate::smart::Rc;

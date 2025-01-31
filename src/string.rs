@@ -103,8 +103,9 @@ where
 
     /// Creates a new `HipStr` with the given capacity.
     ///
-    /// The returned `HipStr` will be able to hold at least `capacity` bytes
-    /// without reallocating or changing representation.
+    /// The final capacity depends on the representation and is not guaranteed
+    /// to be exact. However, the returned `HipStr` will be able to hold at
+    /// least `capacity` bytes without reallocating or changing representation.
     ///
     /// # Representation
     ///
@@ -134,8 +135,15 @@ where
     }
 
     /// Creates a new `HipStr` from a string slice.
+    ///
     /// No heap allocation is performed.
-    /// **The string is not copied.**
+    /// **The string slice is borrowed and not copied.**
+    ///
+    /// See also [`HipStr::from_static`] to ensure the borrow is `'static`.
+    ///
+    /// # Representation
+    ///
+    /// The created `HipStr` is _borrowed_.
     ///
     /// # Examples
     ///
@@ -146,6 +154,7 @@ where
     /// let s = HipStr::borrowed("hello");
     /// assert_eq!(s.len(), 5);
     /// ```
+    #[inline]
     #[must_use]
     pub const fn borrowed(value: &'borrow str) -> Self {
         Self(HipByt::borrowed(value.as_bytes()))
@@ -174,7 +183,7 @@ where
         self.0.is_inline()
     }
 
-    /// Returns `true` if this `HipStr` is a static string borrow, `false` otherwise.
+    /// Returns `true` if this `HipStr` is a string borrow, `false` otherwise.
     ///
     /// # Examples
     ///
@@ -220,11 +229,12 @@ where
         self.0.is_allocated()
     }
 
-    /// Converts `self` into a static string slice if this `HipStr` is backed by a static borrow.
+    /// Converts `self` into a string slice with the `'borrow` lifetime if this
+    /// `HipStr` is backed by a borrow.
     ///
     /// # Errors
     ///
-    /// Returns `Err(self)` if this `HipStr` is not a static borrow.
+    /// Returns `Err(self)` if this `HipStr` is not a borrow.
     ///
     /// # Examples
     ///
@@ -335,7 +345,6 @@ where
     ///
     /// assert_eq!(&[104, 101, 108, 108, 111][..], &b[..]);
     /// ```
-    #[allow(clippy::missing_const_for_fn)] // cannot const it for now, clippy bug
     #[must_use]
     pub fn into_bytes(self) -> HipByt<'borrow, B> {
         self.0
@@ -398,7 +407,7 @@ where
     /// assert_eq!("FOO", slice);
     /// ```
     #[inline]
-    #[must_use]
+    #[doc(alias = "make_mut")]
     pub fn to_mut_str(&mut self) -> &mut str {
         let slice = self.0.to_mut_slice();
         // SAFETY: type invariant
@@ -888,7 +897,7 @@ where
     /// # Representation stability
     ///
     /// The allocated representation may change to *inline* if the required
-    /// capacity is smaller thant the inline capacity.
+    /// capacity is smaller than the inline capacity.
     ///
     /// # Examples
     ///
@@ -914,7 +923,7 @@ where
     /// # Representation stability
     ///
     /// The allocated representation may change to *inline* if the required
-    /// capacity is smaller thant the inline capacity.
+    /// capacity is smaller than the inline capacity.
     ///
     /// # Examples
     ///
@@ -1545,7 +1554,7 @@ where
     /// Returns a string with the prefix removed.
     ///
     /// If the string starts with the pattern `prefix`, returns substring after the prefix, wrapped
-    /// in `Some`.  Unlike `trim_start_matches`, this method removes the prefix exactly once.
+    /// in `Some`. Unlike `trim_start_matches`, this method removes the prefix exactly once.
     ///
     /// If the string does not start with `prefix`, returns `None`.
     ///
@@ -1736,9 +1745,13 @@ impl<B> HipStr<'static, B>
 where
     B: Backend,
 {
-    /// Creates a new `HipStr` from a static string slice without copying the slice.
+    /// Creates a new `HipStr` from a `'static` string slice without copying the slice.
     ///
     /// Handy shortcut to make a `HipStr<'static, _>` out of a `&'static str`.
+    ///
+    /// # Representation
+    ///
+    /// The created `HipStr` is _borrowed_.
     ///
     /// # Examples
     ///

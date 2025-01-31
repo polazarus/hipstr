@@ -134,7 +134,7 @@ impl<B: Backend> Allocated<B> {
 
     /// Returns a reference to the owner.
     ///
-    /// This function buses the [`Copy`]-ness of [`Allocated`] to get a copy
+    /// This function abuses the [`Copy`]-ness of [`Allocated`] to get a copy
     /// (and not a clone) of the [`Smart`] reference wrapped in [`ManuallyDrop`]
     /// to ensure it's not dropped.
     fn owner(&self) -> impl Deref<Target = Smart<Vec<u8>, B>> {
@@ -143,7 +143,7 @@ impl<B: Backend> Allocated<B> {
 
     /// Returns a mutable reference to the owner.
     ///
-    /// This function buses the [`Copy`]-ness of [`Allocated`] to get a copy
+    /// This function abuses the [`Copy`]-ness of [`Allocated`] to get a copy
     /// (and not a clone) of the [`Smart`] reference wrapped in [`ManuallyDrop`]
     /// to ensure it's not dropped.
     ///
@@ -213,7 +213,31 @@ impl<B: Backend> Allocated<B> {
         self.ptr
     }
 
-    /// Returns a mutable slice if possible (unique non-static reference).
+    /// Returns a mutable raw pointer to the first element if this sequence is
+    /// not shared, `None` otherwise.
+    #[inline]
+    #[allow(clippy::needless_pass_by_ref_mut)]
+    pub fn as_mut_ptr(&mut self) -> Option<*mut u8> {
+        if self.is_unique() {
+            Some(self.ptr.cast_mut())
+        } else {
+            None
+        }
+    }
+
+    /// Returns a mutable raw pointer to the first element.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the `Allocated` is actually uniquely shared.
+    #[inline]
+    #[allow(clippy::needless_pass_by_ref_mut)]
+    pub unsafe fn as_mut_ptr_unchecked(&mut self) -> *mut u8 {
+        debug_assert!(self.is_unique());
+        self.ptr.cast_mut()
+    }
+
+    /// Returns a mutable slice if possible (unique owned reference).
     #[inline]
     pub fn as_mut_slice(&mut self) -> Option<&mut [u8]> {
         if self.is_unique() {
