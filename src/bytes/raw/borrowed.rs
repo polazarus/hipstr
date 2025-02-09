@@ -8,7 +8,7 @@ use super::TAG_BORROWED;
 #[cfg(test)]
 mod tests;
 
-const TAG_NZ: NonZeroU8 = unsafe { NonZeroU8::new_unchecked(TAG_BORROWED) };
+const TAG_NZ: NonZeroU8 = NonZeroU8::new(TAG_BORROWED).unwrap();
 
 /// Borrowed slice representation.
 ///

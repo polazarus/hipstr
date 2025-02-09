@@ -269,7 +269,7 @@ where
     ///
     /// Any caller should check the uniqueness first with [`Self::is_unique`].
     #[inline]
-    pub unsafe fn as_mut_unchecked(&mut self) -> &mut T {
+    pub const unsafe fn as_mut_unchecked(&mut self) -> &mut T {
         // SAFETY: uniqueness precondition
         unsafe { &mut self.0.as_mut().value }
     }
@@ -281,7 +281,7 @@ where
     /// - Any caller should check the uniqueness first with [`Self::is_unique`].
     /// - The referenced value must outlive `'a`.
     #[inline]
-    pub(crate) unsafe fn as_mut_unchecked_extended<'a>(&mut self) -> &'a mut T
+    pub(crate) const unsafe fn as_mut_unchecked_extended<'a>(&mut self) -> &'a mut T
     where
         Self: 'a,
     {

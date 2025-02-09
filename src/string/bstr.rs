@@ -57,7 +57,7 @@ symmetric_ord! {
     [B] [where B: Backend] (&BString, HipStr<'_, B>) = bstr_cmp;
 }
 
-impl<'a, B> TryFrom<BString> for HipStr<'a, B>
+impl<B> TryFrom<BString> for HipStr<'_, B>
 where
     B: Backend,
 {

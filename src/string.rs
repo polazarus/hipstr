@@ -782,8 +782,8 @@ where
     /// [`from_utf8_unchecked`]: HipStr::from_utf8_unchecked
     /// [`into_bytes`]: HipStr::into_bytes
     #[inline]
-    pub fn from_utf8(bytes: HipByt<'borrow, B>) -> Result<Self, FromUtf8Error<'borrow, B>> {
-        match core::str::from_utf8(&bytes) {
+    pub const fn from_utf8(bytes: HipByt<'borrow, B>) -> Result<Self, FromUtf8Error<'borrow, B>> {
+        match core::str::from_utf8(bytes.as_slice()) {
             Ok(_) => {
                 // SAFETY: checked above
                 Ok(unsafe { Self::from_utf8_unchecked(bytes) })

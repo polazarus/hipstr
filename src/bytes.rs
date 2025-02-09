@@ -287,13 +287,12 @@ where
             SplitMut::Inline(inline) => inline.as_mut_ptr(),
             SplitMut::Allocated(heap) => unsafe { heap.as_mut_ptr_unchecked() },
             SplitMut::Borrowed(_) => {
-                #[cfg(debug_assertions)]
-                {
+                if cfg!(debug_assertions) {
                     panic!("mutable pointer of borrowed string");
-                }
-                #[cfg(not(debug_assertions))]
-                {
-                    unreachable_unchecked()
+                } else {
+                    unsafe {
+                        unreachable_unchecked();
+                    }
                 }
             }
         }
@@ -359,12 +358,9 @@ where
             SplitMut::Inline(inline) => inline.as_mut_slice(),
             SplitMut::Allocated(allocated) => unsafe { allocated.as_mut_slice_unchecked() },
             SplitMut::Borrowed(_) => {
-                #[cfg(debug_assertions)]
-                {
+                if cfg!(debug_assertions) {
                     panic!("mutable slice of borrowed string");
-                }
-                #[cfg(not(debug_assertions))]
-                {
+                } else {
                     unsafe { unreachable_unchecked() }
                 }
             }
