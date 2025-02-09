@@ -467,7 +467,7 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
     ///
     /// Returns `None` if this byte string is not allocated.
     #[inline]
-    pub(super) fn take_allocated(&mut self) -> Option<Allocated<B>> {
+    pub(super) const fn take_allocated(&mut self) -> Option<Allocated<B>> {
         match self.split() {
             Split::Allocated(&allocated) => {
                 // Takes a copy of allocated
