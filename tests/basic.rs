@@ -1,7 +1,9 @@
 use std::borrow::Cow;
 use std::hint::black_box;
 
-use hipstr::{HipByt, HipStr};
+use hipstr::vecs::inline::InlineVec;
+use hipstr::vecs::{SmartThinVec, ThinVec};
+use hipstr::{inline_vec, smart_thin_vec, thin_vec, HipByt, HipStr, Rc};
 
 #[inline(never)]
 pub fn new(slice: &str) -> HipStr<'static> {
@@ -48,4 +50,37 @@ fn test_borrow() {
 fn test_clone() {
     let h: HipByt<'static> = b"a".into();
     let _ = black_box(klone(&h));
+}
+
+#[test]
+fn test_thin() {
+    let _t = thin_vec![1, 2, 3];
+    let _t = thin_vec![1; 3];
+    let _t: ThinVec<i32> = thin_vec![];
+}
+
+#[test]
+fn test_smart_thin() {
+    let _t = smart_thin_vec![1, 2, 3];
+    let _t = smart_thin_vec![1; 3];
+    let _t: SmartThinVec<i32, _> = smart_thin_vec![];
+
+    let _t = smart_thin_vec![Rc: 1, 2, 3];
+    let _t = smart_thin_vec![Rc: 1; 3];
+    let _t: SmartThinVec<i32, _> = smart_thin_vec![Rc:];
+}
+
+#[test]
+#[inline(never)]
+pub fn asm_inline_vec() {
+    const {
+        assert!(size_of::<InlineVec<u8, 7>>() == size_of::<u8>() * 7 + size_of::<u8>());
+    }
+    const ARR: [u8; 3] = [1, 2, 3];
+    let _: InlineVec<u8, 7> = black_box(InlineVec::from_array(ARR));
+    let _: InlineVec<u8, 7> = black_box(const { inline_vec![1, 2, 3] });
+
+    const N: usize = size_of::<Vec<u8>>() - 1;
+    let _: InlineVec<u8, N> = black_box(InlineVec::from_array(ARR));
+    let _: InlineVec<u8, N> = black_box(const { inline_vec![1, 2, 3] });
 }

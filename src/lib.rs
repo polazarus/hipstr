@@ -93,11 +93,14 @@
 extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
+
 pub(crate) mod backend;
 pub mod bytes;
+pub mod common;
 pub(crate) mod macros;
 pub(crate) mod smart;
 pub mod string;
+pub mod vecs;
 
 #[cfg(feature = "std")]
 pub mod os_string;

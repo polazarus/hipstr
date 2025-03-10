@@ -12,11 +12,11 @@ use core::ops::Range;
 use allocated::Allocated;
 use borrowed::Borrowed;
 
+use crate::vecs::InlineVec;
 use crate::Backend;
 
 pub mod allocated;
 pub mod borrowed;
-pub mod inline;
 #[cfg(test)]
 mod tests;
 
@@ -36,13 +36,13 @@ const TAG_BORROWED: u8 = 2;
 const TAG_ALLOCATED: u8 = 3;
 
 /// Maximal byte capacity of an inline [`HipByt`].
-const INLINE_CAPACITY: usize = size_of::<Borrowed>() - 1;
+pub(crate) const INLINE_CAPACITY: usize = size_of::<Borrowed>() - 1;
 
 /// Size of word minus a tagged byte.
 const WORD_SIZE_M1: usize = size_of::<usize>() - 1;
 
 /// Alias type for `Inline` with set inline capacity
-pub type Inline = inline::Inline<INLINE_CAPACITY>;
+pub type Inline = ManuallyDrop<InlineVec<u8, INLINE_CAPACITY, TAG_BITS, TAG_INLINE>>;
 
 /// Smart bytes, i.e. cheaply clonable and sliceable byte string.
 ///
@@ -305,7 +305,7 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
     /// Creates a new empty inline `HipByt`.
     #[inline]
     pub(super) const fn inline_empty() -> Self {
-        const { Self::from_inline(Inline::empty()) }
+        const { Self::from_inline(ManuallyDrop::new(InlineVec::new())) }
     }
 
     /// Creates a new `HipByt` from a short slice.
@@ -315,7 +315,7 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
     /// The input slice's length MUST be at most `INLINE_CAPACITY`.
     pub(super) const unsafe fn inline_unchecked(bytes: &[u8]) -> Self {
         // SAFETY: see function precondition
-        let inline = unsafe { Inline::new_unchecked(bytes) };
+        let inline = unsafe { ManuallyDrop::new(InlineVec::from_slice_copy_unchecked(bytes)) };
         Self::from_inline(inline)
     }
 
@@ -559,7 +559,7 @@ impl<B: Backend> Drop for HipByt<'_, B> {
 impl<B: Backend> Clone for HipByt<'_, B> {
     fn clone(&self) -> Self {
         match self.split() {
-            Split::Inline(&inline) => Self::from_inline(inline),
+            Split::Inline(inline) => Self::from_inline(ManuallyDrop::new(inline.copy())),
             Split::Borrowed(&borrowed) => Self::from_borrowed(borrowed),
             Split::Allocated(allocated) => {
                 // increase the ref count or clone if overflow
