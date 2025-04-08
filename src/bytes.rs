@@ -14,10 +14,12 @@ use core::ops::{Bound, Deref, DerefMut, Range, RangeBounds};
 use core::ptr;
 
 use raw::borrowed::Borrowed;
-use raw::{Inline, Split, SplitMut, Tag, Union};
+use raw::{Split, SplitMut, Tag, Union, INLINE_CAPACITY};
 
 use self::raw::try_range_of;
 pub use self::raw::HipByt;
+use crate::common::manually_drop_as_ref;
+use crate::vecs::InlineVec;
 use crate::Backend;
 
 mod cmp;
@@ -207,7 +209,7 @@ where
     #[must_use]
     pub const fn len(&self) -> usize {
         match self.split() {
-            Split::Inline(inline) => inline.len(),
+            Split::Inline(inline) => manually_drop_as_ref(inline).len(),
             Split::Allocated(heap) => heap.len(),
             Split::Borrowed(borrowed) => borrowed.len(),
         }
@@ -242,7 +244,7 @@ where
     #[must_use]
     pub const fn as_ptr(&self) -> *const u8 {
         match self.split() {
-            Split::Inline(inline) => inline.as_ptr(),
+            Split::Inline(inline) => manually_drop_as_ref(inline).as_ptr(),
             Split::Allocated(heap) => heap.as_ptr(),
             Split::Borrowed(borrowed) => borrowed.as_ptr(),
         }
@@ -314,7 +316,7 @@ where
     #[must_use]
     pub const fn as_slice(&self) -> &[u8] {
         match self.split() {
-            Split::Inline(inline) => inline.as_slice(),
+            Split::Inline(inline) => manually_drop_as_ref(inline).as_slice(),
             Split::Allocated(heap) => heap.as_slice(),
             Split::Borrowed(borrowed) => borrowed.as_slice(),
         }
@@ -525,7 +527,7 @@ where
     #[inline]
     #[must_use]
     pub const fn inline_capacity() -> usize {
-        Inline::capacity()
+        INLINE_CAPACITY
     }
 
     /// Returns the total number of bytes the backend can hold.
@@ -856,10 +858,15 @@ where
                 *self = unsafe { Self::inline_unchecked(self.as_slice()) };
             }
 
-            // SAFETY: `new_len` is checked above
+            // SAFETY:
+            // - `self` is inline
+            // - `new_len` is <= INLINE_CAPACITY
             unsafe {
-                self.union_mut().inline.push_slice_unchecked(addition);
+                self.union_mut()
+                    .inline
+                    .extend_with_slice_copy_unchecked(addition);
             }
+
             return;
         }
 
@@ -906,7 +913,7 @@ where
         let src_len = self.len();
         let new_len = src_len.checked_mul(n).expect("capacity overflow");
         if new_len <= Self::inline_capacity() {
-            let mut inline = Inline::zeroed(new_len);
+            let mut inline = unsafe { InlineVec::zeroed(new_len) };
             let src = self.as_slice().as_ptr();
             let mut dst = inline.as_mut_slice().as_mut_ptr();
 
@@ -921,7 +928,7 @@ where
                 }
             }
 
-            Self::from_inline(inline)
+            Self::from_inline(ManuallyDrop::new(inline))
         } else {
             let vec = self.as_slice().repeat(n);
             Self::from_vec(vec)

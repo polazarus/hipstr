@@ -12,7 +12,7 @@ fn test_niche() {
 #[test]
 fn test_union() {
     let union = Union {
-        inline: Inline::empty(),
+        inline: ManuallyDrop::new(InlineVec::new()),
     };
     let _: R = union.into_raw();
 
