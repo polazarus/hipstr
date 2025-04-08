@@ -728,12 +728,16 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     where
         F: FnMut() -> T,
     {
-        if new_len > self.len() {
+        let len = self.len();
+        if new_len > len {
             assert!(new_len <= CAP, "new length exceeds capacity");
-            let additional = new_len - self.len();
+            let additional = new_len - len;
             // TODO improve by using `ptr::write` instead of `push` and a drop guard
             for _ in 0..additional {
-                let _ = self.push(f());
+                self.data[len].write(f());
+                unsafe {
+                    self.set_len(len + 1);
+                }
             }
         } else {
             self.truncate(new_len);
@@ -878,7 +882,8 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     /// let copy = inline.copy();
     /// assert_eq!(copy.as_slice(), &[1, 2, 3]);
     /// ```
-    pub fn copy(&self) -> Self
+    #[must_use]
+    pub const fn copy(&self) -> Self
     where
         T: Copy,
     {
@@ -1075,10 +1080,11 @@ pub enum InsertErrorKind {
 
 impl InsertErrorKind {
     #[inline]
+    #[must_use]
     pub const fn message(&self) -> &str {
         match self {
-            InsertErrorKind::Full => "inline vector is full",
-            InsertErrorKind::OutOfBounds => "index out of bounds",
+            Self::Full => "inline vector is full",
+            Self::OutOfBounds => "index out of bounds",
         }
     }
 }
