@@ -118,3 +118,12 @@ where
 {
     PartialEq::eq(a, b)
 }
+
+/// Checks if two slices are not equal.
+#[inline]
+pub(crate) fn ne_slice<T>(a: &[T], b: &[T]) -> bool
+where
+    T: PartialEq,
+{
+    PartialEq::ne(a, b)
+}

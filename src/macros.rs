@@ -18,6 +18,34 @@ macro_rules! symmetric_eq {
 
         $( $crate::macros::symmetric_eq!( $($other)* ); )?
     };
+
+    ($([ $($gen:tt)* ])? $([ where $($wh:tt)* ])? ($a:ty, $b:ty) = $f:path, $g:path ; $($($other:tt)+)?) => {
+        impl $(< $($gen)* >)? core::cmp::PartialEq<$a> for $b where $($($wh)*)? {
+            #[inline]
+            fn eq(&self, other: &$a) -> bool {
+                $f(other, self)
+            }
+
+            #[inline]
+            fn ne(&self, other: &$a) -> bool {
+                $g(other, self)
+            }
+        }
+
+        impl $(< $($gen)* >)? core::cmp::PartialEq<$b> for $a where $($($wh)*)? {
+            #[inline]
+            fn eq(&self, other: &$b) -> bool {
+                $f(self, other)
+            }
+
+            #[inline]
+            fn ne(&self, other: &$b) -> bool {
+                $g(self, other)
+            }
+        }
+
+        $( $crate::macros::symmetric_eq!( $($other)* ); )?
+    };
 }
 
 macro_rules! symmetric_ord {

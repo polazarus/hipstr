@@ -16,7 +16,7 @@ use core::ptr::NonNull;
 use core::{error, hash, slice};
 use std::panic;
 
-use crate::common::{cmp_slice, eq_slice};
+use crate::common::{cmp_slice, eq_slice, ne_slice};
 use crate::macros;
 
 pub const SHIFT_DEFAULT: u8 = 1;
@@ -728,15 +728,16 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     where
         F: FnMut() -> T,
     {
-        let len = self.len();
+        let mut len = self.len();
         if new_len > len {
             assert!(new_len <= CAP, "new length exceeds capacity");
             let additional = new_len - len;
             // TODO improve by using `ptr::write` instead of `push` and a drop guard
             for _ in 0..additional {
                 self.data[len].write(f());
+                len += 1;
                 unsafe {
-                    self.set_len(len + 1);
+                    self.set_len(len);
                 }
             }
         } else {
@@ -1044,18 +1045,62 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> FusedIterator
 {
 }
 
+impl<T: Eq, const CAP: usize, const SHIFT: u8, const TAG: u8> Eq for InlineVec<T, CAP, SHIFT, TAG> {}
+
+impl<
+        T: PartialEq,
+        const CAP1: usize,
+        const SHIFT1: u8,
+        const TAG1: u8,
+        const CAP2: usize,
+        const SHIFT2: u8,
+        const TAG2: u8,
+    > PartialEq<InlineVec<T, CAP1, SHIFT1, TAG1>> for InlineVec<T, CAP2, SHIFT2, TAG2>
+{
+    fn eq(&self, other: &InlineVec<T, CAP1, SHIFT1, TAG1>) -> bool {
+        self.as_slice().eq(other.as_slice())
+    }
+
+    fn ne(&self, other: &InlineVec<T, CAP1, SHIFT1, TAG1>) -> bool {
+        self.as_slice().ne(other.as_slice())
+    }
+}
+
 macros::symmetric_eq! {
     [T, const CAP: usize, const SHIFT: u8, const TAG: u8]
     [where T: PartialEq]
-    ([T], InlineVec<T, CAP, SHIFT, TAG>) = eq_slice;
+    ([T], InlineVec<T, CAP, SHIFT, TAG>) = eq_slice, ne_slice;
 
     [T, const CAP: usize, const SHIFT: u8, const TAG: u8]
     [where T: PartialEq]
-    (Vec<T>, InlineVec<T, CAP, SHIFT, TAG>) = eq_slice;
+    (Vec<T>, InlineVec<T, CAP, SHIFT, TAG>) = eq_slice, ne_slice;
 
     [T, const CAP: usize, const SHIFT: u8, const TAG: u8, const N: usize]
     [where T: PartialEq]
-    ([T; N], InlineVec<T, CAP, SHIFT, TAG>) = eq_slice;
+    ([T; N], InlineVec<T, CAP, SHIFT, TAG>) = eq_slice, ne_slice;
+}
+
+impl<
+        T: PartialOrd,
+        const CAP1: usize,
+        const SHIFT1: u8,
+        const TAG1: u8,
+        const CAP2: usize,
+        const SHIFT2: u8,
+        const TAG2: u8,
+    > PartialOrd<InlineVec<T, CAP1, SHIFT1, TAG1>> for InlineVec<T, CAP2, SHIFT2, TAG2>
+{
+    fn partial_cmp(&self, other: &InlineVec<T, CAP1, SHIFT1, TAG1>) -> Option<core::cmp::Ordering> {
+        self.as_slice().partial_cmp(other.as_slice())
+    }
+}
+
+impl<T: Ord, const CAP: usize, const SHIFT: u8, const TAG: u8> Ord
+    for InlineVec<T, CAP, SHIFT, TAG>
+{
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        self.as_slice().cmp(other.as_slice())
+    }
 }
 
 macros::symmetric_ord! {
@@ -1147,10 +1192,7 @@ macro_rules! inline_vec {
 #[cfg(test)]
 mod tests {
 
-    use alloc::alloc::{alloc, dealloc, Layout};
     use alloc::boxed::Box;
-    use core::fmt;
-    use core::hash::{Hash, Hasher};
     use core::mem::size_of;
 
     use super::*;
@@ -1182,7 +1224,7 @@ mod tests {
     fn from_slice_copy() {
         const CAP: usize = 7;
         let slice = [1, 2, 3];
-        let mut inline = InlineVec::<u8, CAP>::from_slice_copy(&slice);
+        let inline = InlineVec::<u8, CAP>::from_slice_copy(&slice);
         assert_eq!(inline.len(), slice.len());
         assert_eq!(inline.as_slice(), &slice);
     }
@@ -1191,14 +1233,14 @@ mod tests {
     fn from_slice_clone() {
         const CAP: usize = 7;
         let slice: &[_] = &[1, 2, 3];
-        let mut inline = InlineVec::<u8, CAP>::from_slice_clone(slice);
+        let inline = InlineVec::<u8, CAP>::from_slice_clone(slice);
         assert_eq!(inline.len(), slice.len());
         assert_eq!(inline.as_slice(), slice);
 
         #[derive(Clone, PartialEq, Eq, Debug)]
         struct S(u8);
         let slice: &[_] = &[S(1), S(2), S(3)];
-        let mut inline = InlineVec::<_, CAP>::from_slice_clone(&slice);
+        let inline = InlineVec::<_, CAP>::from_slice_clone(&slice);
         assert_eq!(inline.len(), slice.len());
         assert_eq!(inline.as_slice(), slice);
     }
@@ -1464,5 +1506,19 @@ mod tests {
             let mut iter = inline.into_iter();
             assert_eq!(iter.next(), Some(Box::new(1)));
         }
+    }
+
+    #[test]
+    fn compare() {
+        let i1 = InlineVec::<u8, 7>::from_array([1, 2, 3]);
+        assert!(i1 < [2]);
+        assert!(i1 < [1, 2, 3, 1]);
+        assert!(i1 > [1, 2]);
+        assert!(i1 >= [1, 2, 3]);
+        assert!(i1 == [1, 2, 3]);
+
+        let i_f32 = InlineVec::<f32, 7>::from_array([f32::NAN]);
+        assert_ne!(i_f32, [f32::NAN]);
+        assert!(!(i_f32 == [f32::NAN]));
     }
 }
