@@ -1288,6 +1288,72 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "inline vector is full")]
+    fn push_fail() {
+        const CAP: usize = 7;
+        let mut inline = InlineVec::<u8, CAP>::new();
+        for i in 0..=CAP {
+            inline.push(i as u8);
+        }
+    }
+
+    #[test]
+    fn clear() {
+        const CAP: usize = 7;
+        let mut inline = InlineVec::<u8, CAP>::new();
+        for i in 1..=CAP {
+            inline.push(i as u8);
+            assert_eq!(inline.len(), i);
+        }
+        assert_eq!(inline.len(), CAP);
+        inline.clear();
+        assert_eq!(inline.len(), 0);
+    }
+
+    #[test]
+    fn truncate() {
+        const CAP: usize = 7;
+        let mut inline = InlineVec::<u8, CAP>::new();
+        for i in 1..=5 {
+            inline.push(i as u8);
+            assert_eq!(inline.len(), i);
+        }
+        assert_eq!(inline.len(), 5);
+        inline.truncate(CAP);
+        assert_eq!(inline.len(), 5);
+        inline.truncate(3);
+        assert_eq!(inline.len(), 3);
+        assert_eq!(inline.as_slice(), &[1, 2, 3]);
+    }
+
+    #[test]
+    fn swap_remove() {
+        const CAP: usize = 7;
+        let mut inline = InlineVec::<u8, CAP>::new();
+        for i in 1..=CAP {
+            inline.push(i as u8);
+            assert_eq!(inline.len(), i);
+        }
+        assert_eq!(inline.len(), CAP);
+        assert_eq!(inline.swap_remove(0), 1);
+        assert_eq!(inline.as_slice(), &[7, 2, 3, 4, 5, 6]);
+        assert_eq!(inline.len(), CAP - 1);
+    }
+
+    #[test]
+    #[should_panic(expected = "index out of bounds")]
+    fn swap_remove_out_of_bounds() {
+        const CAP: usize = 7;
+        let mut inline = InlineVec::<u8, CAP>::new();
+        for i in 1..=5 {
+            inline.push(i as u8);
+            assert_eq!(inline.len(), i);
+        }
+        assert_eq!(inline.len(), 5);
+        inline.swap_remove(6);
+    }
+
+    #[test]
     fn try_insert() {
         const CAP: usize = 7;
         let mut inline = InlineVec::<u8, CAP>::new();
@@ -1520,5 +1586,12 @@ mod tests {
         let i_f32 = InlineVec::<f32, 7>::from_array([f32::NAN]);
         assert_ne!(i_f32, [f32::NAN]);
         assert!(!(i_f32 == [f32::NAN]));
+    }
+
+    #[test]
+    fn non_null() {
+        const CAP: usize = 7;
+        let mut inline = InlineVec::<u8, CAP>::new();
+        assert_eq!(inline.as_ptr(), inline.as_non_null().as_ptr());
     }
 }
