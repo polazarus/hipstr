@@ -14,10 +14,11 @@ use core::ops::{Bound, Deref, DerefMut, Range, RangeBounds};
 use core::ptr;
 
 use raw::borrowed::Borrowed;
-use raw::{Inline, Split, SplitMut, Tag, Union};
+use raw::{Split, SplitMut, Tag, Union, INLINE_CAPACITY};
 
 use self::raw::try_range_of;
 pub use self::raw::HipByt;
+use crate::vecs::InlineVec;
 use crate::Backend;
 
 mod cmp;
@@ -525,7 +526,7 @@ where
     #[inline]
     #[must_use]
     pub const fn inline_capacity() -> usize {
-        Inline::capacity()
+        INLINE_CAPACITY
     }
 
     /// Returns the total number of bytes the backend can hold.
@@ -598,7 +599,7 @@ where
             match tag {
                 Tag::Allocated => HipByt::from_allocated(old.allocated),
                 Tag::Borrowed => HipByt::from_slice(old.borrowed.as_slice()),
-                Tag::Inline => HipByt::from_inline(old.inline),
+                Tag::Inline => HipByt::from_inline(ManuallyDrop::into_inner(old.inline)),
             }
         }
     }
@@ -856,10 +857,15 @@ where
                 *self = unsafe { Self::inline_unchecked(self.as_slice()) };
             }
 
-            // SAFETY: `new_len` is checked above
+            // SAFETY:
+            // - `self` is inline
+            // - `new_len` is <= INLINE_CAPACITY
             unsafe {
-                self.union_mut().inline.push_slice_unchecked(addition);
+                self.union_mut()
+                    .inline
+                    .extend_from_slice_copy_unchecked(addition);
             }
+
             return;
         }
 
@@ -906,7 +912,7 @@ where
         let src_len = self.len();
         let new_len = src_len.checked_mul(n).expect("capacity overflow");
         if new_len <= Self::inline_capacity() {
-            let mut inline = Inline::zeroed(new_len);
+            let mut inline = unsafe { InlineVec::zeroed(new_len) };
             let src = self.as_slice().as_ptr();
             let mut dst = inline.as_mut_slice().as_mut_ptr();
 

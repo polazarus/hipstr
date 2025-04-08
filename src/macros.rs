@@ -1,3 +1,39 @@
+macro_rules! partial_eq {
+    () => {};
+
+    ($([ $($gen:tt)* ])? $(where [ $($wh:tt)* ])? { $($body:tt)* } $($other:tt)*) => {
+        $crate::macros::partial_eq!(@impl $([ $($gen)* ])? $(where [$($wh)* ])? { $($body)* });
+        $crate::macros::partial_eq!( $($other)* );
+    };
+
+    ($([ $($gen:tt)* ])? $(where [ $($wh:tt)* ])? ($a:ty, $b:ty) $(= $f:path)? ; $($other:tt)*) => {
+        $crate::macros::partial_eq!(@impl $([ $($gen)* ])? $(where [$($wh)* ])? { ($a, $b) $(= $f)? ; });
+        $crate::macros::partial_eq!( $($other)* );
+    };
+
+    (@impl $($_g:tt)? $(where $_wh:tt)? {}) => {};
+
+    (@impl $([ $($gen:tt)* ])? $(where [ $($wh:tt)* ])? { ($a:ty, $b:ty) ; $($other:tt)* }) => {
+        impl $(< $($gen)* >)? core::cmp::PartialEq<$b> for $a $(where $($wh)*)? {
+            #[inline]
+            fn eq(&self, other: &$b) -> bool {
+                self[..] == other[..]
+            }
+        }
+        $crate::macros::partial_eq!(@impl $([ $($gen)* ])? $(where [ $($wh)* ])? { $($other)* });
+    };
+
+    (@impl $([ $($gen:tt)* ])? $(where [ $($wh:tt)* ])? { ($a:ty, $b:ty) = $f:path ; $($other:tt)* }) => {
+        impl $(< $($gen)* >)? core::cmp::PartialEq<$b> for $a $(where $($wh)*)? {
+            #[inline]
+            fn eq(&self, other: &$b) -> bool {
+                $f(self, other)
+            }
+        }
+        $crate::macros::partial_eq!(@impl $([ $($gen)* ])? $(where [ $($wh)* ])? { $($other)* });
+    };
+}
+
 macro_rules! symmetric_eq {
     () => {};
 
@@ -18,6 +54,7 @@ macro_rules! symmetric_eq {
 
         $( $crate::macros::symmetric_eq!( $($other)* ); )?
     };
+
 }
 
 macro_rules! symmetric_ord {
@@ -44,4 +81,4 @@ macro_rules! symmetric_ord {
     }
 }
 
-pub(crate) use {symmetric_eq, symmetric_ord};
+pub(crate) use {partial_eq, symmetric_eq, symmetric_ord};
