@@ -1778,7 +1778,11 @@ mod tests {
         assert!([1, 2, 3].as_slice() == l);
 
         assert!(l.eq(&inline_vec![15 => 1, 2, 3]));
+        assert!(l.partial_cmp(&inline_vec![15 => 1, 2, 3]).unwrap().is_eq());
+        assert!(l.cmp(&inline_vec![7 => 1, 2, 3]).is_eq());
         assert!(l.ne(&inline_vec![15 => 1, 3]));
+        assert!(l.partial_cmp(&inline_vec![15 => 1, 3]).unwrap().is_lt());
+        assert!(l.cmp(&inline_vec![7 => 1, 3]).is_lt());
 
         // NaN tests
         let i_f32 = InlineVec::<f32, 7>::from_array([f32::NAN]);
