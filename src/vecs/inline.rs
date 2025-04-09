@@ -511,15 +511,15 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     pub fn swap_remove(&mut self, index: usize) -> T {
         let len = self.len();
         assert!(index < len, "index out of bounds");
+        self.data.swap(index, len - 1);
+
+        // SAFETY: reduce the length of the vector
         unsafe {
             self.set_len(len - 1);
-
-            let ptr = self.as_mut_ptr().add(index);
-            let last = self.as_mut_ptr().add(len - 1);
-
-            ptr.swap(last);
-            last.read()
         }
+
+        // SAFETY: initialized due to previous type invariant
+        unsafe { self.data[len - 1].assume_init_read() }
     }
 
     /// Inserts an element at the specified index, shifting all elements after
@@ -728,16 +728,13 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     where
         F: FnMut() -> T,
     {
-        let mut len = self.len();
+        let len = self.len();
         if new_len > len {
             assert!(new_len <= CAP, "new length exceeds capacity");
-            let additional = new_len - len;
-            // TODO improve by using `ptr::write` instead of `push` and a drop guard
-            for _ in 0..additional {
-                self.data[len].write(f());
-                len += 1;
+            for i in len..new_len {
+                self.data[i].write(f());
                 unsafe {
-                    self.set_len(len);
+                    self.set_len(i + 1);
                 }
             }
         } else {
