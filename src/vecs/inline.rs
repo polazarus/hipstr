@@ -14,7 +14,6 @@ use core::num::NonZeroU8;
 use core::ops::{Deref, DerefMut};
 use core::ptr::NonNull;
 use core::{error, hash, slice};
-use std::panic;
 
 use crate::common::{cmp_slice, eq_slice, ne_slice};
 use crate::macros;
