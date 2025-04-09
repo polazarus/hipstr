@@ -11,11 +11,11 @@ use core::fmt::{self};
 use core::iter::FusedIterator;
 use core::mem::{ManuallyDrop, MaybeUninit};
 use core::num::NonZeroU8;
-use core::ops::{Deref, DerefMut};
+use core::ops::{Deref, DerefMut, Range, RangeBounds};
 use core::ptr::NonNull;
 use core::{error, hash, slice};
 
-use crate::common::{cmp_slice, eq_slice};
+use crate::common::{self, cmp_slice, eq_slice};
 use crate::macros;
 
 pub const SHIFT_DEFAULT: u8 = 1;
@@ -908,6 +908,28 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
             this.assume_init()
         }
     }
+
+    pub fn drain(&mut self, range: impl RangeBounds<usize>) -> Drain<T, CAP, SHIFT, TAG> {
+        let range = common::range(range, self.len()).unwrap_or_else(|err| {
+            panic!("{err}");
+        });
+        self.drain_range(range)
+    }
+
+    fn drain_range(&mut self, range: Range<usize>) -> Drain<T, CAP, SHIFT, TAG> {
+        debug_assert!(range.start <= range.end);
+
+        let old_len = self.len();
+        unsafe {
+            self.set_len(range.start);
+            Drain {
+                old_len,
+                full: range.clone(),
+                current: range,
+                vec: self,
+            }
+        }
+    }
 }
 
 impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> Clone for InlineVec<T, CAP, SHIFT, TAG>
@@ -1211,6 +1233,77 @@ macro_rules! inline_vec {
         }
     };
 }
+
+pub struct Drain<'a, T, const CAP: usize, const SHIFT: u8, const TAG: u8> {
+    /// Full range
+    full: Range<usize>,
+    /// Current range
+    current: Range<usize>,
+    old_len: usize,
+    vec: &'a mut InlineVec<T, CAP, SHIFT, TAG>,
+}
+
+impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> Drop for Drain<'_, T, CAP, SHIFT, TAG> {
+    fn drop(&mut self) {
+        if core::mem::needs_drop::<T>() {
+            for i in &mut self.current {
+                unsafe { self.vec.data[i].assume_init_drop() };
+            }
+        }
+
+        let start = self.full.start;
+        let end = self.full.end;
+        let old_len = self.old_len;
+        let ptr = self.vec.data.as_mut_ptr();
+
+        unsafe {
+            // move the suffix, overwriting the drained range
+            ptr.add(start).copy_from(ptr.add(end), old_len - end);
+            // set the new length
+            self.vec.set_len(old_len - (end - start));
+        }
+    }
+}
+
+impl<'a, T, const CAP: usize, const SHIFT: u8, const TAG: u8> Iterator
+    for Drain<'a, T, CAP, SHIFT, TAG>
+{
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let index = self.current.next()?;
+        let value = unsafe { self.vec.data.get_unchecked(index).assume_init_read() };
+        Some(value)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.current.size_hint()
+    }
+}
+
+impl<'a, T, const CAP: usize, const SHIFT: u8, const TAG: u8> DoubleEndedIterator
+    for Drain<'a, T, CAP, SHIFT, TAG>
+{
+    fn next_back(&mut self) -> Option<Self::Item> {
+        let index = self.current.next_back()?;
+        let value = unsafe { self.vec.data.get_unchecked(index).assume_init_read() };
+        Some(value)
+    }
+}
+
+impl<'a, T, const CAP: usize, const SHIFT: u8, const TAG: u8> FusedIterator
+    for Drain<'a, T, CAP, SHIFT, TAG>
+{
+}
+
+impl<'a, T, const CAP: usize, const SHIFT: u8, const TAG: u8> ExactSizeIterator
+    for Drain<'a, T, CAP, SHIFT, TAG>
+{
+    fn len(&self) -> usize {
+        self.current.len()
+    }
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -1837,5 +1930,49 @@ mod tests {
         assert_eq!(inline.as_slice(), clone.as_slice());
         assert!(!ptr::eq(&inline[0], &clone[0]));
         assert!(!ptr::eq(&inline[1], &clone[1]));
+    }
+
+    #[test]
+    fn drain() {
+        const CAP: usize = 7;
+        let mut inline = InlineVec::<u8, CAP>::new();
+        for i in 1..=CAP {
+            inline.push(i as u8);
+            assert_eq!(inline.len(), i);
+        }
+        assert_eq!(inline.len(), CAP);
+
+        {
+            let mut drain = inline.drain(2..5);
+            assert_eq!(drain.next(), Some(3));
+            assert_eq!(drain.next_back(), Some(5));
+            assert_eq!(drain.next(), Some(4));
+            assert_eq!(drain.next(), None);
+            assert_eq!(drain.next(), None);
+            assert_eq!(drain.next_back(), None);
+            assert_eq!(drain.next_back(), None);
+        }
+
+        assert_eq!(inline.as_slice(), [1, 2, 6, 7]);
+        assert_eq!(inline.len(), 4);
+    }
+
+    const SMALL_CAP: usize = 7;
+    const SMALL_FULL: InlineVec<u8, SMALL_CAP> = InlineVec::from_array([1, 2, 3, 4, 5, 6, 7]);
+
+    #[test]
+    #[should_panic(expected = "start index 2 is greater than end index 1")]
+    fn drain_start_after_end() {
+        let mut inline = SMALL_FULL;
+        assert_eq!(inline.len(), SMALL_CAP);
+        let _ = inline.drain(2..1);
+    }
+
+    #[test]
+    #[should_panic(expected = "end index 8 is out of bounds for slice of length 7")]
+    fn drain_end_out_of_bounds() {
+        let mut inline = SMALL_FULL;
+        assert_eq!(inline.len(), SMALL_CAP);
+        let _ = inline.drain(2..8);
     }
 }
