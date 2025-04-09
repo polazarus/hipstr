@@ -1682,13 +1682,17 @@ mod tests {
     fn into_iter() {
         let inline = InlineVec::<u8, 7>::from_array([1, 2, 3]);
         let mut iter = inline.into_iter();
+        assert_eq!(iter.len(), 3);
+        assert_eq!(iter.size_hint(), (3, Some(3)));
         assert_eq!(iter.next(), Some(1));
         assert_eq!(iter.next_back(), Some(3));
+        assert_eq!(iter.len(), 1);
         assert_eq!(iter.next(), Some(2));
         assert_eq!(iter.next(), None);
         assert_eq!(iter.next(), None);
         assert_eq!(iter.next_back(), None);
         assert_eq!(iter.next_back(), None);
+        assert_eq!(iter.size_hint(), (0, Some(0)));
 
         let inline = InlineVec::<Box<u8>, 3>::from_array([Box::new(1), Box::new(2), Box::new(3)]);
         let mut iter = inline.into_iter();
