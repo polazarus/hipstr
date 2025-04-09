@@ -779,6 +779,9 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     /// inline.extend_with_slice_copy(&[3, 4]);
     /// assert_eq!(inline.as_slice(), &[1, 2, 3, 4]);
     /// ```
+    ///
+    /// [`extend_with_slice`]: Self::extend_with_slice
+    /// [`extend_with_array`]: Self::extend_with_array
     #[doc(alias = "push_slice_copy")]
     #[track_caller]
     pub const fn extend_with_slice_copy(&mut self, slice: &[T])
@@ -817,6 +820,9 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
 
     /// Appends a slice of elements to the inline vector.
     ///
+    /// If `T` implements `Copy`, see [`extend_with_slice_copy`] for a more
+    /// efficient version.
+    ///
     /// # Panics
     ///
     /// Panics if the new length exceeds the capacity of the inline vector.
@@ -829,6 +835,8 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     /// inline.extend_with_slice_copy(&[3, 4]);
     /// assert_eq!(inline.as_slice(), &[1, 2, 3, 4]);
     /// ```
+    ///
+    /// [`extend_with_slice_copy`]: Self::extend_with_slice_copy
     #[doc(alias = "push_slice_clone")]
     #[track_caller]
     pub fn extend_with_slice(&mut self, slice: &[T])
@@ -897,6 +905,8 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     /// let copy = inline.copy();
     /// assert_eq!(copy.as_slice(), &[1, 2, 3]);
     /// ```
+    ///
+    /// [`clone`]: Self::clone
     #[must_use]
     pub const fn copy(&self) -> Self
     where
