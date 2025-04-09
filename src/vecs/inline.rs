@@ -110,10 +110,10 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
         const {
             assert!(CAP != 0);
             assert!(CAP <= TaggedU8::<SHIFT, TAG>::max());
-        }
-        Self {
-            len: TaggedU8::new(0),
-            data: unsafe { MaybeUninit::uninit().assume_init() },
+            Self {
+                len: TaggedU8::new(0),
+                data: unsafe { MaybeUninit::uninit().assume_init() },
+            }
         }
     }
 
@@ -1315,6 +1315,9 @@ mod tests {
 
     use super::*;
 
+    const SMALL_CAP: usize = 7;
+    const SMALL_FULL: InlineVec<u8, SMALL_CAP> = InlineVec::from_array([1, 2, 3, 4, 5, 6, 7]);
+
     #[test]
     fn macros() {
         const CAP: usize = 7;
@@ -1408,36 +1411,23 @@ mod tests {
     #[test]
     #[should_panic(expected = "inline vector is full")]
     fn push_fail() {
-        const CAP: usize = 7;
-        let mut inline = InlineVec::<u8, CAP>::new();
-        for i in 0..=CAP {
-            inline.push(i as u8);
-        }
+        let mut inline = SMALL_FULL;
+        inline.push(42);
     }
 
     #[test]
     fn clear() {
-        const CAP: usize = 7;
-        let mut inline = InlineVec::<u8, CAP>::new();
-        for i in 1..=CAP {
-            inline.push(i as u8);
-            assert_eq!(inline.len(), i);
-        }
-        assert_eq!(inline.len(), CAP);
+        let mut inline = SMALL_FULL;
         inline.clear();
         assert_eq!(inline.len(), 0);
     }
 
     #[test]
     fn truncate() {
-        const CAP: usize = 7;
-        let mut inline = InlineVec::<u8, CAP>::new();
-        for i in 1..=5 {
-            inline.push(i as u8);
-            assert_eq!(inline.len(), i);
-        }
+        let mut inline = SMALL_FULL;
+        inline.truncate(5);
         assert_eq!(inline.len(), 5);
-        inline.truncate(CAP);
+        inline.truncate(SMALL_CAP);
         assert_eq!(inline.len(), 5);
         inline.truncate(3);
         assert_eq!(inline.len(), 3);
@@ -1800,20 +1790,13 @@ mod tests {
 
     #[test]
     fn non_null() {
-        const CAP: usize = 7;
-        let mut inline = InlineVec::<u8, CAP>::new();
+        let mut inline = InlineVec::<u8, SMALL_CAP>::new();
         assert_eq!(inline.as_ptr(), inline.as_non_null().as_ptr());
     }
 
     #[test]
     fn split_off() {
-        const CAP: usize = 7;
-        let mut inline = InlineVec::<u8, CAP>::new();
-        for i in 1..=CAP {
-            inline.push(i as u8);
-            assert_eq!(inline.len(), i);
-        }
-        assert_eq!(inline.len(), CAP);
+        let mut inline = SMALL_FULL;
         let inline2 = inline.split_off(3);
         assert_eq!(inline.len(), 3);
         assert_eq!(inline.as_slice(), &[1, 2, 3]);
@@ -1934,14 +1917,7 @@ mod tests {
 
     #[test]
     fn drain() {
-        const CAP: usize = 7;
-        let mut inline = InlineVec::<u8, CAP>::new();
-        for i in 1..=CAP {
-            inline.push(i as u8);
-            assert_eq!(inline.len(), i);
-        }
-        assert_eq!(inline.len(), CAP);
-
+        let mut inline = SMALL_FULL;
         {
             let mut drain = inline.drain(2..5);
             assert_eq!(drain.next(), Some(3));
@@ -1956,9 +1932,6 @@ mod tests {
         assert_eq!(inline.as_slice(), [1, 2, 6, 7]);
         assert_eq!(inline.len(), 4);
     }
-
-    const SMALL_CAP: usize = 7;
-    const SMALL_FULL: InlineVec<u8, SMALL_CAP> = InlineVec::from_array([1, 2, 3, 4, 5, 6, 7]);
 
     #[test]
     #[should_panic(expected = "start index 2 is greater than end index 1")]
