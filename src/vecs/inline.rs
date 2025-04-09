@@ -707,17 +707,7 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     where
         T: Clone,
     {
-        if new_len > self.len() {
-            assert!(new_len <= CAP, "new length exceeds capacity");
-            let additional = new_len - self.len();
-
-            // TODO improve by using `ptr::write` instead of `push` and a drop guard
-            for _ in 0..additional {
-                let _ = self.push(value.clone());
-            }
-        } else {
-            self.truncate(new_len);
-        }
+        self.resize_with(new_len, || value.clone());
     }
 
     /// Resizes the inline vector to the specified length using a closure to
@@ -1675,5 +1665,23 @@ mod tests {
         }
         assert_eq!(inline.len(), CAP);
         let _ = inline.split_off(8);
+    }
+
+    #[test]
+    fn resize() {
+        const CAP: usize = 7;
+        let mut inline = InlineVec::<u8, CAP>::new();
+        for i in 1..=CAP {
+            inline.push(i as u8);
+            assert_eq!(inline.len(), i);
+        }
+        assert_eq!(inline.len(), CAP);
+        inline.resize(3, 0);
+        assert_eq!(inline.len(), 3);
+        assert_eq!(inline.as_slice(), &[1, 2, 3]);
+
+        inline.resize(5, 0);
+        assert_eq!(inline.len(), 5);
+        assert_eq!(inline.as_slice(), &[1, 2, 3, 0, 0]);
     }
 }
