@@ -1735,25 +1735,25 @@ mod tests {
         assert!(*[1, 2, 3, 1].as_slice() > l);
         assert!([1, 2, 3, 1].as_slice() > l);
 
-        assert!(l < inline_vec![15 => 1, 2]);
+        assert!(l > inline_vec![15 => 1, 2]);
         assert!(l > [1, 2]);
         assert!(l > vec![1, 2]);
         assert!(l > *[1, 2].as_slice());
         assert!(l > [1, 2].as_slice());
 
-        assert!(inline_vec![15 => 1, 2] > l);
+        assert!(inline_vec![15 => 1, 2] < l);
         assert!([1, 2] < l);
         assert!(vec![1, 2] < l);
         assert!(*[1, 2].as_slice() < l);
         assert!([1, 2].as_slice() < l);
 
-        assert!(l > inline_vec![15 => 1, 2, 3]);
+        assert!(l >= inline_vec![15 => 1, 2, 3]);
         assert!(l >= [1, 2, 3]);
         assert!(l >= vec![1, 2, 3]);
         assert!(l >= *[1, 2, 3].as_slice());
         assert!(l >= [1, 2, 3].as_slice());
 
-        assert!(inline_vec![15 => 1, 2, 3] < l);
+        assert!(inline_vec![15 => 1, 2, 3] <= l);
         assert!([1, 2, 3] <= l);
         assert!(vec![1, 2, 3] <= l);
         assert!([1, 2, 3].as_slice() <= l);
