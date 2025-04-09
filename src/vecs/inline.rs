@@ -1083,15 +1083,19 @@ impl<
 macros::symmetric_eq! {
     [T, const CAP: usize, const SHIFT: u8, const TAG: u8]
     [where T: PartialEq]
-    ([T], InlineVec<T, CAP, SHIFT, TAG>) = eq_slice, ne_slice;
+    ([T], InlineVec<T, CAP, SHIFT, TAG>) = eq_slice;
 
     [T, const CAP: usize, const SHIFT: u8, const TAG: u8]
     [where T: PartialEq]
-    (Vec<T>, InlineVec<T, CAP, SHIFT, TAG>) = eq_slice, ne_slice;
+    (&[T], InlineVec<T, CAP, SHIFT, TAG>) = eq_slice;
+
+    [T, const CAP: usize, const SHIFT: u8, const TAG: u8]
+    [where T: PartialEq]
+    (Vec<T>, InlineVec<T, CAP, SHIFT, TAG>) = eq_slice;
 
     [T, const CAP: usize, const SHIFT: u8, const TAG: u8, const N: usize]
     [where T: PartialEq]
-    ([T; N], InlineVec<T, CAP, SHIFT, TAG>) = eq_slice, ne_slice;
+    ([T; N], InlineVec<T, CAP, SHIFT, TAG>) = eq_slice;
 }
 
 impl<
@@ -1121,6 +1125,10 @@ macros::symmetric_ord! {
     [T, const CAP: usize, const SHIFT: u8, const TAG: u8]
     [where T: PartialOrd]
     ([T], InlineVec<T, CAP, SHIFT, TAG>) = cmp_slice;
+
+    [T, const CAP: usize, const SHIFT: u8, const TAG: u8]
+    [where T: PartialOrd]
+    (&[T], InlineVec<T, CAP, SHIFT, TAG>) = cmp_slice;
 
     [T, const CAP: usize, const SHIFT: u8, const TAG: u8]
     [where T: PartialOrd]
@@ -1207,7 +1215,7 @@ macro_rules! inline_vec {
 mod tests {
 
     use alloc::boxed::Box;
-    use alloc::format;
+    use alloc::{format, vec};
     use core::hash::BuildHasher;
     use core::mem::size_of;
     use core::ptr;
@@ -1401,25 +1409,29 @@ mod tests {
         const CAP: usize = 7;
         let mut inline = InlineVec::<u8, CAP>::new();
 
+        let err = inline.try_insert(1, 33).unwrap_err();
         assert_eq!(
-            inline.try_insert(1, 33),
-            Err(InsertError {
+            err,
+            InsertError {
                 value: 33,
                 kind: InsertErrorKind::OutOfBounds,
-            })
+            }
         );
+        assert_eq!(format!("{err}"), InsertErrorKind::OutOfBounds.message());
 
         for i in 1..=CAP {
             assert_eq!(inline.try_insert(0, i as u8), Ok(()));
             assert_eq!(inline.len(), i);
         }
+        let err = inline.try_insert(0, 42).unwrap_err();
         assert_eq!(
-            inline.try_insert(0, 42),
-            Err(InsertError {
+            err,
+            InsertError {
                 value: 42,
                 kind: InsertErrorKind::Full,
-            })
+            }
         );
+        assert_eq!(format!("{err}"), InsertErrorKind::Full.message());
 
         let mut inline = InlineVec::<u8, CAP>::from_array([1, 2, 4, 5]);
         assert_eq!(inline.try_insert(2, 3), Ok(()));
@@ -1619,16 +1631,67 @@ mod tests {
 
     #[test]
     fn compare() {
-        let i1 = InlineVec::<u8, 7>::from_array([1, 2, 3]);
-        assert!(i1 < [2]);
-        assert!(i1 < [1, 2, 3, 1]);
-        assert!(i1 > [1, 2]);
-        assert!(i1 >= [1, 2, 3]);
-        assert!(i1 == [1, 2, 3]);
+        let l = InlineVec::<u8, 7>::from_array([1, 2, 3]);
+        assert!(l < [2]);
+        assert!(l < vec![2]);
+        assert!(l < *[2].as_slice());
+        assert!(l < [2].as_slice());
+
+        assert!([2] > l);
+        assert!(vec![2] > l);
+        assert!(*[2].as_slice() > l);
+        assert!([2].as_slice() > l);
+
+        assert!(l < [1, 2, 3, 1]);
+        assert!(l < vec![1, 2, 3, 1]);
+        assert!(l < *[1, 2, 3, 1].as_slice());
+        assert!(l < [1, 2, 3, 1].as_slice());
+
+        assert!([1, 2, 3, 1] > l);
+        assert!(vec![1, 2, 3, 1] > l);
+        assert!(*[1, 2, 3, 1].as_slice() > l);
+        assert!([1, 2, 3, 1].as_slice() > l);
+
+        assert!(l > [1, 2]);
+        assert!(l > vec![1, 2]);
+        assert!(l > *[1, 2].as_slice());
+        assert!(l > [1, 2].as_slice());
+
+        assert!([1, 2] < l);
+        assert!(vec![1, 2] < l);
+        assert!(*[1, 2].as_slice() < l);
+        assert!([1, 2].as_slice() < l);
+
+        assert!(l >= [1, 2, 3]);
+        assert!(l >= vec![1, 2, 3]);
+        assert!(l >= *[1, 2, 3].as_slice());
+        assert!(l >= [1, 2, 3].as_slice());
+
+        assert!([1, 2, 3] <= l);
+        assert!(vec![1, 2, 3] <= l);
+        assert!([1, 2, 3].as_slice() <= l);
+        assert!(*[1, 2, 3].as_slice() <= l);
+
+        assert_eq!(l, [1, 2, 3]);
+        assert_eq!(l, vec![1, 2, 3]);
+        assert_eq!(l, *[1, 2, 3].as_slice());
+        assert_eq!(l, [1, 2, 3].as_slice());
+
+        assert!(l == [1, 2, 3]);
+        assert!(l == vec![1, 2, 3]);
+        assert!(l == *[1, 2, 3].as_slice());
+        assert!(l == [1, 2, 3].as_slice());
+
+        assert!([1, 2, 3] == l);
+        assert!(vec![1, 2, 3] == l);
+        assert!(*[1, 2, 3].as_slice() == l);
+        assert!([1, 2, 3].as_slice() == l);
 
         let i_f32 = InlineVec::<f32, 7>::from_array([f32::NAN]);
         assert_ne!(i_f32, [f32::NAN]);
         assert!(!(i_f32 == [f32::NAN]));
+        assert!(!(i_f32 <= [f32::NAN]));
+        assert!(!(i_f32 >= [f32::NAN]));
     }
 
     #[test]
