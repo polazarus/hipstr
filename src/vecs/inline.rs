@@ -1644,4 +1644,36 @@ mod tests {
         let mut inline = InlineVec::<u8, CAP>::new();
         assert_eq!(inline.as_ptr(), inline.as_non_null().as_ptr());
     }
+
+    #[test]
+    fn split_off() {
+        const CAP: usize = 7;
+        let mut inline = InlineVec::<u8, CAP>::new();
+        for i in 1..=CAP {
+            inline.push(i as u8);
+            assert_eq!(inline.len(), i);
+        }
+        assert_eq!(inline.len(), CAP);
+        let inline2 = inline.split_off(3);
+        assert_eq!(inline.len(), 3);
+        assert_eq!(inline.as_slice(), &[1, 2, 3]);
+        assert_eq!(inline2.len(), 4);
+        assert_eq!(inline2.as_slice(), &[4, 5, 6, 7]);
+
+        let inline3 = inline.split_off(3);
+        assert!(inline3.is_empty());
+    }
+
+    #[test]
+    #[should_panic(expected = "index out of bounds")]
+    fn split_off_out_of_bounds() {
+        const CAP: usize = 7;
+        let mut inline = InlineVec::<u8, CAP>::new();
+        for i in 1..=CAP {
+            inline.push(i as u8);
+            assert_eq!(inline.len(), i);
+        }
+        assert_eq!(inline.len(), CAP);
+        let _ = inline.split_off(8);
+    }
 }
