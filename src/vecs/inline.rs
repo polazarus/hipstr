@@ -611,17 +611,35 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     /// assert_eq!(inline.remove(1), 2);
     /// assert_eq!(inline.as_slice(), &[1, 3]);
     /// ```
-    pub fn remove(&mut self, index: usize) -> T {
+    #[track_caller]
+    pub const fn remove(&mut self, index: usize) -> T {
         let len = self.len();
+
         assert!(index < len, "index out of bounds");
 
-        unsafe {
-            let ptr = self.as_mut_ptr().add(index);
-            let value = ptr.read();
+        // SAFETY: index checked above
+        unsafe { self.remove_unchecked(index) }
+    }
 
+    /// Removes and returns the element at the specified index, shifting all
+    /// elements after it to the left.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that `index` is less than the current length of
+    /// the inline vector.
+    pub const unsafe fn remove_unchecked(&mut self, index: usize) -> T {
+        let len = self.len();
+
+        // SAFETY:
+        // - index checked above
+        // - type invariant ensures that the element is initialized
+        // - the length is decremented after the element is removed
+        unsafe {
+            let ptr = self.data.as_mut_ptr().add(index);
+            let value = (*ptr).assume_init_read();
             ptr.copy_from(ptr.add(1), len - index - 1);
             self.set_len(len - 1);
-
             value
         }
     }
@@ -1348,6 +1366,32 @@ mod tests {
         }
         assert_eq!(inline.len(), 5);
         inline.swap_remove(6);
+    }
+
+    #[test]
+    fn remove() {
+        const CAP: usize = 7;
+        let mut inline = InlineVec::<u8, CAP>::new();
+        for i in 1..=CAP {
+            inline.push(i as u8);
+            assert_eq!(inline.len(), i);
+        }
+        assert_eq!(inline.len(), CAP);
+        assert_eq!(inline.remove(2), 3);
+        assert_eq!(inline.as_slice(), &[1, 2, 4, 5, 6, 7]);
+    }
+
+    #[test]
+    #[should_panic(expected = "index out of bounds")]
+    fn remove_out_of_bounds() {
+        const CAP: usize = 7;
+        let mut inline = InlineVec::<u8, CAP>::new();
+        for i in 1..=5 {
+            inline.push(i as u8);
+            assert_eq!(inline.len(), i);
+        }
+        assert_eq!(inline.len(), 5);
+        inline.remove(6);
     }
 
     #[test]
