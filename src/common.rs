@@ -102,7 +102,7 @@ pub(crate) const fn manually_drop_as_ref<T>(m: &ManuallyDrop<T>) -> &T {
 }
 
 /// Compares two slices and returns their ordering, if possible.
-#[inline]
+#[inline(always)]
 pub(crate) fn cmp_slice<T>(a: &[T], b: &[T]) -> Option<core::cmp::Ordering>
 where
     T: PartialOrd,
@@ -111,19 +111,10 @@ where
 }
 
 /// Checks if two slices are equal.
-#[inline]
+#[inline(always)]
 pub(crate) fn eq_slice<T>(a: &[T], b: &[T]) -> bool
 where
     T: PartialEq,
 {
     PartialEq::eq(a, b)
-}
-
-/// Checks if two slices are not equal.
-#[inline]
-pub(crate) fn ne_slice<T>(a: &[T], b: &[T]) -> bool
-where
-    T: PartialEq,
-{
-    PartialEq::ne(a, b)
 }

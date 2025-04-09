@@ -15,7 +15,7 @@ use core::ops::{Deref, DerefMut};
 use core::ptr::NonNull;
 use core::{error, hash, slice};
 
-use crate::common::{cmp_slice, eq_slice, ne_slice};
+use crate::common::{cmp_slice, eq_slice};
 use crate::macros;
 
 pub const SHIFT_DEFAULT: u8 = 1;
@@ -1632,64 +1632,75 @@ mod tests {
     #[test]
     fn compare() {
         let l = InlineVec::<u8, 7>::from_array([1, 2, 3]);
+        assert!(l < inline_vec![15 => 2]);
         assert!(l < [2]);
         assert!(l < vec![2]);
         assert!(l < *[2].as_slice());
         assert!(l < [2].as_slice());
 
+        assert!(inline_vec![15 => 2] > l);
         assert!([2] > l);
         assert!(vec![2] > l);
         assert!(*[2].as_slice() > l);
         assert!([2].as_slice() > l);
 
+        assert!(l < inline_vec![15 => 1, 2, 3, 1]);
         assert!(l < [1, 2, 3, 1]);
         assert!(l < vec![1, 2, 3, 1]);
         assert!(l < *[1, 2, 3, 1].as_slice());
         assert!(l < [1, 2, 3, 1].as_slice());
 
+        assert!(inline_vec![15 => 1, 2, 3, 1] > l);
         assert!([1, 2, 3, 1] > l);
         assert!(vec![1, 2, 3, 1] > l);
         assert!(*[1, 2, 3, 1].as_slice() > l);
         assert!([1, 2, 3, 1].as_slice() > l);
 
+        assert!(l < inline_vec![15 => 1, 2]);
         assert!(l > [1, 2]);
         assert!(l > vec![1, 2]);
         assert!(l > *[1, 2].as_slice());
         assert!(l > [1, 2].as_slice());
 
+        assert!(inline_vec![15 => 1, 2] > l);
         assert!([1, 2] < l);
         assert!(vec![1, 2] < l);
         assert!(*[1, 2].as_slice() < l);
         assert!([1, 2].as_slice() < l);
 
+        assert!(l > inline_vec![15 => 1, 2, 3]);
         assert!(l >= [1, 2, 3]);
         assert!(l >= vec![1, 2, 3]);
         assert!(l >= *[1, 2, 3].as_slice());
         assert!(l >= [1, 2, 3].as_slice());
 
+        assert!(inline_vec![15 => 1, 2, 3] < l);
         assert!([1, 2, 3] <= l);
         assert!(vec![1, 2, 3] <= l);
         assert!([1, 2, 3].as_slice() <= l);
         assert!(*[1, 2, 3].as_slice() <= l);
 
+        assert_eq!(l, inline_vec![15 => 1, 2, 3]);
         assert_eq!(l, [1, 2, 3]);
         assert_eq!(l, vec![1, 2, 3]);
         assert_eq!(l, *[1, 2, 3].as_slice());
         assert_eq!(l, [1, 2, 3].as_slice());
 
+        assert!(l == inline_vec![15 => 1, 2, 3]);
         assert!(l == [1, 2, 3]);
         assert!(l == vec![1, 2, 3]);
         assert!(l == *[1, 2, 3].as_slice());
         assert!(l == [1, 2, 3].as_slice());
 
+        assert!(inline_vec![15 => 1, 2, 3] == l);
         assert!([1, 2, 3] == l);
         assert!(vec![1, 2, 3] == l);
         assert!(*[1, 2, 3].as_slice() == l);
         assert!([1, 2, 3].as_slice() == l);
 
+        // NaN tests
         let i_f32 = InlineVec::<f32, 7>::from_array([f32::NAN]);
         assert_ne!(i_f32, [f32::NAN]);
-        assert!(!(i_f32 == [f32::NAN]));
         assert!(!(i_f32 <= [f32::NAN]));
         assert!(!(i_f32 >= [f32::NAN]));
     }
