@@ -57,7 +57,7 @@ fn range_mono(
 }
 
 /// Represents errors that can occur when creating a range.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
 pub enum RangeError {
     /// The start index overflows.
     StartOverflows,
@@ -67,6 +67,18 @@ pub enum RangeError {
     StartGreaterThanEnd { start: usize, end: usize },
     /// The end index is out of bounds.
     EndOutOfBounds { end: usize, len: usize },
+}
+
+impl RangeError {
+    /// Returns a static message for the error.
+    pub const fn const_message(&self) -> &'static str {
+        match self {
+            RangeError::StartOverflows => "start index overflows",
+            RangeError::EndOverflows => "end index overflows",
+            RangeError::StartGreaterThanEnd { .. } => "start index is greater than end index",
+            RangeError::EndOutOfBounds { .. } => "end index is out of bounds",
+        }
+    }
 }
 
 impl error::Error for RangeError {}
@@ -117,4 +129,56 @@ where
     T: PartialEq,
 {
     PartialEq::eq(a, b)
+}
+
+#[cfg(test)]
+mod tests {
+    use alloc::format;
+
+    use super::*;
+
+    #[test]
+    fn ranges() {
+        assert_eq!(range(0..5, 10).unwrap(), 0..5);
+        assert_eq!(range(0..=5, 10).unwrap(), 0..6);
+        assert_eq!(range(..5, 10).unwrap(), 0..5);
+        assert_eq!(range(..=5, 10).unwrap(), 0..6);
+        assert_eq!(range(2.., 10).unwrap(), 2..10);
+
+        let err = range(..=usize::MAX, 1).unwrap_err();
+        assert_eq!(err, RangeError::EndOverflows);
+        assert_eq!(format!("{err}"), "end index overflows");
+        assert_eq!(err.const_message(), "end index overflows");
+
+        let err = range((Bound::Excluded(usize::MAX), Bound::Unbounded), 10).unwrap_err();
+        assert_eq!(err, RangeError::StartOverflows);
+        assert_eq!(format!("{err}"), "start index overflows");
+        assert_eq!(err.const_message(), "start index overflows");
+
+        let err = range(5..2, 10).unwrap_err();
+        assert_eq!(err, RangeError::StartGreaterThanEnd { start: 5, end: 2 });
+        assert_eq!(
+            format!("{err}"),
+            "start index 5 is greater than end index 2"
+        );
+        assert_eq!(err.const_message(), "start index is greater than end index");
+
+        let err = range(5..10, 5).unwrap_err();
+        assert_eq!(err, RangeError::EndOutOfBounds { end: 10, len: 5 });
+        assert_eq!(
+            format!("{err}"),
+            "end index 10 is out of bounds for slice of length 5"
+        );
+        assert_eq!(err.const_message(), "end index is out of bounds");
+
+        assert_eq!(
+            range(6..10, 5).unwrap_err(),
+            RangeError::EndOutOfBounds { end: 10, len: 5 }
+        );
+        assert_eq!(
+            format!("{err}"),
+            "end index 10 is out of bounds for slice of length 5"
+        );
+        assert_eq!(err.const_message(), "end index is out of bounds");
+    }
 }
