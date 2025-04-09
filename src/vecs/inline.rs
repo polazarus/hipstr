@@ -508,7 +508,7 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     /// assert_eq!(inline.swap_remove(1), 2);
     /// assert_eq!(inline.as_slice(), &[1, 3]);
     /// ```
-    pub fn swap_remove(&mut self, index: usize) -> T {
+    pub const fn swap_remove(&mut self, index: usize) -> T {
         let len = self.len();
         assert!(index < len, "index out of bounds");
         self.data.swap(index, len - 1);
