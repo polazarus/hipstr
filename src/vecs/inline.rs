@@ -1096,10 +1096,6 @@ impl<
     fn eq(&self, other: &InlineVec<T, CAP1, SHIFT1, TAG1>) -> bool {
         self.as_slice().eq(other.as_slice())
     }
-
-    fn ne(&self, other: &InlineVec<T, CAP1, SHIFT1, TAG1>) -> bool {
-        self.as_slice().ne(other.as_slice())
-    }
 }
 
 macros::symmetric_eq! {
@@ -1781,6 +1777,9 @@ mod tests {
         assert!(*[1, 2, 3].as_slice() == l);
         assert!([1, 2, 3].as_slice() == l);
 
+        assert!(l.eq(&inline_vec![15 => 1, 2, 3]));
+        assert!(l.ne(&inline_vec![15 => 1, 3]));
+
         // NaN tests
         let i_f32 = InlineVec::<f32, 7>::from_array([f32::NAN]);
         assert_ne!(i_f32, [f32::NAN]);
@@ -1920,7 +1919,10 @@ mod tests {
         let mut inline = SMALL_FULL;
         {
             let mut drain = inline.drain(2..5);
+            assert_eq!(drain.len(), 3);
+            assert_eq!(drain.size_hint(), (3, Some(3)));
             assert_eq!(drain.next(), Some(3));
+            assert_eq!(drain.len(), 2);
             assert_eq!(drain.next_back(), Some(5));
             assert_eq!(drain.next(), Some(4));
             assert_eq!(drain.next(), None);
