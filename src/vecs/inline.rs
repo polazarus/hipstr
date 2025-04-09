@@ -1208,6 +1208,7 @@ mod tests {
 
     use alloc::boxed::Box;
     use core::mem::size_of;
+    use core::ptr;
 
     use super::*;
 
@@ -1680,8 +1681,29 @@ mod tests {
         assert_eq!(inline.len(), 3);
         assert_eq!(inline.as_slice(), &[1, 2, 3]);
 
-        inline.resize(5, 0);
+        inline.resize(5, 42);
         assert_eq!(inline.len(), 5);
-        assert_eq!(inline.as_slice(), &[1, 2, 3, 0, 0]);
+        assert_eq!(inline.as_slice(), &[1, 2, 3, 42, 42]);
+
+        inline.resize(CAP, 33);
+        assert_eq!(inline.len(), CAP);
+        assert_eq!(inline.as_slice(), &[1, 2, 3, 42, 42, 33, 33]);
+    }
+
+    #[test]
+    #[should_panic(expected = "new length exceeds capacity")]
+    fn resize_exceeds_capacity() {
+        const CAP: usize = 7;
+        let mut inline = InlineVec::<u8, CAP>::new();
+        inline.resize(CAP + 1, 0);
+    }
+
+    #[test]
+    fn deref() {
+        let mut inline = InlineVec::<u8, 7>::from_array([1, 2, 3]);
+        let slice: &[u8] = &inline;
+        assert!(ptr::eq(slice, inline.as_slice()));
+        let slice: &mut [u8] = &mut inline;
+        assert!(ptr::eq(slice, inline.as_mut_slice()));
     }
 }
