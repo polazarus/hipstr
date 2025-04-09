@@ -1207,6 +1207,8 @@ macro_rules! inline_vec {
 mod tests {
 
     use alloc::boxed::Box;
+    use alloc::format;
+    use core::hash::BuildHasher;
     use core::mem::size_of;
     use core::ptr;
 
@@ -1705,5 +1707,61 @@ mod tests {
         assert!(ptr::eq(slice, inline.as_slice()));
         let slice: &mut [u8] = &mut inline;
         assert!(ptr::eq(slice, inline.as_mut_slice()));
+    }
+
+    #[test]
+    fn as_ref() {
+        let inline = InlineVec::<u8, 7>::from_array([1, 2, 3]);
+        let slice: &[u8] = inline.as_ref();
+        assert!(ptr::eq(slice, inline.as_slice()));
+    }
+
+    #[test]
+    fn as_mut() {
+        let mut inline = InlineVec::<u8, 7>::from_array([1, 2, 3]);
+        let slice: &mut [u8] = inline.as_mut();
+        assert!(ptr::eq(slice, inline.as_mut_slice()));
+    }
+
+    #[test]
+    fn debug() {
+        let inline = InlineVec::<u8, 7>::from_array([1, 2, 3]);
+        let debug = format!("{:?}", inline);
+        assert_eq!(debug, "[1, 2, 3]");
+
+        let inline = InlineVec::<Box<u8>, 3>::from_array([Box::new(1), Box::new(2)]);
+        let debug = format!("{:?}", inline);
+        assert_eq!(debug, "[1, 2]");
+    }
+
+    #[test]
+    #[cfg(feature = "std")]
+    fn hash() {
+        let slice: &[u8] = &[1, 2, 3];
+        let inline = InlineVec::<u8, 7>::from_slice_copy(slice);
+        let default_hasher = std::hash::BuildHasherDefault::<std::hash::DefaultHasher>::new();
+        let value = default_hasher.hash_one(&inline);
+        let expected = default_hasher.hash_one(slice);
+        assert_eq!(value, expected);
+
+        let empty: &[u8] = &[];
+        let inline = InlineVec::<u8, 7>::from_slice_copy(empty);
+        let default_hasher = std::hash::BuildHasherDefault::<std::hash::DefaultHasher>::new();
+        let value = default_hasher.hash_one(&inline);
+        let expected = default_hasher.hash_one(empty);
+        assert_eq!(value, expected);
+    }
+
+    #[test]
+    fn clone() {
+        let inline = InlineVec::<u8, 7>::from_array([1, 2, 3]);
+        let clone = inline.clone();
+        assert_eq!(inline.as_slice(), clone.as_slice());
+
+        let inline = InlineVec::<Box<u8>, 3>::from_array([1, 2].map(Box::new));
+        let clone = inline.clone();
+        assert_eq!(inline.as_slice(), clone.as_slice());
+        assert!(!ptr::eq(&inline[0], &clone[0]));
+        assert!(!ptr::eq(&inline[1], &clone[1]));
     }
 }
