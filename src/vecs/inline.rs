@@ -131,57 +131,6 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
         }
     }
 
-    /// Creates a new inline vector from a slice by copying the element.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use hipstr::vecs::InlineVec;
-    /// let array = [1, 2, 3];
-    /// let inline = InlineVec::<u8, 7>::from_slice_copy(&array);
-    /// assert_eq!(inline.as_slice(), array);
-    /// ```
-    ///
-    /// # Panics
-    ///
-    /// Panics if the length of the slice exceeds the capacity of the inline
-    /// vector.
-    pub const fn from_slice_copy(slice: &[T]) -> Self
-    where
-        T: Copy,
-    {
-        let mut this = Self::new();
-        this.extend_from_slice_copy(slice);
-        this
-    }
-
-    /// Creates a new inline vector from a slice by copying the element.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use hipstr::vecs::InlineVec;
-    /// let array = [1, 2, 3];
-    /// let inline = InlineVec::<u8, 7>::from_slice_copy(&array);
-    /// assert_eq!(inline.as_slice(), array);
-    /// ```
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure the length of the slice is less than or equal to
-    /// the capacity of the inline vector.
-    pub const unsafe fn from_slice_copy_unchecked(slice: &[T]) -> Self
-    where
-        T: Copy,
-    {
-        let mut this = Self::new();
-        // SAFETY: function precondition
-        unsafe {
-            this.extend_from_slice_copy_unchecked(slice);
-        }
-        this
-    }
-
     /// Creates a new inline vector from an array by moving the element.
     ///
     /// The array's length `N` is checked at compile time. It must to be less
@@ -787,65 +736,6 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
         }
     }
 
-    /// Appends a slice of elements to the inline vector, by copying the
-    /// elements from the slice into the inline vector.
-    ///
-    /// This function is only available for types that implement the `Copy`
-    /// trait. See [`extend_from_slice`] for a version that works with types that
-    /// only implement the `Clone` trait. See [`extend_from_array`] for a
-    /// version that moves ownership from an array.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the new length exceeds the capacity of the inline vector.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use hipstr::inline_vec;
-    /// let mut inline = inline_vec![7 => 1, 2];
-    /// inline.extend_from_slice_copy(&[3, 4]);
-    /// assert_eq!(inline.as_slice(), &[1, 2, 3, 4]);
-    /// ```
-    ///
-    /// [`extend_from_slice`]: Self::extend_from_slice
-    /// [`extend_from_array`]: Self::extend_from_array
-    #[doc(alias = "push_slice_copy")]
-    #[track_caller]
-    pub const fn extend_from_slice_copy(&mut self, slice: &[T])
-    where
-        T: Copy,
-    {
-        let len = self.len();
-        let new_len = len + slice.len();
-        assert!(new_len <= CAP, "new length exceeds capacity");
-        unsafe {
-            self.extend_from_slice_copy_unchecked(slice);
-        }
-    }
-
-    /// Appends a slice of elements to the inline vector, by copying the
-    /// elements from the slice into the inline vector.
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure that the new length does not exceed the capacity
-    /// of the inline vector.
-    pub const unsafe fn extend_from_slice_copy_unchecked(&mut self, slice: &[T])
-    where
-        T: Copy,
-    {
-        let len = self.len();
-        let new_len = len + slice.len();
-        unsafe {
-            self.set_len(new_len);
-            self.data
-                .as_mut_ptr()
-                .add(len)
-                .copy_from_nonoverlapping(slice.as_ptr().cast(), slice.len());
-        }
-    }
-
     /// Appends an array of elements to the inline vector, by moving the
     /// elements from the array into the inline vector.
     ///
@@ -880,34 +770,6 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
                 .copy_from_nonoverlapping(array.as_ptr().cast(), N);
         }
         core::mem::forget(array);
-    }
-
-    /// Returns a copy of the inline vector.
-    ///
-    /// This function is only available for types that implement the `Copy`
-    /// trait. See [`clone`] for a version that works with types that only
-    /// implement the `Clone` trait.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use hipstr::vecs::InlineVec;
-    /// let inline = InlineVec::<u8, 7>::from_slice_copy(&[1, 2, 3]);
-    /// let copy = inline.copy();
-    /// assert_eq!(copy.as_slice(), &[1, 2, 3]);
-    /// ```
-    ///
-    /// [`clone`]: Self::clone
-    #[must_use]
-    pub const fn copy(&self) -> Self
-    where
-        T: Copy,
-    {
-        unsafe {
-            let mut this: MaybeUninit<Self> = MaybeUninit::uninit();
-            this.as_mut_ptr().copy_from_nonoverlapping(self, 1);
-            this.assume_init()
-        }
     }
 
     pub fn drain(&mut self, range: impl RangeBounds<usize>) -> Drain<T, CAP, SHIFT, TAG> {
@@ -1061,6 +923,134 @@ where
     /// ```
     pub fn resize(&mut self, new_len: usize, value: T) {
         self.resize_with(new_len, || value.clone());
+    }
+}
+
+impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIFT, TAG>
+where
+    T: Copy,
+{
+    /// Creates a new inline vector from a slice by copying the element.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::InlineVec;
+    /// let array = [1, 2, 3];
+    /// let inline = InlineVec::<u8, 7>::from_slice_copy(&array);
+    /// assert_eq!(inline.as_slice(), array);
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// Panics if the length of the slice exceeds the capacity of the inline
+    /// vector.
+    pub const fn from_slice_copy(slice: &[T]) -> Self {
+        let mut this = Self::new();
+        this.extend_from_slice_copy(slice);
+        this
+    }
+
+    /// Creates a new inline vector from a slice by copying the element.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::InlineVec;
+    /// let array = [1, 2, 3];
+    /// let inline = InlineVec::<u8, 7>::from_slice_copy(&array);
+    /// assert_eq!(inline.as_slice(), array);
+    /// ```
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure the length of the slice is less than or equal to
+    /// the capacity of the inline vector.
+    pub const unsafe fn from_slice_copy_unchecked(slice: &[T]) -> Self {
+        let mut this = Self::new();
+        // SAFETY: function precondition
+        unsafe {
+            this.extend_from_slice_copy_unchecked(slice);
+        }
+        this
+    }
+
+    /// Appends a slice of elements to the inline vector, by copying the
+    /// elements from the slice into the inline vector.
+    ///
+    /// This function is only available for types that implement the `Copy`
+    /// trait. See [`extend_from_slice`] for a version that works with types that
+    /// only implement the `Clone` trait. See [`extend_from_array`] for a
+    /// version that moves ownership from an array.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new length exceeds the capacity of the inline vector.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::inline_vec;
+    /// let mut inline = inline_vec![7 => 1, 2];
+    /// inline.extend_from_slice_copy(&[3, 4]);
+    /// assert_eq!(inline.as_slice(), &[1, 2, 3, 4]);
+    /// ```
+    ///
+    /// [`extend_from_slice`]: Self::extend_from_slice
+    /// [`extend_from_array`]: Self::extend_from_array
+    #[doc(alias = "push_slice_copy")]
+    #[track_caller]
+    pub const fn extend_from_slice_copy(&mut self, slice: &[T]) {
+        let len = self.len();
+        let new_len = len + slice.len();
+        assert!(new_len <= CAP, "new length exceeds capacity");
+        unsafe {
+            self.extend_from_slice_copy_unchecked(slice);
+        }
+    }
+
+    /// Appends a slice of elements to the inline vector, by copying the
+    /// elements from the slice into the inline vector.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the new length does not exceed the capacity
+    /// of the inline vector.
+    pub const unsafe fn extend_from_slice_copy_unchecked(&mut self, slice: &[T]) {
+        let len = self.len();
+        let new_len = len + slice.len();
+        unsafe {
+            self.set_len(new_len);
+            self.data
+                .as_mut_ptr()
+                .add(len)
+                .copy_from_nonoverlapping(slice.as_ptr().cast(), slice.len());
+        }
+    }
+
+    /// Returns a copy of the inline vector.
+    ///
+    /// This function is only available for types that implement the `Copy`
+    /// trait. See [`clone`] for a version that works with types that only
+    /// implement the `Clone` trait.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::InlineVec;
+    /// let inline = InlineVec::<u8, 7>::from_slice_copy(&[1, 2, 3]);
+    /// let copy = inline.copy();
+    /// assert_eq!(copy.as_slice(), &[1, 2, 3]);
+    /// ```
+    ///
+    /// [`clone`]: Self::clone
+    #[must_use]
+    pub const fn copy(&self) -> Self {
+        unsafe {
+            let mut this: MaybeUninit<Self> = MaybeUninit::uninit();
+            this.as_mut_ptr().copy_from_nonoverlapping(self, 1);
+            this.assume_init()
+        }
     }
 }
 
@@ -1342,6 +1332,49 @@ impl<T> fmt::Display for InsertError<T> {
     }
 }
 
+/// Creates an inline vector in a syntax similar to array literal expressions.
+/// The inlive vector's fixed capacity is either explicity specified or
+/// inferred by the compiler.
+///
+/// They are multiple forms of this macros:
+///
+/// - Creates an inline vector with the given elements and a specified capacity:
+///
+///   ```
+///   # use hipstr::inline_vec;
+///   let v1 = inline_vec![7 => 1_u8, 2, 3];
+///   assert_eq!(v1, [1, 2, 3]);
+///   ```
+///
+/// - Creates an inline vector with the given elements and an inferred capacity:
+///
+///   ```
+///   # use hipstr::inline_vec;
+///   # use hipstr::vecs::InlineVec;
+///   let v2: InlineVec<u8, 7> = inline_vec![1, 2, 3];
+///   assert_eq!(v2, [1, 2, 3]);
+///   ```
+///
+/// - Creates an inline vector from a given element and size with a specified
+///   capacity:
+///
+///   ```
+///   # use hipstr::inline_vec;
+///   let v3 = inline_vec![7 => 0; 7];
+///   assert_eq!(v3, [0, 0, 0, 0, 0, 0, 0]);
+///   ```
+///
+/// - Creates an inline vector from a given element and size with an inferred
+///   capacity:
+///
+///   ```
+///   # use hipstr::inline_vec;
+///   # use hipstr::vecs::InlineVec;
+///   let v4: InlineVec<u8, 7> = inline_vec![0; 7];
+///   assert_eq!(v4, [0, 0, 0, 0, 0, 0, 0]);
+///   ```
+///
+/// This macro is a convenience wrapper around [`InlineVec::from_array`].
 #[macro_export]
 macro_rules! inline_vec {
     [$cap:expr => $($e:expr),* $(,)?] => {
