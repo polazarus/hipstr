@@ -4,16 +4,6 @@ use core::mem::ManuallyDrop;
 use core::ops::{Bound, Range, RangeBounds};
 use core::{error, fmt};
 
-/// Panics with the provided displayable error message.
-///
-/// # Panics
-///
-/// Always panics with the provided error message.
-#[track_caller]
-pub(crate) fn panic_display<T>(e: impl fmt::Display) -> T {
-    panic!("{e}");
-}
-
 /// Converts any generic range into a concrete `Range<usize>` given a length.
 ///
 /// # Errors
@@ -112,16 +102,6 @@ pub(crate) const fn manually_drop_as_ref<T>(m: &ManuallyDrop<T>) -> &T {
     // SAFETY: `ManuallyDrop<T>` is a transparent wrapper of `T`.
     unsafe { core::mem::transmute::<&ManuallyDrop<T>, &T>(m) }
 }
-
-/// Compares two slices and returns their ordering, if possible.
-#[inline(always)]
-pub(crate) fn cmp_slice<T>(a: &[T], b: &[T]) -> Option<core::cmp::Ordering>
-where
-    T: PartialOrd,
-{
-    PartialOrd::partial_cmp(a, b)
-}
-
 
 #[cfg(test)]
 mod tests {
