@@ -5,6 +5,7 @@ use core::mem::size_of;
 use core::ptr;
 
 use super::*;
+use crate::inline_vec;
 
 const SMALL_CAP: usize = 7;
 const SMALL_FULL: InlineVec<u8, SMALL_CAP> = InlineVec::from_array([1, 2, 3, 4, 5, 6, 7]);
