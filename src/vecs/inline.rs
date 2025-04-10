@@ -382,9 +382,9 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     /// ```
     /// use hipstr::inline_vec;
     /// let mut inline = inline_vec![7 => 1_u8, 2, 3, 4];
-    /// assert_eq!(inline.pop_if(|&x| x % 2 == 0), Some(4));
+    /// assert_eq!(inline.pop_if(|x| *x % 2 == 0), Some(4));
     /// assert_eq!(inline.as_slice(), &[1, 2, 3]);
-    /// assert_eq!(inline.pop_if(|&x| x % 2 == 0), None);
+    /// assert_eq!(inline.pop_if(|x| *x % 2 == 0), None);
     /// ```
     pub fn pop_if(&mut self, predicate: impl FnOnce(&mut T) -> bool) -> Option<T> {
         let last = self.last_mut()?;
