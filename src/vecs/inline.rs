@@ -41,7 +41,10 @@ impl<const SHIFT: u8, const TAG: u8> TaggedU8<SHIFT, TAG> {
             assert!(TAG > 0, "TAG must be greater than 0");
             assert!(TAG < (1 << SHIFT), "TAG must be less than 1 << SHIFT");
         }
-        assert!(len <= Self::max(), "len must be less than or equal to max");
+        assert!(
+            len <= Self::max(),
+            "length exceeds maximal tagged length (`256 >> SHIFT`)"
+        );
         let shifted = len << SHIFT;
         let value = shifted as u8 | TAG;
         Self(unsafe { NonZeroU8::new_unchecked(value) })
@@ -1313,6 +1316,18 @@ mod tests {
 
     const SMALL_CAP: usize = 7;
     const SMALL_FULL: InlineVec<u8, SMALL_CAP> = InlineVec::from_array([1, 2, 3, 4, 5, 6, 7]);
+
+    #[test]
+    fn tagged_len() {
+        let tagged = TaggedU8::<3, 0b101>::new(0b10);
+        assert_eq!(tagged.0.get(), 0b10_101);
+    }
+
+    #[test]
+    #[should_panic(expected = "length exceeds maximal tagged length (`256 >> SHIFT`)")]
+    fn tagged_len_too_large() {
+        let _ = TaggedU8::<3, 0b101>::new(0b1000_00);
+    }
 
     #[test]
     fn macros() {
