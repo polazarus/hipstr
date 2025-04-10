@@ -892,11 +892,12 @@ where
 
     fn extend_from_within_range(&mut self, range: Range<usize>) {
         let len = self.len();
-        let new_len = len + range.len();
+        let range_len = range.len();
+        let new_len = len + range_len;
         assert!(new_len <= CAP, "new length exceeds capacity");
 
         let (current, spare) = unsafe { self.data.split_at_mut_unchecked(len) };
-        let dst = spare[len..range.len()].iter_mut();
+        let dst = spare[0..range_len].iter_mut();
         let src = current[range].iter();
         for ((dst, src), l) in dst.zip(src).zip(len + 1..=new_len) {
             // SAFETY: the source is in the initialized range
