@@ -15,8 +15,7 @@ use core::ops::{Deref, DerefMut, Range, RangeBounds};
 use core::ptr::NonNull;
 use core::{error, hash, slice};
 
-use crate::common::{self, cmp_slice};
-use crate::macros;
+use crate::{common, macros};
 
 pub const SHIFT_DEFAULT: u8 = 1;
 pub const TAG_DEFAULT: u8 = 1;
@@ -430,7 +429,7 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     ///
     /// ```
     /// use hipstr::inline_vec;
-    /// let mut inline = inline_vec![7 => 1, 2, 3, 4];
+    /// let mut inline = inline_vec![7 => 1_u8, 2, 3, 4];
     /// assert_eq!(inline.pop_if(|x| x % 2 == 0), Some(4));
     /// assert_eq!(inline.as_slice(), &[1, 2, 3]);
     /// assert_eq!(inline.pop_if(|x| x % 2 == 0), None);
@@ -445,10 +444,26 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
         }
     }
 
+    /// Moves all the elements of `other` into `self`, leaving `other` empty.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new length exceeds the capacity of the inline vector.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::inline_vec;
+    /// let mut inline1 = inline_vec![7 => 1_u8, 2];
+    /// let mut inline2 = inline_vec![7 => 3_u8, 4];
+    /// inline1.append(&mut inline2);
+    /// assert_eq!(inline1, [1, 2, 3, 4]);
+    /// assert_eq!(inline2.len(), 0);
+    /// ```
     pub const fn append(&mut self, other: &mut Self) {
         let len = self.len();
         let other_len = other.len();
-        assert!(len + other_len <= CAP, "inline vector is full");
+        assert!(len + other_len <= CAP, "new length exceeds capacity");
         unsafe {
             self.data
                 .as_mut_ptr()
@@ -459,10 +474,26 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
         }
     }
 
+    /// Moves all the elements of `other` into `self`, leaving `other` empty.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new length exceeds the capacity of the inline vector.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::inline_vec;
+    /// let mut inline = inline_vec![7 => 1_u8, 2];
+    /// let mut v = vec![3, 4, 5];
+    /// inline.append_vec(&mut v);
+    /// assert_eq!(inline, [1, 2, 3, 4, 5]);
+    /// assert_eq!(v.len(), 0);
+    /// ```
     pub fn append_vec(&mut self, other: &mut Vec<T>) {
         let len = self.len();
         let other_len = other.len();
-        assert!(len + other_len <= CAP, "inline vector is full");
+        assert!(len + other_len <= CAP, "new length exceeds capacity");
         unsafe {
             self.data
                 .as_mut_ptr()
@@ -1230,6 +1261,12 @@ macros::partial_eq! {
     {
         ([T; N], InlineVec<U, CAP, SHIFT, TAG>);
         (InlineVec<T, CAP, SHIFT, TAG>, [U; N]);
+
+        (&[T; N], InlineVec<U, CAP, SHIFT, TAG>);
+        (InlineVec<T, CAP, SHIFT, TAG>, &[U; N]);
+
+        (&mut [T; N], InlineVec<U, CAP, SHIFT, TAG>);
+        (InlineVec<T, CAP, SHIFT, TAG>, &mut [U; N]);
     }
 }
 
@@ -2025,5 +2062,23 @@ mod tests {
         let mut inline = SMALL_FULL;
         assert_eq!(inline.len(), SMALL_CAP);
         let _ = inline.drain(2..8);
+    }
+
+    #[test]
+    fn append() {
+        let mut inline = InlineVec::<u8, 7>::from_array([1, 2, 3]);
+        let mut inline2 = InlineVec::<u8, 7>::from_array([4, 5, 6]);
+        inline.append(&mut inline2);
+        assert_eq!(inline.as_slice(), &[1, 2, 3, 4, 5, 6]);
+        assert_eq!(inline.len(), 6);
+        assert_eq!(inline2.len(), 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "new length exceeds capacity")]
+    fn append_overflows() {
+        let mut inline = InlineVec::<u8, 7>::from_array([1, 2, 3, 4]);
+        let mut inline2 = InlineVec::<u8, 7>::from_array([5, 6, 7, 8]);
+        inline.append(&mut inline2);
     }
 }
