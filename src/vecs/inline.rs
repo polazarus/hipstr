@@ -152,7 +152,7 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
         T: Copy,
     {
         let mut this = Self::new();
-        this.extend_with_slice_copy(slice);
+        this.extend_from_slice_copy(slice);
         this
     }
 
@@ -178,7 +178,7 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
         let mut this = Self::new();
         // SAFETY: function precondition
         unsafe {
-            this.extend_with_slice_copy_unchecked(slice);
+            this.extend_from_slice_copy_unchecked(slice);
         }
         this
     }
@@ -204,7 +204,7 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     #[inline]
     pub const fn from_array<const N: usize>(array: [T; N]) -> Self {
         let mut this = Self::new();
-        this.extend_with_array(array);
+        this.extend_from_array(array);
         this
     }
 
@@ -229,7 +229,7 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
         T: Clone,
     {
         let mut this = Self::new();
-        this.extend_with_slice(slice);
+        this.extend_from_slice(slice);
         this
     }
 
@@ -756,8 +756,8 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     /// elements from the slice into the inline vector.
     ///
     /// This function is only available for types that implement the `Copy`
-    /// trait. See [`extend_with_slice`] for a version that works with types that
-    /// only implement the `Clone` trait. See [`extend_with_array`] for a
+    /// trait. See [`extend_from_slice`] for a version that works with types that
+    /// only implement the `Clone` trait. See [`extend_from_array`] for a
     /// version that moves ownership from an array.
     ///
     /// # Panics
@@ -769,15 +769,15 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     /// ```
     /// use hipstr::inline_vec;
     /// let mut inline = inline_vec![7 => 1, 2];
-    /// inline.extend_with_slice_copy(&[3, 4]);
+    /// inline.extend_from_slice_copy(&[3, 4]);
     /// assert_eq!(inline.as_slice(), &[1, 2, 3, 4]);
     /// ```
     ///
-    /// [`extend_with_slice`]: Self::extend_with_slice
-    /// [`extend_with_array`]: Self::extend_with_array
+    /// [`extend_from_slice`]: Self::extend_from_slice
+    /// [`extend_from_array`]: Self::extend_from_array
     #[doc(alias = "push_slice_copy")]
     #[track_caller]
-    pub const fn extend_with_slice_copy(&mut self, slice: &[T])
+    pub const fn extend_from_slice_copy(&mut self, slice: &[T])
     where
         T: Copy,
     {
@@ -785,7 +785,7 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
         let new_len = len + slice.len();
         assert!(new_len <= CAP, "new length exceeds capacity");
         unsafe {
-            self.extend_with_slice_copy_unchecked(slice);
+            self.extend_from_slice_copy_unchecked(slice);
         }
     }
 
@@ -796,7 +796,7 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     ///
     /// The caller must ensure that the new length does not exceed the capacity
     /// of the inline vector.
-    pub const unsafe fn extend_with_slice_copy_unchecked(&mut self, slice: &[T])
+    pub const unsafe fn extend_from_slice_copy_unchecked(&mut self, slice: &[T])
     where
         T: Copy,
     {
@@ -813,7 +813,7 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
 
     /// Appends a slice of elements to the inline vector.
     ///
-    /// If `T` implements `Copy`, see [`extend_with_slice_copy`] for a more
+    /// If `T` implements `Copy`, see [`extend_from_slice_copy`] for a more
     /// efficient version.
     ///
     /// # Panics
@@ -825,14 +825,14 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     /// ```
     /// use hipstr::inline_vec;
     /// let mut inline = inline_vec![7 => 1, 2];
-    /// inline.extend_with_slice_copy(&[3, 4]);
+    /// inline.extend_from_slice_copy(&[3, 4]);
     /// assert_eq!(inline.as_slice(), &[1, 2, 3, 4]);
     /// ```
     ///
-    /// [`extend_with_slice_copy`]: Self::extend_with_slice_copy
+    /// [`extend_from_slice_copy`]: Self::extend_from_slice_copy
     #[doc(alias = "push_slice_clone")]
     #[track_caller]
-    pub fn extend_with_slice(&mut self, slice: &[T])
+    pub fn extend_from_slice(&mut self, slice: &[T])
     where
         T: Clone,
     {
@@ -863,12 +863,12 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     /// ```
     /// use hipstr::inline_vec;
     /// let mut inline = inline_vec![7 => 1, 2];
-    /// inline.extend_with_array([3, 4]);
+    /// inline.extend_from_array([3, 4]);
     /// assert_eq!(inline.as_slice(), &[1, 2, 3, 4]);
     /// ```
     #[doc(alias = "push_array")]
     #[track_caller]
-    pub const fn extend_with_array<const N: usize>(&mut self, array: [T; N]) {
+    pub const fn extend_from_array<const N: usize>(&mut self, array: [T; N]) {
         const {
             assert!(N <= CAP, "array larger than capacity");
         }
@@ -1607,90 +1607,90 @@ mod tests {
     }
 
     #[test]
-    fn extend_with_slice() {
+    fn extend_from_slice() {
         const CAP: usize = 7;
         let mut inline = InlineVec::<u8, CAP>::new();
         let slice = &[1, 2, 3];
-        inline.extend_with_slice(slice);
+        inline.extend_from_slice(slice);
         assert_eq!(inline.len(), slice.len());
         assert_eq!(inline.as_slice(), slice);
 
         let slice = &[4, 5, 6];
-        inline.extend_with_slice(slice);
+        inline.extend_from_slice(slice);
         assert_eq!(inline.len(), slice.len() * 2);
         assert_eq!(inline.as_slice(), &[1, 2, 3, 4, 5, 6]);
     }
 
     #[test]
     #[should_panic(expected = "new length exceeds capacity")]
-    fn extend_with_slice_full() {
+    fn extend_from_slice_full() {
         const CAP: usize = 7;
         let mut inline = InlineVec::<u8, CAP>::new();
         let slice: &[u8] = &[1, 2, 3, 4, 5, 6, 7];
-        inline.extend_with_slice(slice);
+        inline.extend_from_slice(slice);
         assert_eq!(inline.len(), slice.len());
         assert_eq!(inline.as_slice(), slice);
 
         let slice: &[u8] = &[9, 9, 10];
-        inline.extend_with_slice(slice);
+        inline.extend_from_slice(slice);
     }
 
     #[test]
-    fn extend_with_slice_copy() {
+    fn extend_from_slice_copy() {
         const CAP: usize = 7;
         let mut inline = InlineVec::<u8, CAP>::new();
         let slice = &[1, 2, 3];
-        inline.extend_with_slice_copy(slice);
+        inline.extend_from_slice_copy(slice);
         assert_eq!(inline.len(), slice.len());
         assert_eq!(inline.as_slice(), slice);
 
         let slice = &[4, 5, 6];
-        inline.extend_with_slice_copy(slice);
+        inline.extend_from_slice_copy(slice);
         assert_eq!(inline.len(), slice.len() * 2);
         assert_eq!(inline.as_slice(), &[1, 2, 3, 4, 5, 6]);
     }
 
     #[test]
     #[should_panic(expected = "new length exceeds capacity")]
-    fn extend_with_slice_copy_full() {
+    fn extend_from_slice_copy_full() {
         const CAP: usize = 7;
         let mut inline = InlineVec::<u8, CAP>::new();
         let slice: &[u8] = &[1, 2, 3, 4, 5, 6, 7];
-        inline.extend_with_slice_copy(slice);
+        inline.extend_from_slice_copy(slice);
         assert_eq!(inline.len(), slice.len());
         assert_eq!(inline.as_slice(), slice);
 
         let slice: &[u8] = &[8, 9, 10];
-        inline.extend_with_slice_copy(slice);
+        inline.extend_from_slice_copy(slice);
     }
 
     #[test]
-    fn extend_with_array() {
+    fn extend_from_array() {
         const CAP: usize = 7;
         let mut inline = InlineVec::<u8, CAP>::new();
         let array = [1, 2, 3];
-        inline.extend_with_array(array);
+        inline.extend_from_array(array);
         assert_eq!(inline.len(), array.len());
         assert_eq!(inline.as_slice(), &array);
 
         let array = [4, 5, 6];
-        inline.extend_with_array(array);
+        inline.extend_from_array(array);
         assert_eq!(inline.len(), array.len() * 2);
         assert_eq!(inline.as_slice(), &[1, 2, 3, 4, 5, 6]);
     }
 
     #[test]
     #[should_panic(expected = "new length exceeds capacity")]
-    fn extend_with_array_full() {
+    fn extend_from_array_full() {
         const CAP: usize = 7;
         let mut inline = InlineVec::<u8, CAP>::new();
         let array: [u8; 7] = [1, 2, 3, 4, 5, 6, 7];
-        inline.extend_with_array(array);
+        inline.extend_from_array(array);
         assert_eq!(inline.len(), array.len());
         assert_eq!(inline.as_slice(), &array);
 
         let array: [u8; 3] = [8, 0, 10];
-        inline.extend_with_array(array);
+        inline.extend_from_array(array);
     }
 
     #[test]

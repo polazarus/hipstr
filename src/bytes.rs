@@ -864,7 +864,7 @@ where
             unsafe {
                 self.union_mut()
                     .inline
-                    .extend_with_slice_copy_unchecked(addition);
+                    .extend_from_slice_copy_unchecked(addition);
             }
 
             return;
