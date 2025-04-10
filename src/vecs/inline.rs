@@ -896,6 +896,7 @@ where
         let dst = spare[len..range.len()].iter_mut();
         let src = current[range].iter();
         for ((dst, src), l) in dst.zip(src).zip(len + 1..=new_len) {
+            // SAFETY: the source is in the initialized range
             dst.write(unsafe { src.assume_init_ref() }.clone());
             self.len = TaggedU8::new(l);
         }
@@ -1050,6 +1051,52 @@ where
             let mut this: MaybeUninit<Self> = MaybeUninit::uninit();
             this.as_mut_ptr().copy_from_nonoverlapping(self, 1);
             this.assume_init()
+        }
+    }
+
+    /// Given a range `src`, copies a slice of elements in that range and
+    /// appends it to the end.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the source range is invalid or if the new length exceeds the
+    /// capacity of the inline vector.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::inline_vec;
+    /// let mut characters = inline_vec![10 => 'a', 'b', 'c', 'd', 'e'];
+    /// characters.extend_from_within_copy(2..);
+    /// assert_eq!(characters, ['a', 'b', 'c', 'd', 'e', 'c', 'd', 'e']);
+    ///
+    /// let mut numbers = inline_vec![7 => 0_u8, 1, 2, 3, 4];
+    /// numbers.extend_from_within_copy(..2);
+    /// assert_eq!(numbers, [0, 1, 2, 3, 4, 0, 1]);
+    /// ```
+    #[track_caller]
+    pub fn extend_from_within_copy(&mut self, range: impl RangeBounds<usize>) {
+        let range = common::range(range, self.len()).unwrap_or_else(|err| {
+            panic!("{err}");
+        });
+        self.extend_from_within_range_copy(range)
+    }
+
+    fn extend_from_within_range_copy(&mut self, range: Range<usize>) {
+        let len = self.len();
+        let new_len = len + range.len();
+        assert!(new_len <= CAP, "new length exceeds capacity");
+
+        // SAFETY: the range is valid and the source elements are initialized
+        let (current, spare) = unsafe { self.data.split_at_mut_unchecked(len) };
+
+        // SAFETY: the range is valid and the source elements are initialized
+        // the destination and the source do not overlap
+        unsafe {
+            spare
+                .as_mut_ptr()
+                .copy_from_nonoverlapping(current.as_mut_ptr().add(range.start), range.len());
+            self.set_len(new_len);
         }
     }
 }
@@ -2079,6 +2126,14 @@ mod tests {
 
         assert_eq!(inline.as_slice(), [1, 2, 6, 7]);
         assert_eq!(inline.len(), 4);
+
+        let mut inline = InlineVec::<_, 7>::from_array([1, 2, 3, 4].map(Box::new));
+        let _ = inline.drain(2..3);
+        assert_eq!(inline.as_slice(), [1, 2, 4].map(Box::new));
+
+        let v: Vec<_> = inline.drain(..).collect();
+        assert_eq!(v, [1, 2, 4].map(Box::new));
+        assert_eq!(inline.len(), 0);
     }
 
     #[test]
@@ -2131,5 +2186,41 @@ mod tests {
         let mut inline = InlineVec::<u8, 7>::from_array([1, 2, 3, 4]);
         let mut v = vec![5, 6, 7, 8];
         inline.append_vec(&mut v);
+    }
+
+    #[test]
+    fn extend_from_within() {
+        let mut inline = InlineVec::<u8, 7>::from_array([1, 2, 3]);
+        inline.extend_from_within(..);
+        assert_eq!(inline.as_slice(), &[1, 2, 3, 1, 2, 3]);
+        assert_eq!(inline.len(), 6);
+        inline.extend_from_within(0..1);
+        assert_eq!(inline.as_slice(), &[1, 2, 3, 1, 2, 3, 1]);
+        assert_eq!(inline.len(), 7);
+    }
+
+    #[test]
+    #[should_panic(expected = "new length exceeds capacity")]
+    fn extend_from_within_overflows() {
+        let mut inline = InlineVec::<u8, 7>::from_array([1, 2, 3, 4]);
+        inline.extend_from_within(..);
+    }
+
+    #[test]
+    fn extend_from_within_copy() {
+        let mut inline = InlineVec::<u8, 7>::from_array([1, 2, 3]);
+        inline.extend_from_within_copy(..);
+        assert_eq!(inline.as_slice(), &[1, 2, 3, 1, 2, 3]);
+        assert_eq!(inline.len(), 6);
+        inline.extend_from_within_copy(0..1);
+        assert_eq!(inline.as_slice(), &[1, 2, 3, 1, 2, 3, 1]);
+        assert_eq!(inline.len(), 7);
+    }
+
+    #[test]
+    #[should_panic(expected = "new length exceeds capacity")]
+    fn extend_from_within_copy_overflows() {
+        let mut inline = InlineVec::<u8, 7>::from_array([1, 2, 3, 4]);
+        inline.extend_from_within_copy(..);
     }
 }
