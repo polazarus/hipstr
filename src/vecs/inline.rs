@@ -2081,4 +2081,22 @@ mod tests {
         let mut inline2 = InlineVec::<u8, 7>::from_array([5, 6, 7, 8]);
         inline.append(&mut inline2);
     }
+
+    #[test]
+    fn append_vec() {
+        let mut inline = InlineVec::<u8, 7>::from_array([1, 2, 3]);
+        let mut v = vec![4, 5, 6];
+        inline.append_vec(&mut v);
+        assert_eq!(inline.as_slice(), &[1, 2, 3, 4, 5, 6]);
+        assert_eq!(inline.len(), 6);
+        assert_eq!(v.len(), 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "new length exceeds capacity")]
+    fn append_vec_overflows() {
+        let mut inline = InlineVec::<u8, 7>::from_array([1, 2, 3, 4]);
+        let mut v = vec![5, 6, 7, 8];
+        inline.append_vec(&mut v);
+    }
 }
