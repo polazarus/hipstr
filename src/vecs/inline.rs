@@ -15,7 +15,7 @@ use core::ops::{Deref, DerefMut, Range, RangeBounds};
 use core::ptr::NonNull;
 use core::{error, hash, slice};
 
-use crate::common::{self, cmp_slice, eq_slice};
+use crate::common::{self, cmp_slice};
 use crate::macros;
 
 pub const SHIFT_DEFAULT: u8 = 1;
@@ -208,31 +208,6 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
         this
     }
 
-    /// Creates a new inline vector from a slice by cloning the element.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the length of the slice exceeds the capacity of the inline
-    /// vector.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use hipstr::vecs::InlineVec;
-    /// let array = [Box::new(1), Box::new(2), Box::new(3)];
-    /// let inline = InlineVec::<Box<u8>, 7>::from_slice_clone(&array);
-    /// assert_eq!(inline.as_slice(), &array);
-    /// ```
-    #[inline]
-    pub fn from_slice_clone(slice: &[T]) -> Self
-    where
-        T: Clone,
-    {
-        let mut this = Self::new();
-        this.extend_from_slice(slice);
-        this
-    }
-
     /// Returns the length of the inline vector.
     #[inline]
     pub const fn len(&self) -> usize {
@@ -369,6 +344,18 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
 
     /// Forces the length of the inline vector to `new_len`.
     ///
+    /// This function is designed to work in combination with
+    /// [`spare_capacity_mut`] or raw pointer shenanigans.
+    ///
+    /// <div class="warning">
+    ///
+    /// Other use cases include FFI, where FFI calls are responsible for
+    /// initializing the elements. Note that this raises some serious security
+    /// concerns: it exposes stack addresses to potentially unsafe and unsound
+    /// code.
+    ///
+    /// </div>
+    ///
     /// # Safety
     ///
     /// - `new_len` must be less than or equal to the capacity of the inline
@@ -386,14 +373,7 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     /// }
     /// ```
     ///
-    /// <div class="warning">
-    ///
-    /// Other use cases include FFI, where FFI calls are responsible for
-    /// initializing the elements. Note that this raises some serious security
-    /// concerns: it exposes stack address to potentially unsafe and unsound
-    /// code.
-    ///
-    /// </div>
+    /// [`spare_capacity_mut`]: Self::spare_capacity_mut
     #[inline]
     pub const unsafe fn set_len(&mut self, new_len: usize) {
         debug_assert!(new_len <= CAP);
@@ -439,6 +419,57 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
             let value = unsafe { self.data[len - 1].assume_init_read() };
             self.len = TaggedU8::new(len - 1);
             Some(value)
+        }
+    }
+
+    /// Removes and returns the last element from a vector if the predicate
+    /// returns `true`, or [`None`] if the predicate returns false or the vector
+    /// is empty (the predicate will not be called in that case).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::inline_vec;
+    /// let mut inline = inline_vec![7 => 1, 2, 3, 4];
+    /// assert_eq!(inline.pop_if(|x| x % 2 == 0), Some(4));
+    /// assert_eq!(inline.as_slice(), &[1, 2, 3]);
+    /// assert_eq!(inline.pop_if(|x| x % 2 == 0), None);
+    /// ```
+    pub fn pop_if(&mut self, predicate: impl FnOnce(&mut T) -> bool) -> Option<T> {
+        let last = self.last_mut()?;
+
+        if predicate(last) {
+            self.pop()
+        } else {
+            None
+        }
+    }
+
+    pub const fn append(&mut self, other: &mut Self) {
+        let len = self.len();
+        let other_len = other.len();
+        assert!(len + other_len <= CAP, "inline vector is full");
+        unsafe {
+            self.data
+                .as_mut_ptr()
+                .add(len)
+                .copy_from_nonoverlapping(other.data.as_ptr(), other_len);
+            other.set_len(0);
+            self.set_len(len + other_len);
+        }
+    }
+
+    pub fn append_vec(&mut self, other: &mut Vec<T>) {
+        let len = self.len();
+        let other_len = other.len();
+        assert!(len + other_len <= CAP, "inline vector is full");
+        unsafe {
+            self.data
+                .as_mut_ptr()
+                .add(len)
+                .copy_from_nonoverlapping(other.as_ptr().cast(), other_len);
+            other.set_len(0);
+            self.set_len(len + other_len);
         }
     }
 
@@ -686,33 +717,6 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
         other
     }
 
-    /// Resizes the inline vector to the specified length.
-    ///
-    /// If the new length is greater than the current length, the array is
-    /// extended with the given value. If the new length is less than the
-    /// current length, the array is truncated.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the new length exceeds the capacity of the inline vector.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use hipstr::vecs::InlineVec;
-    /// let mut inline = InlineVec::<u8, 7>::new();
-    /// inline.resize(3, 42);
-    /// assert_eq!(inline.as_slice(), &[42, 42, 42]);
-    /// inline.resize(1, 0);
-    /// assert_eq!(inline.as_slice(), &[42]);
-    /// ```
-    pub fn resize(&mut self, new_len: usize, value: T)
-    where
-        T: Clone,
-    {
-        self.resize_with(new_len, || value.clone());
-    }
-
     /// Resizes the inline vector to the specified length using a closure to
     /// generate new values.
     ///
@@ -811,43 +815,6 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
         }
     }
 
-    /// Appends a slice of elements to the inline vector.
-    ///
-    /// If `T` implements `Copy`, see [`extend_from_slice_copy`] for a more
-    /// efficient version.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the new length exceeds the capacity of the inline vector.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use hipstr::inline_vec;
-    /// let mut inline = inline_vec![7 => 1, 2];
-    /// inline.extend_from_slice_copy(&[3, 4]);
-    /// assert_eq!(inline.as_slice(), &[1, 2, 3, 4]);
-    /// ```
-    ///
-    /// [`extend_from_slice_copy`]: Self::extend_from_slice_copy
-    #[doc(alias = "push_slice_clone")]
-    #[track_caller]
-    pub fn extend_from_slice(&mut self, slice: &[T])
-    where
-        T: Clone,
-    {
-        let len = self.len();
-        let new_len = len + slice.len();
-        assert!(new_len <= CAP, "new length exceeds capacity");
-
-        let dst = self.data[len..new_len].iter_mut();
-        let src = slice.iter();
-        for (dst, src) in dst.zip(src) {
-            dst.write(src.clone());
-            self.len = TaggedU8::new(new_len);
-        }
-    }
-
     /// Appends an array of elements to the inline vector, by moving the
     /// elements from the array into the inline vector.
     ///
@@ -932,6 +899,137 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
                 vec: self,
             }
         }
+    }
+}
+
+impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIFT, TAG>
+where
+    T: Clone,
+{
+    /// Creates a new inline vector from a slice by cloning the element.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the length of the slice exceeds the capacity of the inline
+    /// vector.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::InlineVec;
+    /// let array = [Box::new(1), Box::new(2), Box::new(3)];
+    /// let inline = InlineVec::<Box<u8>, 7>::from_slice_clone(&array);
+    /// assert_eq!(inline.as_slice(), &array);
+    /// ```
+    #[inline]
+    pub fn from_slice_clone(slice: &[T]) -> Self {
+        let mut this = Self::new();
+        this.extend_from_slice(slice);
+        this
+    }
+
+    /// Appends a slice of elements to the inline vector.
+    ///
+    /// If `T` implements `Copy`, see [`extend_from_slice_copy`] for a more
+    /// efficient version.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new length exceeds the capacity of the inline vector.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::inline_vec;
+    /// let mut inline = inline_vec![7 => 1, 2];
+    /// inline.extend_from_slice_copy(&[3, 4]);
+    /// assert_eq!(inline.as_slice(), &[1, 2, 3, 4]);
+    /// ```
+    ///
+    /// [`extend_from_slice_copy`]: Self::extend_from_slice_copy
+    #[doc(alias = "push_slice_clone")]
+    #[track_caller]
+    pub fn extend_from_slice(&mut self, slice: &[T]) {
+        let len = self.len();
+        let new_len = len + slice.len();
+        assert!(new_len <= CAP, "new length exceeds capacity");
+
+        let dst = self.data[len..new_len].iter_mut();
+        let src = slice.iter();
+        for ((dst, src), l) in dst.zip(src).zip(len + 1..=new_len) {
+            dst.write(src.clone());
+            self.len = TaggedU8::new(l);
+        }
+    }
+
+    /// Given a range `src`, clones a slice of elements in that range and
+    /// appends it to the end.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the source range is invalid or if the new length exceeds the
+    /// capacity of the inline vector.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::inline_vec;
+    /// let mut characters = inline_vec![10 => 'a', 'b', 'c', 'd', 'e'];
+    /// characters.extend_from_within(2..);
+    /// assert_eq!(characters, ['a', 'b', 'c', 'd', 'e', 'c', 'd', 'e']);
+    ///
+    /// let mut numbers = inline_vec![7 => 0_u8, 1, 2, 3, 4];
+    /// numbers.extend_from_within(..2);
+    /// assert_eq!(numbers, [0, 1, 2, 3, 4, 0, 1]);
+    ///
+    /// let mut strings = inline_vec![6 => String::from("hello"), String::from("world"), String::from("!")];
+    /// strings.extend_from_within(1..=2);
+    /// assert_eq!(strings, ["hello", "world", "!", "world", "!"]);
+    /// ```
+    #[track_caller]
+    pub fn extend_from_within(&mut self, range: impl RangeBounds<usize>) {
+        let range = common::range(range, self.len()).unwrap_or_else(|err| {
+            panic!("{err}");
+        });
+        self.extend_from_within_range(range)
+    }
+
+    fn extend_from_within_range(&mut self, range: Range<usize>) {
+        let len = self.len();
+        let new_len = len + range.len();
+        assert!(new_len <= CAP, "new length exceeds capacity");
+
+        let (current, spare) = unsafe { self.data.split_at_mut_unchecked(len) };
+        let dst = spare[len..range.len()].iter_mut();
+        let src = current[range].iter();
+        for ((dst, src), l) in dst.zip(src).zip(len + 1..=new_len) {
+            dst.write(unsafe { src.assume_init_ref() }.clone());
+            self.len = TaggedU8::new(l);
+        }
+    }
+
+    /// Resizes the inline vector to the specified length.
+    ///
+    /// If the new length is greater than the current length, the array is
+    /// extended with the given value. If the new length is less than the
+    /// current length, the array is truncated.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new length exceeds the capacity of the inline vector.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::InlineVec;
+    /// let mut inline = InlineVec::<u8, 7>::new();
+    /// inline.resize(3, 42);
+    /// assert_eq!(inline.as_slice(), &[42, 42, 42]);
+    /// inline.resize(1, 0);
+    /// assert_eq!(inline.as_slice(), &[42]);
+    /// ```
+    pub fn resize(&mut self, new_len: usize, value: T) {
+        self.resize_with(new_len, || value.clone());
     }
 }
 
@@ -1101,22 +1199,38 @@ impl<
     }
 }
 
-macros::symmetric_eq! {
-    [T, const CAP: usize, const SHIFT: u8, const TAG: u8]
-    [where T: PartialEq]
-    ([T], InlineVec<T, CAP, SHIFT, TAG>) = eq_slice;
+macros::partial_eq! {
+    [T, U, const CAP: usize, const SHIFT: u8, const TAG: u8]
+    where [T: PartialEq<U>]
+    {
+        ([T], InlineVec<U, CAP, SHIFT, TAG>);
+        (InlineVec<T, CAP, SHIFT, TAG>, [U]);
 
-    [T, const CAP: usize, const SHIFT: u8, const TAG: u8]
-    [where T: PartialEq]
-    (&[T], InlineVec<T, CAP, SHIFT, TAG>) = eq_slice;
+        (&[T], InlineVec<U, CAP, SHIFT, TAG>);
+        (InlineVec<T, CAP, SHIFT, TAG>, &[U]);
 
-    [T, const CAP: usize, const SHIFT: u8, const TAG: u8]
-    [where T: PartialEq]
-    (Vec<T>, InlineVec<T, CAP, SHIFT, TAG>) = eq_slice;
+        (&mut [T], InlineVec<U, CAP, SHIFT, TAG>);
+        (InlineVec<T, CAP, SHIFT, TAG>, &mut [U]);
 
-    [T, const CAP: usize, const SHIFT: u8, const TAG: u8, const N: usize]
-    [where T: PartialEq]
-    ([T; N], InlineVec<T, CAP, SHIFT, TAG>) = eq_slice;
+        (Vec<T>, InlineVec<U, CAP, SHIFT, TAG>);
+        (InlineVec<T, CAP, SHIFT, TAG>, Vec<U>);
+
+    }
+
+    [T, U, const CAP: usize, const SHIFT: u8, const TAG: u8]
+    where [T: PartialEq<U>, T: Clone]
+    (alloc::borrow::Cow<'_, [T]>, InlineVec<U, CAP, SHIFT, TAG>);
+
+    [T, U, const CAP: usize, const SHIFT: u8, const TAG: u8]
+    where [T: PartialEq<U>, U: Clone]
+    (InlineVec<T, CAP, SHIFT, TAG>, alloc::borrow::Cow<'_, [U]>);
+
+    [T, U, const CAP: usize, const SHIFT: u8, const TAG: u8, const N: usize]
+    where [T: PartialEq<U>]
+    {
+        ([T; N], InlineVec<U, CAP, SHIFT, TAG>);
+        (InlineVec<T, CAP, SHIFT, TAG>, [U; N]);
+    }
 }
 
 impl<
@@ -1140,24 +1254,6 @@ impl<T: Ord, const CAP: usize, const SHIFT: u8, const TAG: u8> Ord
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         self.as_slice().cmp(other.as_slice())
     }
-}
-
-macros::symmetric_ord! {
-    [T, const CAP: usize, const SHIFT: u8, const TAG: u8]
-    [where T: PartialOrd]
-    ([T], InlineVec<T, CAP, SHIFT, TAG>) = cmp_slice;
-
-    [T, const CAP: usize, const SHIFT: u8, const TAG: u8]
-    [where T: PartialOrd]
-    (&[T], InlineVec<T, CAP, SHIFT, TAG>) = cmp_slice;
-
-    [T, const CAP: usize, const SHIFT: u8, const TAG: u8]
-    [where T: PartialOrd]
-    (Vec<T>, InlineVec<T, CAP, SHIFT, TAG>) = cmp_slice;
-
-    [T, const CAP: usize, const SHIFT: u8, const TAG: u8, const N: usize]
-    [where T: PartialOrd]
-    ([T; N], InlineVec<T, CAP, SHIFT, TAG>) = cmp_slice;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1731,58 +1827,14 @@ mod tests {
     fn compare() {
         let l = InlineVec::<u8, 7>::from_array([1, 2, 3]);
         assert!(l < inline_vec![15 => 2]);
-        assert!(l < [2]);
-        assert!(l < vec![2]);
-        assert!(l < *[2].as_slice());
-        assert!(l < [2].as_slice());
-
         assert!(inline_vec![15 => 2] > l);
-        assert!([2] > l);
-        assert!(vec![2] > l);
-        assert!(*[2].as_slice() > l);
-        assert!([2].as_slice() > l);
-
         assert!(l < inline_vec![15 => 1, 2, 3, 1]);
-        assert!(l < [1, 2, 3, 1]);
-        assert!(l < vec![1, 2, 3, 1]);
-        assert!(l < *[1, 2, 3, 1].as_slice());
-        assert!(l < [1, 2, 3, 1].as_slice());
-
         assert!(inline_vec![15 => 1, 2, 3, 1] > l);
-        assert!([1, 2, 3, 1] > l);
-        assert!(vec![1, 2, 3, 1] > l);
-        assert!(*[1, 2, 3, 1].as_slice() > l);
-        assert!([1, 2, 3, 1].as_slice() > l);
-
         assert!(l > inline_vec![15 => 1, 2]);
-        assert!(l > [1, 2]);
-        assert!(l > vec![1, 2]);
-        assert!(l > *[1, 2].as_slice());
-        assert!(l > [1, 2].as_slice());
-
         assert!(inline_vec![15 => 1, 2] < l);
-        assert!([1, 2] < l);
-        assert!(vec![1, 2] < l);
-        assert!(*[1, 2].as_slice() < l);
-        assert!([1, 2].as_slice() < l);
-
         assert!(l >= inline_vec![15 => 1, 2, 3]);
-        assert!(l >= [1, 2, 3]);
-        assert!(l >= vec![1, 2, 3]);
-        assert!(l >= *[1, 2, 3].as_slice());
-        assert!(l >= [1, 2, 3].as_slice());
-
         assert!(inline_vec![15 => 1, 2, 3] <= l);
-        assert!([1, 2, 3] <= l);
-        assert!(vec![1, 2, 3] <= l);
-        assert!([1, 2, 3].as_slice() <= l);
-        assert!(*[1, 2, 3].as_slice() <= l);
-
         assert_eq!(l, inline_vec![15 => 1, 2, 3]);
-        assert_eq!(l, [1, 2, 3]);
-        assert_eq!(l, vec![1, 2, 3]);
-        assert_eq!(l, *[1, 2, 3].as_slice());
-        assert_eq!(l, [1, 2, 3].as_slice());
 
         assert!(l == inline_vec![15 => 1, 2, 3]);
         assert!(l == [1, 2, 3]);
@@ -1805,9 +1857,10 @@ mod tests {
 
         // NaN tests
         let i_f32 = InlineVec::<f32, 7>::from_array([f32::NAN]);
+        assert_ne!(i_f32, inline_vec![1 => f32::NAN]);
         assert_ne!(i_f32, [f32::NAN]);
-        assert!(!(i_f32 <= [f32::NAN]));
-        assert!(!(i_f32 >= [f32::NAN]));
+        assert!(!(i_f32 <= inline_vec![1 => f32::NAN]));
+        assert!(!(i_f32 >= inline_vec![1 => f32::NAN]));
     }
 
     #[test]

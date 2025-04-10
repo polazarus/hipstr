@@ -122,14 +122,6 @@ where
     PartialOrd::partial_cmp(a, b)
 }
 
-/// Checks if two slices are equal.
-#[inline(always)]
-pub(crate) fn eq_slice<T>(a: &[T], b: &[T]) -> bool
-where
-    T: PartialEq,
-{
-    PartialEq::eq(a, b)
-}
 
 #[cfg(test)]
 mod tests {
