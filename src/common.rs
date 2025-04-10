@@ -103,6 +103,17 @@ pub(crate) const fn manually_drop_as_ref<T>(m: &ManuallyDrop<T>) -> &T {
     unsafe { core::mem::transmute::<&ManuallyDrop<T>, &T>(m) }
 }
 
+/// Converts a `ManuallyDrop<T>` mutable reference to a `T` mutable reference in a `const` context.
+///
+/// # Safety
+///
+/// This function is safe because `ManuallyDrop<T>` is a transparent wrapper of `T`.
+#[inline]
+pub(crate) const fn manually_drop_as_mut<T>(m: &mut ManuallyDrop<T>) -> &mut T {
+    // SAFETY: `ManuallyDrop<T>` is a transparent wrapper of `T`.
+    unsafe { core::mem::transmute::<&mut ManuallyDrop<T>, &mut T>(m) }
+}
+
 #[cfg(test)]
 mod tests {
     use alloc::format;

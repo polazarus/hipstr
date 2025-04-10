@@ -18,7 +18,6 @@ use raw::{Split, SplitMut, Tag, Union, INLINE_CAPACITY};
 
 use self::raw::try_range_of;
 pub use self::raw::HipByt;
-use crate::common::manually_drop_as_ref;
 use crate::vecs::InlineVec;
 use crate::Backend;
 
@@ -209,7 +208,7 @@ where
     #[must_use]
     pub const fn len(&self) -> usize {
         match self.split() {
-            Split::Inline(inline) => manually_drop_as_ref(inline).len(),
+            Split::Inline(inline) => inline.len(),
             Split::Allocated(heap) => heap.len(),
             Split::Borrowed(borrowed) => borrowed.len(),
         }
@@ -244,7 +243,7 @@ where
     #[must_use]
     pub const fn as_ptr(&self) -> *const u8 {
         match self.split() {
-            Split::Inline(inline) => manually_drop_as_ref(inline).as_ptr(),
+            Split::Inline(inline) => inline.as_ptr(),
             Split::Allocated(heap) => heap.as_ptr(),
             Split::Borrowed(borrowed) => borrowed.as_ptr(),
         }
@@ -316,7 +315,7 @@ where
     #[must_use]
     pub const fn as_slice(&self) -> &[u8] {
         match self.split() {
-            Split::Inline(inline) => manually_drop_as_ref(inline).as_slice(),
+            Split::Inline(inline) => inline.as_slice(),
             Split::Allocated(heap) => heap.as_slice(),
             Split::Borrowed(borrowed) => borrowed.as_slice(),
         }
@@ -600,7 +599,7 @@ where
             match tag {
                 Tag::Allocated => HipByt::from_allocated(old.allocated),
                 Tag::Borrowed => HipByt::from_slice(old.borrowed.as_slice()),
-                Tag::Inline => HipByt::from_inline(old.inline),
+                Tag::Inline => HipByt::from_inline(ManuallyDrop::into_inner(old.inline)),
             }
         }
     }
@@ -928,7 +927,7 @@ where
                 }
             }
 
-            Self::from_inline(ManuallyDrop::new(inline))
+            Self::from_inline(inline)
         } else {
             let vec = self.as_slice().repeat(n);
             Self::from_vec(vec)

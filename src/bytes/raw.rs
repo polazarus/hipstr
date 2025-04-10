@@ -12,6 +12,7 @@ use core::ops::Range;
 use allocated::Allocated;
 use borrowed::Borrowed;
 
+use crate::common::{manually_drop_as_mut, manually_drop_as_ref};
 use crate::vecs::InlineVec;
 use crate::Backend;
 
@@ -42,7 +43,7 @@ pub(crate) const INLINE_CAPACITY: usize = size_of::<Borrowed>() - 1;
 const WORD_SIZE_M1: usize = size_of::<usize>() - 1;
 
 /// Alias type for `Inline` with set inline capacity
-pub type Inline = ManuallyDrop<InlineVec<u8, INLINE_CAPACITY, TAG_BITS, TAG_INLINE>>;
+pub type Inline = InlineVec<u8, INLINE_CAPACITY, TAG_BITS, TAG_INLINE>;
 
 /// Smart bytes, i.e. cheaply clonable and sliceable byte string.
 ///
@@ -131,7 +132,7 @@ unsafe impl<B: Backend + Send> Send for HipByt<'_, B> {}
 #[repr(C)]
 pub union Union<'borrow, B: Backend> {
     /// Inline representation
-    pub inline: Inline,
+    pub inline: ManuallyDrop<Inline>,
 
     /// Allocated and shared representation
     pub allocated: Allocated<B>,
@@ -234,7 +235,10 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
     /// Creates a new `HipByt` from an inline representation.
     #[inline]
     pub(super) const fn from_inline(inline: Inline) -> Self {
-        Union { inline }.into_raw()
+        Union {
+            inline: ManuallyDrop::new(inline),
+        }
+        .into_raw()
     }
 
     /// Creates a new `HipByt` from a borrowed representation.
@@ -262,7 +266,7 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
         match tag {
             Tag::Inline => {
                 // SAFETY: representation checked
-                Split::Inline(unsafe { &union.inline })
+                Split::Inline(manually_drop_as_ref(unsafe { &union.inline }))
             }
             Tag::Borrowed => {
                 // SAFETY: representation checked
@@ -283,7 +287,7 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
         match tag {
             Tag::Inline => {
                 // SAFETY: representation checked
-                SplitMut::Inline(unsafe { &mut union.inline })
+                SplitMut::Inline(manually_drop_as_mut(unsafe { &mut union.inline }))
             }
             Tag::Borrowed => {
                 // SAFETY: representation checked
@@ -305,7 +309,7 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
     /// Creates a new empty inline `HipByt`.
     #[inline]
     pub(super) const fn inline_empty() -> Self {
-        const { Self::from_inline(ManuallyDrop::new(InlineVec::new())) }
+        const { Self::from_inline(InlineVec::new()) }
     }
 
     /// Creates a new `HipByt` from a short slice.
@@ -315,7 +319,7 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
     /// The input slice's length MUST be at most `INLINE_CAPACITY`.
     pub(super) const unsafe fn inline_unchecked(bytes: &[u8]) -> Self {
         // SAFETY: see function precondition
-        let inline = unsafe { ManuallyDrop::new(InlineVec::from_slice_copy_unchecked(bytes)) };
+        let inline = unsafe { InlineVec::from_slice_copy_unchecked(bytes) };
         Self::from_inline(inline)
     }
 
@@ -559,7 +563,7 @@ impl<B: Backend> Drop for HipByt<'_, B> {
 impl<B: Backend> Clone for HipByt<'_, B> {
     fn clone(&self) -> Self {
         match self.split() {
-            Split::Inline(inline) => Self::from_inline(ManuallyDrop::new(inline.copy())),
+            Split::Inline(inline) => Self::from_inline(inline.copy()),
             Split::Borrowed(&borrowed) => Self::from_borrowed(borrowed),
             Split::Allocated(allocated) => {
                 // increase the ref count or clone if overflow
