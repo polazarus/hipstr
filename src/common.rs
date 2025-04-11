@@ -1,8 +1,26 @@
 //! Common functions and types.
 
-use core::mem::ManuallyDrop;
+use alloc::alloc::handle_alloc_error;
+use core::alloc::Layout;
+use core::mem::{self, ManuallyDrop, MaybeUninit};
 use core::ops::{Bound, Range, RangeBounds};
-use core::{error, fmt};
+use core::ptr::NonNull;
+use core::{error, fmt, ptr};
+
+pub mod drain;
+#[cfg(test)]
+mod tests;
+pub mod traits;
+
+/// Panics with the provided displayable error message.
+///
+/// # Panics
+///
+/// Always panics with the provided error message.
+#[track_caller]
+pub(crate) fn panic_display<T>(e: impl fmt::Display) -> T {
+    panic!("{e}");
+}
 
 /// Converts any generic range into a concrete `Range<usize>` given a length.
 ///
@@ -60,7 +78,7 @@ pub enum RangeError {
 }
 
 impl RangeError {
-    /// Returns a static message for the error.
+    /// Returns a static message describing the error.
     pub const fn const_message(&self) -> &'static str {
         match self {
             RangeError::StartOverflows => "start index overflows",
@@ -103,6 +121,21 @@ pub(crate) const fn manually_drop_as_ref<T>(m: &ManuallyDrop<T>) -> &T {
     unsafe { core::mem::transmute::<&ManuallyDrop<T>, &T>(m) }
 }
 
+/// Copies a `T` slice to a `ManuallyDrop<T>` slice.
+pub(crate) const fn maybe_uninit_write_copy_of_slice<T>(dst: &mut [MaybeUninit<T>], src: &[T])
+where
+    T: Copy,
+{
+    let len = src.len();
+    assert!(
+        len == dst.len(),
+        "source slice length does not match destination slice length"
+    );
+    unsafe {
+        dst.as_mut_ptr().copy_from(src.as_ptr().cast(), len);
+    }
+}
+
 /// Converts a `ManuallyDrop<T>` mutable reference to a `T` mutable reference in a `const` context.
 ///
 /// # Safety
@@ -114,54 +147,45 @@ pub(crate) const fn manually_drop_as_mut<T>(m: &mut ManuallyDrop<T>) -> &mut T {
     unsafe { core::mem::transmute::<&mut ManuallyDrop<T>, &mut T>(m) }
 }
 
-#[cfg(test)]
-mod tests {
-    use alloc::format;
+/// A guard that drops the initialized elements of a slice.
+struct SliceGuard<'a, T> {
+    slice: &'a mut [MaybeUninit<T>],
+    initialized: usize,
+}
 
-    use super::*;
-
-    #[test]
-    fn ranges() {
-        assert_eq!(range(0..5, 10).unwrap(), 0..5);
-        assert_eq!(range(0..=5, 10).unwrap(), 0..6);
-        assert_eq!(range(..5, 10).unwrap(), 0..5);
-        assert_eq!(range(..=5, 10).unwrap(), 0..6);
-        assert_eq!(range(2.., 10).unwrap(), 2..10);
-
-        let err = range(..=usize::MAX, 1).unwrap_err();
-        assert_eq!(err, RangeError::EndOverflows);
-        assert_eq!(format!("{err}"), "end index overflows");
-        assert_eq!(err.const_message(), "end index overflows");
-
-        let err = range((Bound::Excluded(usize::MAX), Bound::Unbounded), 10).unwrap_err();
-        assert_eq!(err, RangeError::StartOverflows);
-        assert_eq!(format!("{err}"), "start index overflows");
-        assert_eq!(err.const_message(), "start index overflows");
-
-        let err = range(5..2, 10).unwrap_err();
-        assert_eq!(err, RangeError::StartGreaterThanEnd { start: 5, end: 2 });
-        assert_eq!(
-            format!("{err}"),
-            "start index 5 is greater than end index 2"
-        );
-        assert_eq!(err.const_message(), "start index is greater than end index");
-
-        let err = range(5..10, 5).unwrap_err();
-        assert_eq!(err, RangeError::EndOutOfBounds { end: 10, len: 5 });
-        assert_eq!(
-            format!("{err}"),
-            "end index 10 is out of bounds for slice of length 5"
-        );
-        assert_eq!(err.const_message(), "end index is out of bounds");
-
-        assert_eq!(
-            range(6..10, 5).unwrap_err(),
-            RangeError::EndOutOfBounds { end: 10, len: 5 }
-        );
-        assert_eq!(
-            format!("{err}"),
-            "end index 10 is out of bounds for slice of length 5"
-        );
-        assert_eq!(err.const_message(), "end index is out of bounds");
+impl<T> Drop for SliceGuard<'_, T> {
+    fn drop(&mut self) {
+        if mem::needs_drop::<T>() {
+            unsafe {
+                let slice: *mut [MaybeUninit<T>] = &mut self.slice[..self.initialized];
+                ptr::drop_in_place(slice as *mut [T]);
+            }
+        }
     }
+}
+
+#[inline]
+pub(crate) fn guarded_slice_clone<T: Clone>(dst: &mut [MaybeUninit<T>], src: &[T]) -> usize {
+    let mut guard = SliceGuard {
+        slice: dst,
+        initialized: 0,
+    };
+
+    for (dst, src) in guard.slice.iter_mut().zip(src.iter()) {
+        dst.write(src.clone());
+        guard.initialized += 1;
+    }
+
+    let written = guard.initialized;
+    mem::forget(guard);
+    written
+}
+
+#[inline]
+#[cfg_attr(coverage_nightly, coverage(off))]
+pub(crate) fn check_alloc(ptr: *mut u8, layout: Layout) -> NonNull<u8> {
+    let Some(ptr) = NonNull::new(ptr) else {
+        handle_alloc_error(layout);
+    };
+    ptr
 }
