@@ -139,7 +139,7 @@ where
 
             for i in 0..len {
                 ptr.add(i).write(slice[i].clone());
-                guard.initialized = i;
+                guard.initialized = i + 1;
             }
 
             this.header_mut().len = len;
@@ -1316,22 +1316,46 @@ mod unshared_tests {
         let array: [_; 10] = core::array::from_fn(|i| i);
         let v = ThinVec::from_slice_clone(&array);
         assert_eq!(v.as_slice(), array);
+
+        let array: [_; 10] = core::array::from_fn(|i| Box::new(i));
+        let v = ThinVec::from_slice_clone(&array);
+        assert_eq!(v.as_slice(), array);
     }
 
     #[test]
-    #[should_panic]
+    #[cfg(feature = "std")]
     fn from_slice_clone_panic() {
-        struct S(usize);
+        static CLONE_COUNT: std::sync::Mutex<usize> = std::sync::Mutex::new(0);
+        static DROP_COUNT: std::sync::Mutex<usize> = std::sync::Mutex::new(0);
+
+        struct S(bool);
+        impl Drop for S {
+            fn drop(&mut self) {
+                // witness the drop
+                *DROP_COUNT.lock().unwrap() += 1;
+            }
+        }
         impl Clone for S {
             fn clone(&self) -> Self {
-                if self.0 == 5 {
+                *CLONE_COUNT.lock().unwrap() += 1;
+                if self.0 {
                     panic!();
                 }
                 Self(self.0)
             }
         }
-        let array: [_; 10] = core::array::from_fn(|i| S(i));
-        let _ = ThinVec::from(array.as_slice());
+
+        *CLONE_COUNT.lock().unwrap() = 0;
+        *DROP_COUNT.lock().unwrap() = 0;
+
+        let array: [_; 4] = [false, false, true, false].map(S);
+        let r = std::panic::catch_unwind(|| {
+            let _ = ThinVec::from(array.as_slice());
+        })
+        .unwrap_err();
+
+        assert_eq!(*CLONE_COUNT.lock().unwrap(), 3);
+        assert_eq!(*DROP_COUNT.lock().unwrap(), 2);
     }
 
     #[test]
