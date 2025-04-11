@@ -681,13 +681,13 @@ fn extend_from_within() {
 #[test]
 #[should_panic(expected = "new length exceeds capacity")]
 fn extend_from_within_overflows() {
-    let mut inline = InlineVec::<u8, 7>::from_array([1, 2, 3, 4]);
+    let mut inline = InlineVec::<u8, SMALL_CAP>::from_array([1, 2, 3, 4]);
     inline.extend_from_within(..);
 }
 
 #[test]
 fn extend_from_within_copy() {
-    let mut inline = InlineVec::<u8, 7>::from_array([1, 2, 3]);
+    let mut inline = InlineVec::<u8, SMALL_CAP>::from_array([1, 2, 3]);
     inline.extend_from_within_copy(..);
     assert_eq!(inline.as_slice(), &[1, 2, 3, 1, 2, 3]);
     assert_eq!(inline.len(), 6);
@@ -699,6 +699,36 @@ fn extend_from_within_copy() {
 #[test]
 #[should_panic(expected = "new length exceeds capacity")]
 fn extend_from_within_copy_overflows() {
-    let mut inline = InlineVec::<u8, 7>::from_array([1, 2, 3, 4]);
+    let mut inline = InlineVec::<u8, SMALL_CAP>::from_array([1, 2, 3, 4]);
     inline.extend_from_within_copy(..);
+}
+
+#[test]
+fn extend() {
+    let mut inline = InlineVec::<u8, SMALL_CAP>::from_array([1, 2, 3]);
+    inline.extend(vec![4, 5, 6]);
+    assert_eq!(inline.as_slice(), &[1, 2, 3, 4, 5, 6]);
+    assert_eq!(inline.len(), 6);
+}
+
+#[test]
+#[should_panic(expected = "inline vector is full")]
+fn extend_overflows() {
+    let mut inline = InlineVec::<u8, SMALL_CAP>::from_array([1, 2, 3, 4]);
+    inline.extend([5, 6, 7, 8]);
+}
+
+#[test]
+fn from_iter() {
+    let inline = InlineVec::<u8, SMALL_CAP>::from_iter([1, 2, 3]);
+    assert_eq!(inline.len(), 3);
+    assert_eq!(inline.as_slice(), &[1, 2, 3]);
+}
+
+#[test]
+#[should_panic(expected = "inline vector is full")]
+fn from_iter_overflows() {
+    let inline = InlineVec::<u8, SMALL_CAP>::from_iter([1, 2, 3, 4, 5, 6, 7, 8]);
+    assert_eq!(inline.len(), 8);
+    assert_eq!(inline.as_slice(), &[1, 2, 3, 4, 5, 6, 7, 8]);
 }

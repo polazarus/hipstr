@@ -238,8 +238,8 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     ///
     /// # Errors
     ///
-    /// This function returns `Err(value)` if the inline vector is ful, that is,
-    /// the current [`len`] is greater than the `CAP`.
+    /// Returns `Err(value)` if the inline vector is full, that is, the current
+    /// [`len`] is greater than the `CAP`.
     ///
     /// # Examples
     ///
@@ -375,7 +375,9 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
 
     /// Removes and returns the last element from a vector if the predicate
     /// returns `true`, or [`None`] if the predicate returns false or the vector
-    /// is empty (the predicate will not be called in that case).
+    /// is empty.
+    ///
+    /// The predicate is not called if the vector is empty.
     ///
     /// # Examples
     ///
@@ -775,6 +777,40 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
         core::mem::forget(array);
     }
 
+    /// Removes the subslice indicated by the given range from the inline
+    /// vector, returning a double-ended iterator over the removed subslice.
+    ///
+    /// If the iterator is dropped before being fully consumed, it drops the
+    /// remaining removed elements.
+    ///
+    /// The returned iterator keeps a mutable borrow on the vector to optimize
+    /// its implementation.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the starting point is greater than the end point or if
+    /// the end point is greater than the length of the vector.
+    ///
+    /// # Leaking
+    ///
+    /// If the returned iterator goes out of scope without being dropped (due to
+    /// [`mem::forget`], for example), the vector may have lost and leaked
+    /// elements arbitrarily, including elements outside the range.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::vecs::InlineVec;
+    /// # use hipstr::inline_vec;
+    /// let mut v: InlineVec<u8, 7> = inline_vec![1, 2, 3];
+    /// let u: InlineVec<u8, 7> = v.drain(1..).collect();
+    /// assert_eq!(v, &[1]);
+    /// assert_eq!(u, &[2, 3]);
+    ///
+    /// // A full range clears the vector, like `clear()` does
+    /// v.drain(..);
+    /// assert_eq!(v, &[]);
+    /// ```
     pub fn drain(&mut self, range: impl RangeBounds<usize>) -> Drain<T, CAP, SHIFT, TAG> {
         let range = common::range(range, self.len()).unwrap_or_else(|err| {
             panic!("{err}");
@@ -887,7 +923,7 @@ where
         let range = common::range(range, self.len()).unwrap_or_else(|err| {
             panic!("{err}");
         });
-        self.extend_from_within_range(range)
+        self.extend_from_within_range(range);
     }
 
     fn extend_from_within_range(&mut self, range: Range<usize>) {
@@ -1083,7 +1119,7 @@ where
         let range = common::range(range, self.len()).unwrap_or_else(|err| {
             panic!("{err}");
         });
-        self.extend_from_within_range_copy(range)
+        self.extend_from_within_range_copy(range);
     }
 
     fn extend_from_within_range_copy(&mut self, range: Range<usize>) {
@@ -1174,6 +1210,38 @@ impl<T: hash::Hash, const CAP: usize, const SHIFT: u8, const TAG: u8> hash::Hash
 {
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
         self.as_slice().hash(state);
+    }
+}
+
+impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> FromIterator<T>
+    for InlineVec<T, CAP, SHIFT, TAG>
+{
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        // May be improve by specialization if Rust offers it one day. Is it
+        // worth it for such small sized vectors?
+        //
+        // Also if one day, Rust can collect into an array (and specialized it),
+        // we can use that to collect directly into the inline vector
+
+        let iter = iter.into_iter();
+        let mut this = Self::new();
+        for item in iter {
+            this.push(item);
+        }
+        this
+    }
+}
+
+impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> Extend<T>
+    for InlineVec<T, CAP, SHIFT, TAG>
+{
+    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
+        // May be improve by specialization if Rust offers it one day. Is it
+        // worth it for such small sized vectors?
+        let iter = iter.into_iter();
+        for item in iter {
+            self.push(item);
+        }
     }
 }
 
@@ -1481,8 +1549,8 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> Drop for Drain<'_, T, 
     }
 }
 
-impl<'a, T, const CAP: usize, const SHIFT: u8, const TAG: u8> Iterator
-    for Drain<'a, T, CAP, SHIFT, TAG>
+impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> Iterator
+    for Drain<'_, T, CAP, SHIFT, TAG>
 {
     type Item = T;
 
@@ -1497,8 +1565,8 @@ impl<'a, T, const CAP: usize, const SHIFT: u8, const TAG: u8> Iterator
     }
 }
 
-impl<'a, T, const CAP: usize, const SHIFT: u8, const TAG: u8> DoubleEndedIterator
-    for Drain<'a, T, CAP, SHIFT, TAG>
+impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> DoubleEndedIterator
+    for Drain<'_, T, CAP, SHIFT, TAG>
 {
     fn next_back(&mut self) -> Option<Self::Item> {
         let index = self.current.next_back()?;
@@ -1507,13 +1575,13 @@ impl<'a, T, const CAP: usize, const SHIFT: u8, const TAG: u8> DoubleEndedIterato
     }
 }
 
-impl<'a, T, const CAP: usize, const SHIFT: u8, const TAG: u8> FusedIterator
-    for Drain<'a, T, CAP, SHIFT, TAG>
+impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> FusedIterator
+    for Drain<'_, T, CAP, SHIFT, TAG>
 {
 }
 
-impl<'a, T, const CAP: usize, const SHIFT: u8, const TAG: u8> ExactSizeIterator
-    for Drain<'a, T, CAP, SHIFT, TAG>
+impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> ExactSizeIterator
+    for Drain<'_, T, CAP, SHIFT, TAG>
 {
     fn len(&self) -> usize {
         self.current.len()
