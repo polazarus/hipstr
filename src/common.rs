@@ -4,6 +4,16 @@ use core::mem::ManuallyDrop;
 use core::ops::{Bound, Range, RangeBounds};
 use core::{error, fmt};
 
+/// Panics with the provided displayable error message.
+///
+/// # Panics
+///
+/// Always panics with the provided error message.
+#[track_caller]
+pub(crate) fn panic_display<T>(e: impl fmt::Display) -> T {
+    panic!("{e}");
+}
+
 /// Converts any generic range into a concrete `Range<usize>` given a length.
 ///
 /// # Errors
@@ -60,7 +70,7 @@ pub enum RangeError {
 }
 
 impl RangeError {
-    /// Returns a static message for the error.
+    /// Returns a static message describing the error.
     pub const fn const_message(&self) -> &'static str {
         match self {
             RangeError::StartOverflows => "start index overflows",

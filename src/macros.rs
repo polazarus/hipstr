@@ -1,3 +1,80 @@
+macro_rules! trait_impls {
+    () => {};
+    ( $( [ $($gen:tt)* ] $(where [ $($wh: tt)* ])? )? { $($body:tt)* } $($rest:tt)*) => {
+        $crate::macros::trait_impls!(@@ $( [ $($gen)* ] $( where [ $($wh)* ] )? )? { $($body)* });
+        $crate::macros::trait_impls!($($rest)*);
+    };
+    ( @@ $( [ $($gen:tt)* ] $( where [ $($wh: tt)* ])? )? {} ) => {};
+    ( @@ $( [ $($gen:tt)* ] $( where [ $($wh: tt)* ])? )? { $name:ident { $($body:tt)* } $($rest:tt)* } ) => {
+        $crate::macros::trait_impls!(@$name $( [ $($gen)* ] $( where [ $($wh)* ] )? )? { $($body)* } );
+        $crate::macros::trait_impls!(@@ $( [ $($gen)* ] $( where [ $($wh)* ] )? )? { $($rest)* });
+    };
+
+    (@PartialEq $([ $($gen:tt)* ] $( where [ $($wh:tt)* ])? )? { }) => {};
+    (@PartialEq $([ $($gen:tt)* ] $( where [ $($wh:tt)* ])? )? { $a:ty; $($rest:tt)* }) => {
+        impl $(< $($gen)* >)? core::cmp::PartialEq for $a $($(where $($wh)*)?)? {
+            #[inline]
+            fn eq(&self, other: &Self) -> bool {
+                self[..] == other[..]
+            }
+        }
+        $crate::macros::trait_impls!(@PartialEq $([ $($gen)* ] $( where [ $($wh)* ])? )? { $($rest)* });
+    };
+    (@PartialEq $([ $($gen:tt)* ] $( where [ $($wh:tt)* ])? )? { $a:ty, $b:ty; $($rest:tt)* }) => {
+        impl $(< $($gen)* >)? core::cmp::PartialEq<$b> for $a $($(where $($wh)*)?)? {
+            #[inline]
+            fn eq(&self, other: &$b) -> bool {
+                self[..] == other[..]
+            }
+        }
+        $crate::macros::trait_impls!(@PartialEq $([ $($gen)* ] $( where [ $($wh)* ])? )? { $($rest)* });
+    };
+
+    (@PartialOrd $([ $($gen:tt)* ] $( where [ $($wh:tt)* ])? )? { }) => {};
+    (@PartialOrd $([ $($gen:tt)* ] $( where [ $($wh:tt)* ])? )? { $a:ty ; $($rest:tt)* }) => {
+        impl $(< $($gen)* >)? core::cmp::PartialOrd for $a $($(where $($wh)*)?)? {
+            #[inline]
+            fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+                self[..].partial_cmp(&other[..])
+            }
+        }
+        $crate::macros::trait_impls!(@PartialOrd $([ $($gen)* ] $( where [ $($wh)* ])? )? { $($rest)* });
+    };
+    (@PartialOrd $([ $($gen:tt)* ] $( where [ $($wh:tt)* ])? )? { $a:ty, $b:ty ; $($rest:tt)* }) => {
+        impl $(< $($gen)* >)? core::cmp::PartialOrd<$b> for $a $($(where $($wh)*)?)? {
+            #[inline]
+            fn partial_cmp(&self, other: &$b) -> Option<core::cmp::Ordering> {
+                self[..].partial_cmp(&other[..])
+            }
+        }
+        $crate::macros::trait_impls!(@PartialOrd $([ $($gen)* ] $( where [ $($wh)* ])? )? { $($rest)* });
+    };
+
+    (@From $([ $($gen:tt)* ] $( where [ $($wh:tt)* ])? )? { }) => {};
+    (@From $([ $($gen:tt)* ] $( where [ $($wh:tt)* ])? )? { $b:ty => $a:ty = $cons:path; $($rest:tt)* }) => {
+        impl $(< $($gen)* >)? From<$b> for $a $($(where $($wh)*)?)? {
+            #[inline]
+            fn from(other: $b) -> Self {
+                $cons(other)
+            }
+        }
+        $crate::macros::trait_impls!(@From $([ $($gen)* ] $( where [ $($wh)* ])? )? { $($rest)* });
+    };
+
+    (@Debug $([ $($gen:tt)* ] $( where [ $($wh:tt)* ])? )? { }) => {};
+    (@Debug $([ $($gen:tt)* ] $( where [ $($wh:tt)* ])? )? { $t:ty ; $($rest:tt)* }) => {
+        impl $(< $($gen)* >)? core::fmt::Debug for $t $($(where $($wh)*)?)? {
+            #[inline]
+            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                f.debug_list()
+                    .entries(self.iter())
+                    .finish()
+            }
+        }
+        $crate::macros::trait_impls!(@Debug $([ $($gen)* ] $( where [ $($wh)* ])? )? { $($rest)* });
+    };
+}
+
 macro_rules! partial_eq {
     () => {};
 
@@ -81,4 +158,4 @@ macro_rules! symmetric_ord {
     }
 }
 
-pub(crate) use {partial_eq, symmetric_eq, symmetric_ord};
+pub(crate) use {partial_eq, symmetric_eq, symmetric_ord, trait_impls};
