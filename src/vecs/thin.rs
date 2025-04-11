@@ -8,7 +8,6 @@ use core::mem::MaybeUninit;
 use core::ops::{Bound, Range, RangeBounds};
 use core::ptr::NonNull;
 use core::{cmp, fmt, mem, ops, panic, ptr, slice};
-use std::path::Prefix;
 
 use crate::common::{panic_display, RangeError};
 use crate::{common, macros};
