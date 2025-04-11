@@ -700,6 +700,13 @@ fn extend_from_within_overflows() {
 }
 
 #[test]
+#[should_panic(expected = "start index 1 is greater than end index 0")]
+fn extend_from_within_bad_range() {
+    let mut inline = InlineVec::<u8, SMALL_CAP>::from_array([1, 2, 3, 4]);
+    inline.extend_from_within(1..0);
+}
+
+#[test]
 fn extend_from_within_copy() {
     let mut inline = InlineVec::<u8, SMALL_CAP>::from_array([1, 2, 3]);
     inline.extend_from_within_copy(..);
@@ -719,7 +726,7 @@ fn extend_from_within_copy_overflows() {
 
 #[test]
 #[should_panic(expected = "start index 1 is greater than end index 0")]
-fn extend_from_within_bad_range() {
+fn extend_from_within_copy_bad_range() {
     let mut inline = InlineVec::<u8, SMALL_CAP>::from_array([1, 2, 3, 4]);
     inline.extend_from_within_copy(1..0);
 }
