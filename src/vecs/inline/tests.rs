@@ -275,6 +275,20 @@ fn pop() {
 }
 
 #[test]
+fn pop_if() {
+    let mut inline = SMALL_FULL;
+
+    assert_eq!(inline.pop_if(|b| *b % 2 == 0), None);
+    assert_eq!(inline.pop_if(|b| *b % 2 == 1), Some(7));
+
+    assert_eq!(inline.pop_if(|b| *b % 2 == 1), None);
+    assert_eq!(inline.pop_if(|b| *b % 2 == 0), Some(6));
+
+    inline.clear();
+    assert_eq!(inline.pop_if(|_| unreachable!()), None);
+}
+
+#[test]
 fn niche() {
     assert_eq!(
         size_of::<InlineVec<u8, 7>>(),
