@@ -1258,6 +1258,12 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> IntoIterator
     }
 }
 
+/// An owning iterator for `InlineVec`.
+///
+/// This struct is returned by the [`into_iter`] method and allows consuming
+/// the `InlineVec` while iterating over its elements.
+///
+/// [`into_iter`]: InlineVec::into_iter
 pub struct IntoIter<T, const CAP: usize, const SHIFT: u8, const TAG: u8> {
     start: usize,
     end: usize,
@@ -1518,6 +1524,12 @@ macro_rules! inline_vec {
     };
 }
 
+/// A draining iterator for `InlineVec`.
+///
+/// This struct is returned by the [`drain`] method and allows iterating over
+/// the removed elements while keeping a mutable borrow on the vector.
+///
+/// [`drain`]: InlineVec::drain
 pub struct Drain<'a, T, const CAP: usize, const SHIFT: u8, const TAG: u8> {
     /// Full range
     full: Range<usize>,
