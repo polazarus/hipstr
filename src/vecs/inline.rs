@@ -788,13 +788,13 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     ///
     /// # Panics
     ///
-    /// Panics if the starting point is greater than the end point or if
-    /// the end point is greater than the length of the vector.
+    /// Panics if the starting point is greater than the end point or if the end
+    /// point is greater than the length of the vector.
     ///
     /// # Leaking
     ///
     /// If the returned iterator goes out of scope without being dropped (due to
-    /// [`mem::forget`], for example), the vector may have lost and leaked
+    /// [`std::mem::forget`], for example), the vector may have lost and leaked
     /// elements arbitrarily, including elements outside the range.
     ///
     /// # Examples
