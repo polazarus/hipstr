@@ -1463,4 +1463,29 @@ mod unshared_tests {
         core::mem::forget(v.drain(1..2));
         assert_eq!(v.len(), 1);
     }
+
+    #[test]
+    fn split_off() {
+        let mut v = thin_vec![1, 2, 3, 4, 5];
+        let w = v.split_off(2);
+        assert_eq!(v.as_slice(), &[1, 2]);
+        assert_eq!(w.as_slice(), &[3, 4, 5]);
+
+        let mut v = thin_vec![1, 2, 3];
+        let w = v.split_off(0);
+        assert!(v.is_empty());
+        assert_eq!(w.as_slice(), &[1, 2, 3]);
+
+        let mut v = thin_vec![1, 2, 3];
+        let w = v.split_off(3);
+        assert_eq!(v.as_slice(), &[1, 2, 3]);
+        assert!(w.is_empty());
+    }
+
+    #[test]
+    #[should_panic(expected = "index out of bounds")]
+    fn split_off_bad_index() {
+        let mut v = thin_vec![1, 2, 3];
+        v.split_off(4);
+    }
 }
