@@ -64,7 +64,7 @@ jobs:
       - name: Setup toolchain with Miri
         uses: dtolnay/rust-toolchain@nightly
         with:
-          components: miri
+          components: miri, rust-src
 
       - name: Run tests under Miri
         env:
