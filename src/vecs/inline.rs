@@ -1314,22 +1314,72 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> FusedIterator
 
 impl<T: Eq, const CAP: usize, const SHIFT: u8, const TAG: u8> Eq for InlineVec<T, CAP, SHIFT, TAG> {}
 
-impl<
-        T: PartialEq,
-        const CAP1: usize,
-        const SHIFT1: u8,
-        const TAG1: u8,
-        const CAP2: usize,
-        const SHIFT2: u8,
-        const TAG2: u8,
-    > PartialEq<InlineVec<T, CAP1, SHIFT1, TAG1>> for InlineVec<T, CAP2, SHIFT2, TAG2>
-{
-    fn eq(&self, other: &InlineVec<T, CAP1, SHIFT1, TAG1>) -> bool {
-        self.as_slice().eq(other.as_slice())
-    }
-}
-
 macros::trait_impls! {
+    [T, U, const CAP1: usize, const SHIFT1: u8, const TAG1: u8, const CAP2: usize, const SHIFT2: u8, const TAG2: u8]
+    where [T: PartialEq<U>]
+    {
+        PartialEq {
+            InlineVec<T, CAP1, SHIFT1, TAG1>, InlineVec<U, CAP2, SHIFT2, TAG2>;
+        }
+    }
+
+    [T, U, const CAP: usize, const SHIFT: u8, const TAG: u8]
+    where [T: PartialEq<U>]
+    {
+        PartialEq {
+            InlineVec<T, CAP, SHIFT, TAG>, [U];
+            InlineVec<T, CAP, SHIFT, TAG>, &[U];
+            InlineVec<T, CAP, SHIFT, TAG>, &mut [U];
+            InlineVec<T, CAP, SHIFT, TAG>, Vec<U>;
+
+
+            [T], InlineVec<U, CAP, SHIFT, TAG>;
+            &[T], InlineVec<U, CAP, SHIFT, TAG>;
+            &mut [T], InlineVec<U, CAP, SHIFT, TAG>;
+            Vec<T>, InlineVec<U, CAP, SHIFT, TAG>;
+
+        }
+    }
+
+    [T, U, const CAP: usize, const SHIFT: u8, const TAG: u8]
+    where [T: PartialEq<U>, U: Clone]
+    {
+        PartialEq {
+            InlineVec<T, CAP, SHIFT, TAG>, alloc::borrow::Cow<'_, [U]>;
+        }
+    }
+
+    [T, U, const CAP: usize, const SHIFT: u8, const TAG: u8]
+    where [T: PartialEq<U>, T: Clone]
+    {
+        PartialEq {
+            alloc::borrow::Cow<'_, [T]>, InlineVec<U, CAP, SHIFT, TAG>;
+        }
+    }
+
+    [T, U, const CAP: usize, const SHIFT: u8, const TAG: u8, const N: usize]
+    where [T: PartialEq<U>]
+    {
+        PartialEq {
+        [T; N], InlineVec<U, CAP, SHIFT, TAG>;
+        InlineVec<T, CAP, SHIFT, TAG>, [U; N];
+
+        &[T; N], InlineVec<U, CAP, SHIFT, TAG>;
+        InlineVec<T, CAP, SHIFT, TAG>, &[U; N];
+
+        &mut [T; N], InlineVec<U, CAP, SHIFT, TAG>;
+        InlineVec<T, CAP, SHIFT, TAG>, &mut [U; N];
+        }
+    }
+
+    [T, const CAP1: usize, const SHIFT1: u8, const TAG1: u8, const CAP2: usize, const SHIFT2: u8, const TAG2: u8]
+    where [T: PartialOrd]
+    {
+        PartialOrd {
+            InlineVec<T, CAP1, SHIFT1, TAG1>, InlineVec<T, CAP2, SHIFT2, TAG2>;
+        }
+    }
+
     [T, const CAP: usize, const SHIFT: u8, const TAG: u8]
     {
         Vector {
@@ -1338,61 +1388,6 @@ macros::trait_impls! {
         MutVector {
             InlineVec<T, CAP, SHIFT, TAG>;
         }
-    }
-}
-
-macros::partial_eq! {
-    [T, U, const CAP: usize, const SHIFT: u8, const TAG: u8]
-    where [T: PartialEq<U>]
-    {
-        ([T], InlineVec<U, CAP, SHIFT, TAG>);
-        (InlineVec<T, CAP, SHIFT, TAG>, [U]);
-
-        (&[T], InlineVec<U, CAP, SHIFT, TAG>);
-        (InlineVec<T, CAP, SHIFT, TAG>, &[U]);
-
-        (&mut [T], InlineVec<U, CAP, SHIFT, TAG>);
-        (InlineVec<T, CAP, SHIFT, TAG>, &mut [U]);
-
-        (Vec<T>, InlineVec<U, CAP, SHIFT, TAG>);
-        (InlineVec<T, CAP, SHIFT, TAG>, Vec<U>);
-
-    }
-
-    [T, U, const CAP: usize, const SHIFT: u8, const TAG: u8]
-    where [T: PartialEq<U>, T: Clone]
-    (alloc::borrow::Cow<'_, [T]>, InlineVec<U, CAP, SHIFT, TAG>);
-
-    [T, U, const CAP: usize, const SHIFT: u8, const TAG: u8]
-    where [T: PartialEq<U>, U: Clone]
-    (InlineVec<T, CAP, SHIFT, TAG>, alloc::borrow::Cow<'_, [U]>);
-
-    [T, U, const CAP: usize, const SHIFT: u8, const TAG: u8, const N: usize]
-    where [T: PartialEq<U>]
-    {
-        ([T; N], InlineVec<U, CAP, SHIFT, TAG>);
-        (InlineVec<T, CAP, SHIFT, TAG>, [U; N]);
-
-        (&[T; N], InlineVec<U, CAP, SHIFT, TAG>);
-        (InlineVec<T, CAP, SHIFT, TAG>, &[U; N]);
-
-        (&mut [T; N], InlineVec<U, CAP, SHIFT, TAG>);
-        (InlineVec<T, CAP, SHIFT, TAG>, &mut [U; N]);
-    }
-}
-
-impl<
-        T: PartialOrd,
-        const CAP1: usize,
-        const SHIFT1: u8,
-        const TAG1: u8,
-        const CAP2: usize,
-        const SHIFT2: u8,
-        const TAG2: u8,
-    > PartialOrd<InlineVec<T, CAP1, SHIFT1, TAG1>> for InlineVec<T, CAP2, SHIFT2, TAG2>
-{
-    fn partial_cmp(&self, other: &InlineVec<T, CAP1, SHIFT1, TAG1>) -> Option<core::cmp::Ordering> {
-        self.as_slice().partial_cmp(other.as_slice())
     }
 }
 
