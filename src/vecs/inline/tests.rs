@@ -787,4 +787,20 @@ fn from_impls() {
     let inline = InlineVec::<u8, 7>::from(&mut [1, 2, 3]);
     assert_eq!(inline.len(), 3);
     assert_eq!(inline.as_slice(), &[1, 2, 3]);
+
+    let inline = InlineVec::<u8, 7>::from(vec![1, 2, 3]);
+    assert_eq!(inline.len(), 3);
+    assert_eq!(inline.as_slice(), &[1, 2, 3]);
+}
+
+#[test]
+#[should_panic(expected = "new length exceeds capacity")]
+fn from_slice_panic() {
+    let _ = InlineVec::<u8, 7>::from([1, 2, 3, 4, 5, 6, 7, 8].as_slice());
+}
+
+#[test]
+#[should_panic(expected = "vector's length exceeds capacity")]
+fn from_vec_panic() {
+    let _ = InlineVec::<u8, 7>::from(vec![1, 2, 3, 4, 5, 6, 7, 8]);
 }

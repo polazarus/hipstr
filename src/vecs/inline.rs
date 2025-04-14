@@ -176,7 +176,7 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     /// let boxed = vec![1, 2, 3].into_boxed_slice();
     /// let inline = InlineVec::<u8, 7>::from_boxed_slice(boxed);
     /// ```
-    pub fn from_boxed_slice(boxed: Box<[T]>) -> Self {
+    pub(crate) fn from_boxed_slice(boxed: Box<[T]>) -> Self {
         let mut this = Self::new();
         let len = boxed.len();
         assert!(len <= CAP, "boxed slice's length exceeds capacity");
@@ -187,6 +187,21 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
             this.set_len(len);
         }
         let _: Box<[ManuallyDrop<T>]> = unsafe { mem::transmute(boxed) };
+
+        this
+    }
+
+    pub fn from_vec(mut vec: Vec<T>) -> Self {
+        let mut this = Self::new();
+        let len = vec.len();
+        assert!(len <= CAP, "vector's length exceeds capacity");
+
+        unsafe {
+            let ptr = this.data.as_mut_ptr();
+            ptr.copy_from_nonoverlapping(vec.as_ptr().cast(), len);
+            this.set_len(len);
+            vec.set_len(0);
+        }
 
         this
     }
@@ -1431,6 +1446,7 @@ macros::trait_impls! {
     {
         From {
             Box<[T]> => InlineVec<T, CAP, SHIFT, TAG> = Self::from_boxed_slice;
+            Vec<T> => InlineVec<T, CAP, SHIFT, TAG> = Self::from_vec;
         }
     }
 
