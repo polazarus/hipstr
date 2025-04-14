@@ -6,10 +6,11 @@
 //! Particularly space efficient, this implementation may in some case be more
 //! efficient than the standard library vectors.
 
+use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::fmt::{self};
 use core::iter::FusedIterator;
-use core::mem::{ManuallyDrop, MaybeUninit};
+use core::mem::{self, ManuallyDrop, MaybeUninit};
 use core::num::NonZeroU8;
 use core::ops::{Deref, DerefMut, Range, RangeBounds};
 use core::ptr::NonNull;
@@ -158,6 +159,35 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     pub const fn from_array<const N: usize>(array: [T; N]) -> Self {
         let mut this = Self::new();
         this.extend_from_array(array);
+        this
+    }
+
+    /// Creates a new inline vector from a boxed slice by moving the elements.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the boxed slice's length exceeds the capacity of the inline
+    /// vector.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::InlineVec;
+    /// let boxed = vec![1, 2, 3].into_boxed_slice();
+    /// let inline = InlineVec::<u8, 7>::from_boxed_slice(boxed);
+    /// ```
+    pub fn from_boxed_slice(boxed: Box<[T]>) -> Self {
+        let mut this = Self::new();
+        let len = boxed.len();
+        assert!(len <= CAP, "boxed slice's length exceeds capacity");
+
+        unsafe {
+            let ptr = this.data.as_mut_ptr();
+            ptr.copy_from_nonoverlapping(boxed.as_ptr().cast(), len);
+            this.set_len(len);
+        }
+        let _: Box<[ManuallyDrop<T>]> = unsafe { mem::transmute(boxed) };
+
         this
     }
 
@@ -838,7 +868,7 @@ where
     /// assert_eq!(inline.as_slice(), &array);
     /// ```
     #[inline]
-    pub fn from_slice_clone(slice: &[T]) -> Self {
+    pub(crate) fn from_slice_clone(slice: &[T]) -> Self {
         let mut this = Self::new();
         this.extend_from_slice(slice);
         this
@@ -1389,6 +1419,38 @@ macros::trait_impls! {
             InlineVec<T, CAP, SHIFT, TAG>;
         }
     }
+
+    [T, const CAP: usize, const SHIFT: u8, const TAG: u8, const N: usize]
+    {
+        From {
+            [T; N] => InlineVec<T, CAP, SHIFT, TAG> = Self::from_array;
+        }
+    }
+
+    [T, const CAP: usize, const SHIFT: u8, const TAG: u8]
+    {
+        From {
+            Box<[T]> => InlineVec<T, CAP, SHIFT, TAG> = Self::from_boxed_slice;
+        }
+    }
+
+    [T, const CAP: usize, const SHIFT: u8, const TAG: u8]
+    where [T: Clone]
+    {
+        From {
+            &[T] => InlineVec<T, CAP, SHIFT, TAG> = Self::from_slice_clone;
+            &mut [T] => InlineVec<T, CAP, SHIFT, TAG> = Self::from_slice_clone;
+        }
+    }
+
+    [T, const CAP: usize, const SHIFT: u8, const TAG: u8, const N: usize]
+    where [T: Clone]
+    {
+        From {
+            &[T; N] => InlineVec<T, CAP, SHIFT, TAG> = Self::from_slice_clone;
+            &mut [T; N] => InlineVec<T, CAP, SHIFT, TAG> = Self::from_slice_clone;
+        }
+    }
 }
 
 impl<T: Ord, const CAP: usize, const SHIFT: u8, const TAG: u8> Ord
@@ -1489,8 +1551,6 @@ impl<T> fmt::Display for InsertError<T> {
 ///   let v4: InlineVec<u8, 7> = inline_vec![0; 7];
 ///   assert_eq!(v4, [0, 0, 0, 0, 0, 0, 0]);
 ///   ```
-///
-/// This macro is a convenience wrapper around [`InlineVec::from_array`].
 #[macro_export]
 macro_rules! inline_vec {
     [$cap:expr => $($e:expr),* $(,)?] => {

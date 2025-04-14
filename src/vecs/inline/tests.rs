@@ -760,3 +760,31 @@ fn from_iter_overflows() {
     assert_eq!(inline.len(), 8);
     assert_eq!(inline.as_slice(), &[1, 2, 3, 4, 5, 6, 7, 8]);
 }
+
+#[test]
+fn from_impls() {
+    let boxed: Box<[u8]> = Box::new([1, 2, 3]);
+    let inline = InlineVec::<u8, SMALL_CAP>::from(boxed);
+    assert_eq!(inline.len(), 3);
+    assert_eq!(inline.as_slice(), &[1, 2, 3]);
+
+    let inline = InlineVec::<u8, 7>::from([1, 2, 3]);
+    assert_eq!(inline.len(), 3);
+    assert_eq!(inline.as_slice(), &[1, 2, 3]);
+
+    let inline = InlineVec::<u8, 7>::from([1, 2, 3].as_slice());
+    assert_eq!(inline.len(), 3);
+    assert_eq!(inline.as_slice(), &[1, 2, 3]);
+
+    let inline = InlineVec::<u8, 7>::from([1, 2, 3].as_mut_slice());
+    assert_eq!(inline.len(), 3);
+    assert_eq!(inline.as_slice(), &[1, 2, 3]);
+
+    let inline = InlineVec::<u8, 7>::from(&[1, 2, 3]);
+    assert_eq!(inline.len(), 3);
+    assert_eq!(inline.as_slice(), &[1, 2, 3]);
+
+    let inline = InlineVec::<u8, 7>::from(&mut [1, 2, 3]);
+    assert_eq!(inline.len(), 3);
+    assert_eq!(inline.as_slice(), &[1, 2, 3]);
+}
