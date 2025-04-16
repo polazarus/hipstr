@@ -462,7 +462,7 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     /// assert!(inline2.is_empty());
     /// inline1.append(&mut vec);
     /// assert_eq!(inline1, [1, 2, 3, 4, 5, 6]);
-    /// assert_eq!(vec.is_empty());
+    /// assert!(vec.is_empty());
     /// ```
     pub fn append(&mut self, other: &mut impl traits::MutVector<Item = T>) {
         let len = self.len();
@@ -497,7 +497,7 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     /// assert!(inline2.is_empty());
     /// inline1.const_append(&mut vec);
     /// assert_eq!(inline1, [1, 2, 3, 4, 5, 6]);
-    /// assert_eq!(vec.is_empty());
+    /// assert!(vec.is_empty());
     /// ```
     pub const fn const_append<const CAP2: usize, const SHIFT2: u8, const TAG2: u8>(
         &mut self,
