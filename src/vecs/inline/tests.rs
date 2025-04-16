@@ -694,6 +694,16 @@ fn const_append() {
 }
 
 #[test]
+#[should_panic(expected = "new length exceeds capacity")]
+fn const_append_panic() {
+    let mut inline1 = InlineVec::<u8, 7>::from_array([1, 2, 3]);
+    let mut inline2 = InlineVec::<u8, 7>::from_array([4, 5, 6, 7, 8]);
+    assert_eq!(inline1.len(), 3);
+    assert_eq!(inline2.len(), 5);
+    inline1.const_append(&mut inline2);
+}
+
+#[test]
 fn extend_from_within() {
     let mut inline = InlineVec::<u8, 7>::from_array([1, 2, 3]);
     inline.extend_from_within(..);
