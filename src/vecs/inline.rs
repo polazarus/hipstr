@@ -900,15 +900,6 @@ where
     ///
     /// Panics if the length of the slice exceeds the capacity of the inline
     /// vector.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use hipstr::vecs::InlineVec;
-    /// let array = [Box::new(1), Box::new(2), Box::new(3)];
-    /// let inline = InlineVec::<Box<u8>, 7>::from_slice_clone(&array);
-    /// assert_eq!(inline.as_slice(), &array);
-    /// ```
     #[inline]
     pub(crate) fn from_slice_clone(slice: &[T]) -> Self {
         let mut this = Self::new();
