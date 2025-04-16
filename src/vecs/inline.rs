@@ -502,13 +502,9 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     /// use hipstr::inline_vec;
     /// let mut inline1 = inline_vec![7 => 1_u8, 2];
     /// let mut inline2 = inline_vec![7 => 3_u8, 4];
-    /// let mut vec = vec![5 , 6];
     /// inline1.const_append(&mut inline2);
     /// assert_eq!(inline1, [1, 2, 3, 4]);
     /// assert!(inline2.is_empty());
-    /// inline1.const_append(&mut vec);
-    /// assert_eq!(inline1, [1, 2, 3, 4, 5, 6]);
-    /// assert!(vec.is_empty());
     /// ```
     pub const fn const_append<const CAP2: usize, const SHIFT2: u8, const TAG2: u8>(
         &mut self,
