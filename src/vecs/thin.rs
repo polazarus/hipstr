@@ -197,6 +197,24 @@ where
         this
     }
 
+    pub(crate) fn from_iter(iterable: impl IntoIterator<Item = T>) -> Self {
+        let iter = iterable.into_iter();
+        let min = iter.size_hint().0;
+        let mut this = Self::with_capacity(min);
+
+        for (i, value) in iter.enumerate() {
+            if i >= min {
+                this.reserve(1);
+            }
+            // SAFETY: the capacity is updated if necessary above
+            unsafe {
+                this.ptr().add(i).write(value);
+                this.set_len(i + 1);
+            }
+        }
+        this
+    }
+
     /// Creates a new thin vector with the given prefix.
     #[inline]
     pub fn new() -> Self {
@@ -1262,6 +1280,9 @@ macros::trait_impls! {
         }
     }
     [T, P] where [P: Default] {
+        FromIterator {
+            T => ThinVec<T, P> = ThinVec::from_iter;
+        }
         From {
             Box<[T]> => ThinVec<T, P> = Self::from_boxed_slice;
             Vec<T> => ThinVec<T, P> = Self::from_mut_vector;

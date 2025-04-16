@@ -61,6 +61,16 @@ macro_rules! trait_impls {
         $crate::macros::trait_impls!(@From $([ $($gen)* ] $( where [ $($wh)* ])? )? { $($rest)* });
     };
 
+    (@FromIterator $([ $($gen:tt)* ] $( where [ $($wh:tt)* ])? )? { }) => {};
+    (@FromIterator $([ $($gen:tt)* ] $( where [ $($wh:tt)* ])? )? { $el:ty => $t:ty = $f:path; $($rest:tt)* }) => {
+        impl $(< $($gen)* >)? FromIterator<$el> for $t $($(where $($wh)*)?)? {
+            fn from_iter<T001: IntoIterator<Item = $el>>(iter: T001) -> Self {
+                $f(iter)
+            }
+        }
+        $crate::macros::trait_impls!(@FromIterator $([ $($gen)* ] $( where [ $($wh)* ])? )? { $($rest)* });
+    };
+
     (@Debug $([ $($gen:tt)* ] $( where [ $($wh:tt)* ])? )? { }) => {};
     (@Debug $([ $($gen:tt)* ] $( where [ $($wh:tt)* ])? )? { $t:ty ; $($rest:tt)* }) => {
         impl $(< $($gen)* >)? core::fmt::Debug for $t $($(where $($wh)*)?)? {

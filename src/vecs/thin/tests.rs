@@ -706,3 +706,12 @@ fn layout() {
     assert!(ThinVec::<u8>::layout(usize::MAX).is_none());
     assert!(ThinVec::<u128>::layout(usize::MAX / size_of::<u128>()).is_none());
 }
+
+#[test]
+fn from_iterator() {
+    let v: ThinVec<_> = (1..=10).collect();
+    assert_eq!(v.as_slice(), &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+
+    let v: ThinVec<_> = (1..=10).filter(|x| *x % 2 == 0).collect();
+    assert_eq!(v.as_slice(), &[2, 4, 6, 8, 10]);
+}

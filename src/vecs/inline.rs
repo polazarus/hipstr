@@ -205,6 +205,17 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
         this
     }
 
+    pub(crate) fn from_iter(iterable: impl IntoIterator<Item = T>) -> Self {
+        let iter = iterable.into_iter();
+        let min = iter.size_hint().0;
+        assert!(min <= CAP, "iterator's minimal length exceeds capacity");
+        let mut this = Self::new();
+        for item in iter {
+            this.push(item);
+        }
+        this
+    }
+
     /// Returns the length of the inline vector.
     #[inline]
     pub const fn len(&self) -> usize {
@@ -1268,25 +1279,6 @@ impl<T: hash::Hash, const CAP: usize, const SHIFT: u8, const TAG: u8> hash::Hash
     }
 }
 
-impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> FromIterator<T>
-    for InlineVec<T, CAP, SHIFT, TAG>
-{
-    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
-        // May be improve by specialization if Rust offers it one day. Is it
-        // worth it for such small sized vectors?
-        //
-        // Also if one day, Rust can collect into an array (and specialized it),
-        // we can use that to collect directly into the inline vector
-
-        let iter = iter.into_iter();
-        let mut this = Self::new();
-        for item in iter {
-            this.push(item);
-        }
-        this
-    }
-}
-
 impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> Extend<T>
     for InlineVec<T, CAP, SHIFT, TAG>
 {
@@ -1470,6 +1462,9 @@ macros::trait_impls! {
 
     [T, const CAP: usize, const SHIFT: u8, const TAG: u8]
     {
+        FromIterator {
+            T => InlineVec<T, CAP, SHIFT, TAG> = Self::from_iter;
+        }
         From {
             Box<[T]> => InlineVec<T, CAP, SHIFT, TAG> = Self::from_boxed_slice;
             Vec<T> => InlineVec<T, CAP, SHIFT, TAG> = Self::from_mut_vector;

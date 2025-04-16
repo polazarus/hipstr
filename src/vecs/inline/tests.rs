@@ -770,15 +770,15 @@ fn extend_overflows() {
 
 #[test]
 fn from_iter() {
-    let inline = InlineVec::<u8, SMALL_CAP>::from_iter([1, 2, 3]);
+    let inline: InlineVec<u8, SMALL_CAP> = [1, 2, 3].into_iter().collect();
     assert_eq!(inline.len(), 3);
     assert_eq!(inline.as_slice(), &[1, 2, 3]);
 }
 
 #[test]
-#[should_panic(expected = "inline vector is full")]
+#[should_panic(expected = "iterator's minimal length exceeds capacity")]
 fn from_iter_overflows() {
-    let inline = InlineVec::<u8, SMALL_CAP>::from_iter([1, 2, 3, 4, 5, 6, 7, 8]);
+    let inline: InlineVec<u8, SMALL_CAP> = (1..=8).into_iter().collect();
     assert_eq!(inline.len(), 8);
     assert_eq!(inline.as_slice(), &[1, 2, 3, 4, 5, 6, 7, 8]);
 }
