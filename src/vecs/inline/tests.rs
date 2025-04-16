@@ -837,6 +837,13 @@ fn from_impls() {
 }
 
 #[test]
+#[should_panic(expected = "boxed slice's length exceeds capacity")]
+fn from_boxed_slice_panic() {
+    let boxed: Box<[_]> = Box::new([1, 2, 3, 4, 5, 6, 7, 8]);
+    let _ = InlineVec::<u8, 7>::from(boxed);
+}
+
+#[test]
 #[should_panic(expected = "new length exceeds capacity")]
 fn from_slice_panic() {
     let _ = InlineVec::<u8, 7>::from([1, 2, 3, 4, 5, 6, 7, 8].as_slice());
