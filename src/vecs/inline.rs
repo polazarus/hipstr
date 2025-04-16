@@ -6,17 +6,19 @@
 //! Particularly space efficient, this implementation may in some case be more
 //! efficient than the standard library vectors.
 
+use alloc::borrow::Cow;
+use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::fmt::{self};
 use core::iter::FusedIterator;
-use core::mem::{ManuallyDrop, MaybeUninit};
+use core::mem::{self, ManuallyDrop, MaybeUninit};
 use core::num::NonZeroU8;
 use core::ops::{Deref, DerefMut, Range, RangeBounds};
 use core::ptr::NonNull;
 use core::{error, hash, slice};
 
 use crate::common::drain::Drain;
-use crate::common::panic_display;
+use crate::common::{panic_display, traits};
 use crate::{common, macros};
 
 #[cfg(test)]
@@ -158,6 +160,59 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     pub const fn from_array<const N: usize>(array: [T; N]) -> Self {
         let mut this = Self::new();
         this.extend_from_array(array);
+        this
+    }
+
+    /// Creates a new inline vector from a boxed slice by moving the elements.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the boxed slice's length exceeds the capacity of the inline
+    /// vector.
+    pub(crate) fn from_boxed_slice(boxed: Box<[T]>) -> Self {
+        let mut this = Self::new();
+        let len = boxed.len();
+        assert!(len <= CAP, "boxed slice's length exceeds capacity");
+
+        unsafe {
+            // move the box content to the inline vector
+            let ptr = this.data.as_mut_ptr();
+            ptr.copy_from_nonoverlapping(boxed.as_ptr().cast(), len);
+
+            // update the inline vector length
+            this.set_len(len);
+        }
+
+        // drop the box without dropping the moved content
+        // SAFETY: ManuallyDrop is a transparent wrapper
+        let _: Box<[ManuallyDrop<T>]> = unsafe { mem::transmute(boxed) };
+
+        this
+    }
+
+    pub(crate) fn from_mut_vector(mut vec: impl traits::MutVector<Item = T>) -> Self {
+        let mut this = Self::new();
+        let len = vec.len();
+        assert!(len <= CAP, "vector's length exceeds capacity");
+
+        unsafe {
+            let ptr = this.data.as_mut_ptr();
+            ptr.copy_from_nonoverlapping(vec.as_ptr().cast(), len);
+            this.set_len(len);
+            vec.set_len(0);
+        }
+
+        this
+    }
+
+    pub(crate) fn from_iter(iterable: impl IntoIterator<Item = T>) -> Self {
+        let iter = iterable.into_iter();
+        let min = iter.size_hint().0;
+        assert!(min <= CAP, "iterator's minimal length exceeds capacity");
+        let mut this = Self::new();
+        for item in iter {
+            this.push(item);
+        }
         this
     }
 
@@ -412,25 +467,30 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     /// use hipstr::inline_vec;
     /// let mut inline1 = inline_vec![7 => 1_u8, 2];
     /// let mut inline2 = inline_vec![7 => 3_u8, 4];
+    /// let mut vec = vec![5 , 6];
     /// inline1.append(&mut inline2);
     /// assert_eq!(inline1, [1, 2, 3, 4]);
-    /// assert_eq!(inline2.len(), 0);
+    /// assert!(inline2.is_empty());
+    /// inline1.append(&mut vec);
+    /// assert_eq!(inline1, [1, 2, 3, 4, 5, 6]);
+    /// assert!(vec.is_empty());
     /// ```
-    pub const fn append(&mut self, other: &mut Self) {
+    pub fn append(&mut self, other: &mut impl traits::MutVector<Item = T>) {
         let len = self.len();
         let other_len = other.len();
         assert!(len + other_len <= CAP, "new length exceeds capacity");
         unsafe {
-            self.data
-                .as_mut_ptr()
-                .add(len)
-                .copy_from_nonoverlapping(other.data.as_ptr(), other_len);
+            self.append_raw(other.as_non_null(), other_len);
             other.set_len(0);
-            self.set_len(len + other_len);
         }
     }
 
     /// Moves all the elements of `other` into `self`, leaving `other` empty.
+    ///
+    /// This function is similar to [`append`] but is designed to be used in
+    /// constant contexts.
+    ///
+    /// [`append`]: Self::append
     ///
     /// # Panics
     ///
@@ -440,23 +500,31 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     ///
     /// ```
     /// use hipstr::inline_vec;
-    /// let mut inline = inline_vec![7 => 1_u8, 2];
-    /// let mut v = vec![3, 4, 5];
-    /// inline.append_vec(&mut v);
-    /// assert_eq!(inline, [1, 2, 3, 4, 5]);
-    /// assert_eq!(v.len(), 0);
+    /// let mut inline1 = inline_vec![7 => 1_u8, 2];
+    /// let mut inline2 = inline_vec![7 => 3_u8, 4];
+    /// inline1.const_append(&mut inline2);
+    /// assert_eq!(inline1, [1, 2, 3, 4]);
+    /// assert!(inline2.is_empty());
     /// ```
-    pub fn append_vec(&mut self, other: &mut Vec<T>) {
+    pub const fn const_append<const CAP2: usize, const SHIFT2: u8, const TAG2: u8>(
+        &mut self,
+        other: &mut InlineVec<T, CAP2, SHIFT2, TAG2>,
+    ) {
         let len = self.len();
         let other_len = other.len();
         assert!(len + other_len <= CAP, "new length exceeds capacity");
         unsafe {
-            self.data
-                .as_mut_ptr()
-                .add(len)
-                .copy_from_nonoverlapping(other.as_ptr().cast(), other_len);
+            self.append_raw(other.as_non_null(), other_len);
             other.set_len(0);
-            self.set_len(len + other_len);
+        }
+    }
+
+    const unsafe fn append_raw(&mut self, ptr: NonNull<T>, len: usize) {
+        let old_len = self.len();
+        unsafe {
+            let dst = self.as_non_null().add(old_len);
+            dst.copy_from_nonoverlapping(ptr, len);
+            self.set_len(old_len + len);
         }
     }
 
@@ -828,20 +896,21 @@ where
     ///
     /// Panics if the length of the slice exceeds the capacity of the inline
     /// vector.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use hipstr::vecs::InlineVec;
-    /// let array = [Box::new(1), Box::new(2), Box::new(3)];
-    /// let inline = InlineVec::<Box<u8>, 7>::from_slice_clone(&array);
-    /// assert_eq!(inline.as_slice(), &array);
-    /// ```
     #[inline]
-    pub fn from_slice_clone(slice: &[T]) -> Self {
+    pub(crate) fn from_slice_clone(slice: &[T]) -> Self {
         let mut this = Self::new();
         this.extend_from_slice(slice);
         this
+    }
+
+    pub(crate) fn from_cow(cow: Cow<'_, [T]>) -> Self
+    where
+        T: Clone,
+    {
+        match cow {
+            Cow::Borrowed(slice) => Self::from_slice_clone(slice),
+            Cow::Owned(vec) => Self::from_mut_vector(vec),
+        }
     }
 
     /// Appends a slice of elements to the inline vector.
@@ -1197,25 +1266,6 @@ impl<T: hash::Hash, const CAP: usize, const SHIFT: u8, const TAG: u8> hash::Hash
     }
 }
 
-impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> FromIterator<T>
-    for InlineVec<T, CAP, SHIFT, TAG>
-{
-    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
-        // May be improve by specialization if Rust offers it one day. Is it
-        // worth it for such small sized vectors?
-        //
-        // Also if one day, Rust can collect into an array (and specialized it),
-        // we can use that to collect directly into the inline vector
-
-        let iter = iter.into_iter();
-        let mut this = Self::new();
-        for item in iter {
-            this.push(item);
-        }
-        this
-    }
-}
-
 impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> Extend<T>
     for InlineVec<T, CAP, SHIFT, TAG>
 {
@@ -1389,6 +1439,50 @@ macros::trait_impls! {
             InlineVec<T, CAP, SHIFT, TAG>;
         }
     }
+
+    [T, const CAP: usize, const SHIFT: u8, const TAG: u8, const N: usize]
+    {
+        From {
+            [T; N] => InlineVec<T, CAP, SHIFT, TAG> = Self::from_array;
+        }
+    }
+
+    [T, const CAP: usize, const SHIFT: u8, const TAG: u8]
+    {
+        FromIterator {
+            T => InlineVec<T, CAP, SHIFT, TAG> = Self::from_iter;
+        }
+        From {
+            Box<[T]> => InlineVec<T, CAP, SHIFT, TAG> = Self::from_boxed_slice;
+            Vec<T> => InlineVec<T, CAP, SHIFT, TAG> = Self::from_mut_vector;
+        }
+    }
+
+    [T, P, const CAP: usize, const SHIFT: u8, const TAG: u8]
+    {
+        From {
+            super::thin::ThinVec<T, P> => InlineVec<T, CAP, SHIFT, TAG> = Self::from_mut_vector;
+        }
+    }
+
+    [T, const CAP: usize, const SHIFT: u8, const TAG: u8]
+    where [T: Clone]
+    {
+        From {
+            &[T] => InlineVec<T, CAP, SHIFT, TAG> = Self::from_slice_clone;
+            &mut [T] => InlineVec<T, CAP, SHIFT, TAG> = Self::from_slice_clone;
+            Cow<'_, [T]> => InlineVec<T, CAP, SHIFT, TAG> = Self::from_cow;
+        }
+    }
+
+    [T, const CAP: usize, const SHIFT: u8, const TAG: u8, const N: usize]
+    where [T: Clone]
+    {
+        From {
+            &[T; N] => InlineVec<T, CAP, SHIFT, TAG> = Self::from_slice_clone;
+            &mut [T; N] => InlineVec<T, CAP, SHIFT, TAG> = Self::from_slice_clone;
+        }
+    }
 }
 
 impl<T: Ord, const CAP: usize, const SHIFT: u8, const TAG: u8> Ord
@@ -1489,8 +1583,6 @@ impl<T> fmt::Display for InsertError<T> {
 ///   let v4: InlineVec<u8, 7> = inline_vec![0; 7];
 ///   assert_eq!(v4, [0, 0, 0, 0, 0, 0, 0]);
 ///   ```
-///
-/// This macro is a convenience wrapper around [`InlineVec::from_array`].
 #[macro_export]
 macro_rules! inline_vec {
     [$cap:expr => $($e:expr),* $(,)?] => {

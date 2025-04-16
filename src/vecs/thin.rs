@@ -2,10 +2,12 @@
 #![allow(unused)]
 
 use alloc::alloc::{alloc, dealloc, realloc, Layout};
+use alloc::borrow::Cow;
+use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::iter::FusedIterator;
 use core::marker::PhantomData;
-use core::mem::MaybeUninit;
+use core::mem::{ManuallyDrop, MaybeUninit};
 use core::ops::{Bound, Range, RangeBounds};
 use core::ptr::NonNull;
 use core::{cmp, fmt, mem, ops, panic, ptr, slice};
@@ -132,6 +134,18 @@ where
         this
     }
 
+    /// Creates a new thin vector from a copy-on-write slice of elements,
+    /// possibly cloning elements if borrowed.
+    pub(crate) fn from_cow(cow: Cow<'_, [T]>) -> Self
+    where
+        T: Clone,
+    {
+        match cow {
+            Cow::Borrowed(slice) => Self::from_slice_clone(slice),
+            Cow::Owned(vec) => Self::from_mut_vector(vec),
+        }
+    }
+
     /// Creates a new thin vector from an array of elements by copying the
     /// elements.
     #[inline]
@@ -143,6 +157,62 @@ where
             this.set_len(N);
             this
         }
+    }
+
+    #[inline]
+    pub(crate) fn from_boxed_slice(boxed: Box<[T]>) -> Self {
+        let len = boxed.len();
+        let mut this = Self::with_capacity(len);
+
+        // SAFETY:
+        // - `boxed` is a valid pointer to a slice of `T` and length `len`
+        // - `this` has a capacity >= `len`
+        unsafe {
+            // move the box's content to `this`
+            this.ptr()
+                .as_ptr()
+                .copy_from_nonoverlapping(boxed.as_ptr(), len);
+
+            // update the length
+            this.set_len(len);
+        }
+
+        // drop the box without dropping the moved content
+        // SAFETY: ManuallyDrop is a transparent wrapper
+        let _: Box<[ManuallyDrop<T>]> = unsafe { mem::transmute(boxed) };
+
+        this
+    }
+
+    /// Creates a new thin vector from a vector.
+    #[inline]
+    pub(crate) fn from_mut_vector(mut vec: impl traits::MutVector<Item = T>) -> Self {
+        let len = vec.len();
+        let mut this = Self::with_capacity(len);
+        unsafe {
+            this.ptr().copy_from_nonoverlapping(vec.as_non_null(), len);
+            vec.set_len(0);
+            this.set_len(len);
+        }
+        this
+    }
+
+    pub(crate) fn from_iter(iterable: impl IntoIterator<Item = T>) -> Self {
+        let iter = iterable.into_iter();
+        let min = iter.size_hint().0;
+        let mut this = Self::with_capacity(min);
+
+        for (i, value) in iter.enumerate() {
+            if i >= min {
+                this.reserve(1);
+            }
+            // SAFETY: the capacity is updated if necessary above
+            unsafe {
+                this.ptr().add(i).write(value);
+                this.set_len(i + 1);
+            }
+        }
+        this
     }
 
     /// Creates a new thin vector with the given prefix.
@@ -800,7 +870,7 @@ impl<T, P> ThinVec<T, P> {
     /// assert_eq!(v, [1, 2, 3, 4, 5, 6]);
     /// assert_eq!(w, []);
     /// ```
-    pub fn append<V: traits::MutVector<Item = T>>(&mut self, other: &mut V) {
+    pub fn append(&mut self, other: &mut impl traits::MutVector<Item = T>) {
         unsafe {
             self.append_raw(other.as_non_null(), other.len());
             other.set_len(0);
@@ -812,7 +882,7 @@ impl<T, P> ThinVec<T, P> {
         let old_len = self.len();
         unsafe {
             let dst = self.ptr().add(old_len);
-            dst.copy_from(ptr, len);
+            dst.copy_from_nonoverlapping(ptr, len);
             self.set_len(old_len + len);
         }
     }
@@ -1193,12 +1263,37 @@ macros::trait_impls! {
     [T, P] where [T: Clone, P: Default] {
         From {
             &[T] => ThinVec<T, P> = ThinVec::from_slice_clone;
+            &mut [T] => ThinVec<T, P> = ThinVec::from_slice_clone;
+            Cow<'_, [T]> => ThinVec<T, P> = ThinVec::from_cow;
+        }
+    }
+    [T, P, const N: usize] where [ T:Clone, P: Default] {
+        From {
+            &[T; N] => ThinVec<T, P> = ThinVec::from_slice_clone;
+            &mut [T; N] => ThinVec<T, P> = ThinVec::from_slice_clone;
         }
     }
 
     [T, P, const N: usize] where [P: Default] {
         From {
             [T; N] => ThinVec<T, P> = ThinVec::from_array;
+        }
+    }
+    [T, P] where [P: Default] {
+        FromIterator {
+            T => ThinVec<T, P> = ThinVec::from_iter;
+        }
+        From {
+            Box<[T]> => ThinVec<T, P> = Self::from_boxed_slice;
+            Vec<T> => ThinVec<T, P> = Self::from_mut_vector;
+        }
+    }
+
+    [T, P, const CAP: usize, const SHIFT: u8, const TAG: u8]
+    where [P: Default]
+    {
+        From {
+            super::inline::InlineVec<T, CAP, SHIFT, TAG> => ThinVec<T, P> = Self::from_mut_vector;
         }
     }
 
@@ -1233,11 +1328,7 @@ macros::trait_impls! {
     [T, P] where [T: PartialOrd] {
         PartialOrd {
             ThinVec<T, P>;
-        }
-    }
 
-    [T, P] where [T: PartialOrd] {
-        PartialOrd {
             Vec<T>, ThinVec<T, P>;
             ThinVec<T, P>, Vec<T>;
 
