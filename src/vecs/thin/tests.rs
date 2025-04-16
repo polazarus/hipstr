@@ -28,6 +28,28 @@ fn new() {
 }
 
 #[test]
+fn froms() {
+    let v = ThinVec::from([1, 2, 3]);
+    assert_eq!(v.as_slice(), &[1, 2, 3]);
+
+    let v = ThinVec::from(vec![1, 2, 3]);
+    assert_eq!(v.as_slice(), &[1, 2, 3]);
+
+    let v = ThinVec::from(crate::inline_vec![7 => 1, 2, 3]);
+    assert_eq!(v.as_slice(), &[1, 2, 3]);
+
+    let arr = [Box::new(1)];
+    let p = &raw const *arr[0];
+    let v = ThinVec::from(arr);
+    assert_eq!(&raw const *v[0], p);
+
+    let vec = vec![Box::new(1)];
+    let p = &raw const *vec[0];
+    let v = ThinVec::from(vec);
+    assert_eq!(&raw const *v[0], p);
+}
+
+#[test]
 fn from_array() {
     let array: [_; 10] = core::array::from_fn(|i| Box::new(i));
     let _ = ThinVec::from_array(array);

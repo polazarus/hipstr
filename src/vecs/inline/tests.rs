@@ -5,7 +5,7 @@ use core::mem::size_of;
 use core::ptr;
 
 use super::*;
-use crate::inline_vec;
+use crate::{inline_vec, thin_vec};
 
 const SMALL_CAP: usize = 7;
 const SMALL_FULL: InlineVec<u8, SMALL_CAP> = InlineVec::from_array([1, 2, 3, 4, 5, 6, 7]);
@@ -653,6 +653,20 @@ fn append() {
     assert_eq!(inline.as_slice(), &[1, 2, 3, 4, 5, 6]);
     assert_eq!(inline.len(), 6);
     assert_eq!(inline2.len(), 0);
+
+    let mut inline = InlineVec::<u8, 7>::from_array([1, 2, 3]);
+    let mut v = vec![4, 5, 6];
+    inline.append(&mut v);
+    assert_eq!(inline.as_slice(), &[1, 2, 3, 4, 5, 6]);
+    assert_eq!(inline.len(), 6);
+    assert_eq!(v.len(), 0);
+
+    let mut inline = InlineVec::<u8, 7>::from_array([1, 2, 3]);
+    let mut v = thin_vec![4, 5, 6];
+    inline.append(&mut v);
+    assert_eq!(inline.as_slice(), &[1, 2, 3, 4, 5, 6]);
+    assert_eq!(inline.len(), 6);
+    assert_eq!(v.len(), 0);
 }
 
 #[test]
@@ -664,21 +678,22 @@ fn append_overflows() {
 }
 
 #[test]
-fn append_vec() {
-    let mut inline = InlineVec::<u8, 7>::from_array([1, 2, 3]);
-    let mut v = vec![4, 5, 6];
-    inline.append_vec(&mut v);
-    assert_eq!(inline.as_slice(), &[1, 2, 3, 4, 5, 6]);
-    assert_eq!(inline.len(), 6);
-    assert_eq!(v.len(), 0);
-}
-
-#[test]
 #[should_panic(expected = "new length exceeds capacity")]
 fn append_vec_overflows() {
     let mut inline = InlineVec::<u8, 7>::from_array([1, 2, 3, 4]);
     let mut v = vec![5, 6, 7, 8];
-    inline.append_vec(&mut v);
+    inline.append(&mut v);
+}
+#[test]
+fn const_append() {
+    let (inline1, inline2) = const {
+        let mut inline1 = InlineVec::<u8, 7>::from_array([1, 2, 3]);
+        let mut inline2 = InlineVec::<u8, 7>::from_array([4, 5, 6]);
+        inline1.const_append(&mut inline2);
+        (inline1, inline2)
+    };
+    assert_eq!(inline1.len(), 6);
+    assert_eq!(inline2.len(), 0);
 }
 
 #[test]
@@ -789,6 +804,10 @@ fn from_impls() {
     assert_eq!(inline.as_slice(), &[1, 2, 3]);
 
     let inline = InlineVec::<u8, 7>::from(vec![1, 2, 3]);
+    assert_eq!(inline.len(), 3);
+    assert_eq!(inline.as_slice(), &[1, 2, 3]);
+
+    let inline = InlineVec::<u8, 7>::from(thin_vec![1, 2, 3]);
     assert_eq!(inline.len(), 3);
     assert_eq!(inline.as_slice(), &[1, 2, 3]);
 }

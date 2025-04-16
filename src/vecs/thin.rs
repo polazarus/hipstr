@@ -145,6 +145,19 @@ where
         }
     }
 
+    /// Creates a new thin vector from a vector.
+    #[inline]
+    pub(crate) fn from_mut_vector(mut vec: impl traits::MutVector<Item = T>) -> Self {
+        let len = vec.len();
+        let mut this = Self::with_capacity(len);
+        unsafe {
+            this.ptr().copy_from_nonoverlapping(vec.as_non_null(), len);
+            vec.set_len(0);
+            this.set_len(len);
+        }
+        this
+    }
+
     /// Creates a new thin vector with the given prefix.
     #[inline]
     pub fn new() -> Self {
@@ -800,7 +813,7 @@ impl<T, P> ThinVec<T, P> {
     /// assert_eq!(v, [1, 2, 3, 4, 5, 6]);
     /// assert_eq!(w, []);
     /// ```
-    pub fn append<V: traits::MutVector<Item = T>>(&mut self, other: &mut V) {
+    pub fn append(&mut self, other: &mut impl traits::MutVector<Item = T>) {
         unsafe {
             self.append_raw(other.as_non_null(), other.len());
             other.set_len(0);
@@ -812,7 +825,7 @@ impl<T, P> ThinVec<T, P> {
         let old_len = self.len();
         unsafe {
             let dst = self.ptr().add(old_len);
-            dst.copy_from(ptr, len);
+            dst.copy_from_nonoverlapping(ptr, len);
             self.set_len(old_len + len);
         }
     }
@@ -1199,6 +1212,19 @@ macros::trait_impls! {
     [T, P, const N: usize] where [P: Default] {
         From {
             [T; N] => ThinVec<T, P> = ThinVec::from_array;
+        }
+    }
+    [T, P] where [P: Default] {
+        From {
+            Vec<T> => ThinVec<T, P> = ThinVec::from_mut_vector;
+        }
+    }
+
+    [T, P, const CAP: usize, const SHIFT: u8, const TAG: u8]
+    where [P: Default]
+    {
+        From {
+            super::inline::InlineVec<T, CAP, SHIFT, TAG> => ThinVec<T, P> = Self::from_mut_vector;
         }
     }
 
