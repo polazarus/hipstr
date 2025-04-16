@@ -686,12 +686,9 @@ fn append_vec_overflows() {
 }
 #[test]
 fn const_append() {
-    let (inline1, inline2) = const {
-        let mut inline1 = InlineVec::<u8, 7>::from_array([1, 2, 3]);
-        let mut inline2 = InlineVec::<u8, 7>::from_array([4, 5, 6]);
-        inline1.const_append(&mut inline2);
-        (inline1, inline2)
-    };
+    let mut inline1 = InlineVec::<u8, 7>::from_array([1, 2, 3]);
+    let mut inline2 = InlineVec::<u8, 7>::from_array([4, 5, 6]);
+    inline1.const_append(&mut inline2);
     assert_eq!(inline1.len(), 6);
     assert_eq!(inline2.len(), 0);
 }

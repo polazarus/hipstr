@@ -462,10 +462,8 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
         let other_len = other.len();
         assert!(len + other_len <= CAP, "new length exceeds capacity");
         unsafe {
-            let dst = self.as_non_null().add(len);
-            dst.copy_from_nonoverlapping(other.as_non_null(), other_len);
+            self.append_raw(other.as_non_null(), other_len);
             other.set_len(0);
-            self.set_len(len + other_len);
         }
     }
 
