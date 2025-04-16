@@ -6,6 +6,7 @@
 //! Particularly space efficient, this implementation may in some case be more
 //! efficient than the standard library vectors.
 
+use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::fmt::{self};
@@ -174,10 +175,16 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
         assert!(len <= CAP, "boxed slice's length exceeds capacity");
 
         unsafe {
+            // move the box content to the inline vector
             let ptr = this.data.as_mut_ptr();
             ptr.copy_from_nonoverlapping(boxed.as_ptr().cast(), len);
+
+            // update the inline vector length
             this.set_len(len);
         }
+
+        // drop the box without dropping the moved content
+        // SAFETY: ManuallyDrop is a transparent wrapper
         let _: Box<[ManuallyDrop<T>]> = unsafe { mem::transmute(boxed) };
 
         this
@@ -898,6 +905,16 @@ where
         this
     }
 
+    pub(crate) fn from_cow(cow: Cow<'_, [T]>) -> Self
+    where
+        T: Clone,
+    {
+        match cow {
+            Cow::Borrowed(slice) => Self::from_slice_clone(slice),
+            Cow::Owned(vec) => Self::from_mut_vector(vec),
+        }
+    }
+
     /// Appends a slice of elements to the inline vector.
     ///
     /// If `T` implements `Copy`, see [`extend_from_slice_copy`] for a more
@@ -1472,6 +1489,7 @@ macros::trait_impls! {
         From {
             &[T] => InlineVec<T, CAP, SHIFT, TAG> = Self::from_slice_clone;
             &mut [T] => InlineVec<T, CAP, SHIFT, TAG> = Self::from_slice_clone;
+            Cow<'_, [T]> => InlineVec<T, CAP, SHIFT, TAG> = Self::from_cow;
         }
     }
 

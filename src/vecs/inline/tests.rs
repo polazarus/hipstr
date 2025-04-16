@@ -786,37 +786,54 @@ fn from_iter_overflows() {
 #[test]
 fn from_impls() {
     let boxed: Box<[u8]> = Box::new([1, 2, 3]);
-    let inline = InlineVec::<u8, SMALL_CAP>::from(boxed);
+    let inline = InlineVec::<u8, 7>::from(boxed);
     assert_eq!(inline.len(), 3);
     assert_eq!(inline.as_slice(), &[1, 2, 3]);
 
     let inline = InlineVec::<u8, 7>::from([1, 2, 3]);
-    assert_eq!(inline.len(), 3);
     assert_eq!(inline.as_slice(), &[1, 2, 3]);
 
     let inline = InlineVec::<u8, 7>::from([1, 2, 3].as_slice());
-    assert_eq!(inline.len(), 3);
     assert_eq!(inline.as_slice(), &[1, 2, 3]);
 
     let inline = InlineVec::<u8, 7>::from([1, 2, 3].as_mut_slice());
-    assert_eq!(inline.len(), 3);
     assert_eq!(inline.as_slice(), &[1, 2, 3]);
 
     let inline = InlineVec::<u8, 7>::from(&[1, 2, 3]);
-    assert_eq!(inline.len(), 3);
     assert_eq!(inline.as_slice(), &[1, 2, 3]);
 
     let inline = InlineVec::<u8, 7>::from(&mut [1, 2, 3]);
-    assert_eq!(inline.len(), 3);
     assert_eq!(inline.as_slice(), &[1, 2, 3]);
 
     let inline = InlineVec::<u8, 7>::from(vec![1, 2, 3]);
-    assert_eq!(inline.len(), 3);
     assert_eq!(inline.as_slice(), &[1, 2, 3]);
 
     let inline = InlineVec::<u8, 7>::from(thin_vec![1, 2, 3]);
-    assert_eq!(inline.len(), 3);
     assert_eq!(inline.as_slice(), &[1, 2, 3]);
+
+    let inline = InlineVec::<u8, 7>::from(Cow::Borrowed([1, 2, 3].as_slice()));
+    assert_eq!(inline.as_slice(), &[1, 2, 3]);
+
+    let inline = InlineVec::<u8, 7>::from(Cow::Owned(vec![1, 2, 3]));
+    assert_eq!(inline.as_slice(), &[1, 2, 3]);
+
+    let inline = InlineVec::<u8, 7>::from(thin_vec![1, 2, 3]);
+    assert_eq!(inline.as_slice(), &[1, 2, 3]);
+
+    let arr = [Box::new(1)];
+    let p = &raw const *arr[0];
+    let v = InlineVec::<Box<i32>, 3>::from(arr);
+    assert_eq!(&raw const *v[0], p);
+
+    let vec = vec![Box::new(1)];
+    let p = &raw const *vec[0];
+    let v = InlineVec::<Box<i32>, 3>::from(vec);
+    assert_eq!(&raw const *v[0], p);
+
+    let cow: Cow<'_, [Box<i32>]> = Cow::Owned(vec![Box::new(1)]);
+    let p = &raw const *cow[0];
+    let v = InlineVec::<Box<i32>, 3>::from(cow);
+    assert_eq!(&raw const *v[0], p);
 }
 
 #[test]

@@ -1,3 +1,4 @@
+use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use alloc::{format, vec};
@@ -29,10 +30,32 @@ fn new() {
 
 #[test]
 fn froms() {
+    let b: Box<[i32]> = Box::new([1, 2, 3]);
+    let v = ThinVec::from(b);
+    assert_eq!(v.as_slice(), &[1, 2, 3]);
+
     let v = ThinVec::from([1, 2, 3]);
     assert_eq!(v.as_slice(), &[1, 2, 3]);
 
+    let v = ThinVec::from(&[1, 2, 3]);
+    assert_eq!(v.as_slice(), &[1, 2, 3]);
+
+    let v = ThinVec::from(&mut [1, 2, 3]);
+    assert_eq!(v.as_slice(), &[1, 2, 3]);
+
+    let v = ThinVec::from([1, 2, 3].as_slice());
+    assert_eq!(v.as_slice(), &[1, 2, 3]);
+
+    let v = ThinVec::from([1, 2, 3].as_mut_slice());
+    assert_eq!(v.as_slice(), &[1, 2, 3]);
+
     let v = ThinVec::from(vec![1, 2, 3]);
+    assert_eq!(v.as_slice(), &[1, 2, 3]);
+
+    let v = ThinVec::from(Cow::Borrowed([1, 2, 3].as_slice()));
+    assert_eq!(v.as_slice(), &[1, 2, 3]);
+
+    let v = ThinVec::from(Cow::Owned(vec![1, 2, 3]));
     assert_eq!(v.as_slice(), &[1, 2, 3]);
 
     let v = ThinVec::from(crate::inline_vec![7 => 1, 2, 3]);
@@ -43,9 +66,19 @@ fn froms() {
     let v = ThinVec::from(arr);
     assert_eq!(&raw const *v[0], p);
 
+    let boxed: Box<[Box<i32>]> = Box::new([Box::new(1)]);
+    let p = &raw const *boxed[0];
+    let v = ThinVec::from(boxed);
+    assert_eq!(&raw const *v[0], p);
+
     let vec = vec![Box::new(1)];
     let p = &raw const *vec[0];
     let v = ThinVec::from(vec);
+    assert_eq!(&raw const *v[0], p);
+
+    let cow: Cow<'_, [Box<i32>]> = Cow::Owned(vec![Box::new(1)]);
+    let p = &raw const *cow[0];
+    let v = ThinVec::from(cow);
     assert_eq!(&raw const *v[0], p);
 }
 
