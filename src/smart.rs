@@ -8,6 +8,7 @@
 
 use alloc::boxed::Box;
 use core::cell::Cell;
+use core::marker::PhantomData;
 use core::mem::ManuallyDrop;
 use core::ops::Deref;
 use core::ptr::NonNull;
@@ -17,11 +18,66 @@ use core::sync::atomic::{fence, AtomicUsize, Ordering};
 #[cfg(loom)]
 use loom::sync::atomic::{fence, AtomicUsize, Ordering};
 
+use crate::common::traits::sealed::Sealed;
+
 #[cfg(test)]
 mod tests;
 
+/// Clone on overflow behavior for the smart pointer.
+///
+/// This is the behavior intended for [`Unique`].
+#[derive(Clone, Copy, Debug, Default)]
+pub struct CloneOnOverflow<C>(C);
+
+/// Panic on overflow behavior for the smart pointer.
+///
+/// This is the usual behavior for [`Arc`] and [`Rc`].
+#[derive(Clone, Copy, Debug, Default)]
+pub struct PanicOnOverflow<C>(C);
+
+impl<C: Sealed> Sealed for CloneOnOverflow<C> {}
+
+impl<C: Sealed> Sealed for PanicOnOverflow<C> {}
+
+impl<C: SmartKind> SmartKind for CloneOnOverflow<C> {
+    #[inline]
+    fn incr(&self) -> UpdateResult {
+        self.0.incr()
+    }
+
+    #[inline]
+    fn decr(&self) -> UpdateResult {
+        self.0.decr()
+    }
+
+    #[inline]
+    fn get(&self) -> usize {
+        self.0.get()
+    }
+}
+
+impl<C: SmartKind> SmartKind for PanicOnOverflow<C> {
+    #[inline]
+    fn incr(&self) -> UpdateResult {
+        self.0.incr()
+    }
+
+    #[inline]
+    fn decr(&self) -> UpdateResult {
+        self.0.decr()
+    }
+
+    #[inline]
+    fn get(&self) -> usize {
+        self.0.get()
+    }
+}
+
 /// Unique reference marker.
-pub struct Unique(/* nothing but not constructible either */);
+pub struct Unique(
+    // nothing but not constructible either
+    PhantomData<()>,
+);
 
 /// Local (thread-unsafe) reference counter.
 pub struct Rc(Cell<usize>);
@@ -40,9 +96,12 @@ pub enum UpdateResult {
 }
 
 /// Trait for a basic reference counter.
-pub trait Kind {
+pub trait SmartKind: Default {
     /// Creates a new counter that starts at one.
-    fn one() -> Self;
+    #[inline]
+    fn one() -> Self {
+        Self::default()
+    }
 
     /// Tries to increment the counter.
     fn incr(&self) -> UpdateResult;
@@ -61,11 +120,7 @@ pub trait Kind {
     }
 }
 
-impl Kind for Unique {
-    #[inline]
-    fn one() -> Self {
-        Self {}
-    }
+impl SmartKind for Unique {
     #[inline]
     fn incr(&self) -> UpdateResult {
         UpdateResult::Overflow
@@ -80,12 +135,14 @@ impl Kind for Unique {
     }
 }
 
-impl Kind for Rc {
+impl Default for Unique {
     #[inline]
-    fn one() -> Self {
-        Self(Cell::new(0))
+    fn default() -> Self {
+        Self(PhantomData)
     }
+}
 
+impl SmartKind for Rc {
     #[inline]
     fn incr(&self) -> UpdateResult {
         let new = self.0.get() + 1;
@@ -116,13 +173,15 @@ impl Kind for Rc {
     }
 }
 
-#[cfg(target_has_atomic = "ptr")]
-impl Kind for Arc {
+impl Default for Rc {
     #[inline]
-    fn one() -> Self {
-        Self(AtomicUsize::new(0))
+    fn default() -> Self {
+        Self(Cell::new(0))
     }
+}
 
+#[cfg(target_has_atomic = "ptr")]
+impl SmartKind for Arc {
     #[inline]
     fn decr(&self) -> UpdateResult {
         let old_value = self.0.fetch_sub(1, Ordering::Release);
@@ -169,10 +228,18 @@ impl Kind for Arc {
     }
 }
 
+#[cfg(target_has_atomic = "ptr")]
+impl Default for Arc {
+    #[inline]
+    fn default() -> Self {
+        Self(AtomicUsize::new(0))
+    }
+}
+
 /// Smart pointer inner cell.
 pub struct Inner<T, C>
 where
-    C: Kind,
+    C: SmartKind,
 {
     count: C,
     value: T,
@@ -181,7 +248,7 @@ where
 impl<T, C> Clone for Inner<T, C>
 where
     T: Clone,
-    C: Kind,
+    C: SmartKind,
 {
     fn clone(&self) -> Self {
         Self {
@@ -195,13 +262,13 @@ where
 pub struct Smart<T, C>(NonNull<Inner<T, C>>)
 where
     T: Clone,
-    C: Kind;
+    C: SmartKind;
 
 #[allow(unused)]
 impl<T, C> Smart<T, C>
 where
     T: Clone,
-    C: Kind,
+    C: SmartKind,
 {
     /// Creates the smart pointer.
     #[inline]
@@ -322,7 +389,7 @@ where
 impl<T, C> Clone for Smart<T, C>
 where
     T: Clone,
-    C: Kind,
+    C: SmartKind,
 {
     fn clone(&self) -> Self {
         if unsafe { &(*self.0.as_ptr()).count }.incr() == UpdateResult::Done {
@@ -340,7 +407,7 @@ where
 impl<T, C> Drop for Smart<T, C>
 where
     T: Clone,
-    C: Kind,
+    C: SmartKind,
 {
     fn drop(&mut self) {
         // SAFETY: type invariant, cannot be dangling
@@ -356,7 +423,7 @@ where
 impl<T, C> Deref for Smart<T, C>
 where
     T: Clone,
-    C: Kind,
+    C: SmartKind,
 {
     type Target = T;
 
@@ -369,13 +436,13 @@ where
 unsafe impl<T, C> Send for Smart<T, C>
 where
     T: Sync + Send + Clone,
-    C: Send + Kind,
+    C: Send + SmartKind,
 {
 }
 
 unsafe impl<T, C> Sync for Smart<T, C>
 where
     T: Sync + Send + Clone,
-    C: Sync + Kind,
+    C: Sync + SmartKind,
 {
 }

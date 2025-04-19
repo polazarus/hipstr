@@ -715,3 +715,67 @@ fn from_iterator() {
     let v: ThinVec<_> = (1..=10).filter(|x| *x % 2 == 0).collect();
     assert_eq!(v.as_slice(), &[2, 4, 6, 8, 10]);
 }
+
+#[test]
+fn clone() {
+    let v: ThinVec<u8> = (1..=10).collect();
+    let v2 = v.clone();
+    assert_eq!(v.as_slice(), v2.as_slice());
+    assert_ne!(v.as_ptr(), v2.as_ptr());
+
+    let v: ThinVec<Box<u8>> = thin_vec![Box::new(1)];
+    let p = &raw const *v[0];
+    let v2 = v.clone();
+    assert_eq!(v[0], v2[0]);
+    assert_ne!(&raw const *v2[0], p);
+}
+
+#[test]
+fn fresh_move() {
+    #[derive(Default)]
+    #[repr(u8)]
+    enum DistinctLayout {
+        A,
+        #[default]
+        B,
+    }
+    let v: ThinVec<u8> = (1..=10).collect();
+    let p = v.as_ptr();
+    let v2: GenericThinVec<u8, DistinctLayout> = v.fresh_move();
+    assert_ne!(v2.as_ptr(), p);
+
+    #[derive(Default)]
+    #[repr(usize)]
+    enum SameLayout {
+        A,
+        #[default]
+        B,
+    }
+
+    let v: GenericThinVec<u8> = (1..=10).collect();
+    let p = v.as_ptr();
+    let v2: GenericThinVec<u8, SameLayout> = v.fresh_move();
+    assert_eq!(v2.as_ptr(), p);
+}
+
+#[test]
+#[cfg(feature = "std")]
+fn fresh_move_drop_prefix() {
+    use std::sync::Mutex;
+    static WITNESS: Mutex<bool> = Mutex::new(false);
+    #[derive(Default)]
+    struct S;
+    impl Drop for S {
+        fn drop(&mut self) {
+            *WITNESS.lock().unwrap() = true;
+        }
+    }
+    *WITNESS.lock().unwrap() = false;
+
+    let v: GenericThinVec<u8, S> = (1..=10).collect();
+    let p = v.as_ptr();
+    let v2: GenericThinVec<u8, ()> = v.fresh_move();
+    assert_eq!(v2.as_ptr(), p);
+    assert_eq!(v2.prefix(), &());
+    assert!(*WITNESS.lock().unwrap());
+}
