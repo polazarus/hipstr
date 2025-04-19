@@ -1,17 +1,23 @@
 //! Sealed backend trait and the built-in implementations.
 
+use crate::smart;
+pub use crate::smart::{CloneOnOverflow, PanicOnOverflow};
+
 #[cfg(target_has_atomic = "ptr")]
-pub use crate::smart::Arc;
-pub use crate::smart::{Rc, Unique};
+pub type Arc = PanicOnOverflow<smart::Arc>;
+
+pub type Rc = PanicOnOverflow<smart::Rc>;
+
+pub type Unique = CloneOnOverflow<smart::Unique>;
 
 #[deprecated(note = "renamed to Rc")]
-pub type Local = crate::smart::Rc;
+pub type Local = Rc;
 
 #[deprecated(note = "renamed to Arc")]
-pub type ThreadSafe = crate::smart::Arc;
+pub type ThreadSafe = Arc;
 
 /// Sealed marker trait for allocated backend.
-pub trait Backend: crate::smart::Kind + 'static {}
+pub trait Backend: crate::smart::SmartKind + 'static {}
 
 impl Backend for Rc {}
 

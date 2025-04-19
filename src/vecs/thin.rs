@@ -7,7 +7,7 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::iter::FusedIterator;
 use core::marker::PhantomData;
-use core::mem::{ManuallyDrop, MaybeUninit};
+use core::mem::{offset_of, ManuallyDrop, MaybeUninit};
 use core::ops::{Bound, Range, RangeBounds};
 use core::ptr::NonNull;
 use core::{cmp, fmt, mem, ops, panic, ptr, slice};
@@ -310,12 +310,12 @@ impl<T, P> ThinVec<T, P> {
     const DATA_OFFSET: usize = Self::layout(0).unwrap().1;
 
     #[inline]
-    const fn header(&self) -> &Header<T, P> {
+    pub(super) const fn header(&self) -> &Header<T, P> {
         unsafe { self.0.as_ref() }
     }
 
     #[inline]
-    const unsafe fn header_mut(&mut self) -> &mut Header<T, P> {
+    pub(super) const unsafe fn header_mut(&mut self) -> &mut Header<T, P> {
         unsafe { self.0.as_mut() }
     }
 
@@ -1218,6 +1218,63 @@ impl<T, P> ThinVec<T, P> {
             self.set_capacity(len);
         }
     }
+
+    /// Clones with a fresh prefix.
+    pub(crate) fn fresh_clone<Q: Default>(&self) -> ThinVec<T, Q>
+    where
+        T: Clone,
+    {
+        let len = self.len();
+        let mut this = ThinVec::with_capacity(len);
+        this.extend_from_slice(self.as_slice());
+        this
+    }
+
+    /// Moves the items to a new vector with a fresh prefix.
+    pub(crate) fn fresh_move<Q: Default>(mut self) -> ThinVec<T, Q> {
+        if can_reuse::<T, P, Q>() {
+            let header = self.0;
+            mem::forget(self);
+
+            let header_ptr = header.as_ptr();
+
+            // drop the old prefix if needed
+            if mem::needs_drop::<P>() {
+                // SAFETY: the prefix is valid by the type invariant
+                unsafe {
+                    ptr::drop_in_place(&raw mut (*header_ptr).prefix);
+                }
+            }
+
+            let new_header: NonNull<Header<T, Q>> = header.cast();
+            let new_header_ptr = new_header.as_ptr();
+            // SAFETY: write the new prefix
+            unsafe {
+                (&raw mut (*new_header_ptr).prefix).write(Q::default());
+            }
+
+            ThinVec(new_header)
+        } else {
+            let len = self.len();
+            let mut this = ThinVec::with_capacity(len);
+            unsafe {
+                this.ptr().copy_from_nonoverlapping(self.ptr(), len);
+                this.set_len(len);
+                self.set_len(0);
+            }
+            this
+        }
+    }
+}
+
+/// Checks if two prefix types are compatible to reuse a thin vec allocation
+/// when moving from one prefix type to the other.
+const fn can_reuse<T, P, Q>() -> bool {
+    const {
+        size_of::<P>() == size_of::<Q>()
+            && align_of::<P>() == align_of::<Q>()
+            && offset_of!(Header<T, P>, prefix) == offset_of!(Header<T, Q>, prefix)
+    }
 }
 
 impl<T, P> ops::Deref for ThinVec<T, P> {
@@ -1245,6 +1302,12 @@ impl<T, C> Drop for ThinVec<T, C> {
             let layout = self.current_layout();
             unsafe { dealloc(self.0.cast().as_ptr(), layout) };
         }
+    }
+}
+
+impl<T: Clone, P: Default> Clone for ThinVec<T, P> {
+    fn clone(&self) -> Self {
+        self.fresh_clone()
     }
 }
 
