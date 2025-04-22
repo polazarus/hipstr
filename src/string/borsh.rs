@@ -6,8 +6,8 @@ use borsh::io::{Error, ErrorKind};
 use borsh::{io, BorshDeserialize, BorshSerialize};
 
 use super::HipStr;
+use crate::backend::Backend;
 use crate::bytes::HipByt;
-use crate::Backend;
 
 #[cfg(test)]
 mod tests;

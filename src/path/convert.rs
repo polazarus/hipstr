@@ -8,9 +8,9 @@ use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 
 use super::HipPath;
+use crate::backend::Backend;
 use crate::os_string::HipOsStr;
 use crate::string::HipStr;
-use crate::Backend;
 
 // AsRef
 

@@ -52,6 +52,7 @@ impl<const SHIFT: u8, const TAG: u8> TaggedU8<SHIFT, TAG> {
             "length exceeds maximal tagged length (`256 >> SHIFT`)"
         );
         let shifted = len << SHIFT;
+        #[expect(clippy::cast_possible_truncation)]
         let value = shifted as u8 | TAG;
         Self(unsafe { NonZeroU8::new_unchecked(value) })
     }
@@ -114,7 +115,8 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     /// assert_eq!(inline.len(), 0);
     /// assert_eq!(inline.capacity(), 7);
     /// ```
-    #[inline(always)]
+    #[inline]
+    #[must_use]
     pub const fn new() -> Self {
         const {
             assert!(CAP != 0);
@@ -126,8 +128,16 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
         }
     }
 
-    #[inline(always)]
-    pub const unsafe fn zeroed(new_len: usize) -> Self {
+    /// Creates a new inline vector with the specified length, initialized to
+    /// zero.
+    ///
+    /// # Safety
+    ///
+    /// - The caller must ensure that the length is less than or equal to the
+    ///   capacity of the inline vector.
+    /// - The caller must ensure that the elements are initialized.
+    #[inline]
+    pub(crate) const unsafe fn zeroed(new_len: usize) -> Self {
         const {
             assert!(CAP != 0);
             assert!(CAP <= TaggedU8::<SHIFT, TAG>::max());
@@ -157,6 +167,7 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     /// assert_eq!(*inline[0], 42);
     /// ```
     #[inline]
+    #[must_use]
     pub const fn from_array<const N: usize>(array: [T; N]) -> Self {
         let mut this = Self::new();
         this.extend_from_array(array);
@@ -169,6 +180,7 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     ///
     /// Panics if the boxed slice's length exceeds the capacity of the inline
     /// vector.
+    #[must_use]
     pub(crate) fn from_boxed_slice(boxed: Box<[T]>) -> Self {
         let mut this = Self::new();
         let len = boxed.len();
@@ -190,6 +202,7 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
         this
     }
 
+    #[must_use]
     pub(crate) fn from_mut_vector(mut vec: impl traits::MutVector<Item = T>) -> Self {
         let mut this = Self::new();
         let len = vec.len();
@@ -205,6 +218,7 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
         this
     }
 
+    #[must_use]
     pub(crate) fn from_iter(iterable: impl IntoIterator<Item = T>) -> Self {
         let iter = iterable.into_iter();
         let min = iter.size_hint().0;
@@ -217,9 +231,39 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     }
 
     /// Returns the length of the inline vector.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::InlineVec;
+    /// let mut inline = InlineVec::<u8, 7>::new();
+    /// assert_eq!(inline.len(), 0);
+    /// inline.push(1);
+    /// assert_eq!(inline.len(), 1);
+    /// inline.push(2);
+    /// assert_eq!(inline.len(), 2);
+    /// ```
     #[inline]
+    #[must_use]
     pub const fn len(&self) -> usize {
         self.len.get()
+    }
+
+    /// Returns `true` if the inline vector is empty, `false` otherwise.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::InlineVec;
+    /// let mut inline = InlineVec::<u8, 7>::new();
+    /// assert!(inline.is_empty());
+    /// inline.push(1);
+    /// assert!(!inline.is_empty());
+    /// ```
+    #[inline]
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     /// Returns a slice of the inline vector.
@@ -345,9 +389,7 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     #[inline]
     #[track_caller]
     pub fn push(&mut self, value: T) {
-        if self.try_push(value).is_err() {
-            panic!("inline vector is full");
-        }
+        assert!(self.try_push(value).is_ok(), "inline vector is full");
     }
 
     /// Forces the length of the inline vector to `new_len`.
@@ -403,7 +445,6 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     /// ```
     pub fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<T>] {
         let len = self.len();
-        assert!(len <= CAP);
         unsafe { slice::from_raw_parts_mut(self.data.as_mut_ptr().add(len), CAP - len) }
     }
 
@@ -753,6 +794,7 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     /// assert_eq!(inline.as_slice(), &[1]);
     /// assert_eq!(other.as_slice(), &[2, 3]);
     /// ```
+    #[must_use = "use .truncate() if you don't need the other part"]
     pub fn split_off(&mut self, at: usize) -> Self {
         assert!(at <= self.len(), "index out of bounds");
 
@@ -1247,6 +1289,14 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> AsMut<[T]>
     #[inline]
     fn as_mut(&mut self) -> &mut [T] {
         self.as_mut_slice()
+    }
+}
+
+impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> Default
+    for InlineVec<T, CAP, SHIFT, TAG>
+{
+    fn default() -> Self {
+        Self::new()
     }
 }
 

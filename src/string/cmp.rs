@@ -5,8 +5,8 @@ use alloc::boxed::Box;
 use alloc::string::String;
 
 use super::HipStr;
+use crate::backend::Backend;
 use crate::macros::{symmetric_eq, symmetric_ord};
-use crate::Backend;
 
 // Equality
 

@@ -6,9 +6,9 @@ use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 
 use super::HipOsStr;
+use crate::backend::Backend;
 use crate::macros::{symmetric_eq, symmetric_ord};
 use crate::path::HipPath;
-use crate::Backend;
 
 // Equality
 

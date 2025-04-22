@@ -8,8 +8,8 @@ use core::borrow::Borrow;
 use bstr::{BStr, BString};
 
 use super::HipStr;
+use crate::backend::Backend;
 use crate::macros::{symmetric_eq, symmetric_ord};
-use crate::Backend;
 
 impl<B> Borrow<BStr> for HipStr<'_, B>
 where

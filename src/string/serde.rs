@@ -36,8 +36,8 @@ use serde::de::{Error, Unexpected, Visitor};
 use serde::{de, Deserialize, Deserializer, Serialize};
 
 use super::HipStr;
+use crate::backend::Backend;
 use crate::bytes::HipByt;
-use crate::Backend;
 
 const EXPECTING: &str = "a string";
 

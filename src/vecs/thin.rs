@@ -215,14 +215,23 @@ where
         this
     }
 
-    /// Creates a new thin vector with the given prefix.
+    /// Creates a new empty thin vector.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::ThinVec;
+    /// let vec: ThinVec<i32> = ThinVec::new();
+    /// assert!(vec.is_empty());
+    /// ```
     #[inline]
+    #[must_use]
     pub fn new() -> Self {
         Self::with_capacity(Self::MINIMAL_CAPACITY)
     }
 
-    /// Creates a new thin vector with the given capacity and prefix. The vector
-    /// will be able to hold at least `capacity` elements without reallocating.
+    /// Creates a new thin vector with the given capacity. The vector will be
+    /// able to hold at least `capacity` elements without reallocating.
     ///
     /// # Panics
     ///
@@ -235,6 +244,7 @@ where
     /// let vec: ThinVec<i32> = ThinVec::with_capacity(10);
     /// assert!(vec.capacity() >= 10);
     /// ```
+    #[must_use]
     pub fn with_capacity(capacity: usize) -> Self {
         let capacity = capacity.max(Self::MINIMAL_CAPACITY);
         let (layout, _offset, capacity) =
@@ -277,6 +287,7 @@ where
     ///
     /// [`truncate`]: Self::truncate
     /// [`drain`]: Self::drain
+    #[must_use = "use .truncate() if you don't need the returned vector"]
     pub fn split_off(&mut self, at: usize) -> Self
     where
         P: Default,
@@ -362,12 +373,13 @@ impl<T, P> ThinVec<T, P> {
     /// ```
     #[inline]
     #[must_use]
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
     /// Returns the current prefix associated with this thin vector.
-    pub fn prefix(&self) -> &P {
+    #[must_use]
+    pub const fn prefix(&self) -> &P {
         &self.header().prefix
     }
 
@@ -402,6 +414,7 @@ impl<T, P> ThinVec<T, P> {
     ///
     /// [`as_mut_ptr`]: Self::as_mut_ptr
     #[inline]
+    #[must_use]
     pub const fn as_ptr(&self) -> *const T {
         self.ptr().as_ptr()
     }
@@ -507,12 +520,6 @@ impl<T, P> ThinVec<T, P> {
     #[inline]
     #[must_use]
     pub const fn as_mut_slice(&mut self) -> &mut [T] {
-        unsafe { self.as_mut_slice_extended() }
-    }
-
-    #[inline]
-    #[must_use]
-    pub const unsafe fn as_mut_slice_extended<'a>(&mut self) -> &'a mut [T] {
         unsafe { slice::from_raw_parts_mut(self.as_mut_ptr(), self.len()) }
     }
 
@@ -544,7 +551,7 @@ impl<T, P> ThinVec<T, P> {
     }
 
     /// Gets the current layout.
-    fn current_layout(&self) -> Layout {
+    const fn current_layout(&self) -> Layout {
         // SAFETY: layout checked at creation
         let (layout, _, _) = unsafe { Self::layout(self.capacity()).unwrap_unchecked() };
         layout
@@ -611,6 +618,10 @@ impl<T, P> ThinVec<T, P> {
     /// Prefer [`reserve`] if future insertions are expected.
     ///
     /// [`reserve`]: Self::reserve
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new capacity overflows.
     pub fn reserve_exact(&mut self, additional: usize) {
         if additional > self.capacity() - self.len() {
             let required = self
@@ -630,6 +641,10 @@ impl<T, P> ThinVec<T, P> {
     /// Prefer [`reserve_exact`] if the exact amount of elements to be added is known.
     ///
     /// [`reserve_exact`]: Self::reserve_exact
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new capacity overflows.
     pub fn reserve(&mut self, additional: usize) {
         if additional > self.capacity() - self.len() {
             let required = self
@@ -1023,6 +1038,23 @@ impl<T, P> ThinVec<T, P> {
         Drain::new(self, range)
     }
 
+    /// Resizes the vector to the specified length, filling in new elements
+    /// with the specified value.
+    ///
+    /// If `new_len` is less than the current length, the vector is truncated.
+    /// If `new_len` is greater than the current length, the vector is extended
+    /// by cloning the specified value.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::thin_vec;
+    /// let mut v = thin_vec![1, 2, 3];
+    /// v.resize(5, 0);
+    /// assert_eq!(v.as_slice(), [1, 2, 3, 0, 0]);
+    /// v.resize(2, 0);
+    /// assert_eq!(v.as_slice(), [1, 2]);
+    /// ```
     pub fn resize(&mut self, new_len: usize, value: T)
     where
         T: Clone,
@@ -1035,14 +1067,59 @@ impl<T, P> ThinVec<T, P> {
         }
     }
 
+    /// Extends the vector by duplicating a range of elements within itself.
+    ///
+    /// This method is useful for duplicating a range of elements within the
+    /// vector. The range is specified using the `RangeBounds` trait, which
+    /// allows for flexible range specifications (e.g., `0..5`, `..5`, `5..`).
+    ///
+    /// # Panics
+    ///
+    /// Panics if the specified range is invalid.
+    ///
+    /// See [`try_extend_from_within`] for a no-panic alternative.
+    ///
+    /// [`try_extend_from_within`]: Self::try_extend_from_within
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::thin_vec;
+    /// let mut v = thin_vec![1, 2, 3];
+    /// v.extend_from_within(1..3);
+    /// assert_eq!(v.as_slice(), [1, 2, 3, 2, 3]);
+    /// ```
     pub fn extend_from_within(&mut self, range: impl RangeBounds<usize>)
     where
         T: Clone,
     {
         self.try_extend_from_within(range)
-            .unwrap_or_else(common::panic_display)
+            .unwrap_or_else(common::panic_display);
     }
 
+    /// Attempts to extend the vector from a range of elements within itself.
+    ///
+    /// This method is useful for duplicating a range of elements within the
+    /// vector. The range is specified using the `RangeBounds` trait, which
+    /// allows for flexible range specifications (e.g., `0..5`, `..5`, `5..`).
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`RangeError`] if the specified range is invalid.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::thin_vec;
+    /// # use hipstr::common::RangeError;
+    /// let mut v = thin_vec![1, 2, 3];
+    /// v.try_extend_from_within(1..3).unwrap();
+    /// assert_eq!(v.as_slice(), [1, 2, 3, 2, 3]);
+    ///
+    /// // out of bounds range
+    /// let err = v.try_extend_from_within(6..8).unwrap_err();
+    /// assert_eq!(err, RangeError::EndOutOfBounds { end: 8, len: 5 });
+    /// ```
     pub fn try_extend_from_within(
         &mut self,
         range: impl RangeBounds<usize>,

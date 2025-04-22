@@ -8,8 +8,8 @@ use bstr::{BStr, BString};
 
 use super::cmp::{cmp_slice, eq_slice};
 use super::HipByt;
+use crate::backend::Backend;
 use crate::macros::{symmetric_eq, symmetric_ord};
-use crate::Backend;
 
 impl<B> Borrow<BStr> for HipByt<'_, B>
 where

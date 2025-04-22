@@ -5,7 +5,7 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 
 use super::HipByt;
-use crate::Backend;
+use crate::backend::Backend;
 
 impl<B> AsRef<[u8]> for HipByt<'_, B>
 where

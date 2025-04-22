@@ -14,8 +14,8 @@ use core::ops::{Deref, DerefMut, Range, RangeBounds};
 use core::str::{Lines, SplitAsciiWhitespace, SplitWhitespace, Utf8Error};
 
 use self::pattern::{DoubleEndedPattern, IterWrapper, Pattern, ReversePattern};
+use crate::backend::Backend;
 use crate::bytes::{simplify_range, HipByt, SliceErrorKind as ByteSliceErrorKind};
-use crate::Backend;
 
 mod cmp;
 mod convert;

@@ -107,7 +107,7 @@ where
     }
 }
 
-impl<'a, V: MutVector> Drop for Drain<'a, V> {
+impl<V: MutVector> Drop for Drain<'_, V> {
     fn drop(&mut self) {
         if mem::needs_drop::<V::Item>() {
             unsafe {

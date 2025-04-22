@@ -8,8 +8,8 @@ use alloc::vec::Vec;
 use std::net::ToSocketAddrs;
 
 use super::HipStr;
+use crate::backend::Backend;
 use crate::bytes::HipByt;
-use crate::Backend;
 
 impl<B> AsRef<str> for HipStr<'_, B>
 where

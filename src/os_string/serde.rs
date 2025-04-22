@@ -27,7 +27,7 @@ use std::ffi::OsString;
 use serde::{Deserialize, Serialize};
 
 use super::HipOsStr;
-use crate::Backend;
+use crate::backend::Backend;
 
 impl<B> Serialize for HipOsStr<'_, B>
 where
