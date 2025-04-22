@@ -1,3 +1,5 @@
+#![allow(clippy::reversed_empty_ranges)]
+
 use alloc::boxed::Box;
 use alloc::{format, vec};
 use core::hash::BuildHasher;
@@ -37,7 +39,15 @@ fn macros() {
 #[test]
 fn new() {
     const CAP: usize = 7;
+
     let mut inline = InlineVec::<u8, CAP>::new();
+    assert_eq!(inline.len(), 0);
+    assert_eq!(inline.capacity(), CAP);
+    assert_eq!(inline.as_slice().len(), 0);
+    assert_eq!(inline.as_mut_slice().len(), 0);
+    assert_eq!(inline.spare_capacity_mut().len(), CAP);
+
+    let mut inline = InlineVec::<u8, CAP>::default();
     assert_eq!(inline.len(), 0);
     assert_eq!(inline.capacity(), CAP);
     assert_eq!(inline.as_slice().len(), 0);

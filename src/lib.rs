@@ -94,11 +94,11 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
-pub(crate) mod backend;
+pub mod backend;
 pub mod bytes;
 pub mod common;
 pub(crate) mod macros;
-pub(crate) mod smart;
+pub mod smart;
 pub mod string;
 pub mod vecs;
 
@@ -110,7 +110,9 @@ pub mod path;
 #[cfg(test)]
 pub mod tests;
 
-pub use backend::*;
+pub use backend::{Arc, Backend, Rc, Unique};
+#[expect(deprecated)]
+pub use backend::{Local, ThreadSafe};
 
 /// Thread-safe shared byte sequence.
 pub type HipByt<'borrow> = bytes::HipByt<'borrow, Arc>;

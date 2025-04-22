@@ -7,8 +7,8 @@ use core::ops::{Deref, DerefMut, Range};
 use core::panic::{RefUnwindSafe, UnwindSafe};
 use core::ptr::NonNull;
 
-use crate::backend::Backend;
-use crate::smart::{Inner, Smart, UpdateResult};
+use crate::backend::{Backend, UpdateResult};
+use crate::smart::{Inner, Smart};
 
 const MASK: usize = super::MASK as usize;
 const TAG: usize = super::TAG_ALLOCATED as usize;
@@ -35,7 +35,7 @@ impl<B: Backend> TaggedSmart<B> {
     /// Constructed a tagged smart pointer from a [`Smart`].
     #[inline]
     fn from(raw: Smart<Vec<u8>, B>) -> Self {
-        let ptr = raw.into_raw().as_ptr();
+        let ptr = Smart::into_raw(raw).as_ptr();
         debug_assert!(ptr.is_aligned());
         debug_assert!((ptr as usize) & MASK == 0);
 
@@ -80,7 +80,7 @@ impl<B: Backend> TaggedSmart<B> {
     /// Explicitly clones this tagged smart pointer.
     fn explicit_clone(self) -> Self {
         let r = ManuallyDrop::new(self.into());
-        Self::from((*r).clone())
+        Self::from((*r).force_clone())
     }
 }
 

@@ -39,7 +39,7 @@ use serde::de::Visitor;
 use serde::{Deserialize, Serialize};
 
 use super::HipByt;
-use crate::Backend;
+use crate::backend::Backend;
 
 const EXPECTING: &str = "a byte array";
 

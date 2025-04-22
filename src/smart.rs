@@ -7,239 +7,21 @@
 //! - atomically reference counted.
 
 use alloc::boxed::Box;
-use core::cell::Cell;
-use core::marker::PhantomData;
 use core::mem::ManuallyDrop;
 use core::ops::Deref;
 use core::ptr::NonNull;
-#[cfg(not(loom))]
-use core::sync::atomic::{fence, AtomicUsize, Ordering};
 
-#[cfg(loom)]
-use loom::sync::atomic::{fence, AtomicUsize, Ordering};
-
-use crate::common::traits::sealed::Sealed;
+use crate::backend::{
+    Backend, BackendImpl, CloneOnOverflow, Counter, PanicOnOverflow, UpdateResult,
+};
 
 #[cfg(test)]
 mod tests;
 
-/// Clone on overflow behavior for the smart pointer.
-///
-/// This is the behavior intended for [`Unique`].
-#[derive(Clone, Copy, Debug, Default)]
-pub struct CloneOnOverflow<C>(C);
-
-/// Panic on overflow behavior for the smart pointer.
-///
-/// This is the usual behavior for [`Arc`] and [`Rc`].
-#[derive(Clone, Copy, Debug, Default)]
-pub struct PanicOnOverflow<C>(C);
-
-impl<C: Sealed> Sealed for CloneOnOverflow<C> {}
-
-impl<C: Sealed> Sealed for PanicOnOverflow<C> {}
-
-impl<C: SmartKind> SmartKind for CloneOnOverflow<C> {
-    #[inline]
-    fn incr(&self) -> UpdateResult {
-        self.0.incr()
-    }
-
-    #[inline]
-    fn decr(&self) -> UpdateResult {
-        self.0.decr()
-    }
-
-    #[inline]
-    fn get(&self) -> usize {
-        self.0.get()
-    }
-}
-
-impl<C: SmartKind> SmartKind for PanicOnOverflow<C> {
-    #[inline]
-    fn incr(&self) -> UpdateResult {
-        self.0.incr()
-    }
-
-    #[inline]
-    fn decr(&self) -> UpdateResult {
-        self.0.decr()
-    }
-
-    #[inline]
-    fn get(&self) -> usize {
-        self.0.get()
-    }
-}
-
-/// Unique reference marker.
-pub struct Unique(
-    // nothing but not constructible either
-    PhantomData<()>,
-);
-
-/// Local (thread-unsafe) reference counter.
-pub struct Rc(Cell<usize>);
-
-/// Atomic (thread-safe) reference counter.
-#[cfg(target_has_atomic = "ptr")]
-pub struct Arc(AtomicUsize);
-
-/// Reference counting update result.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum UpdateResult {
-    /// The update was successful.
-    Done,
-    /// No update was performed because the counter was already reaches a boundary.
-    Overflow,
-}
-
-/// Trait for a basic reference counter.
-pub trait SmartKind: Default {
-    /// Creates a new counter that starts at one.
-    #[inline]
-    fn one() -> Self {
-        Self::default()
-    }
-
-    /// Tries to increment the counter.
-    fn incr(&self) -> UpdateResult;
-
-    /// Tries to decrement the counter.
-    fn decr(&self) -> UpdateResult;
-
-    /// Returns the current value of the counter.
-    fn get(&self) -> usize;
-
-    /// Checks if the counter is at one.
-    ///
-    /// In case of atomics, the [`Ordering::Acquire`] semantics is expected.
-    fn is_unique(&self) -> bool {
-        self.get() == 1
-    }
-}
-
-impl SmartKind for Unique {
-    #[inline]
-    fn incr(&self) -> UpdateResult {
-        UpdateResult::Overflow
-    }
-    #[inline]
-    fn decr(&self) -> UpdateResult {
-        UpdateResult::Overflow
-    }
-    #[inline]
-    fn get(&self) -> usize {
-        1
-    }
-}
-
-impl Default for Unique {
-    #[inline]
-    fn default() -> Self {
-        Self(PhantomData)
-    }
-}
-
-impl SmartKind for Rc {
-    #[inline]
-    fn incr(&self) -> UpdateResult {
-        let new = self.0.get() + 1;
-        if new < usize::MAX {
-            // usize::MAX is forbidden
-            self.0.set(new);
-            UpdateResult::Done
-        } else {
-            UpdateResult::Overflow
-        }
-    }
-
-    #[inline]
-    fn decr(&self) -> UpdateResult {
-        self.0
-            .get()
-            .checked_sub(1)
-            .map_or(UpdateResult::Overflow, |new| {
-                self.0.set(new);
-                UpdateResult::Done
-            })
-    }
-
-    #[inline]
-    fn get(&self) -> usize {
-        // the count is strictly less than `usize::MAX`
-        self.0.get() + 1
-    }
-}
-
-impl Default for Rc {
-    #[inline]
-    fn default() -> Self {
-        Self(Cell::new(0))
-    }
-}
-
-#[cfg(target_has_atomic = "ptr")]
-impl SmartKind for Arc {
-    #[inline]
-    fn decr(&self) -> UpdateResult {
-        let old_value = self.0.fetch_sub(1, Ordering::Release);
-        if old_value == 0 {
-            fence(Ordering::Acquire);
-            UpdateResult::Overflow
-        } else {
-            UpdateResult::Done
-        }
-    }
-
-    #[inline]
-    fn incr(&self) -> UpdateResult {
-        let set_order = Ordering::Release;
-        let fetch_order = Ordering::Relaxed;
-
-        let atomic = &self.0;
-        let mut old = atomic.load(fetch_order);
-        while old < usize::MAX - 1 {
-            let new = old + 1;
-            match atomic.compare_exchange_weak(old, new, set_order, fetch_order) {
-                Ok(_) => {
-                    return UpdateResult::Done;
-                }
-                Err(next_prev) => old = next_prev,
-            }
-        }
-        UpdateResult::Overflow
-    }
-
-    #[inline]
-    fn get(&self) -> usize {
-        self.0.load(Ordering::Relaxed) + 1
-    }
-
-    #[inline]
-    fn is_unique(&self) -> bool {
-        if self.0.load(Ordering::Relaxed) == 0 {
-            fence(Ordering::Acquire);
-            true
-        } else {
-            false
-        }
-    }
-}
-
-#[cfg(target_has_atomic = "ptr")]
-impl Default for Arc {
-    #[inline]
-    fn default() -> Self {
-        Self(AtomicUsize::new(0))
-    }
-}
-
 /// Smart pointer inner cell.
 pub struct Inner<T, C>
 where
-    C: SmartKind,
+    C: Backend,
 {
     count: C,
     value: T,
@@ -248,7 +30,7 @@ where
 impl<T, C> Clone for Inner<T, C>
 where
     T: Clone,
-    C: SmartKind,
+    C: Backend,
 {
     fn clone(&self) -> Self {
         Self {
@@ -261,16 +43,25 @@ where
 /// Basic smart pointer, with generic counter.
 pub struct Smart<T, C>(NonNull<Inner<T, C>>)
 where
-    T: Clone,
-    C: SmartKind;
+    C: Backend;
 
 #[allow(unused)]
 impl<T, C> Smart<T, C>
 where
-    T: Clone,
-    C: SmartKind,
+    C: Backend,
 {
     /// Creates the smart pointer.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::smart::Smart;
+    /// # use hipstr::Arc;
+    /// let p = Smart::<_, Arc>::new(42);
+    /// let q = p.clone();
+    /// assert_eq!(p.as_ref(), q.as_ref());
+    /// ```
+    ///
     #[inline]
     #[must_use]
     pub fn new(value: T) -> Self {
@@ -289,14 +80,45 @@ where
     }
 
     /// Converts the smart pointer to a raw pointer.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::smart::Smart;
+    /// # use hipstr::Arc;
+    /// let p = Smart::<_, Arc>::new(42);
+    /// let ptr = Smart::into_raw(p);
+    /// let q = unsafe { Smart::from_raw(ptr) };
+    /// ```
     #[inline]
     #[must_use]
-    pub fn into_raw(self) -> NonNull<Inner<T, C>> {
-        let smart = ManuallyDrop::new(self);
+    pub fn into_raw(this: Self) -> NonNull<Inner<T, C>> {
+        let smart = ManuallyDrop::new(this);
         smart.0
     }
 
     /// Creates a smart pointer from a raw pointer.
+    ///
+    /// # Safety
+    ///
+    /// The raw pointer must come from a previous call to
+    /// [`Smart::<U, C>::into_raw`]
+    /// where `U` must have the same size and alignment as `T`.
+    ///
+    /// Note that if `U` is not the same type as `T`, this is basically like
+    /// transmuting a reference.
+    ///
+    /// [`Smart::<U, C>::into_raw`]: Self::into_raw
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::smart::Smart;
+    /// # use hipstr::Arc;
+    /// let p = Smart::<_, Arc>::new(42);
+    /// let ptr = Smart::into_raw(p);
+    /// let q = unsafe { Smart::from_raw(ptr) };
+    /// ```
     #[inline]
     pub fn from_raw(ptr: NonNull<Inner<T, C>>) -> Self {
         debug_assert!(ptr.is_aligned());
@@ -306,8 +128,8 @@ where
     /// Gets a reference to the value.
     #[inline]
     #[must_use]
-    pub const fn as_ref(&self) -> &T {
-        &self.inner().value
+    pub const fn as_ref(this: &Self) -> &T {
+        &this.inner().value
     }
 
     /// Checks if this reference is unique.
@@ -359,6 +181,7 @@ where
     /// Gets the reference count.
     #[inline]
     #[must_use]
+    #[cfg(test)]
     pub(crate) fn ref_count(&self) -> usize {
         // SAFETY: type invariant, the raw pointer cannot be dangling
         let inner = unsafe { self.0.as_ref() };
@@ -384,13 +207,24 @@ where
     pub(crate) fn incr(&self) -> UpdateResult {
         self.inner().count.incr()
     }
+
+    pub(crate) fn force_clone(&self) -> Self
+    where
+        T: Clone,
+    {
+        if unsafe { &(*self.0.as_ptr()).count }.incr() == UpdateResult::Done {
+            Self(self.0)
+        } else {
+            let inner = self.inner().clone();
+            let ptr = Box::into_raw(Box::new(inner));
+            // SAFETY: duh
+            let nonnull = unsafe { NonNull::new_unchecked(ptr) };
+            Self(nonnull)
+        }
+    }
 }
 
-impl<T, C> Clone for Smart<T, C>
-where
-    T: Clone,
-    C: SmartKind,
-{
+impl<T: Clone, C: Counter> Clone for Smart<T, BackendImpl<C, CloneOnOverflow>> {
     fn clone(&self) -> Self {
         if unsafe { &(*self.0.as_ptr()).count }.incr() == UpdateResult::Done {
             Self(self.0)
@@ -404,10 +238,19 @@ where
     }
 }
 
+impl<T, C: Counter> Clone for Smart<T, BackendImpl<C, PanicOnOverflow>> {
+    fn clone(&self) -> Self {
+        if self.incr() == UpdateResult::Done {
+            Self(self.0)
+        } else {
+            panic!("overflow on clone")
+        }
+    }
+}
+
 impl<T, C> Drop for Smart<T, C>
 where
-    T: Clone,
-    C: SmartKind,
+    C: Backend,
 {
     fn drop(&mut self) {
         // SAFETY: type invariant, cannot be dangling
@@ -422,27 +265,36 @@ where
 
 impl<T, C> Deref for Smart<T, C>
 where
-    T: Clone,
-    C: SmartKind,
+    C: Backend,
 {
     type Target = T;
 
     #[inline]
     fn deref(&self) -> &Self::Target {
-        self.as_ref()
+        Smart::as_ref(self)
+    }
+}
+
+impl<T, C> AsRef<T> for Smart<T, C>
+where
+    C: Backend,
+{
+    #[inline]
+    fn as_ref(&self) -> &T {
+        Smart::as_ref(self)
     }
 }
 
 unsafe impl<T, C> Send for Smart<T, C>
 where
-    T: Sync + Send + Clone,
-    C: Send + SmartKind,
+    T: Sync + Send,
+    C: Send + Backend,
 {
 }
 
 unsafe impl<T, C> Sync for Smart<T, C>
 where
-    T: Sync + Send + Clone,
-    C: Sync + SmartKind,
+    T: Sync + Send,
+    C: Sync + Backend,
 {
 }

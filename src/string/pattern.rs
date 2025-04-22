@@ -3,7 +3,7 @@
 use alloc::string::String;
 
 use super::HipStr;
-use crate::Backend;
+use crate::backend::Backend;
 
 pub trait Adopt<'borrow, B>
 where

@@ -8,9 +8,9 @@ use core::borrow::Borrow;
 use std::ffi::{OsStr, OsString};
 
 use super::HipOsStr;
+use crate::backend::Backend;
 use crate::bytes::HipByt;
 use crate::string::HipStr;
-use crate::Backend;
 
 // AsRef
 

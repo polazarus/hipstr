@@ -65,7 +65,7 @@ fn range_mono(
 }
 
 /// Represents errors that can occur when creating a range.
-#[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum RangeError {
     /// The start index overflows.
     StartOverflows,
@@ -79,12 +79,13 @@ pub enum RangeError {
 
 impl RangeError {
     /// Returns a static message describing the error.
+    #[must_use]
     pub const fn const_message(&self) -> &'static str {
         match self {
-            RangeError::StartOverflows => "start index overflows",
-            RangeError::EndOverflows => "end index overflows",
-            RangeError::StartGreaterThanEnd { .. } => "start index is greater than end index",
-            RangeError::EndOutOfBounds { .. } => "end index is out of bounds",
+            Self::StartOverflows => "start index overflows",
+            Self::EndOverflows => "end index overflows",
+            Self::StartGreaterThanEnd { .. } => "start index is greater than end index",
+            Self::EndOutOfBounds { .. } => "end index is out of bounds",
         }
     }
 }
@@ -94,16 +95,15 @@ impl error::Error for RangeError {}
 impl fmt::Display for RangeError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            RangeError::StartOverflows => write!(f, "start index overflows"),
-            RangeError::EndOverflows => write!(f, "end index overflows"),
-            RangeError::StartGreaterThanEnd { start, end } => {
-                write!(f, "start index {} is greater than end index {}", start, end)
+            Self::StartOverflows => write!(f, "start index overflows"),
+            Self::EndOverflows => write!(f, "end index overflows"),
+            Self::StartGreaterThanEnd { start, end } => {
+                write!(f, "start index {start} is greater than end index {end}")
             }
-            RangeError::EndOutOfBounds { end, len } => {
+            Self::EndOutOfBounds { end, len } => {
                 write!(
                     f,
-                    "end index {} is out of bounds for slice of length {}",
-                    end, len
+                    "end index {end} is out of bounds for slice of length {len}",
                 )
             }
         }

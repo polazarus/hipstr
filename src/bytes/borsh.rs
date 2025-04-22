@@ -4,7 +4,7 @@ use borsh::io::{self};
 use borsh::{BorshDeserialize, BorshSerialize};
 
 use super::HipByt;
-use crate::Backend;
+use crate::backend::Backend;
 
 #[cfg(test)]
 mod tests;

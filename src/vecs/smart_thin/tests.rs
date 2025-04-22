@@ -1,18 +1,26 @@
+#![allow(clippy::redundant_clone)]
+
 use alloc::vec;
 use alloc::vec::Vec;
 use core::cmp::Ordering;
 
 use super::*;
-use crate::{smart, smart_thin_vec, thin_vec, Arc, Rc, Unique};
+use crate::backend::PanickyUnique;
+use crate::{smart_thin_vec, thin_vec, Arc, Rc, Unique};
 
 #[test]
 fn new() {
     let v = SmartThinVec::<u8, Arc>::new();
     assert_eq!(v.len(), 0);
     assert!(v.is_unique());
+
+    let v = SmartThinVec::<u8, Rc>::default();
+    assert_eq!(v.len(), 0);
+    assert!(v.is_unique());
 }
 
 #[test]
+
 fn clone() {
     let v1 = SmartThinVec::<u8, Arc>::new();
     assert_eq!(v1.len(), 0);
@@ -40,7 +48,7 @@ fn clone_unique() {
 #[test]
 #[should_panic(expected = "count overflow")]
 fn clone_panic() {
-    let v1 = SmartThinVec::<u8, smart::PanicOnOverflow<smart::Unique>>::new();
+    let v1 = SmartThinVec::<u8, PanickyUnique>::new();
     assert_eq!(v1.len(), 0);
     assert!(v1.is_unique());
 
@@ -63,18 +71,29 @@ fn deref() {
 }
 
 #[test]
-fn as_mut_vec() {
-    let mut v = SmartThinVec::<u8, Arc>::new();
-    assert!(v.is_unique());
-    assert!(v.as_mut_vec().is_some());
+fn as_ref() {
+    let v = SmartThinVec::<u8, Arc>::new();
 
-    let _v2 = v.clone();
-    assert!(!v.is_unique());
-    assert!(v.as_mut_vec().is_none());
+    let s: &[u8] = &v.as_ref();
+    assert!(ptr::eq(s, v.as_slice()));
+
+    let t: &ThinVec<u8, _> = &v.as_ref();
+    assert!(ptr::eq(t, v.as_thin_vec()));
 }
 
 #[test]
-fn froms() {
+fn as_mut() {
+    let mut v = SmartThinVec::<u8, Arc>::new();
+    assert!(v.is_unique());
+    assert!(v.as_mut().is_some());
+
+    let _v2 = v.clone();
+    assert!(!v.is_unique());
+    assert!(v.as_mut().is_none());
+}
+
+#[test]
+fn from_impls() {
     let v = SmartThinVec::<u8, Arc>::from(vec![1, 2]);
     assert_eq!(v.as_slice(), &[1, 2]);
     let v = SmartThinVec::<u8, Arc>::from(thin_vec![1, 2]);
@@ -171,8 +190,8 @@ fn try_into_impls() {
 
     let v1 = smart_thin_vec![1, 2, 3];
     let v2 = v1.clone();
-    let conv: Result<ThinVec<i32>, _> = v1.try_into();
-    let v3 = conv.unwrap_err();
+    let result: Result<ThinVec<i32>, _> = v1.try_into();
+    let v3 = result.unwrap_err();
     assert_eq!(v3.as_ptr(), v2.as_ptr());
     assert_eq!(v3.as_slice(), v2.as_slice());
 }

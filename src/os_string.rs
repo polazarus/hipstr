@@ -8,9 +8,9 @@ use core::hash::Hash;
 use core::ops::{Deref, DerefMut};
 use std::ffi::{OsStr, OsString};
 
+use crate::backend::Backend;
 use crate::bytes::HipByt;
 use crate::string::HipStr;
-use crate::Backend;
 
 mod cmp;
 mod convert;

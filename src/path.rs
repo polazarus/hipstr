@@ -8,10 +8,10 @@ use core::ops::{Deref, DerefMut};
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 
+use crate::backend::Backend;
 use crate::bytes::HipByt;
 use crate::os_string::HipOsStr;
 use crate::string::HipStr;
-use crate::Backend;
 
 mod cmp;
 mod convert;

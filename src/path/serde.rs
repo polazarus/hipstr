@@ -29,8 +29,8 @@
 use serde::{Deserialize, Serialize};
 
 use super::HipPath;
+use crate::backend::Backend;
 use crate::string::HipStr;
-use crate::Backend;
 
 impl<B> Serialize for HipPath<'_, B>
 where

@@ -18,8 +18,8 @@ use raw::{Split, SplitMut, Tag, Union, INLINE_CAPACITY};
 
 use self::raw::try_range_of;
 pub use self::raw::HipByt;
+use crate::backend::Backend;
 use crate::vecs::InlineVec;
-use crate::Backend;
 
 mod cmp;
 mod convert;

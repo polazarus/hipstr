@@ -1,3 +1,4 @@
+use alloc::vec;
 #[cfg(all(not(loom), feature = "std"))]
 use std::sync;
 #[cfg(all(not(loom), feature = "std"))]
@@ -7,6 +8,8 @@ use std::thread;
 use loom::{sync, thread};
 
 use super::*;
+use crate::backend::PanickyUnique;
+use crate::{Arc, Rc, Unique};
 
 type U<E> = Smart<E, Unique>;
 type L<E> = Smart<E, Rc>;
@@ -218,51 +221,41 @@ fn test_atomic_st_clone_drop() {
 }
 
 #[test]
+#[cfg(feature = "std")]
 fn test_local_clone_overflow() {
-    let witness = local_witness::Witness::default();
-    {
-        let a = L::new(witness.clone());
-        assert_eq!(a.inner().count.get(), 1);
-        a.inner().count.0.set(usize::MAX - 1);
+    let a = L::new(42);
 
-        {
-            let b = a.clone();
-            assert_eq!(a.inner().count.get(), usize::MAX);
-            assert_eq!(b.inner().count.get(), 1);
-            // drop b
-        }
-        assert_eq!(witness.clones(), 2);
-        assert_eq!(witness.drops(), 1);
+    assert_eq!(a.inner().count.get(), 1);
+    // artificially set the count to MAX
+    a.inner().count.0.set(usize::MAX);
 
-        a.inner().count.0.set(0);
-        // drop a
-    }
-    assert_eq!(witness.clones(), 2);
-    assert_eq!(witness.drops(), 2);
+    let result = std::panic::catch_unwind(|| {
+        let _ = a.clone();
+    });
+    assert!(result.is_err());
+
+    assert_eq!(a.inner().count.get(), usize::MAX);
+    // reset the count to 1
+    a.inner().count.set(1);
 }
 
 #[test]
+#[cfg(feature = "std")]
 fn test_atomic_st_clone_overflow() {
-    let witness = local_witness::Witness::default();
-    {
-        let a = T::new(witness.clone());
-        assert_eq!(a.inner().count.get(), 1);
-        a.inner().count.0.store(usize::MAX - 1, Ordering::Release);
+    let a = T::new(42);
 
-        {
-            let b = a.clone();
-            assert_eq!(a.inner().count.get(), usize::MAX);
-            assert_eq!(b.inner().count.get(), 1);
-            // drop b
-        }
-        assert_eq!(witness.clones(), 2);
-        assert_eq!(witness.drops(), 1);
+    assert_eq!(a.inner().count.get(), 1);
+    // artificially set the count to MAX
+    a.inner().count.set(usize::MAX);
 
-        a.inner().count.0.store(0, Ordering::Release);
-        // drop a
-    }
-    assert_eq!(witness.clones(), 2);
-    assert_eq!(witness.drops(), 2);
+    let result = std::panic::catch_unwind(|| {
+        let _ = a.clone();
+    });
+    assert!(result.is_err());
+
+    assert_eq!(a.inner().count.get(), usize::MAX);
+    // reset the count to 1
+    a.inner().count.set(1);
 }
 
 #[test]
@@ -345,32 +338,37 @@ fn loom_atomic_mt_orderly_drop2() {
 #[test]
 #[cfg(any(loom, feature = "std"))]
 fn test_atomic_mt_clone_overflow() {
+    use std::thread::JoinHandle;
+
     let witness = atomic_witness::Witness::default();
     let a = T::new(witness.clone());
 
-    const N: usize = usize::MAX - 3;
+    const THREADS: usize = 3;
+    const N: usize = usize::MAX - THREADS;
 
-    a.inner().count.0.store(N, Ordering::Release);
+    // artificially set the count to N
+    a.inner().count.set(N);
 
-    let ths = [(); 2].map(|_| {
-        let b = a.clone();
+    let ths = [(); THREADS].map(|_| a.clone()).map(|b| {
         thread::spawn(move || {
             let c = b.clone();
             drop(c);
         })
     });
 
-    for th in ths {
-        th.join().unwrap();
-    }
+    let errors: std::vec::Vec<bool> = ths
+        .into_iter()
+        .map(JoinHandle::join)
+        .map(|result| result.is_err())
+        .collect();
+    assert!(errors.into_iter().any(|b| b)); // at least one of the thread should panic
 
-    assert_eq!(
-        a.inner()
-            .count
-            .0
-            .compare_exchange(N, 0, Ordering::AcqRel, Ordering::Acquire),
-        Ok(N)
-    );
+    // check that the count is still N
+    // that is, the drop of the moved clones did occur
+    assert_eq!(a.inner().count.get(), N);
+
+    // reset the count to 1
+    a.inner().count.set(1);
 
     drop(a);
     assert_eq!(witness.clones(), witness.drops());
@@ -380,4 +378,17 @@ fn test_atomic_mt_clone_overflow() {
 #[cfg(loom)]
 fn loom_atomic_mt_clone_overflow() {
     loom::model(test_atomic_mt_clone_overflow);
+}
+
+#[test]
+fn force_clone() {
+    let v = Smart::<_, PanickyUnique>::new(vec![1, 2, 3]);
+    let w = v.force_clone();
+    assert_eq!(w.as_slice(), [1, 2, 3]);
+    assert_ne!(v.as_ptr(), w.as_ptr());
+
+    let v = Smart::<_, Arc>::new(vec![1, 2, 3]);
+    let w = v.force_clone();
+    assert_eq!(w.as_slice(), [1, 2, 3]);
+    assert_eq!(v.as_ptr(), w.as_ptr());
 }

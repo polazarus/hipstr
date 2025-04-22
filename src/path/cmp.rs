@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 use std::ptr;
 
 use super::HipPath;
+use crate::backend::Backend;
 use crate::macros::{symmetric_eq, symmetric_ord};
-use crate::Backend;
 
 // Equality
 
