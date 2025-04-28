@@ -35,9 +35,20 @@ jobs:
           --codecov
           --output-path codecov.json
 
+      - name: Run test and collect coverage (loom)
+        env:
+          RUSTFLAGS: "--cfg loom"
+        run: >
+          cargo llvm-cov
+          --locked
+          --all-features
+          --codecov
+          --output-path codecov-loom.json
+          test loom
+
       - name: Upload to codecov.io
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
-          file: codecov.json
+          files: codecov.json,codecov-loom.json
           fail_ci_if_error: true
           token: ${{ secrets.CODECOV_TOKEN }}
