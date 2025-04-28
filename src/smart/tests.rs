@@ -1,4 +1,5 @@
 use alloc::vec;
+use alloc::vec::Vec;
 #[cfg(all(not(loom), feature = "std"))]
 use std::sync;
 #[cfg(all(not(loom), feature = "std"))]
@@ -338,8 +339,6 @@ fn loom_atomic_mt_orderly_drop2() {
 #[test]
 #[cfg(any(loom, feature = "std"))]
 fn test_atomic_mt_clone_overflow() {
-    use std::thread::JoinHandle;
-
     let witness = atomic_witness::Witness::default();
     let a = T::new(witness.clone());
 
@@ -356,9 +355,9 @@ fn test_atomic_mt_clone_overflow() {
         })
     });
 
-    let errors: std::vec::Vec<bool> = ths
+    let errors: Vec<bool> = ths
         .into_iter()
-        .map(JoinHandle::join)
+        .map(thread::JoinHandle::join)
         .map(|result| result.is_err())
         .collect();
     assert!(errors.into_iter().any(|b| b)); // at least one of the thread should panic
@@ -376,6 +375,7 @@ fn test_atomic_mt_clone_overflow() {
 
 #[test]
 #[cfg(loom)]
+#[should_panic(expected = "overflow")]
 fn loom_atomic_mt_clone_overflow() {
     loom::model(test_atomic_mt_clone_overflow);
 }
