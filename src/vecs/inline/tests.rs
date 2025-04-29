@@ -7,6 +7,7 @@ use core::mem::size_of;
 use core::ptr;
 
 use super::*;
+use crate::common::traits::MutVector;
 use crate::{inline_vec, thin_vec};
 
 const SMALL_CAP: usize = 7;
@@ -863,4 +864,27 @@ fn from_slice_panic() {
 #[should_panic(expected = "vector's length exceeds capacity")]
 fn from_vec_panic() {
     let _ = InlineVec::<u8, 7>::from(vec![1, 2, 3, 4, 5, 6, 7, 8]);
+}
+
+#[test]
+fn vector() {
+    let mut v = InlineVec::<u8, 7>::from_array([1, 2, 3]);
+    let cap = v.capacity();
+    let len = v.len();
+    let ptr = v.as_ptr();
+
+    let v: &mut dyn MutVector<Item = u8> = &mut v;
+    assert_eq!(v.len(), 3);
+
+    assert_eq!(v.capacity(), cap);
+
+    assert_eq!(v.as_slice().len(), len);
+    assert_eq!(v.as_slice().as_ptr(), ptr);
+
+    assert_eq!(v.as_mut_slice().len(), len);
+    assert_eq!(v.as_mut_slice().as_ptr(), ptr);
+
+    assert_eq!(v.as_ptr(), ptr);
+    assert_eq!(v.as_mut_ptr().cast_const(), ptr);
+    assert_eq!(v.as_non_null().as_ptr().cast_const(), ptr);
 }

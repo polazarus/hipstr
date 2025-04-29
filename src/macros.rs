@@ -76,9 +76,8 @@ macro_rules! trait_impls {
         impl $(< $($gen)* >)? core::fmt::Debug for $t $($(where $($wh)*)?)? {
             #[inline]
             fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-                f.debug_list()
-                    .entries(self.iter())
-                    .finish()
+                let slice: &[_] = self;
+                slice.fmt(f)
             }
         }
         $crate::macros::trait_impls!(@Debug $([ $($gen)* ] $( where [ $($wh)* ])? )? { $($rest)* });

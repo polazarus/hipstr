@@ -544,7 +544,7 @@ impl<T, P> ThinVec<T, P> {
             (layout.size() - offset) / mem::size_of::<T>()
         };
 
-        #[cfg(not(coverage_nightly))]
+        #[cfg(not(coverage))]
         debug_assert!(payload <= round_up_payload, "invalid roundup");
 
         Some((layout, offset, round_up_payload))
@@ -1462,6 +1462,9 @@ macros::trait_impls! {
         PartialEq {
             [T; N], ThinVec<U, P>;
             ThinVec<T, P>, [U; N];
+
+            &[T; N], ThinVec<U, P>;
+            ThinVec<T, P>, &[U; N];
         }
     }
 
@@ -1487,6 +1490,9 @@ macros::trait_impls! {
         PartialOrd {
             [T; N], ThinVec<T, P>;
             ThinVec<T, P>, [T; N];
+
+            &[T; N], ThinVec<T, P>;
+            ThinVec<T, P>, &[T; N];
         }
     }
 }
