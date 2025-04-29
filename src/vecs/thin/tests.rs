@@ -31,57 +31,91 @@ fn new() {
 }
 
 #[test]
+fn set_capacity() {
+    let mut v = ThinVec::<i32>::with_capacity(10);
+    let old = v.capacity();
+    unsafe {
+        v.set_capacity(old);
+        assert_eq!(v.capacity(), old);
+        v.set_capacity(20);
+        assert!(v.capacity() >= 20);
+        let old = v.capacity();
+        v.set_capacity(0);
+        assert!(v.capacity() <= 2);
+    }
+}
+
+#[test]
 fn froms() {
     let b: Box<[i32]> = Box::new([1, 2, 3]);
     let v = ThinVec::from(b);
     assert_eq!(v.as_slice(), &[1, 2, 3]);
 
+    // array
     let v = ThinVec::from([1, 2, 3]);
     assert_eq!(v.as_slice(), &[1, 2, 3]);
 
+    // array ref
     let v = ThinVec::from(&[1, 2, 3]);
     assert_eq!(v.as_slice(), &[1, 2, 3]);
 
+    // mutable array ref
     let v = ThinVec::from(&mut [1, 2, 3]);
     assert_eq!(v.as_slice(), &[1, 2, 3]);
 
+    // slice
     let v = ThinVec::from([1, 2, 3].as_slice());
     assert_eq!(v.as_slice(), &[1, 2, 3]);
 
+    // mutable slice
     let v = ThinVec::from([1, 2, 3].as_mut_slice());
     assert_eq!(v.as_slice(), &[1, 2, 3]);
 
+    // vec
     let v = ThinVec::from(vec![1, 2, 3]);
     assert_eq!(v.as_slice(), &[1, 2, 3]);
 
+    // cow borrowed
     let v = ThinVec::from(Cow::Borrowed([1, 2, 3].as_slice()));
     assert_eq!(v.as_slice(), &[1, 2, 3]);
 
+    // cow owned
     let v = ThinVec::from(Cow::Owned(vec![1, 2, 3]));
     assert_eq!(v.as_slice(), &[1, 2, 3]);
 
+    // inline vec
     let v = ThinVec::from(crate::inline_vec![7 => 1, 2, 3]);
     assert_eq!(v.as_slice(), &[1, 2, 3]);
 
+    // array, check move
     let arr = [Box::new(1)];
     let p = &raw const *arr[0];
     let v = ThinVec::from(arr);
     assert_eq!(&raw const *v[0], p);
 
+    // boxed slice, check move
     let boxed: Box<[Box<i32>]> = Box::new([Box::new(1)]);
     let p = &raw const *boxed[0];
     let v = ThinVec::from(boxed);
     assert_eq!(&raw const *v[0], p);
 
+    // vec, check move
     let vec = vec![Box::new(1)];
     let p = &raw const *vec[0];
     let v = ThinVec::from(vec);
     assert_eq!(&raw const *v[0], p);
 
+    // cow owned, check move
     let cow: Cow<'_, [Box<i32>]> = Cow::Owned(vec![Box::new(1)]);
     let p = &raw const *cow[0];
     let v = ThinVec::from(cow);
     assert_eq!(&raw const *v[0], p);
+
+    let arr = [Box::new(1)];
+    let cow: Cow<'_, [Box<i32>]> = Cow::Borrowed(&arr);
+    let p = &raw const *cow[0];
+    let v = ThinVec::from(cow);
+    assert_ne!(&raw const *v[0], p);
 }
 
 #[test]
@@ -172,6 +206,15 @@ fn from_slice_clone_panic() {
     *CLONE_COUNT.lock().unwrap() = 0;
     *DROP_COUNT.lock().unwrap() = 0;
 
+    let array: [_; 2] = [false, false].map(S);
+    let _ = ThinVec::from(array.as_slice());
+
+    assert_eq!(*CLONE_COUNT.lock().unwrap(), 2);
+    assert_eq!(*DROP_COUNT.lock().unwrap(), 2);
+
+    *CLONE_COUNT.lock().unwrap() = 0;
+    *DROP_COUNT.lock().unwrap() = 0;
+
     let array: [_; 4] = [false, false, true, false].map(S);
     let r = std::panic::catch_unwind(|| {
         let _ = ThinVec::from(array.as_slice());
@@ -195,6 +238,9 @@ fn from_slice_clone_panic_non_drop() {
             Self(self.0)
         }
     }
+    let array: [_; 2] = [false, false].map(S);
+    let _ = ThinVec::from(array.as_slice());
+
     let array: [_; 4] = [false, false, true, false].map(S);
     let _r = std::panic::catch_unwind(|| ThinVec::from(array.as_slice())).unwrap_err();
 }
@@ -485,6 +531,22 @@ fn resize() {
 }
 
 #[test]
+fn extend_iter() {
+    let mut v = thin_vec![1, 2, 3];
+    v.extend([4, 5, 6]);
+    assert_eq!(v.as_slice(), &[1, 2, 3, 4, 5, 6]);
+
+    let mut v = thin_vec![];
+    v.extend(iter::repeat_n(42, 42));
+    assert_eq!(v.len(), 42);
+    assert_eq!(v.as_slice(), [42; 42]);
+
+    let mut v = thin_vec![1, 2, 3];
+    v.extend(iter::empty());
+    assert_eq!(v.as_slice(), &[1, 2, 3]);
+}
+
+#[test]
 fn extend_clone() {
     let mut v = thin_vec![1, 2, 3];
     v.extend_clone(0, 4);
@@ -608,40 +670,91 @@ fn eq() {
     let b = ThinVec::from_array(ARR);
 
     assert_eq!(a, b);
+
+    // array
     assert_eq!(a, ARR);
+    assert_eq!(ARR, a);
+
+    // ref to array
+    assert_eq!(a, &ARR);
+    assert_eq!(&ARR, a);
+
+    // slice
     assert_eq!(a, ARR.as_slice());
+    assert_eq!(ARR.as_slice(), a);
+
+    // mutable slice
     let mut arr = ARR;
     assert_eq!(a, arr.as_mut_slice());
-    assert_eq!(a, Vec::from(ARR));
+    assert_eq!(arr.as_mut_slice(), a);
+
+    // vec
+    let vec = Vec::from(ARR);
+    assert_eq!(a, vec);
+    assert_eq!(vec, a);
+
+    // heterogeneous comparisons
 
     let c = ThinVec::from_array(ARR_S);
+
     assert_eq!(a, c);
+    assert_eq!(c, a);
+
     assert_eq!(a, ARR_S);
+    assert_eq!(ARR_S, a);
+
+    assert_eq!(a, &ARR_S);
+    assert_eq!(&ARR_S, a);
+
     assert_eq!(a, ARR_S.as_slice());
+    assert_eq!(ARR_S.as_slice(), a);
+
     let mut arr = ARR;
+
     assert_eq!(a, arr.as_mut_slice());
-    assert_eq!(a, Vec::from(ARR_S));
+    assert_eq!(arr.as_mut_slice(), a);
+
+    let vec = Vec::from(ARR_S);
+    assert_eq!(a, vec);
+    assert_eq!(vec, a);
 }
 
 #[test]
 fn ord() {
     let a = thin_vec![1, 2, 3];
+
     assert!(a < thin_vec![1, 2, 3, 4]);
     assert!(a < thin_vec![1, 2, 4]);
     assert!(a <= thin_vec![1, 2, 3]);
     assert!(a > thin_vec![0]);
     assert!(a > thin_vec![1, 2, 2]);
     assert!(a >= thin_vec![1, 2, 3]);
+
     assert_eq!(a.partial_cmp(&thin_vec![1, 2, 3]).unwrap(), Ordering::Equal);
     assert_eq!(a.cmp(&thin_vec![1, 2, 3]), Ordering::Equal);
 
     let mut arr = [1, 2, 3];
+
+    // array
     assert!(a.partial_cmp(&arr).unwrap() == Ordering::Equal);
+    assert!(arr.partial_cmp(&a).unwrap() == Ordering::Equal);
+
+    // array ref
+    assert!(PartialOrd::partial_cmp(&a, &&arr).unwrap() == Ordering::Equal);
+    assert!(PartialOrd::partial_cmp(&&arr, &a).unwrap() == Ordering::Equal);
+
+    // slice
     assert!(a.partial_cmp(arr.as_slice()).unwrap() == Ordering::Equal);
-    assert!(a.partial_cmp(&arr.as_slice()).unwrap() == Ordering::Equal);
+    assert!(arr.as_slice().partial_cmp(&a).unwrap() == Ordering::Equal);
+
+    // mutable slice
     assert!(a.partial_cmp(&arr.as_mut_slice()).unwrap() == Ordering::Equal);
-    assert!(a.partial_cmp(&Vec::from(arr)).unwrap() == Ordering::Equal);
-    assert!(a <= arr);
+    assert!(arr.as_mut_slice().partial_cmp(&a).unwrap() == Ordering::Equal);
+
+    // vec
+    let vec = Vec::from(arr);
+    assert!(a.partial_cmp(&vec).unwrap() == Ordering::Equal);
+    assert!(vec.partial_cmp(&a).unwrap() == Ordering::Equal);
 }
 
 #[test]
@@ -687,8 +800,11 @@ fn extend_from_slice_copy() {
 
 #[test]
 fn debug() {
-    let v = thin_vec![1, 2, 3];
+    let mut v = thin_vec![1, 2, 3];
     assert_eq!(format!("{v:?}"), "[1, 2, 3]");
+    v.truncate(0);
+    assert_eq!(format!("{v:?}"), "[]");
+
     let v: GenericThinVec<i32, ()> = GenericThinVec::from([1, 2, 3]);
     assert_eq!(format!("{v:?}"), "[1, 2, 3]");
 }
@@ -787,4 +903,13 @@ fn fresh_move_drop_prefix() {
     assert_eq!(v2.as_ptr(), p);
     assert_eq!(v2.prefix(), &());
     assert!(*WITNESS.lock().unwrap());
+}
+
+#[test]
+fn vector() {
+    let mut v = thin_vec![1, 2, 3];
+    let ptr = v.as_ptr();
+    let cap = v.capacity();
+    let len = v.len();
+    test_mut_vector(v, cap, len, ptr);
 }

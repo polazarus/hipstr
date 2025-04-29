@@ -26,8 +26,13 @@ borsh = ["dep:borsh"]
 [dev-dependencies]
 fastrand = "2.3.0"
 serde_test = "1.0.177"
-serde = { version = "1.0.100", default-features = false, features = ["derive", "alloc"] }
-serde_json = { version = "1.0.45", default-features = false, features = ["alloc"] }
+serde = { version = "1.0.100", default-features = false, features = [
+    "derive",
+    "alloc",
+] }
+serde_json = { version = "1.0.45", default-features = false, features = [
+    "alloc",
+] }
 divan = "0.1.17"
 
 [dependencies.bstr]
@@ -58,6 +63,7 @@ kstring = "2.0.2"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(coverage)',
     'cfg(coverage_nightly)',
     'cfg(docsrs)',
     'cfg(loom)',
