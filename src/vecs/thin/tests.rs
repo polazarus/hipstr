@@ -485,6 +485,13 @@ fn resize() {
 }
 
 #[test]
+fn extend_clone() {
+    let mut v = thin_vec![1, 2, 3];
+    v.extend_clone(0, 4);
+    assert_eq!(v.as_slice(), &[1, 2, 3]);
+}
+
+#[test]
 fn extend_from_within() {
     let mut v = thin_vec![1, 2, 3];
     v.extend_from_within(0..3);
