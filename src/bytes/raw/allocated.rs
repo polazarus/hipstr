@@ -9,9 +9,15 @@ use core::ptr::NonNull;
 
 use crate::backend::{Backend, UpdateResult};
 use crate::smart::{Inner, Smart};
+use crate::vecs::SmartThinVec;
 
 const MASK: usize = super::MASK as usize;
 const TAG: usize = super::TAG_ALLOCATED as usize;
+
+enum Variant<F, T> {
+    Fat(F),
+    Thin(T),
+}
 
 /// Tagged smart pointer (with forced exposed provenance).
 ///
@@ -32,6 +38,17 @@ impl<B: Backend> Clone for TaggedSmart<B> {
 impl<B: Backend> Copy for TaggedSmart<B> {}
 
 impl<B: Backend> TaggedSmart<B> {
+    /// Gets the owner.
+    fn get(&self) -> Variant<Smart<Vec<u8>, B>, SmartThinVec<u8, B>> {
+        if (self.0 & 1) != 0 {
+            Variant::Fat(unsafe { Smart::from_raw(NonNull::new_unchecked(self.0 as *mut _)) })
+        } else {
+            Variant::Thin(unsafe {
+                SmartThinVec::from_raw(NonNull::new_unchecked(self.0 as *mut _))
+            })
+        }
+    }
+
     /// Constructed a tagged smart pointer from a [`Smart`].
     #[inline]
     fn from(raw: Smart<Vec<u8>, B>) -> Self {
@@ -128,8 +145,8 @@ impl<B: Backend + RefUnwindSafe> RefUnwindSafe for Allocated<B> {}
 
 impl<B: Backend> Allocated<B> {
     /// Converts the allocated representation into its owner.
-    fn into_owner(self) -> Smart<Vec<u8>, B> {
-        self.owner.into()
+    fn into_owner(self) -> Variant<Smart<Vec<u8>, B>, SmartThinVec<u8, B>> {
+        self.owner.get()
     }
 
     /// Returns a reference to the owner.

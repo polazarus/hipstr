@@ -31,10 +31,10 @@ const MASK: u8 = (1 << TAG_BITS) - 1;
 const TAG_INLINE: u8 = 1;
 
 /// Tag for the borrowed repr
-const TAG_BORROWED: u8 = 2;
+const TAG_OWNED: u8 = 2;
 
 /// Tag for the allocated repr
-const TAG_ALLOCATED: u8 = 3;
+const TAG_ALLOCATED: u8 = 2;
 
 /// Maximal byte capacity of an inline [`HipByt`].
 pub(crate) const INLINE_CAPACITY: usize = size_of::<Borrowed>() - 1;
@@ -123,8 +123,25 @@ pub(super) struct Pivot {
     tag_byte: NonZeroU8,
 }
 
+#[derive(Clone, Copy)]
+#[repr(C)]
+pub(super) union WordView {
+    tag: usize,
+    _remainder: [MaybeUninit<*mut ()>; 2],
+}
+
 unsafe impl<B: Backend + Sync> Sync for HipByt<'_, B> {}
 unsafe impl<B: Backend + Send> Send for HipByt<'_, B> {}
+
+// U -> maybe uninit
+//
+// Big endian last word (reversed for little endian)
+//
+// UUUU_UUUU*3 0000_0000: None
+// UUUU_UUUU*3 LLLL_LL01: Inline (L -> length)
+// PPPP_PPPP*3 PPPP_PP10: Fat vec  \__ allocated
+// PPPP_PPPP*3 PPPP_PP11: Thin vec /
+// 0000_0000*3 0000_001X: Borrowed
 
 /// Equivalent union representation.
 ///
@@ -142,6 +159,9 @@ pub union Union<'borrow, B: Backend> {
 
     /// Pivot representation with niche
     pivot: Pivot,
+
+    /// View to access the tagged word
+    words: WordView,
 }
 
 impl<'borrow, B: Backend> Union<'borrow, B> {
@@ -170,9 +190,9 @@ impl<'borrow, B: Backend> Union<'borrow, B> {
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tag {
-    Inline = TAG_INLINE,
-    Borrowed = TAG_BORROWED,
-    Allocated = TAG_ALLOCATED,
+    Inline,
+    Borrowed,
+    Allocated,
 }
 
 /// Helper enum to split this raw byte string into its possible representation.
@@ -250,9 +270,15 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
     /// Retrieves the tag.
     pub(super) const fn tag(&self) -> Tag {
         match self.pivot.tag_byte.get() & MASK {
-            TAG_INLINE => Tag::Inline,
-            TAG_BORROWED => Tag::Borrowed,
-            TAG_ALLOCATED => Tag::Allocated,
+            0b01 => Tag::Inline,
+            0b11 | 0b10 => {
+                let first = unsafe { self.union().words.tag };
+                if first == borrowed::TAG {
+                    Tag::Borrowed
+                } else {
+                    Tag::Allocated
+                }
+            }
             // SAFETY: type invariant
             _ => unsafe { unreachable_unchecked() },
         }

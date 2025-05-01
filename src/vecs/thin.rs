@@ -74,7 +74,7 @@ macro_rules! thin_vec {
 /// A shared thin vector's header.
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
-pub(super) struct Header<T, P> {
+pub(crate) struct Header<T, P> {
     prefix: P,
     cap: usize,
     len: usize,

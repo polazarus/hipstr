@@ -113,6 +113,14 @@ impl<T, C: Backend> Deref for SmartThinVec<T, C> {
 }
 
 impl<T, C: Backend> SmartThinVec<T, C> {
+    pub(crate) unsafe fn from_raw(ptr: NonNull<Header<T, C>>) -> Self {
+        Self(ptr)
+    }
+    pub(crate) fn into_raw(self) -> NonNull<Header<T, C>> {
+        let this = ManuallyDrop::new(self);
+        this.0
+    }
+
     /// Creates a new empty vector.
     ///
     /// # Examples

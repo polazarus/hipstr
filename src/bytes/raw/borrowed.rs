@@ -1,14 +1,13 @@
 //! Representation for borrowed slice.
 
-use core::mem::{offset_of, size_of, MaybeUninit};
-use core::num::NonZeroU8;
+use core::mem::{offset_of, size_of};
 
-use super::TAG_BORROWED;
+use super::TAG_OWNED;
 
 #[cfg(test)]
 mod tests;
 
-const TAG_NZ: NonZeroU8 = NonZeroU8::new(TAG_BORROWED).unwrap();
+pub const TAG: usize = unsafe { TAG_OWNED as usize }; // a null pointer tagged with `TAG_OWNED`
 
 /// Borrowed slice representation.
 ///
@@ -20,39 +19,27 @@ const TAG_NZ: NonZeroU8 = NonZeroU8::new(TAG_BORROWED).unwrap();
 #[repr(C)]
 pub struct Borrowed<'borrow> {
     #[cfg(target_endian = "little")]
-    tag: NonZeroU8,
-
-    #[cfg(target_endian = "little")]
-    reserved: MaybeUninit<[u8; size_of::<usize>() - 1]>,
+    tag: usize,
 
     slice: &'borrow [u8],
 
     #[cfg(target_endian = "big")]
-    reserved: MaybeUninit<[u8; size_of::<usize>() - 1]>,
-
-    #[cfg(target_endian = "big")]
-    tag: NonZeroU8,
+    tag: usize,
 }
 
 impl<'borrow> Borrowed<'borrow> {
-    const ASSERTS: () = {
-        if cfg!(target_endian = "little") {
-            assert!(offset_of!(Self, tag) == 0);
-        } else {
-            assert!(offset_of!(Self, tag) == size_of::<Self>() - 1);
-        }
-    };
-
     /// Creates a new borrowed representation.
     #[inline]
     pub const fn new(slice: &'borrow [u8]) -> Self {
-        let () = Self::ASSERTS; // HACK to actually do the check
+        const {
+            if cfg!(target_endian = "little") {
+                assert!(offset_of!(Self, tag) == 0);
+            } else {
+                assert!(offset_of!(Self, tag) == size_of::<Self>() - size_of::<usize>());
+            }
+        }
 
-        let this = Self {
-            slice,
-            tag: TAG_NZ,
-            reserved: MaybeUninit::uninit(),
-        };
+        let this = Self { slice, tag: TAG };
         debug_assert!(this.is_valid());
         this
     }
@@ -81,7 +68,7 @@ impl<'borrow> Borrowed<'borrow> {
     /// Return `true` iff this representation is valid.
     #[inline]
     pub const fn is_valid(&self) -> bool {
-        self.tag.get() == TAG_BORROWED
+        self.tag == TAG
     }
 
     /// Sets the length
