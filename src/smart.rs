@@ -19,11 +19,12 @@ use crate::backend::{
 mod tests;
 
 /// Smart pointer inner cell.
+#[repr(C)]
 pub struct Inner<T, C>
 where
     C: Backend,
 {
-    count: C,
+    pub(crate) count: C,
     value: T,
 }
 
@@ -41,7 +42,8 @@ where
 }
 
 /// Basic smart pointer, with generic counter.
-pub struct Smart<T, C>(NonNull<Inner<T, C>>)
+#[repr(transparent)]
+pub struct Smart<T, C>(pub(crate) NonNull<Inner<T, C>>)
 where
     C: Backend;
 
@@ -120,7 +122,7 @@ where
     /// let q = unsafe { Smart::from_raw(ptr) };
     /// ```
     #[inline]
-    pub fn from_raw(ptr: NonNull<Inner<T, C>>) -> Self {
+    pub unsafe fn from_raw(ptr: NonNull<Inner<T, C>>) -> Self {
         debug_assert!(ptr.is_aligned());
         unsafe { Self(ptr) }
     }
@@ -206,6 +208,23 @@ where
 
     pub(crate) fn incr(&self) -> UpdateResult {
         self.inner().count.incr()
+    }
+
+    pub(crate) unsafe fn into_inner_unchecked(self) -> T {
+        debug_assert!(self.is_unique());
+
+        let this = ManuallyDrop::new(self);
+        // SAFETY: type invariant, pointer must be valid
+        let inner = unsafe { Box::from_raw(this.0.as_ptr()) };
+        inner.value
+    }
+
+    pub fn try_clone(&self) -> Option<Self> {
+        if self.incr() == UpdateResult::Done {
+            Some(Self(self.0))
+        } else {
+            None
+        }
     }
 
     pub(crate) fn force_clone(&self) -> Self

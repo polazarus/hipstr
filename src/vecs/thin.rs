@@ -75,7 +75,7 @@ macro_rules! thin_vec {
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub(crate) struct Header<T, P> {
-    prefix: P,
+    pub(crate) prefix: P,
     cap: usize,
     len: usize,
     phantom: PhantomData<T>,

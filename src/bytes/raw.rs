@@ -328,7 +328,7 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
 
     /// Creates a new `HipByt` from a vector.
     pub(super) fn from_vec(vec: Vec<u8>) -> Self {
-        let allocated = Allocated::new(vec);
+        let allocated = Allocated::from_vec(vec);
         Self::from_allocated(allocated)
     }
 
@@ -406,9 +406,10 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
                     unsafe { Self::inline_unchecked(&allocated.as_slice()[range]) }
                 } else {
                     // SAFETY: length is checked above
-                    unsafe {
-                        let allocated = allocated.slice_unchecked(range);
+                    if let Some(allocated) = unsafe { allocated.slice_unchecked(range.clone()) } {
                         Self::from_allocated(allocated)
+                    } else {
+                        Self::from_slice(&allocated.as_slice()[range])
                     }
                 }
             }
@@ -458,9 +459,10 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
                     // SAFETY: by the function precondition
                     let range = unsafe { range_of_unchecked(self.as_slice(), slice) };
                     // SAFETY: length checked above
-                    unsafe {
-                        let allocated = allocated.slice_unchecked(range);
+                    if let Some(allocated) = unsafe { allocated.slice_unchecked(range.clone()) } {
                         Self::from_allocated(allocated)
+                    } else {
+                        Self::from_slice(&allocated.as_slice()[range])
                     }
                 }
             }
@@ -593,8 +595,11 @@ impl<B: Backend> Clone for HipByt<'_, B> {
             Split::Borrowed(&borrowed) => Self::from_borrowed(borrowed),
             Split::Allocated(allocated) => {
                 // increase the ref count or clone if overflow
-                let clone = allocated.explicit_clone();
-                Self::from_allocated(clone)
+                if let Some(clone) = allocated.try_clone() {
+                    Self::from_allocated(clone)
+                } else {
+                    Self::from_slice(allocated.as_slice())
+                }
             }
         }
     }

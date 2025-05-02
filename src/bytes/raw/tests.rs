@@ -17,7 +17,7 @@ fn test_union() {
     let _: R = union.into_raw();
 
     let union = Union {
-        allocated: Allocated::new([42].repeat(42)),
+        allocated: Allocated::from_vec([42].repeat(42)),
     };
     let _: R = union.into_raw();
 

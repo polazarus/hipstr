@@ -102,7 +102,7 @@ macro_rules! smart_thin_vec {
 /// assert_eq!(v.as_ptr(), v2.as_ptr());
 /// ```
 #[repr(transparent)]
-pub struct SmartThinVec<T, C: Backend>(pub(super) NonNull<Header<T, C>>);
+pub struct SmartThinVec<T, C: Backend>(pub(crate) NonNull<Header<T, C>>);
 
 impl<T, C: Backend> Deref for SmartThinVec<T, C> {
     type Target = ThinVec<T, C>;
@@ -347,6 +347,16 @@ impl<T, C: Backend> SmartThinVec<T, C> {
         } else {
             Some(Self(self.0))
         }
+    }
+
+    pub fn force_clone(&self) -> Self
+    where
+        T: Clone,
+    {
+        self.try_clone().unwrap_or_else(|| {
+            let thin_vec: ThinVec<_, _> = self.as_thin_vec().fresh_clone();
+            unsafe { Self::from_thin_vec_unchecked(thin_vec) }
+        })
     }
 
     /// Converts into a [`ThinVec`] if the reference is unique.
