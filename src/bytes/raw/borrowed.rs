@@ -7,7 +7,7 @@ use super::TAG_OWNED;
 #[cfg(test)]
 mod tests;
 
-pub const TAG: usize = unsafe { TAG_OWNED as usize }; // a null pointer tagged with `TAG_OWNED`
+pub const TAG: usize = TAG_OWNED as usize; // a null pointer tagged with `TAG_OWNED`
 
 /// Borrowed slice representation.
 ///

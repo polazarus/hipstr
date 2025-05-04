@@ -44,7 +44,7 @@ impl<B: Backend> Copy for TaggedSmart<B> {}
 
 impl<B: Backend> TaggedSmart<B> {
     /// Gets the owner.
-    fn get(&self) -> Variant<Smart<Vec<u8>, B>, SmartThinVec<u8, B>> {
+    fn get(self) -> Variant<Smart<Vec<u8>, B>, SmartThinVec<u8, B>> {
         let ptr = self.ptr();
 
         if self.is_fat() {
@@ -54,11 +54,21 @@ impl<B: Backend> TaggedSmart<B> {
         }
     }
 
-    const fn is_fat(&self) -> bool {
+    #[inline]
+    const fn is_thin(self) -> bool {
+        debug_assert!(self.check_tag());
+        self.0 & THIN_BIT != 0
+    }
+
+    #[inline]
+    const fn is_fat(self) -> bool {
+        debug_assert!(self.check_tag());
         self.0 & THIN_BIT == 0
     }
 
-    const fn ptr(&self) -> NonNull<()> {
+    const fn ptr(self) -> NonNull<()> {
+        debug_assert!(self.check_tag());
+
         // expose provenance semantics
         let ptr = (self.0 & !TAG_MASK) as *mut ();
         debug_assert!(!ptr.is_null());
@@ -74,7 +84,7 @@ impl<B: Backend> TaggedSmart<B> {
 
     /// Constructed a tagged smart pointer from a [`Smart`].
     #[inline]
-    fn from_smart_vec(raw: Smart<Vec<u8>, B>) -> Self {
+    fn from_fat(raw: Smart<Vec<u8>, B>) -> Self {
         let ptr = Smart::into_raw(raw).as_ptr();
         debug_assert!(ptr.is_aligned());
         debug_assert!((ptr as usize) & TAG_MASK == 0);
@@ -84,11 +94,14 @@ impl<B: Backend> TaggedSmart<B> {
         // more on 64-bit architectures)
         let addr = ptr.map_addr(|addr| addr | TAG_FAT).expose_provenance();
 
-        Self(addr, PhantomData)
+        let this = Self(addr, PhantomData);
+        debug_assert!(this.check_tag());
+        debug_assert!(this.is_fat());
+        this
     }
 
     #[inline]
-    fn from_smart_thin_vec(raw: SmartThinVec<u8, B>) -> Self {
+    fn from_thin(raw: SmartThinVec<u8, B>) -> Self {
         let ptr = SmartThinVec::into_raw(raw).as_ptr();
         debug_assert!(ptr.is_aligned());
         debug_assert!((ptr as usize) & TAG_MASK == 0);
@@ -98,7 +111,10 @@ impl<B: Backend> TaggedSmart<B> {
         // more on 64-bit architectures)
         let addr = ptr.map_addr(|addr| addr | TAG_THIN).expose_provenance();
 
-        Self(addr, PhantomData)
+        let this = Self(addr, PhantomData);
+        debug_assert!(this.check_tag());
+        debug_assert!(this.is_thin());
+        this
     }
 
     #[inline]
@@ -120,10 +136,10 @@ impl<B: Backend> TaggedSmart<B> {
             unsafe {
                 match &*m {
                     Variant::Fat(fat) => {
-                        debug_assert_eq!(&raw const fat.0.as_ref().count, counter as *const _);
+                        debug_assert_eq!(&raw const fat.0.as_ref().count, ptr::from_ref(counter));
                     }
                     Variant::Thin(thin) => {
-                        debug_assert_eq!(&raw const thin.0.as_ref().prefix, counter as *const _);
+                        debug_assert_eq!(&raw const thin.0.as_ref().prefix, ptr::from_ref(counter));
                     }
                 }
             }
@@ -153,12 +169,12 @@ impl<B: Backend> TaggedSmart<B> {
     fn try_clone(self) -> Option<Self> {
         let variant = ManuallyDrop::new(self.get());
         match &*variant {
-            Variant::Fat(fat) => fat.try_clone().map(Self::from_smart_vec),
-            Variant::Thin(thin) => thin.try_clone().map(Self::from_smart_thin_vec),
+            Variant::Fat(fat) => fat.try_clone().map(Self::from_fat),
+            Variant::Thin(thin) => thin.try_clone().map(Self::from_thin),
         }
     }
 
-    unsafe fn as_fat_unchecked(&self) -> Smart<Vec<u8>, B> {
+    unsafe fn as_fat_unchecked(self) -> Smart<Vec<u8>, B> {
         debug_assert!(self.is_fat());
         debug_assert!(self.check_tag());
 
@@ -210,6 +226,16 @@ impl<B: Backend + UnwindSafe> UnwindSafe for Allocated<B> {}
 impl<B: Backend + RefUnwindSafe> RefUnwindSafe for Allocated<B> {}
 
 impl<B: Backend> Allocated<B> {
+    #[inline]
+    pub const fn is_thin(&self) -> bool {
+        self.owner.is_thin()
+    }
+
+    #[inline]
+    pub const fn is_fat(&self) -> bool {
+        self.owner.is_fat()
+    }
+
     /// Converts the allocated representation into its owner.
     fn into_owner(self) -> Variant<Smart<Vec<u8>, B>, SmartThinVec<u8, B>> {
         self.owner.get()
@@ -228,7 +254,7 @@ impl<B: Backend> Allocated<B> {
         let this = Self {
             ptr,
             len,
-            owner: TaggedSmart::from_smart_vec(owner),
+            owner: TaggedSmart::from_fat(owner),
         };
 
         debug_assert!(this.is_unique());
@@ -238,14 +264,14 @@ impl<B: Backend> Allocated<B> {
 
     #[inline]
     pub fn from_thin_vec<P>(v: ThinVec<u8, P>) -> Self {
-        let ptr = v.as_ptr();
-        let len = v.len();
-        let stv = SmartThinVec::from(v);
+        let stv = SmartThinVec::from_thin_vec(v);
+        let ptr = stv.as_ptr();
+        let len = stv.len();
 
         let this = Self {
             ptr,
             len,
-            owner: TaggedSmart::from_smart_thin_vec(stv),
+            owner: TaggedSmart::from_thin(stv),
         };
 
         debug_assert!(this.is_unique());
@@ -256,7 +282,7 @@ impl<B: Backend> Allocated<B> {
 
     /// Creates an allocated vector from a slice.
     pub fn from_slice(slice: &[u8]) -> Self {
-        Self::from_vec(slice.to_vec())
+        Self::from_thin_vec(ThinVec::<_, B>::from_slice_copy(slice))
     }
 
     /// Returns the length of this allocated string.
@@ -472,7 +498,7 @@ impl<B: Backend> Allocated<B> {
 
                 // SAFETY: compute the shift from within the vector range (type invariant)
                 shift = unsafe { self.ptr.offset_from(fat.as_ptr()) as usize };
-                fat.truncate(self.len);
+                fat.truncate(self.len + shift);
                 fat.extend_from_slice(addition);
                 ptr = fat.as_ptr();
             }
@@ -481,7 +507,7 @@ impl<B: Backend> Allocated<B> {
 
                 // SAFETY: compute the shift from within the vector range (type invariant)
                 shift = unsafe { self.ptr.offset_from(thin.as_ptr()) as usize };
-                thin.truncate(self.len);
+                thin.truncate(self.len + shift);
                 thin.extend_from_slice_copy(addition);
                 ptr = thin.as_ptr();
             }
@@ -513,6 +539,7 @@ impl<B: Backend> Allocated<B> {
         match &mut *owner {
             Variant::Fat(fat) => {
                 let vec = unsafe { fat.as_mut_unchecked_extended() };
+                #[expect(clippy::cast_sign_loss)]
                 let start = unsafe { self.ptr.offset_from(vec.as_ptr()) as usize };
                 let end = start + self.len;
                 vec.truncate(end);
@@ -520,6 +547,7 @@ impl<B: Backend> Allocated<B> {
             }
             Variant::Thin(thin) => {
                 let vec = unsafe { thin.as_mut_unchecked() };
+                #[expect(clippy::cast_sign_loss)]
                 let start = unsafe { self.ptr.offset_from(vec.as_ptr()) as usize };
                 let end = start + self.len;
                 vec.truncate(end);
@@ -527,7 +555,7 @@ impl<B: Backend> Allocated<B> {
 
                 // extend lifetime of the slicce
                 // SAFETY: the slice is valid while self is owned
-                unsafe { transmute(spare) }
+                unsafe { transmute::<&mut [MaybeUninit<u8>], &mut [MaybeUninit<u8>]>(spare) }
             }
         }
     }

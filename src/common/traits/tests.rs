@@ -1,6 +1,6 @@
 use alloc::vec;
 
-use super::MutVector;
+use super::*;
 
 #[test]
 fn vector_vec() {

@@ -981,17 +981,20 @@ fn test_push_slice_inline() {
 }
 
 #[test]
-fn test_push_slice_allocated() {
-    // allocated, unique
+fn push_slice_allocated_unique() {
     let mut a = H::from(MEDIUM);
+    assert!(a.is_thin());
     assert!(a.is_allocated());
     a.push_slice(ABC);
     assert_eq!(&a[0..42], MEDIUM);
     assert_eq!(&a[42..], ABC);
+}
 
-    // allocated, not unique
+#[test]
+fn push_slice_allocated_shared() {
+    // allocated, shared
     let mut a = H::from(MEDIUM);
-    assert!(a.is_allocated());
+    assert!(a.is_thin());
     let pa = a.as_ptr();
     let b = a.clone();
     assert_eq!(pa, b.as_ptr());
@@ -1000,13 +1003,19 @@ fn test_push_slice_allocated() {
     assert_eq!(&a[0..42], MEDIUM);
     assert_eq!(&a[42..], ABC);
     assert_eq!(b, MEDIUM);
+}
 
-    // allocated, unique but sliced
+#[test]
+fn push_slice_allocated_unique_sliced() {
     let mut a = {
         let x = H::from(MEDIUM);
+        assert!(x.is_allocated());
+        assert!(x.is_thin());
         x.slice(1..39)
     };
     assert!(a.is_allocated());
+    assert!(a.is_thin());
+    assert!(a.is_unique());
     let p = a.as_ptr();
     a.push_slice(ABC);
     assert_eq!(&a[..38], &MEDIUM[1..39]);

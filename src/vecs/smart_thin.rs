@@ -113,7 +113,7 @@ impl<T, C: Backend> Deref for SmartThinVec<T, C> {
 }
 
 impl<T, C: Backend> SmartThinVec<T, C> {
-    pub(crate) unsafe fn from_raw(ptr: NonNull<Header<T, C>>) -> Self {
+    pub(crate) const unsafe fn from_raw(ptr: NonNull<Header<T, C>>) -> Self {
         Self(ptr)
     }
     pub(crate) fn into_raw(self) -> NonNull<Header<T, C>> {
@@ -349,12 +349,55 @@ impl<T, C: Backend> SmartThinVec<T, C> {
         }
     }
 
+    /// Clones the vector even if the count overflows, in which case it clones
+    /// the vector's data.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::smart_thin_vec;
+    /// # use hipstr::Unique;
+    /// let v = smart_thin_vec![Unique : 1, 2, 3];
+    /// assert_eq!(v.as_slice(), &[1, 2, 3]);
+    /// let v2 = v.force_clone(); // exactly the same as `v.clone()` in the case of `Unique`
+    /// assert_eq!(v.as_slice(), v2.as_slice());
+    /// assert_ne!(v.as_ptr(), v2.as_ptr());
+    /// ```
+    #[must_use]
     pub fn force_clone(&self) -> Self
     where
         T: Clone,
     {
         self.try_clone().unwrap_or_else(|| {
             let thin_vec: ThinVec<_, _> = self.as_thin_vec().fresh_clone();
+            unsafe { Self::from_thin_vec_unchecked(thin_vec) }
+        })
+    }
+
+    /// Clones the vector even if the count overflows, in which case it copies
+    /// the vector's data.
+    ///
+    /// This function may be more efficient than
+    /// [`force_clone`](Self::force_clone) for `Copy` types.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::smart_thin_vec;
+    /// # use hipstr::Unique;
+    /// let v = smart_thin_vec![Unique : 1, 2, 3];
+    /// assert_eq!(v.as_slice(), &[1, 2, 3]);
+    /// let v2 = v.clone_or_copy(); // maybe a bit more efficient than `v.clone()` for `Copy` types
+    /// assert_eq!(v.as_slice(), v2.as_slice());
+    /// assert_ne!(v.as_ptr(), v2.as_ptr());
+    /// ```
+    #[must_use]
+    pub fn clone_or_copy(&self) -> Self
+    where
+        T: Copy,
+    {
+        self.try_clone().unwrap_or_else(|| {
+            let thin_vec: ThinVec<_, _> = self.as_thin_vec().fresh_copy();
             unsafe { Self::from_thin_vec_unchecked(thin_vec) }
         })
     }

@@ -515,6 +515,32 @@ where
         matches!(self.tag(), Tag::Allocated)
     }
 
+    #[inline]
+    #[must_use]
+    pub const fn is_thin(&self) -> bool {
+        matches!(self.split(), Split::Allocated(allocated) if allocated.is_thin())
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn is_fat(&self) -> bool {
+        matches!(self.split(), Split::Allocated(allocated) if allocated.is_fat())
+    }
+
+    /// Returns `true` if this `HipByt` is not shared.
+    ///
+    /// Note that for the purpose of this function, a borrowed slice is
+    /// considered shared.
+    #[inline]
+    #[must_use]
+    pub fn is_unique(&self) -> bool {
+        match self.split() {
+            Split::Inline(_) => true,
+            Split::Allocated(allocated) if allocated.is_unique() => true,
+            _ => false,
+        }
+    }
+
     /// Returns `true` if the representation is normalized.
     #[inline]
     #[must_use]

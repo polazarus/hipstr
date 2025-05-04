@@ -1307,6 +1307,17 @@ impl<T, P> ThinVec<T, P> {
         this
     }
 
+    /// Clones with a fresh prefix.
+    pub(crate) fn fresh_copy<Q: Default>(&self) -> ThinVec<T, Q>
+    where
+        T: Copy,
+    {
+        let len = self.len();
+        let mut this = ThinVec::with_capacity(len);
+        this.extend_from_slice_copy(self.as_slice());
+        this
+    }
+
     /// Moves the items to a new vector with a fresh prefix.
     pub(crate) fn fresh_move<Q: Default>(mut self) -> ThinVec<T, Q> {
         if can_reuse::<T, P, Q>() {

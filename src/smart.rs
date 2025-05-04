@@ -35,7 +35,7 @@ where
 {
     fn clone(&self) -> Self {
         Self {
-            count: C::one(),
+            count: C::default(),
             value: self.value.clone(),
         }
     }
@@ -68,7 +68,7 @@ where
     #[must_use]
     pub fn new(value: T) -> Self {
         let ptr = Box::into_raw(Box::new(Inner {
-            count: C::one(),
+            count: C::default(),
             value,
         }));
         Self(unsafe { NonNull::new_unchecked(ptr) })
@@ -122,6 +122,7 @@ where
     /// let q = unsafe { Smart::from_raw(ptr) };
     /// ```
     #[inline]
+    #[must_use]
     pub unsafe fn from_raw(ptr: NonNull<Inner<T, C>>) -> Self {
         debug_assert!(ptr.is_aligned());
         unsafe { Self(ptr) }
@@ -130,7 +131,7 @@ where
     /// Gets a reference to the value.
     #[inline]
     #[must_use]
-    pub const fn as_ref(this: &Self) -> &T {
+    pub const fn get(this: &Self) -> &T {
         &this.inner().value
     }
 
@@ -190,18 +191,22 @@ where
         inner.count.get()
     }
 
-    /// Try to unwrap to its inner value.
+    /// Tries to unwrap to its inner value.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err(this)` if the reference is shared.
     #[inline]
-    pub fn try_unwrap(self) -> Result<T, Self> {
+    pub fn try_unwrap(this: Self) -> Result<T, Self> {
         unsafe {
-            if self.is_unique() {
+            if this.is_unique() {
                 // do not drop `self`!
-                let this = ManuallyDrop::new(self);
+                let this = ManuallyDrop::new(this);
                 // SAFETY: type invariant, pointer must be valid
                 let inner = unsafe { Box::from_raw(this.0.as_ptr()) };
                 Ok(inner.value)
             } else {
-                Err(self)
+                Err(this)
             }
         }
     }
@@ -219,6 +224,23 @@ where
         inner.value
     }
 
+    /// Tries to clone the smart pointer by increasing the reference count.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::smart::Smart;
+    /// # use hipstr::{Arc, Unique};
+    /// let p = Smart::<_, Arc>::new(42);
+    /// let q = p.try_clone();
+    /// assert!(q.is_some());
+    /// assert_eq!(p.as_ref(), q.as_ref());
+    ///
+    /// let u = Smart::<_, Unique>::new(42);
+    /// let q = u.try_clone();
+    /// assert!(q.is_none());
+    /// ```
+    #[must_use]
     pub fn try_clone(&self) -> Option<Self> {
         if self.incr() == UpdateResult::Done {
             Some(Self(self.0))
@@ -227,14 +249,38 @@ where
         }
     }
 
-    pub(crate) fn force_clone(&self) -> Self
+    /// Clones the smart pointer even if the referenced count overflows, in
+    /// which case the underlying data is cloned.
+    ///
+    /// This is equivalent to calling [`Self::try_clone`] and cloning the inner
+    /// value if the reference count overflows.
+    ///
+    /// This is the default behavior of [`Clone::clone`] for `Unique`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::smart::Smart;
+    /// # use hipstr::{Arc, Unique};
+    /// let p = Smart::<_, Arc>::new(42);
+    /// let q = Smart::force_clone(&p);
+    /// assert_eq!(p.as_ref(), q.as_ref());
+    /// assert_eq!(p.as_ref() as *const i32, q.as_ref() as *const i32);
+    ///
+    /// let u = Smart::<_, Unique>::new(42);
+    /// let q = Smart::force_clone(&u);
+    /// assert_eq!(u.as_ref(), q.as_ref());
+    /// assert_ne!(u.as_ref() as *const i32, q.as_ref() as *const i32);
+    /// ```
+    #[must_use]
+    pub fn force_clone(this: &Self) -> Self
     where
         T: Clone,
     {
-        if unsafe { &(*self.0.as_ptr()).count }.incr() == UpdateResult::Done {
-            Self(self.0)
+        if unsafe { &(*this.0.as_ptr()).count }.incr() == UpdateResult::Done {
+            Self(this.0)
         } else {
-            let inner = self.inner().clone();
+            let inner = this.inner().clone();
             let ptr = Box::into_raw(Box::new(inner));
             // SAFETY: duh
             let nonnull = unsafe { NonNull::new_unchecked(ptr) };
@@ -290,7 +336,7 @@ where
 
     #[inline]
     fn deref(&self) -> &Self::Target {
-        Smart::as_ref(self)
+        Self::get(self)
     }
 }
 
@@ -300,7 +346,7 @@ where
 {
     #[inline]
     fn as_ref(&self) -> &T {
-        Smart::as_ref(self)
+        Self::get(self)
     }
 }
 

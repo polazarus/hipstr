@@ -33,9 +33,6 @@ const TAG_INLINE: u8 = 1;
 /// Tag for the borrowed repr
 const TAG_OWNED: u8 = 2;
 
-/// Tag for the allocated repr
-const TAG_ALLOCATED: u8 = 2;
-
 /// Maximal byte capacity of an inline [`HipByt`].
 pub(crate) const INLINE_CAPACITY: usize = size_of::<Borrowed>() - 1;
 
@@ -406,11 +403,10 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
                     unsafe { Self::inline_unchecked(&allocated.as_slice()[range]) }
                 } else {
                     // SAFETY: length is checked above
-                    if let Some(allocated) = unsafe { allocated.slice_unchecked(range.clone()) } {
-                        Self::from_allocated(allocated)
-                    } else {
-                        Self::from_slice(&allocated.as_slice()[range])
-                    }
+                    unsafe { allocated.slice_unchecked(range.clone()) }.map_or_else(
+                        || Self::from_slice(&allocated.as_slice()[range]),
+                        Self::from_allocated,
+                    )
                 }
             }
         };
@@ -459,11 +455,10 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
                     // SAFETY: by the function precondition
                     let range = unsafe { range_of_unchecked(self.as_slice(), slice) };
                     // SAFETY: length checked above
-                    if let Some(allocated) = unsafe { allocated.slice_unchecked(range.clone()) } {
-                        Self::from_allocated(allocated)
-                    } else {
-                        Self::from_slice(&allocated.as_slice()[range])
-                    }
+                    unsafe { allocated.slice_unchecked(range.clone()) }.map_or_else(
+                        || Self::from_slice(&allocated.as_slice()[range]),
+                        Self::from_allocated,
+                    )
                 }
             }
         };
@@ -595,11 +590,10 @@ impl<B: Backend> Clone for HipByt<'_, B> {
             Split::Borrowed(&borrowed) => Self::from_borrowed(borrowed),
             Split::Allocated(allocated) => {
                 // increase the ref count or clone if overflow
-                if let Some(clone) = allocated.try_clone() {
-                    Self::from_allocated(clone)
-                } else {
-                    Self::from_slice(allocated.as_slice())
-                }
+                allocated.try_clone().map_or_else(
+                    || Self::from_slice(allocated.as_slice()),
+                    Self::from_allocated,
+                )
             }
         }
     }
