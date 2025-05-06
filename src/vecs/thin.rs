@@ -1157,7 +1157,7 @@ impl<T, P> ThinVec<T, P> {
         }
     }
 
-    fn extend_iter(&mut self, iterable: impl IntoIterator<Item = T>) {
+    pub(crate) fn extend_iter(&mut self, iterable: impl IntoIterator<Item = T>) {
         let mut iter = iterable.into_iter();
         let len = self.len();
         let min = iter.size_hint().0;

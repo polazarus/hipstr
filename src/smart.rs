@@ -287,6 +287,44 @@ where
             Self(nonnull)
         }
     }
+
+    #[inline]
+    pub fn mutate(this: &mut Self) -> &mut T
+    where
+        T: Clone,
+    {
+        if !this.is_unique() {
+            this.detach();
+        }
+        // SAFETY: uniqueness enforced
+        unsafe { this.as_mut_unchecked() }
+    }
+
+    #[inline]
+    pub fn mutate_copy(this: &mut Self) -> &mut T
+    where
+        T: Copy,
+    {
+        if !this.is_unique() {
+            this.detach_copy();
+        }
+        // SAFETY: uniqueness enforced
+        unsafe { this.as_mut_unchecked() }
+    }
+
+    pub(crate) fn detach(&mut self)
+    where
+        T: Clone,
+    {
+        *self = Self::new(Smart::get(self).clone());
+    }
+
+    pub(crate) fn detach_copy(&mut self)
+    where
+        T: Copy,
+    {
+        *self = Self::new(*Smart::get(self));
+    }
 }
 
 impl<T: Clone, C: Counter> Clone for Smart<T, BackendImpl<C, CloneOnOverflow>> {
