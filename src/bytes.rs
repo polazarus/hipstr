@@ -19,6 +19,7 @@ use raw::{Split, SplitMut, Tag, Union, INLINE_CAPACITY};
 use self::raw::try_range_of;
 pub use self::raw::HipByt;
 use crate::backend::Backend;
+use crate::vecs::thin::{Reserved, ThinVec};
 use crate::vecs::InlineVec;
 
 mod cmp;
@@ -167,7 +168,7 @@ where
         if capacity <= Self::inline_capacity() {
             Self::inline_empty()
         } else {
-            Self::from_vec(Vec::with_capacity(capacity))
+            Self::from_thin_vec(ThinVec::<_, Reserved>::with_capacity(capacity))
         }
     }
 
@@ -896,12 +897,12 @@ where
         }
 
         // requires a new vector
-        let mut vec = Vec::with_capacity(new_len);
-        vec.extend_from_slice(self.as_slice());
-        vec.extend_from_slice(addition);
+        let mut vec = ThinVec::<_, Reserved>::with_capacity(new_len);
+        vec.extend_from_slice_copy(self.as_slice());
+        vec.extend_from_slice_copy(addition);
 
         // SAFETY: vec's len (new_len) is checked above to be > INLINE_CAPACITY
-        *self = Self::from_vec(vec);
+        *self = Self::from_thin_vec(vec);
     }
 
     /// Creates a new `HipByt` by copying this one `n` times.
@@ -937,10 +938,11 @@ where
 
         let src_len = self.len();
         let new_len = src_len.checked_mul(n).expect("capacity overflow");
+
         if new_len <= Self::inline_capacity() {
             let mut inline = unsafe { InlineVec::zeroed(new_len) };
-            let src = self.as_slice().as_ptr();
             let mut dst = inline.as_mut_slice().as_mut_ptr();
+            let src = self.as_slice().as_ptr();
 
             // SAFETY: copy only `new_len` bytes with an
             // upper bound of `INLINE_CAPACITY` checked above
@@ -955,8 +957,13 @@ where
 
             Self::from_inline(inline)
         } else {
-            let vec = self.as_slice().repeat(n);
-            Self::from_vec(vec)
+            let mut thin = ThinVec::<_, Reserved>::with_capacity(new_len);
+
+            for _ in 0..n {
+                thin.extend_from_slice_copy(self.as_slice());
+            }
+
+            Self::from_thin_vec(thin)
         }
     }
 

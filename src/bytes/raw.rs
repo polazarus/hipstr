@@ -14,6 +14,7 @@ use borrowed::Borrowed;
 
 use crate::backend::Backend;
 use crate::common::{manually_drop_as_mut, manually_drop_as_ref};
+use crate::vecs::thin::ThinVec;
 use crate::vecs::InlineVec;
 
 pub mod allocated;
@@ -321,6 +322,12 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
                 SplitMut::Allocated(unsafe { &mut union.allocated })
             }
         }
+    }
+
+    /// Creates a new `HipByt` from a thin vector.
+    pub(crate) fn from_thin_vec<P>(vec: ThinVec<u8, P>) -> Self {
+        let allocated = Allocated::from_thin_vec(vec);
+        Self::from_allocated(allocated)
     }
 
     /// Creates a new `HipByt` from a vector.

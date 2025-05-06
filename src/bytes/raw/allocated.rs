@@ -14,7 +14,6 @@ use crate::vecs::thin::{Header, ThinVec};
 use crate::vecs::SmartThinVec;
 
 const TAG_MASK: usize = super::MASK as usize;
-const TAG: usize = super::TAG_OWNED as usize;
 const THIN_BIT: usize = 0b1;
 const TAG_THIN: usize = super::TAG_OWNED as usize | THIN_BIT;
 const TAG_FAT: usize = super::TAG_OWNED as usize;
@@ -163,15 +162,6 @@ impl<B: Backend> TaggedSmart<B> {
     #[inline]
     const fn check_tag(self) -> bool {
         (self.0 & !TAG_MASK) != 0 && (self.0 & TAG_OWNED as usize) != 0
-    }
-
-    /// Explicitly clones this tagged smart pointer.
-    fn try_clone(self) -> Option<Self> {
-        let variant = ManuallyDrop::new(self.get());
-        match &*variant {
-            Variant::Fat(fat) => fat.try_clone().map(Self::from_fat),
-            Variant::Thin(thin) => thin.try_clone().map(Self::from_thin),
-        }
     }
 
     unsafe fn as_fat_unchecked(self) -> Smart<Vec<u8>, B> {
