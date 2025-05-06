@@ -498,6 +498,16 @@ fn cmp() {
     let x = Smart::<_, Arc>::new(2);
     assert_eq!(v.cmp(&w), Ordering::Equal);
     assert_eq!(v.cmp(&x), Ordering::Less);
-    assert_eq!(v.as_ref().cmp(w.as_ref()), Ordering::Equal);
-    assert_eq!(v.as_ref().cmp(x.as_ref()), Ordering::Less);
+}
+
+#[test]
+fn partial_cmp() {
+    let v = Smart::<_, Arc>::new(1.);
+    let w = Smart::<_, Arc>::new(1.);
+    let x = Smart::<_, Arc>::new(2.);
+    let nan = Smart::<_, Arc>::new(f64::NAN);
+    assert_eq!(v.partial_cmp(&w), Some(Ordering::Equal));
+    assert_eq!(v.partial_cmp(&x), Some(Ordering::Less));
+    assert_eq!(v.partial_cmp(&nan), None);
+    assert_eq!(nan.partial_cmp(&v), None);
 }
