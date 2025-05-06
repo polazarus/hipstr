@@ -95,10 +95,12 @@ fn test_with_capacity() {
     assert_eq!(h.capacity(), INLINE_CAPACITY);
 
     let mut h = H::with_capacity(42);
+    assert!(h.is_allocated());
+    assert!(h.is_thin());
     let p = h.as_ptr();
     assert_eq!(h, EMPTY_SLICE);
     assert!(h.is_empty());
-    assert_eq!(h.capacity(), 42);
+    assert!(h.capacity() >= 42);
     for _ in 0..42 {
         h.push_slice(A);
     }
@@ -234,7 +236,7 @@ fn inline() {
 
 #[test]
 fn allocated_thin() {
-    let a = H::from(Vec::from(MEDIUM));
+    let a = H::from(MEDIUM);
     assert!(a.is_thin());
     assert!(!a.is_fat());
     assert!(!a.is_borrowed());
@@ -1296,7 +1298,7 @@ fn test_spare_capacity_mut() {
     assert_eq!(h.spare_capacity_mut().len(), INLINE_CAPACITY - ABC.len());
 
     let mut h = H::with_capacity(42);
-    assert_eq!(h.spare_capacity_mut().len(), 42);
+    assert!(h.spare_capacity_mut().len() >= 42);
 }
 
 #[test]

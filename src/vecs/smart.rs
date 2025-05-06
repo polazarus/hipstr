@@ -12,11 +12,6 @@ use crate::backend::Backend;
 use crate::smart::{Inner, Smart};
 use crate::vecs::thin::Header;
 
-pub struct SmartVecInner<T, C: Backend> {
-    ptr: NonNull<()>,
-    phantom: PhantomData<(*mut T, C)>,
-}
-
 const TAG_MASK: usize = 0b11 as usize;
 const THIN_BIT: usize = 0b01;
 const TAG_THIN: usize = 0b11;
@@ -32,6 +27,7 @@ enum Variant<F, T> {
 ///
 /// The exposed provenance is required to cast [`Allocated`] from and to the
 /// [`Pivot`](super::Pivot) representation.
+#[repr(transparent)]
 struct TaggedSmart<T, B>(usize, PhantomData<(Vec<T>, B)>);
 
 // Manual implementation of Clone and Copy traits to avoid requiring additional
@@ -178,6 +174,14 @@ impl<T, B: Backend> TaggedSmart<T, B> {
     }
 }
 
+/// A smart vector.
+///
+/// This type has two internal representations:
+///
+/// - *fat* representation: [`Smart<Vec<T>, B>`].
+///   A double indirection is needed to access the vector's data.
+/// - *thin* representation: [`SmartThinVec<T, B>`].
+#[repr(transparent)]
 pub struct SmartVec<T, B: Backend>(TaggedSmart<T, B>);
 
 impl<T, B: Backend> SmartVec<T, B> {

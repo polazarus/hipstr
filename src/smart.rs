@@ -7,9 +7,12 @@
 //! - atomically reference counted.
 
 use alloc::boxed::Box;
+use core::borrow::Borrow;
+use core::hash::{Hash, Hasher};
 use core::mem::ManuallyDrop;
 use core::ops::Deref;
 use core::ptr::NonNull;
+use core::{fmt, ptr};
 
 use crate::backend::{
     Backend, BackendImpl, CloneOnOverflow, Counter, PanicOnOverflow, UpdateResult,
@@ -232,8 +235,7 @@ where
     /// # use hipstr::smart::Smart;
     /// # use hipstr::{Arc, Unique};
     /// let p = Smart::<_, Arc>::new(42);
-    /// let q = p.try_clone();
-    /// assert!(q.is_some());
+    /// let q = p.try_clone().unwrap();;
     /// assert_eq!(p.as_ref(), q.as_ref());
     ///
     /// let u = Smart::<_, Unique>::new(42);
@@ -400,4 +402,110 @@ where
     T: Sync + Send,
     C: Sync + Backend,
 {
+}
+
+impl<T, C> fmt::Debug for Smart<T, C>
+where
+    T: fmt::Debug,
+    C: Backend,
+{
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        T::fmt(self, f)
+    }
+}
+
+impl<T, C> fmt::Display for Smart<T, C>
+where
+    T: fmt::Display,
+    C: Backend,
+{
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        T::fmt(self, f)
+    }
+}
+
+impl<T, U, C1, C2> PartialEq<Smart<U, C2>> for Smart<T, C1>
+where
+    T: PartialEq<U>,
+    C1: Backend,
+    C2: Backend,
+{
+    #[inline]
+    fn eq(&self, other: &Smart<U, C2>) -> bool {
+        T::eq(self, other)
+    }
+}
+
+impl<T, C> Eq for Smart<T, C>
+where
+    T: Eq,
+    C: Backend,
+{
+}
+
+impl<T, U, C1, C2> PartialOrd<Smart<U, C2>> for Smart<T, C1>
+where
+    T: PartialOrd<U>,
+    C1: Backend,
+    C2: Backend,
+{
+    #[inline]
+    fn partial_cmp(&self, other: &Smart<U, C2>) -> Option<core::cmp::Ordering> {
+        T::partial_cmp(self, other)
+    }
+}
+
+impl<T, C> Ord for Smart<T, C>
+where
+    T: Ord,
+    C: Backend,
+{
+    #[inline]
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        T::cmp(self, other)
+    }
+}
+
+impl<T, C> fmt::Pointer for Smart<T, C>
+where
+    C: Backend,
+{
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        ptr::from_ref(Self::get(self)).fmt(f)
+    }
+}
+
+impl<T, C> Default for Smart<T, C>
+where
+    T: Default,
+    C: Backend,
+{
+    #[inline]
+    fn default() -> Self {
+        Self::new(T::default())
+    }
+}
+
+impl<T, C> Borrow<T> for Smart<T, C>
+where
+    C: Backend,
+{
+    #[inline]
+    fn borrow(&self) -> &T {
+        Self::get(self)
+    }
+}
+
+impl<T, C> Hash for Smart<T, C>
+where
+    T: Hash,
+    C: Backend,
+{
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        T::hash(self, state)
+    }
 }
