@@ -215,31 +215,43 @@ fn test_from_slice() {
 }
 
 #[test]
-fn test_as_slice() {
-    // static
-    {
-        let a = H::borrowed(ABC);
-        assert!(a.is_borrowed());
-        assert!(!a.is_inline());
-        assert!(!a.is_allocated());
-        assert_eq!(a.as_slice(), ABC);
-    }
-    // inline
-    {
-        let a = H::from(ABC);
-        assert!(!a.is_borrowed());
-        assert!(a.is_inline());
-        assert!(!a.is_allocated());
-        assert_eq!(a.as_slice(), ABC);
-    }
-    // allocated
-    {
-        let a = H::from(Vec::from(MEDIUM));
-        assert!(!a.is_borrowed());
-        assert!(!a.is_inline());
-        assert!(a.is_allocated());
-        assert_eq!(a.as_slice(), MEDIUM);
-    }
+fn borrowed() {
+    let a = H::borrowed(ABC);
+    assert!(a.is_borrowed());
+    assert!(!a.is_inline());
+    assert!(!a.is_allocated());
+    assert_eq!(a.as_slice(), ABC);
+}
+
+#[test]
+fn inline() {
+    let a = H::from(ABC);
+    assert!(!a.is_borrowed());
+    assert!(a.is_inline());
+    assert!(!a.is_allocated());
+    assert_eq!(a.as_slice(), ABC);
+}
+
+#[test]
+fn allocated_thin() {
+    let a = H::from(Vec::from(MEDIUM));
+    assert!(a.is_thin());
+    assert!(!a.is_fat());
+    assert!(!a.is_borrowed());
+    assert!(!a.is_inline());
+    assert!(a.is_allocated());
+    assert_eq!(a.as_slice(), MEDIUM);
+}
+
+#[test]
+fn allocated_fat() {
+    let a = H::from(Vec::from(MEDIUM));
+    assert!(a.is_fat());
+    assert!(!a.is_thin());
+    assert!(!a.is_borrowed());
+    assert!(!a.is_inline());
+    assert!(a.is_allocated());
+    assert_eq!(a.as_slice(), MEDIUM);
 }
 
 #[test]
@@ -615,18 +627,27 @@ fn test_into_vec() {
     {
         // static
         let a = H::borrowed(ABC);
+        assert!(a.is_borrowed());
         assert!(a.into_vec().is_err());
     }
 
     {
         // inline
         let a = H::from(ABC);
+        assert!(a.is_inline());
+        assert!(a.into_vec().is_err());
+    }
+
+    {
+        // allocated, thin
+        let a = H::from(MEDIUM);
+        assert!(a.is_thin());
         assert!(a.into_vec().is_err());
     }
 
     let v = vec![42; INLINE_CAPACITY + 2];
     {
-        // allocated, unique
+        // allocated, fat, unique
         let v = v.clone();
         let p = v.as_ptr();
         let a = H::from(v);
@@ -636,14 +657,14 @@ fn test_into_vec() {
     }
 
     {
-        // allocated, shared
+        // allocated, fat, shared
         let a = H::from(v.clone());
         let _b = a.clone();
         assert!(a.into_vec().is_err());
     }
 
     {
-        // allocated, unique, sliced at start
+        // allocated, fat, unique, sliced at start
         let v = v.clone();
         let p = v.as_ptr();
         let a = H::from(v).slice(0..=INLINE_CAPACITY);
@@ -653,7 +674,7 @@ fn test_into_vec() {
     }
 
     {
-        // allocated, unique, sliced at start
+        // allocated, fat, unique, sliced at start
         let a = H::from(v).slice(1..5);
         assert!(a.into_vec().is_err());
     }
