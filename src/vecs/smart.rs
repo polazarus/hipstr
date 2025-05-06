@@ -9,6 +9,7 @@ use core::{ptr, slice};
 use super::smart_thin::SmartThinVec;
 use super::thin::ThinVec;
 use crate::backend::Backend;
+use crate::macros::trait_impls;
 use crate::smart::{Inner, Smart};
 use crate::vecs::thin::Header;
 
@@ -412,13 +413,16 @@ impl<'a, T, P> RefMut<'a, T, P> {
         }
     }
 
-    fn extend_iter(&mut self, iter: impl IntoIterator<Item = T>)
-    where
-        T: Clone,
-    {
+    fn extend_iter(&mut self, iter: impl IntoIterator<Item = T>) {
         match &mut self.0 {
             Variant::Fat(fat) => fat.extend(iter),
             Variant::Thin(thin) => thin.extend_iter(iter),
         }
+    }
+}
+
+trait_impls! {
+    [T, B] where [B: Backend] {
+        Extend { T => RefMut<'_, T, B>; }
     }
 }

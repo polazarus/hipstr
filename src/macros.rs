@@ -106,7 +106,7 @@ macro_rules! trait_impls {
 
     (@MutVector $([ $($gen:tt)* ] $( where [ $($wh:tt)* ])? )? { }) => {};
     (@MutVector $([ $($gen:tt)* ] $( where [ $($wh:tt)* ])? )? { $t:ty ; $($rest:tt)* }) => {
-        unsafe impl $(< $($gen)* >)? crate::common::traits::MutVector for $t $(where $($wh)*)? {
+        unsafe impl $(< $($gen)* >)? crate::common::traits::MutVector for $t $($(where $($wh)*)?)? {
             #[inline]
             unsafe fn set_len(&mut self, len: usize) {
                 unsafe { self.set_len(len) }
@@ -121,7 +121,7 @@ macro_rules! trait_impls {
 
     (@Extend $([ $($gen:tt)* ] $( where [ $($wh:tt)* ])? )? { }) => {};
     (@Extend $([ $($gen:tt)* ] $( where [ $($wh:tt)* ])? )? { $el:ty => $t:ty ; $($rest:tt)* }) => {
-        impl $(< $($gen)* >)? Extend<$el> for $t $(where $($wh)*)? {
+        impl $(< $($gen)* >)? Extend<$el> for $t $($(where $($wh)*)?)? {
             fn extend<T001: IntoIterator<Item = $el>>(&mut self, iter: T001) {
                 self.extend_iter(iter)
             }

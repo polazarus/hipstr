@@ -1,5 +1,6 @@
 use alloc::vec;
 use alloc::vec::Vec;
+use core::cmp::Ordering;
 #[cfg(all(not(loom), feature = "std"))]
 use std::sync;
 #[cfg(all(not(loom), feature = "std"))]
@@ -391,4 +392,97 @@ fn force_clone() {
     let w = Smart::force_clone(&v);
     assert_eq!(w.as_slice(), [1, 2, 3]);
     assert_eq!(v.as_ptr(), w.as_ptr());
+}
+
+#[test]
+fn mutate() {
+    let mut v = Smart::<_, Arc>::new(vec![1, 2, 3]);
+    assert_eq!(v.as_slice(), [1, 2, 3]);
+
+    Smart::mutate(&mut v).push(4);
+    assert_eq!(v.as_slice(), [1, 2, 3, 4]);
+
+    let w = v.clone();
+
+    Smart::mutate(&mut v).pop();
+    assert_eq!(v.as_slice(), [1, 2, 3]);
+    assert_eq!(w.as_slice(), [1, 2, 3, 4]);
+}
+
+#[test]
+#[cfg(feature = "std")]
+fn hash() {
+    use std::hash::{BuildHasher, BuildHasherDefault, DefaultHasher};
+    let hasher = BuildHasherDefault::<DefaultHasher>::new();
+
+    let mut v = Smart::<_, Arc>::new(vec![1, 2, 3]);
+
+    assert_eq!(v.as_slice(), [1, 2, 3]);
+    let slice_hash = hasher.hash_one(v.as_slice());
+
+    let hash = hasher.hash_one(&v);
+    assert_eq!(hash, slice_hash);
+
+    let w = v.clone();
+    let clone_hash = hasher.hash_one(&w);
+    assert_eq!(hash, clone_hash);
+
+    Smart::mutate(&mut v).push(4);
+    let new_hash = hasher.hash_one(&v);
+    assert_ne!(hash, new_hash);
+}
+
+#[test]
+fn borrow() {
+    let v = Smart::<_, Arc>::new(1);
+    assert_eq!(v.as_ref(), &1);
+    assert_eq!(<_ as Borrow<i32>>::borrow(&v), &1_i32);
+    assert!(ptr::eq(v.as_ref(), v.borrow()));
+}
+
+#[test]
+fn default() {
+    let v = Smart::<i32, Arc>::default();
+    assert_eq!(*v, 0);
+
+    let v = Smart::<Vec<i32>, Arc>::default();
+    let empty: &[i32] = &[];
+    assert_eq!(v.as_slice(), empty);
+}
+
+#[test]
+#[cfg(feature = "std")]
+fn fmt() {
+    use std::format;
+    let v = Smart::<_, Arc>::new(1);
+    assert_eq!(format!("{:?}", v), "1");
+    assert_eq!(format!("{}", v), "1");
+    assert_eq!(format!("{:p}", v), format!("{:p}", ptr::from_ref(&*v)));
+}
+
+#[test]
+fn eq() {
+    let v = Smart::<_, Arc>::new(1);
+    let w = Smart::<_, Arc>::new(1);
+    let x = Smart::<_, Arc>::new(2);
+    assert_eq!(v, w);
+    assert_ne!(v, x);
+    assert_eq!(v.as_ref(), w.as_ref());
+    assert_ne!(v.as_ref(), x.as_ref());
+
+    let v = Smart::<_, Arc>::new(vec![1, 2, 3]);
+    let w = Smart::<_, Arc>::new(vec![1, 2, 3]);
+    assert_eq!(v, w);
+    assert_eq!(v.as_slice(), w.as_slice());
+}
+
+#[test]
+fn cmp() {
+    let v = Smart::<_, Arc>::new(1);
+    let w = Smart::<_, Arc>::new(1);
+    let x = Smart::<_, Arc>::new(2);
+    assert_eq!(v.cmp(&w), Ordering::Equal);
+    assert_eq!(v.cmp(&x), Ordering::Less);
+    assert_eq!(v.as_ref().cmp(w.as_ref()), Ordering::Equal);
+    assert_eq!(v.as_ref().cmp(x.as_ref()), Ordering::Less);
 }

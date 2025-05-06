@@ -426,6 +426,16 @@ where
     }
 }
 
+impl<T, C> fmt::Pointer for Smart<T, C>
+where
+    C: Backend,
+{
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        ptr::from_ref(Self::get(self)).fmt(f)
+    }
+}
+
 impl<T, U, C1, C2> PartialEq<Smart<U, C2>> for Smart<T, C1>
 where
     T: PartialEq<U>,
@@ -465,16 +475,6 @@ where
     #[inline]
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         T::cmp(self, other)
-    }
-}
-
-impl<T, C> fmt::Pointer for Smart<T, C>
-where
-    C: Backend,
-{
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        ptr::from_ref(Self::get(self)).fmt(f)
     }
 }
 
