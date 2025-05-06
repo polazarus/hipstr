@@ -253,11 +253,55 @@ impl<T, C: Backend> SmartThinVec<T, C> {
         unsafe { self.as_mut_unchecked() }
     }
 
+    /// Returns a mutable reference to the vector, possibly copying the data if
+    /// shared.
+    ///
+    /// If the vector is not unique, the data will be copied.
+    ///
+    /// This function may be more efficient for `Copy` types than
+    /// [`mutate`](Self::mutate).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::smart_thin_vec;
+    /// let mut v = smart_thin_vec![1, 2, 3];
+    /// assert_eq!(v.as_slice(), &[1, 2, 3]);
+    ///
+    /// let mut v2 = v.clone();
+    /// assert!(!v.is_unique());
+    /// {
+    ///     let v_mut = v.mutate_copy();
+    ///     assert_eq!(v_mut.as_slice(), &[1, 2, 3]);
+    ///     v_mut.push(4);
+    /// }
+    /// assert!(v.is_unique());
+    /// assert_eq!(v.as_slice(), &[1, 2, 3, 4]);
+    /// ```
+    #[doc(alias = "make_mut_copy")]
+    pub fn mutate_copy(&mut self) -> &mut ThinVec<T, C>
+    where
+        T: Copy,
+    {
+        if !self.count().is_unique() {
+            self.detach_copy();
+        }
+        unsafe { self.as_mut_unchecked() }
+    }
+
     fn detach(&mut self)
     where
         T: Clone,
     {
         let thin_vec: ThinVec<_, _> = self.as_thin_vec().fresh_clone();
+        *self = unsafe { Self::from_thin_vec_unchecked(thin_vec) };
+    }
+
+    fn detach_copy(&mut self)
+    where
+        T: Copy,
+    {
+        let thin_vec: ThinVec<_, _> = self.as_thin_vec().fresh_copy();
         *self = unsafe { Self::from_thin_vec_unchecked(thin_vec) };
     }
 

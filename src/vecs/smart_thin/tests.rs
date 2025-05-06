@@ -159,6 +159,32 @@ fn mutate() {
 }
 
 #[test]
+fn mutate_copy() {
+    let mut v = SmartThinVec::<u8, Arc>::with_capacity(3);
+    let p = v.as_ptr();
+    assert!(v.is_unique());
+    {
+        let m = v.mutate_copy();
+        m.push(1);
+        m.push(2);
+        m.push(3);
+    }
+    assert_eq!(v.as_slice(), [1, 2, 3]);
+    assert_eq!(v.as_ptr(), p);
+
+    let _v2 = v.clone();
+    assert!(!v.is_unique());
+    {
+        let m = v.mutate_copy();
+        m.push(4);
+        m.push(5);
+    }
+    assert!(v.is_unique());
+    assert_eq!(v.as_slice(), [1, 2, 3, 4, 5]);
+    assert_ne!(v.as_ptr(), p);
+}
+
+#[test]
 fn try_clone() {
     let v = smart_thin_vec![1, 2, 3];
     let v2 = v.try_clone().unwrap();
