@@ -410,6 +410,21 @@ fn mutate() {
 }
 
 #[test]
+fn mutate_copy() {
+    let mut v = Smart::<_, Arc>::new(1);
+    assert_eq!(*v, 1);
+
+    *Smart::mutate_copy(&mut v) += 1;
+    assert_eq!(*v, 2);
+
+    let w = v.clone();
+
+    *Smart::mutate_copy(&mut v) += 1;
+    assert_eq!(*v, 3);
+    assert_eq!(*w, 2);
+}
+
+#[test]
 #[cfg(feature = "std")]
 fn hash() {
     use std::hash::{BuildHasher, BuildHasherDefault, DefaultHasher};
