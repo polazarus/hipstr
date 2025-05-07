@@ -79,3 +79,29 @@ fn clone() {
     assert!(!v2.is_fat());
     assert_eq!(v2.as_ptr(), p);
 }
+
+#[test]
+fn is_unique_thin() {
+    let thin = smart_thin_vec![Arc : 1, 2, 3];
+    let v = SmartVec::<i32, Arc>::from_thin(thin);
+    assert!(v.is_unique());
+    assert_eq!(v.len(), 3);
+    assert!(v.is_thin());
+    assert!(!v.is_fat());
+
+    let _w = v.clone();
+    assert!(!v.is_unique());
+}
+
+#[test]
+fn is_unique_fat() {
+    let fat = Smart::new(vec![1, 2, 3]);
+    let v = SmartVec::<i32, Arc>::from_fat(fat);
+    assert!(v.is_unique());
+    assert_eq!(v.len(), 3);
+    assert!(v.is_fat());
+    assert!(!v.is_thin());
+
+    let _w = v.clone();
+    assert!(!v.is_unique());
+}
