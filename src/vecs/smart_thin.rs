@@ -43,7 +43,7 @@ use core::ops::Deref;
 use core::ptr;
 use core::ptr::NonNull;
 
-use super::thin::{Header, Reserved, ThinVec};
+use super::thin::{Header, Reserved, ThinHandle, ThinVec};
 use crate::backend::{
     Backend, BackendImpl, CloneOnOverflow, Counter, PanicOnOverflow, UpdateResult,
 };
@@ -478,6 +478,10 @@ impl<T, C: Backend> SmartThinVec<T, C> {
         } else {
             Err(self)
         }
+    }
+
+    pub(crate) unsafe fn handle(&mut self) -> ThinHandle<T, C> {
+        unsafe { self.as_mut_unchecked().handle() }
     }
 }
 

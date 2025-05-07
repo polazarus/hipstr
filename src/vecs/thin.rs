@@ -8,7 +8,7 @@ use alloc::vec::Vec;
 use core::iter::FusedIterator;
 use core::marker::PhantomData;
 use core::mem::{offset_of, ManuallyDrop, MaybeUninit};
-use core::ops::{Bound, Range, RangeBounds};
+use core::ops::{Bound, Deref, DerefMut, Range, RangeBounds};
 use core::ptr::NonNull;
 use core::{cmp, fmt, mem, ops, panic, ptr, slice};
 
@@ -308,6 +308,34 @@ where
         }
 
         other
+    }
+
+    pub(crate) unsafe fn handle(&self) -> ThinHandle<T, P> {
+        ThinHandle(ManuallyDrop::new(Self(self.0)), PhantomData)
+    }
+}
+
+pub(crate) struct ThinHandle<'a, T, P>(ManuallyDrop<ThinVec<T, P>>, PhantomData<&'a ()>);
+
+impl<T, P> ThinHandle<'_, T, P> {
+    pub(crate) unsafe fn extend_lifetime<'a>(self) -> ThinHandle<'a, T, P> {
+        ThinHandle(self.0, PhantomData)
+    }
+}
+
+impl<T, P> Deref for ThinHandle<'_, T, P> {
+    type Target = ThinVec<T, P>;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T, P> DerefMut for ThinHandle<'_, T, P> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }
 

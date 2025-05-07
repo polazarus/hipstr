@@ -8,7 +8,7 @@ use core::ptr;
 use core::ptr::NonNull;
 
 use super::smart_thin::SmartThinVec;
-use super::thin::ThinVec;
+use super::thin::ThinHandle;
 use crate::backend::{
     Backend, BackendImpl, CloneOnOverflow, Counter, PanicOnOverflow, UpdateResult,
 };
@@ -286,14 +286,62 @@ impl<T, B: Backend> SmartVec<T, B> {
                     Variant::Fat(unsafe { transmute::<&mut Vec<T>, &mut Vec<T>>(mut_vec) })
                 } else {
                     let mut thin = SmartThinVec::<T, B>::from_slice_clone(fat.as_slice());
-                    let mut_ref = unsafe { ptr::from_mut(thin.as_mut_unchecked()) };
+                    let handle = unsafe { thin.handle().extend_lifetime() };
                     self.0 = TaggedSmart::from_thin(thin);
-                    Variant::Thin(unsafe { &mut *mut_ref })
+                    Variant::Thin(handle)
                 }
             }
-            Variant::Thin(thin) => Variant::Thin(unsafe { transmute(thin.mutate()) }),
+            Variant::Thin(thin) => {
+                let _ = thin.mutate();
+                let handle = unsafe { thin.handle().extend_lifetime() };
+                Variant::Thin(handle)
+            }
         };
         RefMut(r)
+    }
+
+    pub fn mutate_copy(&mut self) -> RefMut<T, B>
+    where
+        T: Copy,
+    {
+        let mut v = ManuallyDrop::new(self.0.get());
+        let r = match &mut *v {
+            Variant::Fat(fat) => {
+                if let Some(mut_vec) = fat.as_mut() {
+                    Variant::Fat(unsafe { transmute::<&mut Vec<T>, &mut Vec<T>>(mut_vec) })
+                } else {
+                    let mut thin = SmartThinVec::<T, B>::from_slice_copy(fat.as_slice());
+                    let handle = unsafe { thin.handle().extend_lifetime() };
+                    self.0 = TaggedSmart::from_thin(thin);
+                    Variant::Thin(handle)
+                }
+            }
+            Variant::Thin(thin) => {
+                let _ = thin.mutate_copy();
+                let handle = unsafe { thin.handle().extend_lifetime() };
+                Variant::Thin(handle)
+            }
+        };
+        RefMut(r)
+    }
+
+    pub fn as_mut(&mut self) -> Option<RefMut<T, B>> {
+        if self.count().is_unique() {
+            let r = {
+                let mut v = ManuallyDrop::new(self.0.get());
+
+                // SAFETY: uniqueness checked above
+                match &mut *v {
+                    Variant::Fat(fat) => Variant::Fat(unsafe { fat.as_mut_unchecked_extended() }),
+                    Variant::Thin(thin) => {
+                        Variant::Thin(unsafe { thin.handle().extend_lifetime() })
+                    }
+                }
+            };
+            Some(RefMut(r))
+        } else {
+            None
+        }
     }
 
     pub fn try_clone(&self) -> Option<Self> {
@@ -349,7 +397,13 @@ impl<T: Clone, C: Counter> Clone for SmartVec<T, BackendImpl<C, CloneOnOverflow>
     }
 }
 
-pub struct RefMut<'a, T, P>(Variant<&'a mut Vec<T>, &'a mut ThinVec<T, P>>);
+impl<T, B: Backend> Drop for SmartVec<T, B> {
+    fn drop(&mut self) {
+        let _ = self.0.get();
+    }
+}
+
+pub struct RefMut<'a, T, P>(Variant<&'a mut Vec<T>, ThinHandle<'a, T, P>>);
 
 impl<'a, T, P> RefMut<'a, T, P> {
     pub fn as_slice(&self) -> &[T] {

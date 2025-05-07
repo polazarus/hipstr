@@ -1,4 +1,5 @@
 use alloc::vec;
+use std::vec::Vec;
 
 use super::SmartVec;
 use crate::backend::PanickyUnique;
@@ -204,4 +205,45 @@ fn clone_unique() {
     let w = v.clone();
     assert!(w.is_thin());
     assert_ne!(v.as_ptr(), w.as_ptr());
+}
+
+#[test]
+fn as_mut() {
+    let mut v = SmartVec::<i32, Arc>::new();
+    {
+        let mut m = v.as_mut().unwrap();
+        m.push(1);
+    }
+    assert_eq!(v.as_slice(), &[1]);
+}
+
+#[test]
+fn as_mut_shared() {
+    let mut v = SmartVec::<i32, Arc>::new();
+    let _w = v.clone();
+    assert!(v.as_mut().is_none());
+}
+
+#[test]
+fn mutate() {
+    let mut v = SmartVec::<i32, Arc>::new();
+    v.mutate().push(1);
+    assert_eq!(v.as_slice(), &[1]);
+    v.mutate().push(2);
+    assert_eq!(v.as_slice(), &[1, 2]);
+    let _w = v.clone();
+    v.mutate().push(3);
+    assert_eq!(v.as_slice(), &[1, 2, 3]);
+}
+
+#[test]
+fn mutate_fat() {
+    let mut v = SmartVec::<i32, Arc>::from_fat(Smart::new(Vec::with_capacity(10)));
+    v.mutate().push(1);
+    assert_eq!(v.as_slice(), &[1]);
+    v.mutate().push(2);
+    assert_eq!(v.as_slice(), &[1, 2]);
+    let _w = v.clone();
+    v.mutate().push(3);
+    assert_eq!(v.as_slice(), &[1, 2, 3]);
 }

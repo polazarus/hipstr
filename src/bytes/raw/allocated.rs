@@ -76,8 +76,6 @@ impl<B: Backend> TaggedSmart<B> {
         // SAFETY: type invariant
         let ptr: NonNull<()> = unsafe { NonNull::new_unchecked(ptr) };
 
-        #[cfg(miri)]
-        let _ = &*ptr; // check provenance early
         ptr
     }
 
