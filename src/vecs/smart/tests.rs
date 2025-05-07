@@ -136,7 +136,9 @@ fn force_clone_arc() {
 fn force_clone_unique_thin() {
     let v = SmartVec::<i32, Unique>::new();
     assert!(v.is_thin());
+
     let w = v.force_clone();
+    assert!(w.is_thin());
     assert_ne!(v.as_ptr(), w.as_ptr());
 }
 
@@ -147,5 +149,51 @@ fn force_clone_unique_fat() {
     assert!(v.is_fat());
 
     let w = v.force_clone();
+    assert!(w.is_thin());
+    assert_ne!(v.as_ptr(), w.as_ptr());
+}
+
+#[test]
+fn force_clone_or_copy_arc() {
+    let v = SmartVec::<i32, Arc>::new();
+    let w = v.force_clone_or_copy();
+    assert_eq!(v.as_ptr(), w.as_ptr());
+}
+
+#[test]
+fn force_clone_or_copy_unique_thin() {
+    let v = SmartVec::<i32, Unique>::new();
+    assert!(v.is_thin());
+
+    let w = v.force_clone_or_copy();
+    assert!(w.is_thin());
+    assert_ne!(v.as_ptr(), w.as_ptr());
+}
+
+#[test]
+fn force_clone_or_copy_unique_fat() {
+    let fat = Smart::new(vec![1, 2, 3]);
+    let v = SmartVec::<i32, Unique>::from_fat(fat);
+    assert!(v.is_fat());
+
+    let w = v.force_clone_or_copy();
+    assert!(w.is_thin());
+    assert_ne!(v.as_ptr(), w.as_ptr());
+}
+
+#[test]
+fn clone_arc() {
+    let v = SmartVec::<i32, Arc>::new();
+    let w = v.clone();
+    assert_eq!(v.as_ptr(), w.as_ptr());
+}
+
+#[test]
+fn clone_unique() {
+    let v = SmartVec::<i32, Unique>::new();
+    assert!(v.is_thin());
+
+    let w = v.clone();
+    assert!(w.is_thin());
     assert_ne!(v.as_ptr(), w.as_ptr());
 }
