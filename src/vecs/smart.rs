@@ -297,7 +297,7 @@ impl<T, B: Backend> SmartVec<T, B> {
     }
 
     pub fn try_clone(&self) -> Option<Self> {
-        if self.count().incr() == UpdateResult::Overflow {
+        if self.count().incr() == UpdateResult::Done {
             Some(Self(self.0))
         } else {
             None
