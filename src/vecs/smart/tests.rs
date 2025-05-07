@@ -1,6 +1,7 @@
 use alloc::vec;
 
 use super::SmartVec;
+use crate::backend::PanickyUnique;
 use crate::smart::Smart;
 use crate::{smart_thin_vec, Arc, Unique};
 
@@ -186,6 +187,13 @@ fn clone_arc() {
     let v = SmartVec::<i32, Arc>::new();
     let w = v.clone();
     assert_eq!(v.as_ptr(), w.as_ptr());
+}
+
+#[test]
+#[should_panic(expected = "count overflow")]
+fn clone_panic() {
+    let v = SmartVec::<i32, PanickyUnique>::new();
+    let _w = v.clone();
 }
 
 #[test]
