@@ -3,15 +3,21 @@
 use alloc::vec::Vec;
 use core::marker::PhantomData;
 use core::mem::{offset_of, transmute, ManuallyDrop, MaybeUninit};
+use core::num::NonZeroUsize;
 use core::ptr::NonNull;
-use core::{ptr, slice};
+use core::{ops, ptr, slice};
 
 use super::smart_thin::SmartThinVec;
 use super::thin::ThinVec;
-use crate::backend::Backend;
+use crate::backend::{
+    Backend, BackendImpl, CloneOnOverflow, Counter, PanicOnOverflow, UpdateResult,
+};
 use crate::macros::trait_impls;
 use crate::smart::{Inner, Smart};
 use crate::vecs::thin::Header;
+
+#[cfg(test)]
+mod tests;
 
 const TAG_MASK: usize = 0b11 as usize;
 const THIN_BIT: usize = 0b01;
@@ -24,12 +30,9 @@ enum Variant<F, T> {
     Thin(T),
 }
 
-/// Tagged smart pointer (with forced exposed provenance).
-///
-/// The exposed provenance is required to cast [`Allocated`] from and to the
-/// [`Pivot`](super::Pivot) representation.
+/// Tagged smart pointer.
 #[repr(transparent)]
-struct TaggedSmart<T, B>(usize, PhantomData<(Vec<T>, B)>);
+struct TaggedSmart<T, B>(NonNull<()>, PhantomData<(Vec<T>, B)>);
 
 // Manual implementation of Clone and Copy traits to avoid requiring additional
 // trait bounds on the generic parameter B
@@ -55,47 +58,44 @@ impl<T, B: Backend> TaggedSmart<T, B> {
         }
     }
 
-    #[inline]
-    const fn is_thin(self) -> bool {
-        debug_assert!(self.check_tag());
-        self.0 & THIN_BIT != 0
+    fn addr(self) -> usize {
+        self.0.as_ptr() as usize
     }
 
     #[inline]
-    const fn is_fat(self) -> bool {
+    fn is_thin(self) -> bool {
         debug_assert!(self.check_tag());
-        self.0 & THIN_BIT == 0
+        self.addr() & THIN_BIT != 0
     }
 
-    const fn ptr(self) -> NonNull<()> {
+    #[inline]
+    fn is_fat(self) -> bool {
+        debug_assert!(self.check_tag());
+        self.addr() & THIN_BIT == 0
+    }
+
+    fn ptr(self) -> NonNull<()> {
         debug_assert!(self.check_tag());
 
-        // expose provenance semantics
-        let ptr = (self.0 & !TAG_MASK) as *mut ();
-        debug_assert!(!ptr.is_null());
-        // debug only
-
-        // SAFETY: type invariant
-        let ptr: NonNull<()> = unsafe { NonNull::new_unchecked(ptr) };
-
-        #[cfg(miri)]
-        let _ = &*ptr; // check provenance early
-        ptr
+        self.0.map_addr(|addr| {
+            // SAFETY: the pointer is non-null and aligned
+            unsafe { NonZeroUsize::new_unchecked(addr.get() & !TAG_MASK) }
+        })
     }
 
     /// Constructed a tagged smart pointer from a [`Smart`].
     #[inline]
     fn from_fat(raw: Smart<Vec<T>, B>) -> Self {
-        let ptr = Smart::into_raw(raw).as_ptr();
+        let ptr = Smart::into_raw(raw);
         debug_assert!(ptr.is_aligned());
-        debug_assert!((ptr as usize) & TAG_MASK == 0);
+        debug_assert!(ptr.addr().get() & TAG_MASK == 0);
 
         // SAFETY: add a 2-bit tag to a non-null pointer with the same alignment
         // requirement as usize (typically 4 bytes on 32-bit architectures, and
         // more on 64-bit architectures)
-        let addr = ptr.map_addr(|addr| addr | TAG_FAT).expose_provenance();
+        let tagged = ptr.map_addr(|addr| addr | TAG_FAT).cast();
 
-        let this = Self(addr, PhantomData);
+        let this = Self(tagged, PhantomData);
         debug_assert!(this.check_tag());
         debug_assert!(this.is_fat());
         this
@@ -103,33 +103,29 @@ impl<T, B: Backend> TaggedSmart<T, B> {
 
     #[inline]
     fn from_thin(raw: SmartThinVec<T, B>) -> Self {
-        let ptr = SmartThinVec::into_raw(raw).as_ptr();
+        let ptr = SmartThinVec::into_raw(raw);
         debug_assert!(ptr.is_aligned());
-        debug_assert!((ptr as usize) & TAG_MASK == 0);
+        debug_assert!(ptr.addr().get() & TAG_MASK == 0);
 
         // SAFETY: add a 2-bit tag to a non-null pointer with the same alignment
         // requirement as usize (typically 4 bytes on 32-bit architectures, and
         // more on 64-bit architectures)
-        let addr = ptr.map_addr(|addr| addr | TAG_THIN).expose_provenance();
+        let tagged = ptr.map_addr(|addr| addr | TAG_THIN).cast();
 
-        let this = Self(addr, PhantomData);
+        let this = Self(tagged, PhantomData);
         debug_assert!(this.check_tag());
         debug_assert!(this.is_thin());
         this
     }
 
-    #[inline]
-    fn is_unique(self) -> bool {
-        const {
-            assert!(offset_of!(Inner<T, B>, count) == 0);
-            assert!(offset_of!(Header<T, B>, prefix) == 0);
-        }
-        self.count().is_unique()
-    }
-
+    /// Returns a reference to the counter.
     #[inline]
     fn count(&self) -> &B {
-        let counter = unsafe { self.ptr().cast().as_ref() };
+        const {
+            assert!(offset_of!(Header<T, B>, prefix) == 0);
+            assert!(offset_of!(Inner<Vec<T>, B>, count) == 0);
+        }
+        let counter: &B = unsafe { self.ptr().cast().as_ref() };
 
         #[cfg(debug_assertions)]
         {
@@ -162,16 +158,9 @@ impl<T, B: Backend> TaggedSmart<T, B> {
 
     /// Checks if the tag is valid.
     #[inline]
-    const fn check_tag(self) -> bool {
-        (self.0 & !TAG_MASK) != 0 && (self.0 & TAG_OWNED_MASK as usize) != 0
-    }
-
-    unsafe fn as_fat_unchecked(self) -> Smart<Vec<T>, B> {
-        debug_assert!(self.is_fat());
-        debug_assert!(self.check_tag());
-
-        // SAFETY: type invariant
-        unsafe { Smart::from_raw(self.ptr().cast()) }
+    fn check_tag(self) -> bool {
+        let addr = self.0.addr().get();
+        (addr & !TAG_MASK) != 0 && (addr & TAG_OWNED_MASK as usize) != 0
     }
 }
 
@@ -200,6 +189,16 @@ impl<T, B: Backend> SmartVec<T, B> {
         Self(tagged_ptr)
     }
 
+    #[inline]
+    pub fn is_thin(&self) -> bool {
+        self.0.is_thin()
+    }
+
+    #[inline]
+    pub fn is_fat(&self) -> bool {
+        self.0.is_fat()
+    }
+
     fn from_fat(raw: Smart<Vec<T>, B>) -> Self {
         let tagged_ptr = TaggedSmart::from_fat(raw);
         Self(tagged_ptr)
@@ -222,11 +221,32 @@ impl<T, B: Backend> SmartVec<T, B> {
         }
     }
 
+    /// Returns the length of the vector.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use hipstr::vecs::SmartVec;
+    /// use hipstr::Arc;
+    ///
+    /// let mut v = SmartVec::<i32, Arc>::new();
+    /// assert_eq!(v.len(), 0);
+    /// v.mutate().push(1);
+    /// assert_eq!(v.len(), 1);
+    /// ```
     pub fn len(&self) -> usize {
         let v = ManuallyDrop::new(self.0.get());
         match &*v {
             Variant::Fat(fat) => fat.len(),
             Variant::Thin(thin) => thin.len(),
+        }
+    }
+
+    pub fn capacity(&self) -> usize {
+        let v = ManuallyDrop::new(self.0.get());
+        match &*v {
+            Variant::Fat(fat) => fat.capacity(),
+            Variant::Thin(thin) => thin.capacity(),
         }
     }
 
@@ -236,6 +256,23 @@ impl<T, B: Backend> SmartVec<T, B> {
             Variant::Fat(fat) => fat.is_empty(),
             Variant::Thin(thin) => thin.is_empty(),
         }
+    }
+
+    /// Returns true if this vector reference is unique, that is, not shared.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use hipstr::vecs::SmartVec;
+    /// use hipstr::Arc;
+    ///
+    /// let v = SmartVec::<i32, Arc>::new();
+    /// assert!(v.is_unique());
+    /// let w = v.clone();
+    /// assert!(!v.is_unique());
+    /// ```
+    pub fn is_unique(&self) -> bool {
+        self.count().is_unique()
     }
 
     pub fn mutate(&mut self) -> RefMut<T, B>
@@ -257,6 +294,58 @@ impl<T, B: Backend> SmartVec<T, B> {
             Variant::Thin(thin) => Variant::Thin(unsafe { transmute(thin.mutate()) }),
         };
         RefMut(r)
+    }
+
+    pub fn try_clone(&self) -> Option<Self> {
+        if self.count().incr() == UpdateResult::Overflow {
+            Some(Self(self.0))
+        } else {
+            None
+        }
+    }
+
+    fn count(&self) -> &B {
+        self.0.count()
+    }
+
+    pub fn force_clone(&self) -> Self
+    where
+        T: Clone,
+    {
+        self.try_clone().unwrap_or_else(|| {
+            let v = ManuallyDrop::new(self.0.get());
+            let t = match &*v {
+                Variant::Fat(fat) => SmartThinVec::from_slice_clone(fat.as_slice()),
+                Variant::Thin(thin) => thin.force_clone(),
+            };
+            Self::from_thin(t)
+        })
+    }
+
+    pub fn force_clone_or_copy(&self) -> Self
+    where
+        T: Copy,
+    {
+        self.try_clone().unwrap_or_else(|| {
+            let v = ManuallyDrop::new(self.0.get());
+            let t = match &*v {
+                Variant::Fat(fat) => SmartThinVec::from_slice_copy(fat.as_slice()),
+                Variant::Thin(thin) => thin.force_clone_or_copy(),
+            };
+            Self::from_thin(t)
+        })
+    }
+}
+
+impl<T, C: Counter> Clone for SmartVec<T, BackendImpl<C, PanicOnOverflow>> {
+    fn clone(&self) -> Self {
+        self.try_clone().unwrap_or_else(|| panic!("count overflow"))
+    }
+}
+
+impl<T: Clone, C: Counter> Clone for SmartVec<T, BackendImpl<C, CloneOnOverflow>> {
+    fn clone(&self) -> Self {
+        self.force_clone()
     }
 }
 

@@ -1,0 +1,81 @@
+use alloc::vec;
+
+use super::SmartVec;
+use crate::smart::Smart;
+use crate::{smart_thin_vec, Arc};
+
+#[test]
+fn new() {
+    let v = SmartVec::<i32, Arc>::new();
+    assert!(v.is_empty());
+    assert_eq!(v.len(), 0);
+    assert!(v.is_thin());
+    assert!(!v.is_fat());
+}
+
+#[test]
+fn with_capacity() {
+    let v = SmartVec::<i32, Arc>::with_capacity(10);
+    assert!(v.is_empty());
+    assert!(v.is_thin());
+    assert!(!v.is_fat());
+    assert!(v.capacity() >= 10);
+}
+
+#[test]
+fn from_fat() {
+    let fat = Smart::new(vec![1, 2, 3]);
+    let p = fat.as_ptr();
+    let v = SmartVec::<i32, Arc>::from_fat(fat);
+    assert_eq!(v.as_slice(), &[1, 2, 3]);
+    assert_eq!(v.len(), 3);
+    assert!(v.is_fat());
+    assert!(!v.is_thin());
+    assert_eq!(v.as_ptr(), p);
+}
+
+#[test]
+fn from_thin() {
+    let thin = smart_thin_vec![Arc : 1, 2, 3];
+    let p = thin.as_ptr();
+    let v = SmartVec::<i32, Arc>::from_thin(thin);
+    assert_eq!(v.as_slice(), &[1, 2, 3]);
+    assert_eq!(v.len(), 3);
+    assert!(v.is_thin());
+    assert!(!v.is_fat());
+    assert_eq!(v.as_ptr(), p);
+}
+
+#[test]
+fn len_is_empty() {
+    let v = SmartVec::<i32, Arc>::new();
+    assert!(v.is_empty());
+    assert_eq!(v.len(), 0);
+    assert!(v.is_thin());
+    assert!(!v.is_fat());
+
+    let v = SmartVec::<i32, Arc>::from_fat(Smart::new(vec![1, 2, 3]));
+    assert!(!v.is_empty());
+    assert_eq!(v.len(), 3);
+    assert!(v.is_fat());
+    assert!(!v.is_thin());
+
+    let v = SmartVec::<i32, Arc>::from_thin(smart_thin_vec![Arc : 1, 2, 3]);
+    assert!(!v.is_empty());
+    assert_eq!(v.len(), 3);
+    assert!(v.is_thin());
+    assert!(!v.is_fat());
+}
+
+#[test]
+fn clone() {
+    let thin = smart_thin_vec![Arc : 1, 2, 3];
+    let p = thin.as_ptr();
+    let v = SmartVec::<i32, Arc>::from_thin(thin);
+    let v2 = v.clone();
+    assert_eq!(v2.as_slice(), &[1, 2, 3]);
+    assert_eq!(v2.len(), 3);
+    assert!(v2.is_thin());
+    assert!(!v2.is_fat());
+    assert_eq!(v2.as_ptr(), p);
+}

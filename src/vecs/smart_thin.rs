@@ -70,18 +70,18 @@ mod tests;
 #[macro_export]
 macro_rules! smart_thin_vec {
 
-    [ $t:ty : $($rest:tt)* ] => {
+    [ $($rest:expr),* $(,)? ] => {
+        smart_thin_vec![$crate::Arc : $($rest),*]
+    };
+
+    [ $t:ty : $($rest:expr),* $(,)?] => {
         {
             use $crate::thin_vec;
             $crate::vecs::smart_thin::SmartThinVec::<_, $t>::from(
-                thin_vec![ $( $rest )* ]
+                thin_vec![ $( $rest ),* ]
             )
         }
     };
-
-    [ $($rest:tt)* ] => {
-        smart_thin_vec![$crate::Arc : $($rest)*]
-    }
 
 }
 
@@ -361,6 +361,16 @@ impl<T, C: Backend> SmartThinVec<T, C> {
         unsafe { Self::from_thin_vec_unchecked(thin_vec) }
     }
 
+    #[inline]
+    #[must_use]
+    pub(crate) fn from_slice_copy(slice: &[T]) -> Self
+    where
+        T: Copy,
+    {
+        let thin_vec = ThinVec::from_slice_copy(slice);
+        unsafe { Self::from_thin_vec_unchecked(thin_vec) }
+    }
+
     /// Tries to clone the reference without cloning the data.
     ///
     /// If the reference count overflows ([`Unique`] always does), it returns `None`.
@@ -436,7 +446,7 @@ impl<T, C: Backend> SmartThinVec<T, C> {
     /// assert_ne!(v.as_ptr(), v2.as_ptr());
     /// ```
     #[must_use]
-    pub fn clone_or_copy(&self) -> Self
+    pub fn force_clone_or_copy(&self) -> Self
     where
         T: Copy,
     {

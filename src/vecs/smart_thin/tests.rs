@@ -56,6 +56,48 @@ fn clone_panic() {
 }
 
 #[test]
+fn force_clone() {
+    let v1 = smart_thin_vec![Box::new(1), Box::new(2), Box::new(3)];
+    assert_eq!(v1.len(), 3);
+    assert!(v1.is_unique());
+
+    let v2 = v1.force_clone();
+    assert_eq!(v2.len(), 3);
+    assert!(!v2.is_unique());
+    assert!(!v1.is_unique());
+
+    let v1 = smart_thin_vec![PanickyUnique : Box::new(1), Box::new(2), Box::new(3)];
+    assert_eq!(v1.len(), 3);
+    assert!(v1.is_unique());
+
+    let v2 = v1.force_clone();
+    assert_eq!(v2.len(), 3);
+    assert!(v1.is_unique());
+    assert!(v2.is_unique());
+}
+
+#[test]
+fn clone_or_copy() {
+    let v1 = smart_thin_vec![1, 2, 3];
+    assert_eq!(v1.len(), 3);
+    assert!(v1.is_unique());
+
+    let v2 = v1.force_clone_or_copy();
+    assert_eq!(v2.len(), 3);
+    assert!(!v2.is_unique());
+    assert!(!v1.is_unique());
+
+    let v1 = smart_thin_vec![PanickyUnique : 1, 2, 3];
+    assert_eq!(v1.len(), 3);
+    assert!(v1.is_unique());
+
+    let v2 = v1.force_clone_or_copy();
+    assert_eq!(v2.len(), 3);
+    assert!(v1.is_unique());
+    assert!(v2.is_unique());
+}
+
+#[test]
 fn with_capacity() {
     let v = SmartThinVec::<u8, Arc>::with_capacity(10);
     assert_eq!(v.len(), 0);
@@ -296,4 +338,14 @@ fn cmp() {
     assert_eq!(v.partial_cmp(&[1, 2]).unwrap(), Ordering::Greater);
     assert_eq!([1, 2].partial_cmp(&v).unwrap(), Ordering::Less);
     assert_eq!([1, 2, 3].partial_cmp(&v).unwrap(), Ordering::Equal);
+}
+
+#[test]
+fn raw() {
+    let v = smart_thin_vec![1, 2, 3];
+    let p = v.as_ptr();
+    let r = v.into_raw();
+    let v = unsafe { SmartThinVec::from_raw(r) };
+    assert_eq!(v.as_slice(), [1, 2, 3]);
+    assert_eq!(v.as_ptr(), p);
 }
