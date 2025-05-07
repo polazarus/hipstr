@@ -2,7 +2,7 @@ use alloc::vec;
 
 use super::SmartVec;
 use crate::smart::Smart;
-use crate::{smart_thin_vec, Arc};
+use crate::{smart_thin_vec, Arc, Unique};
 
 #[test]
 fn new() {
@@ -20,6 +20,15 @@ fn with_capacity() {
     assert!(v.is_thin());
     assert!(!v.is_fat());
     assert!(v.capacity() >= 10);
+}
+
+#[test]
+fn capacity_fat() {
+    let fat = Smart::new(vec![1, 2, 3]);
+    let v = SmartVec::<i32, Arc>::from_fat(fat);
+    assert!(v.is_fat());
+    assert!(!v.is_thin());
+    assert!(v.capacity() >= 3);
 }
 
 #[test]
@@ -104,4 +113,39 @@ fn is_unique_fat() {
 
     let _w = v.clone();
     assert!(!v.is_unique());
+}
+
+#[test]
+fn try_clone() {
+    let v = SmartVec::<i32, Arc>::new();
+    let w = v.try_clone().unwrap();
+    assert_eq!(v.as_ptr(), w.as_ptr());
+
+    let v = SmartVec::<i32, Unique>::new();
+    assert!(v.try_clone().is_none());
+}
+
+#[test]
+fn force_clone_arc() {
+    let v = SmartVec::<i32, Arc>::new();
+    let w = v.force_clone();
+    assert_eq!(v.as_ptr(), w.as_ptr());
+}
+
+#[test]
+fn force_clone_unique_thin() {
+    let v = SmartVec::<i32, Unique>::new();
+    assert!(v.is_thin());
+    let w = v.force_clone();
+    assert_ne!(v.as_ptr(), w.as_ptr());
+}
+
+#[test]
+fn force_clone_unique_fat() {
+    let fat = Smart::new(vec![1, 2, 3]);
+    let v = SmartVec::<i32, Unique>::from_fat(fat);
+    assert!(v.is_fat());
+
+    let w = v.force_clone();
+    assert_ne!(v.as_ptr(), w.as_ptr());
 }

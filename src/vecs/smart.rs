@@ -4,8 +4,8 @@ use alloc::vec::Vec;
 use core::marker::PhantomData;
 use core::mem::{offset_of, transmute, ManuallyDrop, MaybeUninit};
 use core::num::NonZeroUsize;
+use core::ptr;
 use core::ptr::NonNull;
-use core::{ops, ptr, slice};
 
 use super::smart_thin::SmartThinVec;
 use super::thin::ThinVec;
