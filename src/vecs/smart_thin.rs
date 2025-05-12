@@ -74,6 +74,10 @@ macro_rules! smart_thin_vec {
         smart_thin_vec![$crate::Arc : $($rest),*]
     };
 
+    [ $value:expr ; $len:expr ] => {
+        smart_thin_vec![$crate::Arc : $value; $len]
+    };
+
     [ $t:ty : $($rest:expr),* $(,)?] => {
         {
             use $crate::thin_vec;
@@ -441,7 +445,7 @@ impl<T, C: Backend> SmartThinVec<T, C> {
     /// # use hipstr::Unique;
     /// let v = smart_thin_vec![Unique : 1, 2, 3];
     /// assert_eq!(v.as_slice(), &[1, 2, 3]);
-    /// let v2 = v.clone_or_copy(); // maybe a bit more efficient than `v.clone()` for `Copy` types
+    /// let v2 = v.force_clone_or_copy(); // maybe a bit more efficient than `v.clone()` for `Copy` types
     /// assert_eq!(v.as_slice(), v2.as_slice());
     /// assert_ne!(v.as_ptr(), v2.as_ptr());
     /// ```

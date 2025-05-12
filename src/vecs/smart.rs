@@ -104,6 +104,11 @@ impl<T, B: Backend> TaggedSmart<T, B> {
     #[inline]
     fn from_thin(raw: SmartThinVec<T, B>) -> Self {
         let ptr = SmartThinVec::into_raw(raw);
+        Self::from_thin_ptr(ptr)
+    }
+
+    #[inline]
+    fn from_thin_ptr(ptr: NonNull<Header<T, B>>) -> Self {
         debug_assert!(ptr.is_aligned());
         debug_assert!(ptr.addr().get() & TAG_MASK == 0);
 
@@ -297,7 +302,7 @@ impl<T, B: Backend> SmartVec<T, B> {
                 Variant::Thin(handle)
             }
         };
-        RefMut(r)
+        RefMut(r, self)
     }
 
     pub fn mutate_copy(&mut self) -> RefMut<T, B>
@@ -322,7 +327,7 @@ impl<T, B: Backend> SmartVec<T, B> {
                 Variant::Thin(handle)
             }
         };
-        RefMut(r)
+        RefMut(r, self)
     }
 
     pub fn as_mut(&mut self) -> Option<RefMut<T, B>> {
@@ -338,7 +343,7 @@ impl<T, B: Backend> SmartVec<T, B> {
                     }
                 }
             };
-            Some(RefMut(r))
+            Some(RefMut(r, self))
         } else {
             None
         }
@@ -403,9 +408,21 @@ impl<T, B: Backend> Drop for SmartVec<T, B> {
     }
 }
 
-pub struct RefMut<'a, T, P>(Variant<&'a mut Vec<T>, ThinHandle<'a, T, P>>);
+pub struct RefMut<'a, T, B: Backend>(
+    Variant<&'a mut Vec<T>, ThinHandle<'a, T, B>>,
+    &'a mut SmartVec<T, B>,
+);
 
-impl<'a, T, P> RefMut<'a, T, P> {
+impl<'a, T, B: Backend> Drop for RefMut<'a, T, B> {
+    fn drop(&mut self) {
+        match &self.0 {
+            Variant::Fat(_) => {}
+            Variant::Thin(thin) => self.1 .0 = TaggedSmart::from_thin_ptr(thin.get_raw()),
+        }
+    }
+}
+
+impl<'a, T, B: Backend> RefMut<'a, T, B> {
     pub fn as_slice(&self) -> &[T] {
         match &self.0 {
             Variant::Fat(fat) => fat.as_slice(),
@@ -490,9 +507,9 @@ impl<'a, T, P> RefMut<'a, T, P> {
         }
     }
 
-    pub fn split_off(&mut self, at: usize) -> SmartVec<T, P>
+    pub fn split_off(&mut self, at: usize) -> SmartVec<T, B>
     where
-        P: Backend,
+        B: Backend,
     {
         match &mut self.0 {
             Variant::Fat(fat) => {

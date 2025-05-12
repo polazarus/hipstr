@@ -318,6 +318,11 @@ where
 pub(crate) struct ThinHandle<'a, T, P>(ManuallyDrop<ThinVec<T, P>>, PhantomData<&'a ()>);
 
 impl<T, P> ThinHandle<'_, T, P> {
+    pub(crate) fn get_raw(&self) -> NonNull<Header<T, P>> {
+        let ptr = self.0 .0;
+        ptr
+    }
+
     pub(crate) unsafe fn extend_lifetime<'a>(self) -> ThinHandle<'a, T, P> {
         ThinHandle(self.0, PhantomData)
     }
