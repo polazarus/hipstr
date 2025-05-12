@@ -87,6 +87,14 @@ macro_rules! smart_thin_vec {
         }
     };
 
+    [ $t:ty : $value:expr ; $len:expr ] => {
+        {
+            use $crate::thin_vec;
+            $crate::vecs::smart_thin::SmartThinVec::<_, $t>::from(
+                thin_vec![ $value ; $len ]
+            )
+        }
+    };
 }
 
 /// A smart thin vector that can be either unique, reference counted or
