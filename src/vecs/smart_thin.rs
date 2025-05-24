@@ -169,7 +169,7 @@ impl<T, C: Backend> SmartThinVec<T, C> {
         unsafe { Self::from_thin_vec_unchecked(tv) }
     }
 
-    const fn count(&self) -> &C {
+    pub(crate) const fn count(&self) -> &C {
         self.as_thin_vec().prefix()
     }
 

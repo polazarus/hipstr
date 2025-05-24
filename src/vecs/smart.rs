@@ -291,6 +291,7 @@ impl<T, B: Backend> SmartVec<T, B> {
                     Variant::Fat(unsafe { transmute::<&mut Vec<T>, &mut Vec<T>>(mut_vec) })
                 } else {
                     let mut thin = SmartThinVec::<T, B>::from_slice_clone(fat.as_slice());
+                    fat.count().decr(); // decrement the count to avoid double counting
                     let handle = unsafe { thin.handle().extend_lifetime() };
                     self.0 = TaggedSmart::from_thin(thin);
                     Variant::Thin(handle)

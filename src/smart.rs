@@ -327,6 +327,10 @@ where
     {
         *self = Self::new(*Smart::get(self));
     }
+
+    pub(crate) fn count(&self) -> &C {
+        &self.inner().count
+    }
 }
 
 impl<T: Clone, C: Counter> Clone for Smart<T, BackendImpl<C, CloneOnOverflow>> {
