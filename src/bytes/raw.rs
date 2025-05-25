@@ -217,7 +217,7 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
     /// Retrieves a reference on the union.
     #[inline]
     pub(super) const fn union(&self) -> &Union<'borrow, B> {
-        let raw_ptr: *const _ = &self.pivot;
+        let raw_ptr = &raw const self.pivot;
         let union_ptr: *const Union<'borrow, B> = raw_ptr.cast();
         // SAFETY: same layout and same niche hopefully, same immutability
         unsafe { &*union_ptr }
@@ -226,7 +226,7 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
     /// Retrieves a mutable reference on the union.
     #[inline]
     pub(super) const fn union_mut(&mut self) -> &mut Union<'borrow, B> {
-        let raw_ptr: *mut _ = &mut self.pivot;
+        let raw_ptr = &raw mut self.pivot;
         let union_ptr: *mut Union<'borrow, B> = raw_ptr.cast();
         // SAFETY: same layout and same niche hopefully, same mutability
         unsafe { &mut *union_ptr }
@@ -474,6 +474,11 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
         result
     }
 
+    #[allow(clippy::mem_replace_with_default)]
+    const fn take(&mut self) -> Self {
+        replace(self, Self::new())
+    }
+
     /// Takes a vector representation of this raw byte string.
     ///
     /// Will only allocate if needed.
@@ -485,7 +490,7 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
             if let Ok(owned) = allocated.try_into_vec() {
                 // SAFETY: ownership is taken, replace with empty
                 // and forget old value (otherwise double drop!!)
-                forget(replace(self, Self::new()));
+                forget(self.take());
                 return owned;
             }
         }
@@ -506,9 +511,9 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
             Split::Allocated(&allocated) => {
                 // Takes a copy of allocated
 
-                // replace `self` one by an empty raw
+                // replace `self` one by an empty one
                 // forget the old value, we have `allocated` as a valid handle
-                forget(replace(self, Self::new()));
+                forget(self.take());
 
                 Some(allocated)
             }
@@ -523,7 +528,7 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
         match tag {
             Tag::Inline => {}
             Tag::Borrowed => {
-                let old = replace(self, Self::new()).union_move();
+                let old = self.take().union_move();
 
                 // SAFETY: representation is checked above
                 let borrowed = unsafe { old.borrowed };
@@ -536,7 +541,7 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
                     return;
                 }
 
-                let old = replace(self, Self::new());
+                let old = self.take();
 
                 // SAFETY: representation checked above
                 let allocated = unsafe { old.union_move().allocated };

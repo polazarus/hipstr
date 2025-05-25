@@ -126,8 +126,7 @@ where
     /// ```
     #[inline]
     #[must_use]
-    pub unsafe fn from_raw(ptr: NonNull<Inner<T, C>>) -> Self {
-        debug_assert!(ptr.is_aligned());
+    pub const unsafe fn from_raw(ptr: NonNull<Inner<T, C>>) -> Self {
         unsafe { Self(ptr) }
     }
 
@@ -318,17 +317,17 @@ where
     where
         T: Clone,
     {
-        *self = Self::new(Smart::get(self).clone());
+        *self = Self::new(Self::get(self).clone());
     }
 
     pub(crate) fn detach_copy(&mut self)
     where
         T: Copy,
     {
-        *self = Self::new(*Smart::get(self));
+        *self = Self::new(*Self::get(self));
     }
 
-    pub(crate) fn count(&self) -> &C {
+    pub(crate) const fn count(&self) -> &C {
         &self.inner().count
     }
 }
@@ -510,6 +509,6 @@ where
 {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
-        T::hash(self, state)
+        T::hash(self, state);
     }
 }

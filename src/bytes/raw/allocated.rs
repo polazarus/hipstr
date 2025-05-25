@@ -43,7 +43,7 @@ impl<B: Backend> Copy for TaggedSmart<B> {}
 
 impl<B: Backend> TaggedSmart<B> {
     /// Gets the owner.
-    fn get(self) -> Variant<Smart<Vec<u8>, B>, SmartThinVec<u8, B>> {
+    const fn get(self) -> Variant<Smart<Vec<u8>, B>, SmartThinVec<u8, B>> {
         let ptr = self.ptr();
 
         if self.is_fat() {
@@ -225,7 +225,7 @@ impl<B: Backend> Allocated<B> {
     }
 
     /// Converts the allocated representation into its owner.
-    fn into_owner(self) -> Variant<Smart<Vec<u8>, B>, SmartThinVec<u8, B>> {
+    const fn into_owner(self) -> Variant<Smart<Vec<u8>, B>, SmartThinVec<u8, B>> {
         self.owner.get()
     }
 

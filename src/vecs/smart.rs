@@ -19,12 +19,13 @@ use crate::vecs::thin::Header;
 #[cfg(test)]
 mod tests;
 
-const TAG_MASK: usize = 0b11 as usize;
+const TAG_MASK: usize = 0b11;
 const THIN_BIT: usize = 0b01;
 const TAG_THIN: usize = 0b11;
 const TAG_FAT: usize = 0b10;
 const TAG_OWNED_MASK: usize = 0b10;
 
+#[derive(Clone, Copy)]
 enum Variant<F, T> {
     Fat(F),
     Thin(T),
@@ -165,7 +166,7 @@ impl<T, B: Backend> TaggedSmart<T, B> {
     #[inline]
     fn check_tag(self) -> bool {
         let addr = self.0.addr().get();
-        (addr & !TAG_MASK) != 0 && (addr & TAG_OWNED_MASK as usize) != 0
+        (addr & !TAG_MASK) != 0 && (addr & TAG_OWNED_MASK) != 0
     }
 }
 
@@ -180,7 +181,8 @@ impl<T, B: Backend> TaggedSmart<T, B> {
 pub struct SmartVec<T, B: Backend>(TaggedSmart<T, B>);
 
 impl<T, B: Backend> SmartVec<T, B> {
-    /// Creates a new smart vector.
+    /// Creates a new empty smart vector.
+    #[must_use]
     pub fn new() -> Self {
         let thin = SmartThinVec::new();
         let tagged_ptr = TaggedSmart::from_thin(thin);
@@ -188,6 +190,7 @@ impl<T, B: Backend> SmartVec<T, B> {
     }
 
     /// Creates a new smart vector with the given capacity.
+    #[must_use]
     pub fn with_capacity(capacity: usize) -> Self {
         let thin = SmartThinVec::with_capacity(capacity);
         let tagged_ptr = TaggedSmart::from_thin(thin);
@@ -195,29 +198,35 @@ impl<T, B: Backend> SmartVec<T, B> {
     }
 
     #[inline]
+    #[must_use]
     pub fn is_thin(&self) -> bool {
         self.0.is_thin()
     }
 
     #[inline]
+    #[must_use]
     pub fn is_fat(&self) -> bool {
         self.0.is_fat()
     }
 
+    #[must_use]
     fn from_fat(raw: Smart<Vec<T>, B>) -> Self {
         let tagged_ptr = TaggedSmart::from_fat(raw);
         Self(tagged_ptr)
     }
 
+    #[must_use]
     fn from_thin(raw: SmartThinVec<T, B>) -> Self {
         let tagged_ptr = TaggedSmart::from_thin(raw);
         Self(tagged_ptr)
     }
 
+    #[must_use]
     pub fn as_slice(&self) -> &[T] {
         self.0.as_slice()
     }
 
+    #[must_use]
     pub fn as_ptr(&self) -> *const T {
         let v = ManuallyDrop::new(self.0.get());
         match &*v {
@@ -239,6 +248,7 @@ impl<T, B: Backend> SmartVec<T, B> {
     /// v.mutate().push(1);
     /// assert_eq!(v.len(), 1);
     /// ```
+    #[must_use]
     pub fn len(&self) -> usize {
         let v = ManuallyDrop::new(self.0.get());
         match &*v {
@@ -247,6 +257,7 @@ impl<T, B: Backend> SmartVec<T, B> {
         }
     }
 
+    #[must_use]
     pub fn capacity(&self) -> usize {
         let v = ManuallyDrop::new(self.0.get());
         match &*v {
@@ -255,6 +266,7 @@ impl<T, B: Backend> SmartVec<T, B> {
         }
     }
 
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         let v = ManuallyDrop::new(self.0.get());
         match &*v {
@@ -276,6 +288,7 @@ impl<T, B: Backend> SmartVec<T, B> {
     /// let w = v.clone();
     /// assert!(!v.is_unique());
     /// ```
+    #[must_use]
     pub fn is_unique(&self) -> bool {
         self.count().is_unique()
     }
@@ -331,6 +344,7 @@ impl<T, B: Backend> SmartVec<T, B> {
         RefMut(r, self)
     }
 
+    #[must_use]
     pub fn as_mut(&mut self) -> Option<RefMut<T, B>> {
         if self.count().is_unique() {
             let r = {
@@ -350,6 +364,7 @@ impl<T, B: Backend> SmartVec<T, B> {
         }
     }
 
+    #[must_use]
     pub fn try_clone(&self) -> Option<Self> {
         if self.count().incr() == UpdateResult::Done {
             Some(Self(self.0))
@@ -362,6 +377,7 @@ impl<T, B: Backend> SmartVec<T, B> {
         self.0.count()
     }
 
+    #[must_use]
     pub fn force_clone(&self) -> Self
     where
         T: Clone,
@@ -376,6 +392,7 @@ impl<T, B: Backend> SmartVec<T, B> {
         })
     }
 
+    #[must_use]
     pub fn force_clone_or_copy(&self) -> Self
     where
         T: Copy,
@@ -409,32 +426,39 @@ impl<T, B: Backend> Drop for SmartVec<T, B> {
     }
 }
 
+#[must_use]
 pub struct RefMut<'a, T, B: Backend>(
     Variant<&'a mut Vec<T>, ThinHandle<'a, T, B>>,
     &'a mut SmartVec<T, B>,
 );
 
-impl<'a, T, B: Backend> Drop for RefMut<'a, T, B> {
+impl<T, B: Backend> Drop for RefMut<'_, T, B> {
     fn drop(&mut self) {
         match &self.0 {
             Variant::Fat(_) => {}
-            Variant::Thin(thin) => self.1 .0 = TaggedSmart::from_thin_ptr(thin.get_raw()),
+            Variant::Thin(thin) => {
+                // update the thin vector pointer in the smart vector
+                self.1 .0 = TaggedSmart::from_thin_ptr(thin.raw());
+            }
         }
     }
 }
 
-impl<'a, T, B: Backend> RefMut<'a, T, B> {
-    pub fn as_slice(&self) -> &[T] {
+impl<T, B: Backend> RefMut<'_, T, B> {
+    /// Returns the underlying slice.
+    #[must_use]
+    pub const fn as_slice(&self) -> &[T] {
         match &self.0 {
             Variant::Fat(fat) => fat.as_slice(),
-            Variant::Thin(thin) => thin.as_slice(),
+            Variant::Thin(thin) => thin.as_ref().as_slice(),
         }
     }
 
+    #[must_use]
     pub fn as_mut_slice(&mut self) -> &mut [T] {
         match &mut self.0 {
             Variant::Fat(fat) => fat.as_mut_slice(),
-            Variant::Thin(thin) => thin.as_mut_slice(),
+            Variant::Thin(thin) => thin.as_mut().as_mut_slice(),
         }
     }
 
@@ -463,6 +487,13 @@ impl<'a, T, B: Backend> RefMut<'a, T, B> {
         match &mut self.0 {
             Variant::Fat(fat) => fat.remove(index),
             Variant::Thin(thin) => thin.remove(index),
+        }
+    }
+
+    pub fn swap_remove(&mut self, index: usize) -> T {
+        match &mut self.0 {
+            Variant::Fat(fat) => fat.swap_remove(index),
+            Variant::Thin(thin) => thin.swap_remove(index),
         }
     }
 
@@ -508,6 +539,7 @@ impl<'a, T, B: Backend> RefMut<'a, T, B> {
         }
     }
 
+    #[must_use]
     pub fn split_off(&mut self, at: usize) -> SmartVec<T, B>
     where
         B: Backend,
@@ -524,6 +556,7 @@ impl<'a, T, B: Backend> RefMut<'a, T, B> {
         }
     }
 
+    #[must_use]
     pub fn as_ptr(&self) -> *const T {
         match &self.0 {
             Variant::Fat(fat) => fat.as_ptr(),
@@ -579,6 +612,12 @@ impl<'a, T, B: Backend> RefMut<'a, T, B> {
             Variant::Fat(fat) => fat.extend(iter),
             Variant::Thin(thin) => thin.extend_iter(iter),
         }
+    }
+}
+
+impl<T, B: Backend> Default for SmartVec<T, B> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

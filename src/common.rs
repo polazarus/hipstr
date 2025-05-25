@@ -157,8 +157,9 @@ impl<T> Drop for SliceGuard<'_, T> {
     fn drop(&mut self) {
         if mem::needs_drop::<T>() {
             unsafe {
-                let slice: *mut [MaybeUninit<T>] = &mut self.slice[..self.initialized];
-                ptr::drop_in_place(slice as *mut [T]);
+                let slice_ptr = ptr::from_mut(&mut self.slice[..self.initialized]);
+                let slice_ptr = slice_ptr as *mut [T];
+                ptr::drop_in_place(slice_ptr);
             }
         }
     }

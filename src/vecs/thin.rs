@@ -14,8 +14,8 @@ use core::{cmp, fmt, mem, ops, panic, ptr, slice};
 
 use crate::common::drain::Drain;
 use crate::common::{
-    check_alloc, guarded_slice_clone, maybe_uninit_write_copy_of_slice, panic_display, traits,
-    RangeError,
+    check_alloc, guarded_slice_clone, manually_drop_as_mut, manually_drop_as_ref,
+    maybe_uninit_write_copy_of_slice, panic_display, traits, RangeError,
 };
 use crate::{common, macros};
 
@@ -310,7 +310,7 @@ where
         other
     }
 
-    pub(crate) unsafe fn handle(&self) -> ThinHandle<T, P> {
+    pub(crate) const unsafe fn handle(&self) -> ThinHandle<T, P> {
         ThinHandle(ManuallyDrop::new(Self(self.0)), PhantomData)
     }
 }
@@ -318,12 +318,19 @@ where
 pub(crate) struct ThinHandle<'a, T, P>(ManuallyDrop<ThinVec<T, P>>, PhantomData<&'a ()>);
 
 impl<T, P> ThinHandle<'_, T, P> {
-    pub(crate) fn get_raw(&self) -> NonNull<Header<T, P>> {
-        let ptr = self.0 .0;
-        ptr
+    pub(crate) const fn as_ref(&self) -> &ThinVec<T, P> {
+        manually_drop_as_ref(&self.0)
     }
 
-    pub(crate) unsafe fn extend_lifetime<'a>(self) -> ThinHandle<'a, T, P> {
+    pub(crate) const fn as_mut(&mut self) -> &mut ThinVec<T, P> {
+        manually_drop_as_mut(&mut self.0)
+    }
+
+    pub(crate) const fn raw(&self) -> NonNull<Header<T, P>> {
+        manually_drop_as_ref(&self.0).0
+    }
+
+    pub(crate) const unsafe fn extend_lifetime<'a>(self) -> ThinHandle<'a, T, P> {
         ThinHandle(self.0, PhantomData)
     }
 }
@@ -758,7 +765,7 @@ impl<T, P> ThinVec<T, P> {
     /// assert_eq!(vec.pop(), Some(1));
     /// assert_eq!(vec.pop(), None);
     /// ```
-    pub fn pop(&mut self) -> Option<T> {
+    pub const fn pop(&mut self) -> Option<T> {
         let len = self.len();
         if len == 0 {
             return None;
@@ -992,7 +999,7 @@ impl<T, P> ThinVec<T, P> {
     ///
     /// assert_eq!(&v, &[0, 1, 2]);
     /// ```
-    pub fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<T>] {
+    pub const fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<T>] {
         let len = self.len();
         let cap = self.capacity();
 
