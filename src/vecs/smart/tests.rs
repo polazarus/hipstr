@@ -1,5 +1,5 @@
 use alloc::vec;
-use std::vec::Vec;
+use alloc::vec::Vec;
 
 use super::SmartVec;
 use crate::backend::PanickyUnique;
