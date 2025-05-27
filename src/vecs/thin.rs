@@ -8,14 +8,14 @@ use alloc::vec::Vec;
 use core::iter::FusedIterator;
 use core::marker::PhantomData;
 use core::mem::{offset_of, ManuallyDrop, MaybeUninit};
-use core::ops::{Bound, Range, RangeBounds};
+use core::ops::{Bound, Deref, DerefMut, Range, RangeBounds};
 use core::ptr::NonNull;
 use core::{cmp, fmt, mem, ops, panic, ptr, slice};
 
 use crate::common::drain::Drain;
 use crate::common::{
-    check_alloc, guarded_slice_clone, maybe_uninit_write_copy_of_slice, panic_display, traits,
-    RangeError,
+    check_alloc, guarded_slice_clone, manually_drop_as_mut, manually_drop_as_ref,
+    maybe_uninit_write_copy_of_slice, panic_display, traits, RangeError,
 };
 use crate::{common, macros};
 
@@ -74,8 +74,8 @@ macro_rules! thin_vec {
 /// A shared thin vector's header.
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
-pub(super) struct Header<T, P> {
-    prefix: P,
+pub(crate) struct Header<T, P> {
+    pub(crate) prefix: P,
     cap: usize,
     len: usize,
     phantom: PhantomData<T>,
@@ -308,6 +308,46 @@ where
         }
 
         other
+    }
+
+    pub(crate) const unsafe fn handle(&self) -> ThinHandle<T, P> {
+        ThinHandle(ManuallyDrop::new(Self(self.0)), PhantomData)
+    }
+}
+
+pub(crate) struct ThinHandle<'a, T, P>(ManuallyDrop<ThinVec<T, P>>, PhantomData<&'a ()>);
+
+impl<T, P> ThinHandle<'_, T, P> {
+    pub(crate) const fn as_ref(&self) -> &ThinVec<T, P> {
+        manually_drop_as_ref(&self.0)
+    }
+
+    pub(crate) const fn as_mut(&mut self) -> &mut ThinVec<T, P> {
+        manually_drop_as_mut(&mut self.0)
+    }
+
+    pub(crate) const fn raw(&self) -> NonNull<Header<T, P>> {
+        manually_drop_as_ref(&self.0).0
+    }
+
+    pub(crate) const unsafe fn extend_lifetime<'a>(self) -> ThinHandle<'a, T, P> {
+        ThinHandle(self.0, PhantomData)
+    }
+}
+
+impl<T, P> Deref for ThinHandle<'_, T, P> {
+    type Target = ThinVec<T, P>;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T, P> DerefMut for ThinHandle<'_, T, P> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }
 
@@ -725,7 +765,7 @@ impl<T, P> ThinVec<T, P> {
     /// assert_eq!(vec.pop(), Some(1));
     /// assert_eq!(vec.pop(), None);
     /// ```
-    pub fn pop(&mut self) -> Option<T> {
+    pub const fn pop(&mut self) -> Option<T> {
         let len = self.len();
         if len == 0 {
             return None;
@@ -959,7 +999,7 @@ impl<T, P> ThinVec<T, P> {
     ///
     /// assert_eq!(&v, &[0, 1, 2]);
     /// ```
-    pub fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<T>] {
+    pub const fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<T>] {
         let len = self.len();
         let cap = self.capacity();
 
@@ -1157,7 +1197,7 @@ impl<T, P> ThinVec<T, P> {
         }
     }
 
-    fn extend_iter(&mut self, iterable: impl IntoIterator<Item = T>) {
+    pub(crate) fn extend_iter(&mut self, iterable: impl IntoIterator<Item = T>) {
         let mut iter = iterable.into_iter();
         let len = self.len();
         let min = iter.size_hint().0;
@@ -1304,6 +1344,17 @@ impl<T, P> ThinVec<T, P> {
         let len = self.len();
         let mut this = ThinVec::with_capacity(len);
         this.extend_from_slice(self.as_slice());
+        this
+    }
+
+    /// Clones with a fresh prefix.
+    pub(crate) fn fresh_copy<Q: Default>(&self) -> ThinVec<T, Q>
+    where
+        T: Copy,
+    {
+        let len = self.len();
+        let mut this = ThinVec::with_capacity(len);
+        this.extend_from_slice_copy(self.as_slice());
         this
     }
 

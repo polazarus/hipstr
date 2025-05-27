@@ -43,7 +43,7 @@ use core::ops::Deref;
 use core::ptr;
 use core::ptr::NonNull;
 
-use super::thin::{Header, Reserved, ThinVec};
+use super::thin::{Header, Reserved, ThinHandle, ThinVec};
 use crate::backend::{
     Backend, BackendImpl, CloneOnOverflow, Counter, PanicOnOverflow, UpdateResult,
 };
@@ -70,19 +70,31 @@ mod tests;
 #[macro_export]
 macro_rules! smart_thin_vec {
 
-    [ $t:ty : $($rest:tt)* ] => {
+    [ $($rest:expr),* $(,)? ] => {
+        smart_thin_vec![$crate::Arc : $($rest),*]
+    };
+
+    [ $value:expr ; $len:expr ] => {
+        smart_thin_vec![$crate::Arc : $value; $len]
+    };
+
+    [ $t:ty : $($rest:expr),* $(,)?] => {
         {
             use $crate::thin_vec;
             $crate::vecs::smart_thin::SmartThinVec::<_, $t>::from(
-                thin_vec![ $( $rest )* ]
+                thin_vec![ $( $rest ),* ]
             )
         }
     };
 
-    [ $($rest:tt)* ] => {
-        smart_thin_vec![$crate::Arc : $($rest)*]
-    }
-
+    [ $t:ty : $value:expr ; $len:expr ] => {
+        {
+            use $crate::thin_vec;
+            $crate::vecs::smart_thin::SmartThinVec::<_, $t>::from(
+                thin_vec![ $value ; $len ]
+            )
+        }
+    };
 }
 
 /// A smart thin vector that can be either unique, reference counted or
@@ -102,7 +114,7 @@ macro_rules! smart_thin_vec {
 /// assert_eq!(v.as_ptr(), v2.as_ptr());
 /// ```
 #[repr(transparent)]
-pub struct SmartThinVec<T, C: Backend>(pub(super) NonNull<Header<T, C>>);
+pub struct SmartThinVec<T, C: Backend>(pub(crate) NonNull<Header<T, C>>);
 
 impl<T, C: Backend> Deref for SmartThinVec<T, C> {
     type Target = ThinVec<T, C>;
@@ -113,6 +125,14 @@ impl<T, C: Backend> Deref for SmartThinVec<T, C> {
 }
 
 impl<T, C: Backend> SmartThinVec<T, C> {
+    pub(crate) const unsafe fn from_raw(ptr: NonNull<Header<T, C>>) -> Self {
+        Self(ptr)
+    }
+    pub(crate) fn into_raw(self) -> NonNull<Header<T, C>> {
+        let this = ManuallyDrop::new(self);
+        this.0
+    }
+
     /// Creates a new empty vector.
     ///
     /// # Examples
@@ -149,7 +169,7 @@ impl<T, C: Backend> SmartThinVec<T, C> {
         unsafe { Self::from_thin_vec_unchecked(tv) }
     }
 
-    const fn count(&self) -> &C {
+    pub(crate) const fn count(&self) -> &C {
         self.as_thin_vec().prefix()
     }
 
@@ -245,11 +265,55 @@ impl<T, C: Backend> SmartThinVec<T, C> {
         unsafe { self.as_mut_unchecked() }
     }
 
+    /// Returns a mutable reference to the vector, possibly copying the data if
+    /// shared.
+    ///
+    /// If the vector is not unique, the data will be copied.
+    ///
+    /// This function may be more efficient for `Copy` types than
+    /// [`mutate`](Self::mutate).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::smart_thin_vec;
+    /// let mut v = smart_thin_vec![1, 2, 3];
+    /// assert_eq!(v.as_slice(), &[1, 2, 3]);
+    ///
+    /// let mut v2 = v.clone();
+    /// assert!(!v.is_unique());
+    /// {
+    ///     let v_mut = v.mutate_copy();
+    ///     assert_eq!(v_mut.as_slice(), &[1, 2, 3]);
+    ///     v_mut.push(4);
+    /// }
+    /// assert!(v.is_unique());
+    /// assert_eq!(v.as_slice(), &[1, 2, 3, 4]);
+    /// ```
+    #[doc(alias = "make_mut_copy")]
+    pub fn mutate_copy(&mut self) -> &mut ThinVec<T, C>
+    where
+        T: Copy,
+    {
+        if !self.count().is_unique() {
+            self.detach_copy();
+        }
+        unsafe { self.as_mut_unchecked() }
+    }
+
     fn detach(&mut self)
     where
         T: Clone,
     {
         let thin_vec: ThinVec<_, _> = self.as_thin_vec().fresh_clone();
+        *self = unsafe { Self::from_thin_vec_unchecked(thin_vec) };
+    }
+
+    fn detach_copy(&mut self)
+    where
+        T: Copy,
+    {
+        let thin_vec: ThinVec<_, _> = self.as_thin_vec().fresh_copy();
         *self = unsafe { Self::from_thin_vec_unchecked(thin_vec) };
     }
 
@@ -309,6 +373,16 @@ impl<T, C: Backend> SmartThinVec<T, C> {
         unsafe { Self::from_thin_vec_unchecked(thin_vec) }
     }
 
+    #[inline]
+    #[must_use]
+    pub(crate) fn from_slice_copy(slice: &[T]) -> Self
+    where
+        T: Copy,
+    {
+        let thin_vec = ThinVec::from_slice_copy(slice);
+        unsafe { Self::from_thin_vec_unchecked(thin_vec) }
+    }
+
     /// Tries to clone the reference without cloning the data.
     ///
     /// If the reference count overflows ([`Unique`] always does), it returns `None`.
@@ -341,6 +415,59 @@ impl<T, C: Backend> SmartThinVec<T, C> {
         }
     }
 
+    /// Clones the vector even if the count overflows, in which case it clones
+    /// the vector's data.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::smart_thin_vec;
+    /// # use hipstr::Unique;
+    /// let v = smart_thin_vec![Unique : 1, 2, 3];
+    /// assert_eq!(v.as_slice(), &[1, 2, 3]);
+    /// let v2 = v.force_clone(); // exactly the same as `v.clone()` in the case of `Unique`
+    /// assert_eq!(v.as_slice(), v2.as_slice());
+    /// assert_ne!(v.as_ptr(), v2.as_ptr());
+    /// ```
+    #[must_use]
+    pub fn force_clone(&self) -> Self
+    where
+        T: Clone,
+    {
+        self.try_clone().unwrap_or_else(|| {
+            let thin_vec: ThinVec<_, _> = self.as_thin_vec().fresh_clone();
+            unsafe { Self::from_thin_vec_unchecked(thin_vec) }
+        })
+    }
+
+    /// Clones the vector even if the count overflows, in which case it copies
+    /// the vector's data.
+    ///
+    /// This function may be more efficient than
+    /// [`force_clone`](Self::force_clone) for `Copy` types.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::smart_thin_vec;
+    /// # use hipstr::Unique;
+    /// let v = smart_thin_vec![Unique : 1, 2, 3];
+    /// assert_eq!(v.as_slice(), &[1, 2, 3]);
+    /// let v2 = v.force_clone_or_copy(); // maybe a bit more efficient than `v.clone()` for `Copy` types
+    /// assert_eq!(v.as_slice(), v2.as_slice());
+    /// assert_ne!(v.as_ptr(), v2.as_ptr());
+    /// ```
+    #[must_use]
+    pub fn force_clone_or_copy(&self) -> Self
+    where
+        T: Copy,
+    {
+        self.try_clone().unwrap_or_else(|| {
+            let thin_vec: ThinVec<_, _> = self.as_thin_vec().fresh_copy();
+            unsafe { Self::from_thin_vec_unchecked(thin_vec) }
+        })
+    }
+
     /// Converts into a [`ThinVec`] if the reference is unique.
     ///
     /// # Errors
@@ -363,6 +490,10 @@ impl<T, C: Backend> SmartThinVec<T, C> {
         } else {
             Err(self)
         }
+    }
+
+    pub(crate) unsafe fn handle(&mut self) -> ThinHandle<T, C> {
+        unsafe { self.as_mut_unchecked().handle() }
     }
 }
 
