@@ -129,7 +129,7 @@ pub(super) struct WordView {
     #[cfg(target_endian = "little")]
     tag: usize,
 
-    _others: [*mut (); 2],
+    _others: [MaybeUninit<*mut ()>; 2],
 
     #[cfg(target_endian = "big")]
     tag: usize,
