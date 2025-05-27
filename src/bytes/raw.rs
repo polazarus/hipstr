@@ -124,8 +124,11 @@ pub(super) struct Pivot {
 #[derive(Clone, Copy)]
 #[repr(C)]
 pub(super) union WordView {
+    #[cfg(target_endian = "little")]
     tag: usize,
     _remainder: [MaybeUninit<*mut ()>; 2],
+    #[cfg(target_endian = "big")]
+    tag: usize,
 }
 
 unsafe impl<B: Backend + Sync> Sync for HipByt<'_, B> {}

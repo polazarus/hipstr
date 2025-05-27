@@ -28,10 +28,12 @@ fn test_union() {
 }
 
 #[cfg(debug_assertions)]
-#[should_panic]
+#[should_panic(expected = "mutable slice of borrowed string")]
 #[test]
 fn test_to_mut_slice_unchecked_panic() {
     let mut r = R::borrowed(b"abc");
+    assert!(r.is_borrowed());
+    assert!(!r.is_allocated());
     unsafe {
         let _sl = r.as_mut_slice_unchecked();
     }
