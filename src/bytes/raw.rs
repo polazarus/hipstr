@@ -5,7 +5,9 @@
 use alloc::vec::Vec;
 use core::hint::unreachable_unchecked;
 use core::marker::PhantomData;
-use core::mem::{align_of, forget, replace, size_of, transmute, ManuallyDrop, MaybeUninit};
+use core::mem::{
+    align_of, forget, offset_of, replace, size_of, transmute, ManuallyDrop, MaybeUninit,
+};
 use core::num::NonZeroU8;
 use core::ops::Range;
 
@@ -123,10 +125,12 @@ pub(super) struct Pivot {
 
 #[derive(Clone, Copy)]
 #[repr(C)]
-pub(super) union WordView {
+pub(super) struct WordView {
     #[cfg(target_endian = "little")]
     tag: usize,
-    _remainder: [MaybeUninit<*mut ()>; 2],
+
+    _others: [*mut (); 2],
+
     #[cfg(target_endian = "big")]
     tag: usize,
 }
@@ -270,6 +274,18 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
 
     /// Retrieves the tag.
     pub(super) const fn tag(&self) -> Tag {
+        const {
+            assert!(size_of::<Pivot>() == size_of::<WordView>());
+
+            if cfg!(target_endian = "little") {
+                assert!(offset_of!(Pivot, tag_byte) == 0);
+                assert!(offset_of!(WordView, tag) == 0);
+            } else {
+                assert!(offset_of!(Pivot, tag_byte) == size_of::<Pivot>() - size_of::<NonZeroU8>());
+                assert!(offset_of!(WordView, tag) == size_of::<WordView>() - size_of::<usize>());
+            }
+        }
+
         match self.pivot.tag_byte.get() & MASK {
             0b01 => Tag::Inline,
             0b11 | 0b10 => {
