@@ -99,7 +99,13 @@ impl<B: Backend> TaggedSmart<B> {
 
     #[inline]
     fn from_thin(raw: SmartThinVec<u8, B>) -> Self {
-        let ptr = SmartThinVec::into_raw(raw).as_ptr();
+        let ptr = SmartThinVec::into_raw(raw);
+
+        Self::from_thin_raw(ptr)
+    }
+
+    fn from_thin_raw(ptr: NonNull<Header<u8, B>>) -> Self {
+        let ptr = ptr.as_ptr();
         debug_assert!(ptr.is_aligned());
         debug_assert!((ptr as usize) & TAG_MASK == 0);
 
@@ -168,6 +174,12 @@ impl<B: Backend> TaggedSmart<B> {
 
         // SAFETY: type invariant
         unsafe { Smart::from_raw(self.ptr().cast()) }
+    }
+
+    fn update_thin(&mut self, thin: &mut ThinVec<u8, B>) {
+        debug_assert!(self.is_thin());
+        let ptr = unsafe { thin.handle().raw() };
+        *self = Self::from_thin_raw(ptr);
     }
 }
 
@@ -497,6 +509,7 @@ impl<B: Backend> Allocated<B> {
                 shift = unsafe { self.ptr.offset_from(thin.as_ptr()) as usize };
                 thin.truncate(self.len + shift);
                 thin.extend_from_slice_copy(addition);
+                self.owner.update_thin(thin);
                 ptr = thin.as_ptr();
             }
         }

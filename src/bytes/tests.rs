@@ -1008,9 +1008,10 @@ fn push_slice_allocated_unique() {
     let mut a = H::from(MEDIUM);
     assert!(a.is_thin());
     assert!(a.is_allocated());
-    a.push_slice(ABC);
+    a.push_slice(ABCDEF);
     assert_eq!(&a[0..42], MEDIUM);
-    assert_eq!(&a[42..], ABC);
+    assert_eq!(&a[42..], ABCDEF);
+    assert!(a.is_thin());
 }
 
 #[test]
