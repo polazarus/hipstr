@@ -5,7 +5,9 @@
 use alloc::vec::Vec;
 use core::hint::unreachable_unchecked;
 use core::marker::PhantomData;
-use core::mem::{align_of, forget, replace, size_of, transmute, ManuallyDrop, MaybeUninit};
+use core::mem::{
+    align_of, forget, offset_of, replace, size_of, transmute, ManuallyDrop, MaybeUninit,
+};
 use core::num::NonZeroU8;
 use core::ops::Range;
 
@@ -14,6 +16,7 @@ use borrowed::Borrowed;
 
 use crate::backend::Backend;
 use crate::common::{manually_drop_as_mut, manually_drop_as_ref};
+use crate::vecs::thin::ThinVec;
 use crate::vecs::InlineVec;
 
 pub mod allocated;
@@ -31,10 +34,7 @@ const MASK: u8 = (1 << TAG_BITS) - 1;
 const TAG_INLINE: u8 = 1;
 
 /// Tag for the borrowed repr
-const TAG_BORROWED: u8 = 2;
-
-/// Tag for the allocated repr
-const TAG_ALLOCATED: u8 = 3;
+const TAG_OWNED: u8 = 2;
 
 /// Maximal byte capacity of an inline [`HipByt`].
 pub(crate) const INLINE_CAPACITY: usize = size_of::<Borrowed>() - 1;
@@ -123,8 +123,30 @@ pub(super) struct Pivot {
     tag_byte: NonZeroU8,
 }
 
+#[derive(Clone, Copy)]
+#[repr(C)]
+pub(super) struct WordView {
+    #[cfg(target_endian = "little")]
+    tag: usize,
+
+    _others: [MaybeUninit<*mut ()>; 2],
+
+    #[cfg(target_endian = "big")]
+    tag: usize,
+}
+
 unsafe impl<B: Backend + Sync> Sync for HipByt<'_, B> {}
 unsafe impl<B: Backend + Send> Send for HipByt<'_, B> {}
+
+// U -> maybe uninit
+//
+// Big endian last word (reversed for little endian)
+//
+// UUUU_UUUU*3 0000_0000: None
+// UUUU_UUUU*3 LLLL_LL01: Inline (L -> length)
+// PPPP_PPPP*3 PPPP_PP10: Fat vec  \__ allocated
+// PPPP_PPPP*3 PPPP_PP11: Thin vec /
+// 0000_0000*3 0000_001X: Borrowed
 
 /// Equivalent union representation.
 ///
@@ -142,6 +164,9 @@ pub union Union<'borrow, B: Backend> {
 
     /// Pivot representation with niche
     pivot: Pivot,
+
+    /// View to access the tagged word
+    words: WordView,
 }
 
 impl<'borrow, B: Backend> Union<'borrow, B> {
@@ -170,9 +195,9 @@ impl<'borrow, B: Backend> Union<'borrow, B> {
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tag {
-    Inline = TAG_INLINE,
-    Borrowed = TAG_BORROWED,
-    Allocated = TAG_ALLOCATED,
+    Inline,
+    Borrowed,
+    Allocated,
 }
 
 /// Helper enum to split this raw byte string into its possible representation.
@@ -199,7 +224,7 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
     /// Retrieves a reference on the union.
     #[inline]
     pub(super) const fn union(&self) -> &Union<'borrow, B> {
-        let raw_ptr: *const _ = &self.pivot;
+        let raw_ptr = &raw const self.pivot;
         let union_ptr: *const Union<'borrow, B> = raw_ptr.cast();
         // SAFETY: same layout and same niche hopefully, same immutability
         unsafe { &*union_ptr }
@@ -208,7 +233,7 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
     /// Retrieves a mutable reference on the union.
     #[inline]
     pub(super) const fn union_mut(&mut self) -> &mut Union<'borrow, B> {
-        let raw_ptr: *mut _ = &mut self.pivot;
+        let raw_ptr = &raw mut self.pivot;
         let union_ptr: *mut Union<'borrow, B> = raw_ptr.cast();
         // SAFETY: same layout and same niche hopefully, same mutability
         unsafe { &mut *union_ptr }
@@ -249,10 +274,28 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
 
     /// Retrieves the tag.
     pub(super) const fn tag(&self) -> Tag {
+        const {
+            assert!(size_of::<Pivot>() == size_of::<WordView>());
+
+            if cfg!(target_endian = "little") {
+                assert!(offset_of!(Pivot, tag_byte) == 0);
+                assert!(offset_of!(WordView, tag) == 0);
+            } else {
+                assert!(offset_of!(Pivot, tag_byte) == size_of::<Pivot>() - size_of::<NonZeroU8>());
+                assert!(offset_of!(WordView, tag) == size_of::<WordView>() - size_of::<usize>());
+            }
+        }
+
         match self.pivot.tag_byte.get() & MASK {
-            TAG_INLINE => Tag::Inline,
-            TAG_BORROWED => Tag::Borrowed,
-            TAG_ALLOCATED => Tag::Allocated,
+            0b01 => Tag::Inline,
+            0b11 | 0b10 => {
+                let first = unsafe { self.union().words.tag };
+                if first == borrowed::TAG {
+                    Tag::Borrowed
+                } else {
+                    Tag::Allocated
+                }
+            }
             // SAFETY: type invariant
             _ => unsafe { unreachable_unchecked() },
         }
@@ -300,9 +343,15 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
         }
     }
 
+    /// Creates a new `HipByt` from a thin vector.
+    pub(crate) fn from_thin_vec<P>(vec: ThinVec<u8, P>) -> Self {
+        let allocated = Allocated::from_thin_vec(vec);
+        Self::from_allocated(allocated)
+    }
+
     /// Creates a new `HipByt` from a vector.
     pub(super) fn from_vec(vec: Vec<u8>) -> Self {
-        let allocated = Allocated::new(vec);
+        let allocated = Allocated::from_vec(vec);
         Self::from_allocated(allocated)
     }
 
@@ -380,10 +429,10 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
                     unsafe { Self::inline_unchecked(&allocated.as_slice()[range]) }
                 } else {
                     // SAFETY: length is checked above
-                    unsafe {
-                        let allocated = allocated.slice_unchecked(range);
-                        Self::from_allocated(allocated)
-                    }
+                    unsafe { allocated.slice_unchecked(range.clone()) }.map_or_else(
+                        || Self::from_slice(&allocated.as_slice()[range]),
+                        Self::from_allocated,
+                    )
                 }
             }
         };
@@ -432,16 +481,21 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
                     // SAFETY: by the function precondition
                     let range = unsafe { range_of_unchecked(self.as_slice(), slice) };
                     // SAFETY: length checked above
-                    unsafe {
-                        let allocated = allocated.slice_unchecked(range);
-                        Self::from_allocated(allocated)
-                    }
+                    unsafe { allocated.slice_unchecked(range.clone()) }.map_or_else(
+                        || Self::from_slice(&allocated.as_slice()[range]),
+                        Self::from_allocated,
+                    )
                 }
             }
         };
 
         debug_assert!(self.is_normalized());
         result
+    }
+
+    #[allow(clippy::mem_replace_with_default)]
+    const fn take(&mut self) -> Self {
+        replace(self, Self::new())
     }
 
     /// Takes a vector representation of this raw byte string.
@@ -455,7 +509,7 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
             if let Ok(owned) = allocated.try_into_vec() {
                 // SAFETY: ownership is taken, replace with empty
                 // and forget old value (otherwise double drop!!)
-                forget(replace(self, Self::new()));
+                forget(self.take());
                 return owned;
             }
         }
@@ -476,9 +530,9 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
             Split::Allocated(&allocated) => {
                 // Takes a copy of allocated
 
-                // replace `self` one by an empty raw
+                // replace `self` one by an empty one
                 // forget the old value, we have `allocated` as a valid handle
-                forget(replace(self, Self::new()));
+                forget(self.take());
 
                 Some(allocated)
             }
@@ -493,7 +547,7 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
         match tag {
             Tag::Inline => {}
             Tag::Borrowed => {
-                let old = replace(self, Self::new()).union_move();
+                let old = self.take().union_move();
 
                 // SAFETY: representation is checked above
                 let borrowed = unsafe { old.borrowed };
@@ -506,7 +560,7 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
                     return;
                 }
 
-                let old = replace(self, Self::new());
+                let old = self.take();
 
                 // SAFETY: representation checked above
                 let allocated = unsafe { old.union_move().allocated };
@@ -567,8 +621,10 @@ impl<B: Backend> Clone for HipByt<'_, B> {
             Split::Borrowed(&borrowed) => Self::from_borrowed(borrowed),
             Split::Allocated(allocated) => {
                 // increase the ref count or clone if overflow
-                let clone = allocated.explicit_clone();
-                Self::from_allocated(clone)
+                allocated.try_clone().map_or_else(
+                    || Self::from_slice(allocated.as_slice()),
+                    Self::from_allocated,
+                )
             }
         }
     }

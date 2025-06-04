@@ -1,5 +1,6 @@
 use alloc::vec;
 use alloc::vec::Vec;
+use core::cmp::Ordering;
 #[cfg(all(not(loom), feature = "std"))]
 use std::sync;
 #[cfg(all(not(loom), feature = "std"))]
@@ -108,8 +109,8 @@ fn test_unique_misc() {
     assert!(b.as_mut().is_some());
     assert_eq!(b.as_ref(), &1);
 
-    assert_eq!(a.try_unwrap().unwrap_or(0), 1);
-    assert_eq!(b.try_unwrap().unwrap_or(0), 1);
+    assert_eq!(Smart::try_unwrap(a).unwrap_or(0), 1);
+    assert_eq!(Smart::try_unwrap(b).unwrap_or(0), 1);
 }
 
 #[test]
@@ -146,10 +147,10 @@ fn test_local_misc() {
     assert_eq!(b.as_ref(), &1);
 
     // will drop b
-    assert!(b.try_unwrap().is_err());
+    assert!(Smart::try_unwrap(b).is_err());
 
     assert!(a.as_mut().is_some());
-    assert_eq!(a.try_unwrap().unwrap_or(0), 1);
+    assert_eq!(Smart::try_unwrap(a).unwrap_or(0), 1);
 }
 
 #[test]
@@ -188,11 +189,11 @@ fn test_atomic_misc() {
     assert!(b.as_mut().is_none());
 
     // will drop a
-    assert!(a.try_unwrap().is_err());
+    assert!(Smart::try_unwrap(a).is_err());
 
     assert_eq!(b.ref_count(), 1);
     assert!(b.as_mut().is_some());
-    assert_eq!(b.try_unwrap().unwrap_or(0), 1);
+    assert_eq!(Smart::try_unwrap(b).unwrap_or(0), 1);
 }
 
 #[test]
@@ -383,12 +384,130 @@ fn loom_atomic_mt_clone_overflow() {
 #[test]
 fn force_clone() {
     let v = Smart::<_, PanickyUnique>::new(vec![1, 2, 3]);
-    let w = v.force_clone();
+    let w = Smart::force_clone(&v);
     assert_eq!(w.as_slice(), [1, 2, 3]);
     assert_ne!(v.as_ptr(), w.as_ptr());
 
     let v = Smart::<_, Arc>::new(vec![1, 2, 3]);
-    let w = v.force_clone();
+    let w = Smart::force_clone(&v);
     assert_eq!(w.as_slice(), [1, 2, 3]);
     assert_eq!(v.as_ptr(), w.as_ptr());
+}
+
+#[test]
+fn mutate() {
+    let mut v = Smart::<_, Arc>::new(vec![1, 2, 3]);
+    assert_eq!(v.as_slice(), [1, 2, 3]);
+
+    Smart::mutate(&mut v).push(4);
+    assert_eq!(v.as_slice(), [1, 2, 3, 4]);
+
+    let w = v.clone();
+
+    Smart::mutate(&mut v).pop();
+    assert_eq!(v.as_slice(), [1, 2, 3]);
+    assert_eq!(w.as_slice(), [1, 2, 3, 4]);
+}
+
+#[test]
+fn mutate_copy() {
+    let mut v = Smart::<_, Arc>::new(1);
+    assert_eq!(*v, 1);
+
+    *Smart::mutate_copy(&mut v) += 1;
+    assert_eq!(*v, 2);
+
+    let w = v.clone();
+
+    *Smart::mutate_copy(&mut v) += 1;
+    assert_eq!(*v, 3);
+    assert_eq!(*w, 2);
+}
+
+#[test]
+#[cfg(feature = "std")]
+fn hash() {
+    use std::hash::{BuildHasher, BuildHasherDefault, DefaultHasher};
+    let hasher = BuildHasherDefault::<DefaultHasher>::new();
+
+    let mut v = Smart::<_, Arc>::new(vec![1, 2, 3]);
+
+    assert_eq!(v.as_slice(), [1, 2, 3]);
+    let slice_hash = hasher.hash_one(v.as_slice());
+
+    let hash = hasher.hash_one(&v);
+    assert_eq!(hash, slice_hash);
+
+    let w = v.clone();
+    let clone_hash = hasher.hash_one(&w);
+    assert_eq!(hash, clone_hash);
+
+    Smart::mutate(&mut v).push(4);
+    let new_hash = hasher.hash_one(&v);
+    assert_ne!(hash, new_hash);
+}
+
+#[test]
+fn borrow() {
+    let v = Smart::<_, Arc>::new(1);
+    assert_eq!(v.as_ref(), &1);
+    assert_eq!(<_ as Borrow<i32>>::borrow(&v), &1_i32);
+    assert!(ptr::eq(v.as_ref(), v.borrow()));
+}
+
+#[test]
+fn default() {
+    let v = Smart::<i32, Arc>::default();
+    assert_eq!(*v, 0);
+
+    let v = Smart::<Vec<i32>, Arc>::default();
+    let empty: &[i32] = &[];
+    assert_eq!(v.as_slice(), empty);
+}
+
+#[test]
+#[cfg(feature = "std")]
+fn fmt() {
+    use std::format;
+    let v = Smart::<_, Arc>::new(1);
+    assert_eq!(format!("{:?}", v), "1");
+    assert_eq!(format!("{}", v), "1");
+    assert_eq!(format!("{:p}", v), format!("{:p}", ptr::from_ref(&*v)));
+}
+
+#[test]
+fn eq() {
+    let v = Smart::<_, Arc>::new(1);
+    let w = Smart::<_, Arc>::new(1);
+    let x = Smart::<_, Arc>::new(2);
+    assert_eq!(v, w);
+    assert_ne!(v, x);
+    assert_eq!(v.as_ref(), w.as_ref());
+    assert_ne!(v.as_ref(), x.as_ref());
+
+    let v = Smart::<_, Arc>::new(vec![1, 2, 3]);
+    let w = Smart::<_, Arc>::new(vec![1, 2, 3]);
+    assert_eq!(v, w);
+    assert_eq!(v.as_slice(), w.as_slice());
+}
+
+#[test]
+fn cmp() {
+    let v = Smart::<_, Arc>::new(1);
+    let w = Smart::<_, Arc>::new(1);
+    let x = Smart::<_, Arc>::new(2);
+    assert_eq!(v.cmp(&w), Ordering::Equal);
+    assert_eq!(v.cmp(&x), Ordering::Less);
+}
+
+#[test]
+fn partial_cmp() {
+    let v = Smart::<_, Arc>::new(1.);
+    let w = Smart::<_, Arc>::new(1.);
+    let x = Smart::<_, Arc>::new(2.);
+    let nan = Smart::<_, Arc>::new(f64::NAN);
+    assert_eq!(v.partial_cmp(&w), Some(Ordering::Equal));
+    assert_eq!(v.partial_cmp(&x), Some(Ordering::Less));
+    assert_eq!(v.partial_cmp(&nan), None);
+    assert_eq!(nan.partial_cmp(&v), None);
 }

@@ -2,16 +2,26 @@
 
 use alloc::vec::Vec;
 use core::marker::PhantomData;
-use core::mem::{forget, ManuallyDrop, MaybeUninit};
-use core::ops::{Deref, DerefMut, Range};
+use core::mem::{offset_of, transmute, ManuallyDrop, MaybeUninit};
+use core::ops::Range;
 use core::panic::{RefUnwindSafe, UnwindSafe};
-use core::ptr::NonNull;
+use core::ptr::{self, NonNull};
 
+use super::TAG_OWNED;
 use crate::backend::{Backend, UpdateResult};
 use crate::smart::{Inner, Smart};
+use crate::vecs::thin::{Header, ThinVec};
+use crate::vecs::SmartThinVec;
 
-const MASK: usize = super::MASK as usize;
-const TAG: usize = super::TAG_ALLOCATED as usize;
+const TAG_MASK: usize = super::MASK as usize;
+const THIN_BIT: usize = 0b1;
+const TAG_THIN: usize = super::TAG_OWNED as usize | THIN_BIT;
+const TAG_FAT: usize = super::TAG_OWNED as usize;
+
+enum Variant<F, T> {
+    Fat(F),
+    Thin(T),
+}
 
 /// Tagged smart pointer (with forced exposed provenance).
 ///
@@ -32,55 +42,144 @@ impl<B: Backend> Clone for TaggedSmart<B> {
 impl<B: Backend> Copy for TaggedSmart<B> {}
 
 impl<B: Backend> TaggedSmart<B> {
+    /// Gets the owner.
+    const fn get(self) -> Variant<Smart<Vec<u8>, B>, SmartThinVec<u8, B>> {
+        let ptr = self.ptr();
+
+        if self.is_fat() {
+            Variant::Fat(unsafe { Smart::from_raw(ptr.cast()) })
+        } else {
+            Variant::Thin(unsafe { SmartThinVec::from_raw(ptr.cast()) })
+        }
+    }
+
+    #[inline]
+    const fn is_thin(self) -> bool {
+        debug_assert!(self.check_tag());
+        self.0 & THIN_BIT != 0
+    }
+
+    #[inline]
+    const fn is_fat(self) -> bool {
+        debug_assert!(self.check_tag());
+        self.0 & THIN_BIT == 0
+    }
+
+    const fn ptr(self) -> NonNull<()> {
+        debug_assert!(self.check_tag());
+
+        // expose provenance semantics
+        let ptr = (self.0 & !TAG_MASK) as *mut ();
+        debug_assert!(!ptr.is_null());
+        // debug only
+
+        // SAFETY: type invariant
+        let ptr: NonNull<()> = unsafe { NonNull::new_unchecked(ptr) };
+
+        ptr
+    }
+
     /// Constructed a tagged smart pointer from a [`Smart`].
     #[inline]
-    fn from(raw: Smart<Vec<u8>, B>) -> Self {
+    fn from_fat(raw: Smart<Vec<u8>, B>) -> Self {
         let ptr = Smart::into_raw(raw).as_ptr();
         debug_assert!(ptr.is_aligned());
-        debug_assert!((ptr as usize) & MASK == 0);
+        debug_assert!((ptr as usize) & TAG_MASK == 0);
 
         // SAFETY: add a 2-bit tag to a non-null pointer with the same alignment
         // requirement as usize (typically 4 bytes on 32-bit architectures, and
         // more on 64-bit architectures)
-        let addr = ptr.map_addr(|addr| addr | TAG).expose_provenance();
+        let addr = ptr.map_addr(|addr| addr | TAG_FAT).expose_provenance();
 
-        Self(addr, PhantomData)
+        let this = Self(addr, PhantomData);
+        debug_assert!(this.check_tag());
+        debug_assert!(this.is_fat());
+        this
     }
 
-    /// Converts back into the [`Smart`].
     #[inline]
-    fn into(self) -> Smart<Vec<u8>, B> {
-        let this: Smart<Vec<u8>, B>;
+    fn from_thin(raw: SmartThinVec<u8, B>) -> Self {
+        let ptr = SmartThinVec::into_raw(raw);
 
-        debug_assert!(self.0 & MASK == TAG);
+        Self::from_thin_raw(ptr)
+    }
 
-        // SAFETY: remove a 2-bit tag to a non-null pointer with the same
-        // alignment as usize (typically 4 on 32-bit architectures, and
+    fn from_thin_raw(ptr: NonNull<Header<u8, B>>) -> Self {
+        let ptr = ptr.as_ptr();
+        debug_assert!(ptr.is_aligned());
+        debug_assert!((ptr as usize) & TAG_MASK == 0);
+
+        // SAFETY: add a 2-bit tag to a non-null pointer with the same alignment
+        // requirement as usize (typically 4 bytes on 32-bit architectures, and
         // more on 64-bit architectures)
-        unsafe {
-            let new_ptr = core::ptr::with_exposed_provenance_mut::<Inner<Vec<u8>, B>>(self.0 ^ TAG);
+        let addr = ptr.map_addr(|addr| addr | TAG_THIN).expose_provenance();
 
-            debug_assert!(!new_ptr.is_null());
+        let this = Self(addr, PhantomData);
+        debug_assert!(this.check_tag());
+        debug_assert!(this.is_thin());
+        this
+    }
 
-            #[cfg(miri)]
-            let _ = &*new_ptr; // check provenance early
+    #[inline]
+    fn is_unique(self) -> bool {
+        const {
+            assert!(offset_of!(Inner<u8, B>, count) == 0);
+            assert!(offset_of!(Header<u8, B>, prefix) == 0);
+        }
+        self.count().is_unique()
+    }
 
-            this = Smart::from_raw(NonNull::new_unchecked(new_ptr));
+    #[inline]
+    fn count(&self) -> &B {
+        let counter = unsafe { self.ptr().cast().as_ref() };
+
+        #[cfg(debug_assertions)]
+        {
+            let m = ManuallyDrop::new(self.get());
+            unsafe {
+                match &*m {
+                    Variant::Fat(fat) => {
+                        debug_assert_eq!(&raw const fat.0.as_ref().count, ptr::from_ref(counter));
+                    }
+                    Variant::Thin(thin) => {
+                        debug_assert_eq!(&raw const thin.0.as_ref().prefix, ptr::from_ref(counter));
+                    }
+                }
+            }
         }
 
-        this
+        counter
+    }
+
+    #[inline]
+    fn as_slice(&self) -> &[u8] {
+        let v = ManuallyDrop::new(self.get());
+        let short_lived = match &*v {
+            Variant::Fat(fat) => fat.as_slice(),
+            Variant::Thin(thin) => thin.as_slice(),
+        };
+        // SAFETY: the owner is valid.
+        unsafe { transmute(short_lived) }
     }
 
     /// Checks if the tag is valid.
     #[inline]
     const fn check_tag(self) -> bool {
-        self.0 & MASK == TAG
+        (self.0 & !TAG_MASK) != 0 && (self.0 & TAG_OWNED as usize) != 0
     }
 
-    /// Explicitly clones this tagged smart pointer.
-    fn explicit_clone(self) -> Self {
-        let r = ManuallyDrop::new(self.into());
-        Self::from((*r).force_clone())
+    unsafe fn as_fat_unchecked(self) -> Smart<Vec<u8>, B> {
+        debug_assert!(self.is_fat());
+        debug_assert!(self.check_tag());
+
+        // SAFETY: type invariant
+        unsafe { Smart::from_raw(self.ptr().cast()) }
+    }
+
+    fn update_thin(&mut self, thin: &mut ThinVec<u8, B>) {
+        debug_assert!(self.is_thin());
+        let ptr = unsafe { thin.handle().raw() };
+        *self = Self::from_thin_raw(ptr);
     }
 }
 
@@ -127,47 +226,35 @@ impl<B: Backend + UnwindSafe> UnwindSafe for Allocated<B> {}
 impl<B: Backend + RefUnwindSafe> RefUnwindSafe for Allocated<B> {}
 
 impl<B: Backend> Allocated<B> {
+    #[inline]
+    pub const fn is_thin(&self) -> bool {
+        self.owner.is_thin()
+    }
+
+    #[inline]
+    pub const fn is_fat(&self) -> bool {
+        self.owner.is_fat()
+    }
+
     /// Converts the allocated representation into its owner.
-    fn into_owner(self) -> Smart<Vec<u8>, B> {
-        self.owner.into()
-    }
-
-    /// Returns a reference to the owner.
-    ///
-    /// This function abuses the [`Copy`]-ness of [`Allocated`] to get a copy
-    /// (and not a clone) of the [`Smart`] reference wrapped in [`ManuallyDrop`]
-    /// to ensure it's not dropped.
-    fn owner(&self) -> impl Deref<Target = Smart<Vec<u8>, B>> {
-        ManuallyDrop::new(self.into_owner())
-    }
-
-    /// Returns a mutable reference to the owner.
-    ///
-    /// This function abuses the [`Copy`]-ness of [`Allocated`] to get a copy
-    /// (and not a clone) of the [`Smart`] reference wrapped in [`ManuallyDrop`]
-    /// to ensure it's not dropped.
-    ///
-    /// # Safety
-    ///
-    /// The owner must not be shared, cf. [`Self::is_unique`].
-    unsafe fn owner_mut(&mut self) -> impl DerefMut<Target = Smart<Vec<u8>, B>> {
-        debug_assert!(self.is_unique());
-        ManuallyDrop::new(self.into_owner())
+    const fn into_owner(self) -> Variant<Smart<Vec<u8>, B>, SmartThinVec<u8, B>> {
+        self.owner.get()
     }
 
     /// Creates an allocated from a vector.
     ///
     /// Takes ownership of the vector without copying the data.
     #[inline]
-    pub fn new(v: Vec<u8>) -> Self {
+    pub fn from_vec(v: Vec<u8>) -> Self {
         let ptr = v.as_ptr();
         let len = v.len();
         let owner = Smart::new(v);
+        assert!(owner.is_unique());
 
         let this = Self {
             ptr,
             len,
-            owner: TaggedSmart::from(owner),
+            owner: TaggedSmart::from_fat(owner),
         };
 
         debug_assert!(this.is_unique());
@@ -175,9 +262,27 @@ impl<B: Backend> Allocated<B> {
         this
     }
 
+    #[inline]
+    pub fn from_thin_vec<P>(v: ThinVec<u8, P>) -> Self {
+        let stv = SmartThinVec::from_thin_vec(v);
+        let ptr = stv.as_ptr();
+        let len = stv.len();
+
+        let this = Self {
+            ptr,
+            len,
+            owner: TaggedSmart::from_thin(stv),
+        };
+
+        debug_assert!(this.is_unique());
+        debug_assert!(this.is_valid());
+
+        this
+    }
+
     /// Creates an allocated vector from a slice.
     pub fn from_slice(slice: &[u8]) -> Self {
-        Self::new(slice.to_vec())
+        Self::from_thin_vec(ThinVec::<_, B>::from_slice_copy(slice))
     }
 
     /// Returns the length of this allocated string.
@@ -269,35 +374,37 @@ impl<B: Backend> Allocated<B> {
     ///
     /// Range must be a range `a..b` such that `a <= b <= len`.
     #[inline]
-    pub unsafe fn slice_unchecked(&self, range: Range<usize>) -> Self {
+    pub unsafe fn slice_unchecked(&self, range: Range<usize>) -> Option<Self> {
         debug_assert!(self.is_valid());
         debug_assert!(range.start <= range.end);
         debug_assert!(range.start <= self.len);
         debug_assert!(range.end <= self.len);
 
-        let owner = self.owner.explicit_clone();
+        let owner = self.owner;
+        if owner.count().incr() == UpdateResult::Overflow {
+            return None;
+        }
 
         // SAFETY: type invariant -> self.ptr..self.ptr+self.len is valid
         // also Rust like C specify you can move to the last + 1
         let ptr = unsafe { self.ptr.add(range.start) };
 
-        Self {
+        Some(Self {
             ptr,
             len: range.len(),
             owner,
-        }
+        })
     }
 
     /// Clones this vector.
     #[inline]
-    pub fn explicit_clone(&self) -> Self {
+    pub fn try_clone(&self) -> Option<Self> {
         debug_assert!(self.is_valid());
 
-        let owner = self.owner();
-        if owner.incr() == UpdateResult::Overflow {
-            Self::from_slice(self.as_slice())
+        if self.owner.count().incr() == UpdateResult::Done {
+            Some(*self)
         } else {
-            *self
+            None
         }
     }
 
@@ -316,13 +423,14 @@ impl<B: Backend> Allocated<B> {
             return false;
         }
 
-        let owner = self.owner();
-        let owner_ptr = owner.as_ptr();
+        let owner_slice: &[u8] = self.owner.as_slice();
+        let owner_ptr = owner_slice.as_ptr();
+        let owner_len = owner_slice.len();
         let shift = unsafe { self.ptr.offset_from(owner_ptr) };
         shift >= 0 && {
             #[allow(clippy::cast_sign_loss)]
             let shift = shift as usize;
-            shift <= owner.len() && shift + self.len <= owner.len()
+            shift <= owner_len && shift + self.len <= owner_len
         }
     }
 
@@ -331,7 +439,11 @@ impl<B: Backend> Allocated<B> {
     pub fn capacity(&self) -> usize {
         debug_assert!(self.is_valid());
 
-        self.owner().capacity()
+        let owner = ManuallyDrop::new(self.owner.get());
+        match &*owner {
+            Variant::Fat(fat) => fat.capacity(),
+            Variant::Thin(thin) => thin.capacity(),
+        }
     }
 
     /// Unwraps the inner vector if it makes any sense.
@@ -339,31 +451,29 @@ impl<B: Backend> Allocated<B> {
     pub fn try_into_vec(self) -> Result<Vec<u8>, Self> {
         debug_assert!(self.is_valid());
 
-        let owner = self.owner();
-        if self.ptr != owner.as_ptr() {
-            // the starts differ, cannot truncate
+        if !self.owner.is_fat() {
+            return Err(self);
+        }
+        let owner = ManuallyDrop::new(unsafe { self.owner.as_fat_unchecked() });
+
+        if !owner.is_unique() || self.ptr != owner.as_ptr() {
+            // the owner is shared or the slice is not at the start of the vector
             return Err(self);
         }
 
-        let len = self.len();
+        let owner = ManuallyDrop::into_inner(owner);
+        let mut vec = unsafe { Smart::into_inner_unchecked(owner) };
+        vec.truncate(self.len);
 
-        self.into_owner().try_unwrap().map_or_else(
-            |owner| {
-                forget(owner); // do not drop
-                Err(self)
-            },
-            |mut owner| {
-                owner.truncate(len);
-                Ok(owner)
-            },
-        )
+        // forget(self);
+
+        Ok(vec)
     }
 
     /// Returns `true` if there is only one reference to the underlying vector.
     pub fn is_unique(&self) -> bool {
         debug_assert!(self.is_valid());
-
-        self.owner().is_unique()
+        self.owner.is_unique()
     }
 
     /// Pushes a slice at the end of the underlying vector.
@@ -373,23 +483,42 @@ impl<B: Backend> Allocated<B> {
     /// The reference must be unique, cf. [`Self::is_unique`].
     pub unsafe fn push_slice_unchecked(&mut self, addition: &[u8]) {
         debug_assert!(self.is_valid());
+        debug_assert!(self.is_unique());
 
-        // SAFETY: unique by precondition
-        let mut owner = unsafe { self.owner_mut() };
+        // SAFETY: uniqueness is a precondition, owner can be mutable
+        let mut owner = ManuallyDrop::new(self.owner.get());
 
-        // SAFETY: unique by precondition
-        let v = unsafe { owner.as_mut_unchecked() };
+        let shift; // start of the slice in the vector
+        let ptr; // pointer to the start of the vector, may change when growing
 
-        // SAFETY: compute the shift from within the vector range (type invariant)
         #[allow(clippy::cast_sign_loss)]
-        let shift = unsafe { self.ptr.offset_from(v.as_ptr()) as usize };
-        v.truncate(shift + self.len);
-        v.extend_from_slice(addition);
+        match &mut *owner {
+            Variant::Fat(fat) => {
+                let fat = unsafe { fat.as_mut_unchecked() };
+
+                // SAFETY: compute the shift from within the vector range (type invariant)
+                shift = unsafe { self.ptr.offset_from(fat.as_ptr()) as usize };
+                fat.truncate(self.len + shift);
+                fat.extend_from_slice(addition);
+                ptr = fat.as_ptr();
+            }
+            Variant::Thin(thin) => {
+                let thin = unsafe { thin.as_mut_unchecked() };
+
+                // SAFETY: compute the shift from within the vector range (type invariant)
+                shift = unsafe { self.ptr.offset_from(thin.as_ptr()) as usize };
+                thin.truncate(self.len + shift);
+                thin.extend_from_slice_copy(addition);
+                self.owner.update_thin(thin);
+                ptr = thin.as_ptr();
+            }
+        }
+
         self.len += addition.len();
 
         // SAFETY: shift to within the vector range (the shift was already
         // in the old range).
-        self.ptr = unsafe { v.as_ptr().add(shift) };
+        self.ptr = unsafe { ptr.add(shift) };
     }
 
     /// Returns the remaining spare capacity of the unique vector as a slice of
@@ -406,21 +535,30 @@ impl<B: Backend> Allocated<B> {
             return &mut [];
         }
 
-        // SAFETY: unique checked above
-        let mut owner = unsafe { self.owner_mut() };
+        let mut owner = ManuallyDrop::new(self.owner.get());
 
-        // SAFETY: lifetime is extended to `'_` only
-        let v = unsafe { owner.as_mut_unchecked_extended() };
+        match &mut *owner {
+            Variant::Fat(fat) => {
+                let vec = unsafe { fat.as_mut_unchecked_extended() };
+                #[expect(clippy::cast_sign_loss)]
+                let start = unsafe { self.ptr.offset_from(vec.as_ptr()) as usize };
+                let end = start + self.len;
+                vec.truncate(end);
+                vec.spare_capacity_mut()
+            }
+            Variant::Thin(thin) => {
+                let vec = unsafe { thin.as_mut_unchecked() };
+                #[expect(clippy::cast_sign_loss)]
+                let start = unsafe { self.ptr.offset_from(vec.as_ptr()) as usize };
+                let end = start + self.len;
+                vec.truncate(end);
+                let spare = vec.spare_capacity_mut();
 
-        // SAFETY: computes the shift from within the vector range (type
-        // invariant)
-        #[allow(clippy::cast_sign_loss)]
-        let start = unsafe { self.ptr.offset_from(v.as_ptr()) as usize };
-
-        // truncates to the actual used length without shrinking
-        v.truncate(start + self.len);
-
-        v.spare_capacity_mut()
+                // extend lifetime of the slicce
+                // SAFETY: the slice is valid while self is owned
+                unsafe { transmute::<&mut [MaybeUninit<u8>], &mut [MaybeUninit<u8>]>(spare) }
+            }
+        }
     }
 
     /// Forces the length of the vector to `new_len`.
@@ -446,16 +584,33 @@ impl<B: Backend> Allocated<B> {
         debug_assert!(self.is_unique());
         debug_assert!(new_len <= self.capacity());
 
-        // SAFETY: uniqueness is a precondition
-        let mut owner = unsafe { self.owner_mut() };
+        let mut owner = ManuallyDrop::new(self.owner.get());
+        match &mut *owner {
+            Variant::Fat(fat) => {
+                // SAFETY: uniqueness is a precondition
+                let vec = unsafe { fat.as_mut_unchecked() };
 
-        // SAFETY: uniqueness is a precondition
-        let v = unsafe { owner.as_mut_unchecked() };
+                // SAFETY: compute the shift from within the vector range (type invariant)
+                #[allow(clippy::cast_sign_loss)]
+                let start = unsafe { self.ptr.offset_from(vec.as_ptr()).abs_diff(0) };
 
-        // SAFETY: compute the shift from within the vector range (type invariant)
-        #[allow(clippy::cast_sign_loss)]
-        let start = unsafe { self.ptr.offset_from(v.as_ptr()).abs_diff(0) };
-        unsafe { v.set_len(start + new_len) };
+                unsafe {
+                    vec.set_len(start + new_len);
+                }
+            }
+
+            Variant::Thin(thin) => {
+                // SAFETY: uniqueness is a precondition
+                let vec = unsafe { thin.as_mut_unchecked() };
+                // SAFETY: compute the shift from within the vector range (type invariant)
+                #[allow(clippy::cast_sign_loss)]
+                let start = unsafe { self.ptr.offset_from(vec.as_ptr()).abs_diff(0) };
+                unsafe {
+                    vec.set_len(start + new_len);
+                }
+            }
+        }
+
         self.len = new_len;
     }
 
@@ -472,9 +627,9 @@ impl<B: Backend> Allocated<B> {
             return;
         }
 
-        let mut new_vec = Vec::with_capacity(min_capacity);
-        new_vec.extend_from_slice(self.as_slice());
-        let old = core::mem::replace(self, Self::new(new_vec));
+        let mut new_vec: ThinVec<u8, B> = ThinVec::with_capacity(min_capacity);
+        new_vec.extend_from_slice_copy(self.as_slice());
+        let old = core::mem::replace(self, Self::from_thin_vec(new_vec));
         old.explicit_drop();
     }
 }
@@ -484,31 +639,37 @@ mod tests {
     use alloc::vec;
 
     use super::Allocated;
-    use crate::Rc;
+    use crate::backend::Counter;
+    use crate::{thin_vec, Rc};
 
     #[test]
     fn test_alloc() {
-        let allocated = Allocated::<Rc>::new(vec![]);
+        let allocated = Allocated::<Rc>::from_vec(vec![]);
         let _ = allocated.explicit_drop();
+
+        let allocated = Allocated::<Rc>::from_thin_vec(thin_vec![0_u8]);
+        let allocated2 = allocated.try_clone().unwrap();
+        let _ = allocated.explicit_drop();
+        let _ = allocated2.explicit_drop();
     }
 
     #[test]
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_try_into_vec() {
-        let allocated = Allocated::<Rc>::new(vec![0, 1, 2]);
-        assert_eq!(allocated.owner().ref_count(), 1);
+        let allocated = Allocated::<Rc>::from_vec(vec![0, 1, 2]);
+        assert_eq!(allocated.owner.count().get(), 1);
 
         {
-            let slice = unsafe { allocated.slice_unchecked(1..2) };
+            let slice = unsafe { allocated.slice_unchecked(1..2) }.unwrap();
 
-            assert_eq!(allocated.owner().ref_count(), 2);
+            assert_eq!(allocated.owner.count().get(), 2);
             let Err(allocated) = slice.try_into_vec() else {
                 panic!("shared reference cannot be converted to vec")
             };
             allocated.explicit_drop();
         }
 
-        assert_eq!(allocated.owner().ref_count(), 1);
+        assert_eq!(allocated.owner.count().get(), 1);
 
         assert!(allocated.try_into_vec().is_ok());
     }
