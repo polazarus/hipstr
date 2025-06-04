@@ -13,6 +13,7 @@ use std::collections::HashSet;
 use fastrand::Rng;
 
 use super::{simplify_range, SliceErrorKind};
+use crate::vecs::ThinVec;
 use crate::HipByt as H;
 
 type S<'a> = &'a [u8];
@@ -1470,4 +1471,28 @@ fn test_join_bad_iter2() {
         I(vec![Rc::new(Cell::new(b"ab".as_slice())), Rc::new(Cell::new(B))].into_iter()),
         b",",
     );
+}
+
+#[test]
+fn is_unique() {
+    let a = H::inline(ABC);
+    assert!(a.is_unique());
+
+    let _a2 = a.clone();
+    assert!(a.is_unique());
+
+    let b = H::from(MEDIUM.to_vec());
+    assert!(b.is_unique());
+
+    let _b2 = b.clone();
+    assert!(!b.is_unique());
+
+    // TODO missing from_thin_vec
+    let c = H::from_thin_vec(ThinVec::from(MEDIUM));
+    assert!(c.is_unique());
+    let _c2 = c.clone();
+    assert!(!c.is_unique());
+
+    let d = H::borrowed(MEDIUM);
+    assert!(!d.is_unique());
 }
