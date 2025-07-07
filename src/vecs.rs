@@ -4,6 +4,7 @@ use alloc::vec::Vec;
 
 use crate::smart::Smart;
 
+pub mod hip;
 pub mod inline;
 pub mod smart;
 pub mod smart_thin;

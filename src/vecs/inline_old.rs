@@ -1,4 +1,4 @@
-//! Inline vector implementation with a fixed byte size.
+//! Inline vector implementation.
 //!
 //! This module provides an inline vector implementation that can store up to a
 //! small and fixed number of elements inline.
@@ -85,47 +85,26 @@ impl<const SHIFT: u8, const TAG: u8> TaggedU8<SHIFT, TAG> {
 ///
 /// `InlineVec` is not well suited to store zero-sized types (ZSTs) like `()`.
 /// This is because the maximal length is capped by `u8::MAX >> TAG_SHIFT`.
+///
+/// The compiler will statically reject any `InlineVec` with `CAP` greater than
+/// `u8::MAX >> TAG_SHIFT`.
 #[repr(C)]
 pub struct InlineVec<
     T,
-    const BYTES: usize,
+    const CAP: usize,
     const SHIFT: u8 = SHIFT_DEFAULT,
     const TAG: u8 = TAG_DEFAULT,
 > {
-    _aligned: [T; 0],
-
     #[cfg(target_endian = "little")]
     len: TaggedU8<SHIFT, TAG>,
 
-    _data: [MaybeUninit<u8>; BYTES],
+    data: [MaybeUninit<T>; CAP],
 
     #[cfg(target_endian = "big")]
     len: TaggedU8<SHIFT, TAG>,
 }
 
-impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, SHIFT, TAG> {
-    pub(crate) const CAP: usize = if size_of::<Self>() < size_of::<T>() {
-        0
-    } else {
-        let max = TaggedU8::<SHIFT, TAG>::max();
-        if size_of::<T>() == 0 {
-            max
-        } else {
-            let cap = size_of::<Self>() / size_of::<T>() - 1;
-            if cap > max {
-                max
-            } else {
-                cap
-            }
-        }
-    };
-
-    const OFFSET: usize = if cfg!(target_endian = "little") {
-        align_of::<T>() - 1
-    } else {
-        0
-    };
-
+impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIFT, TAG> {
     /// Creates a new inline vector with the specified capacity.
     ///
     /// # Examples
@@ -140,12 +119,11 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
     #[must_use]
     pub const fn new() -> Self {
         const {
-            assert!(BYTES != 0);
-            assert!(BYTES <= TaggedU8::<SHIFT, TAG>::max());
+            assert!(CAP != 0);
+            assert!(CAP <= TaggedU8::<SHIFT, TAG>::max());
             Self {
-                _aligned: [],
                 len: TaggedU8::new(0),
-                _data: [MaybeUninit::uninit(); BYTES],
+                data: unsafe { MaybeUninit::uninit().assume_init() },
             }
         }
     }
@@ -161,13 +139,12 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
     #[inline]
     pub(crate) const unsafe fn zeroed(new_len: usize) -> Self {
         const {
-            assert!(BYTES != 0);
-            assert!(BYTES <= TaggedU8::<SHIFT, TAG>::max());
+            assert!(CAP != 0);
+            assert!(CAP <= TaggedU8::<SHIFT, TAG>::max());
         }
         Self {
-            _aligned: [],
             len: TaggedU8::new(new_len),
-            _data: [MaybeUninit::zeroed(); BYTES],
+            data: unsafe { MaybeUninit::zeroed().assume_init() },
         }
     }
 
@@ -207,11 +184,11 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
     pub(crate) fn from_boxed_slice(boxed: Box<[T]>) -> Self {
         let mut this = Self::new();
         let len = boxed.len();
-        assert!(len <= Self::CAP, "boxed slice's length exceeds capacity");
+        assert!(len <= CAP, "boxed slice's length exceeds capacity");
 
         unsafe {
             // move the box content to the inline vector
-            let ptr = this.as_mut_ptr();
+            let ptr = this.data.as_mut_ptr();
             ptr.copy_from_nonoverlapping(boxed.as_ptr().cast(), len);
 
             // update the inline vector length
@@ -229,10 +206,10 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
     pub(crate) fn from_mut_vector(mut vec: impl traits::MutVector<Item = T>) -> Self {
         let mut this = Self::new();
         let len = vec.len();
-        assert!(len <= Self::CAP, "vector's length exceeds capacity");
+        assert!(len <= CAP, "vector's length exceeds capacity");
 
         unsafe {
-            let ptr = this.as_mut_ptr();
+            let ptr = this.data.as_mut_ptr();
             ptr.copy_from_nonoverlapping(vec.as_ptr().cast(), len);
             this.set_len(len);
             vec.set_len(0);
@@ -245,10 +222,7 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
     pub(crate) fn from_iter(iterable: impl IntoIterator<Item = T>) -> Self {
         let iter = iterable.into_iter();
         let min = iter.size_hint().0;
-        assert!(
-            min <= Self::CAP,
-            "iterator's minimal length exceeds capacity"
-        );
+        assert!(min <= CAP, "iterator's minimal length exceeds capacity");
         let mut this = Self::new();
         for item in iter {
             this.push(item);
@@ -295,13 +269,13 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
     /// Returns a slice of the inline vector.
     #[inline]
     pub const fn as_slice(&self) -> &[T] {
-        unsafe { slice::from_raw_parts(self.as_ptr(), self.len()) }
+        unsafe { slice::from_raw_parts(self.data.as_ptr().cast(), self.len()) }
     }
 
     /// Returns a mutable slice of the inline vector.
     #[inline]
     pub const fn as_mut_slice(&mut self) -> &mut [T] {
-        unsafe { slice::from_raw_parts_mut(self.as_mut_ptr(), self.len()) }
+        unsafe { slice::from_raw_parts_mut(self.data.as_mut_ptr().cast(), self.len()) }
     }
 
     /// Returns the capacity of the inline vector, that is, `CAP`.
@@ -318,7 +292,7 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
     /// ```
     #[inline]
     pub const fn capacity(&self) -> usize {
-        Self::CAP
+        CAP
     }
 
     /// Returns a pointer to the inline vector.
@@ -338,7 +312,7 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
     /// ```
     #[inline]
     pub const fn as_ptr(&self) -> *const T {
-        unsafe { self._data.as_ptr().add(Self::OFFSET).cast() }
+        self.data.as_ptr().cast()
     }
 
     /// Returns a `NonNull` pointer to the inline vector data.
@@ -348,7 +322,7 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
     /// would also make any pointers to it invalid.
     #[inline]
     pub const fn as_non_null(&mut self) -> NonNull<T> {
-        unsafe { NonNull::new_unchecked(self.as_mut_ptr()) }
+        unsafe { NonNull::new_unchecked(self.data.as_mut_ptr().cast()) }
     }
 
     /// Returns a mutable pointer to the inline vector.
@@ -358,7 +332,7 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
     /// would also make any pointers to it invalid.
     #[inline]
     pub const fn as_mut_ptr(&mut self) -> *mut T {
-        unsafe { self._data.as_mut_ptr().add(Self::OFFSET).cast() }
+        self.data.as_mut_ptr().cast()
     }
 
     /// Attempts to push a value into the inline vector.
@@ -381,8 +355,8 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
     #[inline]
     pub const fn try_push(&mut self, value: T) -> Result<(), T> {
         let len = self.len();
-        if len < Self::CAP {
-            self.data_mut()[len].write(value);
+        if len < CAP {
+            self.data[len].write(value);
             unsafe {
                 self.set_len(len + 1);
             }
@@ -452,7 +426,7 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
     /// [`spare_capacity_mut`]: Self::spare_capacity_mut
     #[inline]
     pub const unsafe fn set_len(&mut self, new_len: usize) {
-        debug_assert!(new_len <= Self::CAP);
+        debug_assert!(new_len <= CAP);
         self.len = TaggedU8::new(new_len);
     }
 
@@ -469,13 +443,9 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
     ///     inline.set_len(1);
     /// }
     /// ```
-    #[inline]
     pub const fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<T>] {
-        unsafe {
-            let len = self.len();
-            let ptr = self._data.as_mut_ptr().add(Self::OFFSET).add(len).cast();
-            slice::from_raw_parts_mut(ptr, Self::CAP - len)
-        }
+        let len = self.len();
+        unsafe { slice::from_raw_parts_mut(self.data.as_mut_ptr().add(len), CAP - len) }
     }
 
     /// Removes the last element from the inline vector and returns it, or `None`
@@ -495,7 +465,7 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
         if len == 0 {
             None
         } else {
-            let value = unsafe { self.data_mut()[len - 1].assume_init_read() };
+            let value = unsafe { self.data[len - 1].assume_init_read() };
             self.len = TaggedU8::new(len - 1);
             Some(value)
         }
@@ -549,7 +519,7 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
     pub fn append(&mut self, other: &mut impl traits::MutVector<Item = T>) {
         let len = self.len();
         let other_len = other.len();
-        assert!(len + other_len <= Self::CAP, "new length exceeds capacity");
+        assert!(len + other_len <= CAP, "new length exceeds capacity");
         unsafe {
             self.append_raw(other.as_non_null(), other_len);
             other.set_len(0);
@@ -577,13 +547,13 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
     /// assert_eq!(inline1, [1, 2, 3, 4]);
     /// assert!(inline2.is_empty());
     /// ```
-    pub const fn const_append<const BYTE_CAP2: usize, const SHIFT2: u8, const TAG2: u8>(
+    pub const fn const_append<const CAP2: usize, const SHIFT2: u8, const TAG2: u8>(
         &mut self,
-        other: &mut InlineVec<T, BYTE_CAP2, SHIFT2, TAG2>,
+        other: &mut InlineVec<T, CAP2, SHIFT2, TAG2>,
     ) {
         let len = self.len();
         let other_len = other.len();
-        assert!(len + other_len <= Self::CAP, "new length exceeds capacity");
+        assert!(len + other_len <= CAP, "new length exceeds capacity");
         unsafe {
             self.append_raw(other.as_non_null(), other_len);
             other.set_len(0);
@@ -641,7 +611,7 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
         if new_len < old_len {
             self.len = TaggedU8::new(new_len);
             for i in new_len..old_len {
-                unsafe { self.data_mut()[i].assume_init_drop() };
+                unsafe { self.data[i].assume_init_drop() };
             }
         }
     }
@@ -670,7 +640,7 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
     pub const fn swap_remove(&mut self, index: usize) -> T {
         let len = self.len();
         assert!(index < len, "index out of bounds");
-        self.data_mut().swap(index, len - 1);
+        self.data.swap(index, len - 1);
 
         // SAFETY: reduce the length of the vector
         unsafe {
@@ -678,7 +648,7 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
         }
 
         // SAFETY: initialized due to previous type invariant
-        unsafe { self.data_mut()[len - 1].assume_init_read() }
+        unsafe { self.data[len - 1].assume_init_read() }
     }
 
     /// Inserts an element at the specified index, shifting all elements after
@@ -735,7 +705,7 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
         let len = self.len();
         if index > len {
             return Err(InsertError::new(value, InsertErrorKind::OutOfBounds));
-        } else if len == Self::CAP {
+        } else if len == CAP {
             // inline vector is full
             return Err(InsertError::new(value, InsertErrorKind::Full));
         }
@@ -795,7 +765,7 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
         // - type invariant ensures that the element is initialized
         // - the length is decremented after the element is removed
         unsafe {
-            let ptr = self.data_mut().as_mut_ptr().add(index);
+            let ptr = self.data.as_mut_ptr().add(index);
             let value = (*ptr).assume_init_read();
             ptr.copy_from(ptr.add(1), len - index - 1);
             self.set_len(len - 1);
@@ -834,9 +804,9 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
         let remainder = len - at;
         unsafe {
             self.set_len(at);
-            let ptr = self.data_mut().as_ptr().add(at);
+            let ptr = self.data.as_ptr().add(at);
             other
-                .data_mut()
+                .data
                 .as_mut_ptr()
                 .copy_from_nonoverlapping(ptr, remainder);
             other.set_len(remainder);
@@ -871,9 +841,9 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
     {
         let len = self.len();
         if new_len > len {
-            assert!(new_len <= Self::CAP, "new length exceeds capacity");
+            assert!(new_len <= CAP, "new length exceeds capacity");
             for i in len..new_len {
-                self.data_mut()[i].write(f());
+                self.data[i].write(f());
                 unsafe {
                     self.set_len(i + 1);
                 }
@@ -905,11 +875,11 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
     #[track_caller]
     pub const fn extend_from_array<const N: usize>(&mut self, array: [T; N]) {
         const {
-            assert!(N <= Self::CAP, "array larger than capacity");
+            assert!(N <= CAP, "array larger than capacity");
         }
         let len = self.len();
         let new_len = len + N;
-        assert!(new_len <= Self::CAP, "new length exceeds capacity");
+        assert!(new_len <= CAP, "new length exceeds capacity");
         unsafe {
             self.set_len(new_len);
             self.as_mut_ptr()
@@ -955,13 +925,6 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
     /// ```
     pub fn drain(&mut self, range: impl RangeBounds<usize>) -> Drain<Self> {
         Drain::new(self, range).unwrap_or_else(panic_display)
-    }
-
-    const fn data_mut(&mut self) -> &mut [MaybeUninit<T>] {
-        unsafe {
-            let ptr = self._data.as_mut_ptr().add(Self::OFFSET).cast();
-            slice::from_raw_parts_mut(ptr, Self::CAP)
-        }
     }
 }
 
@@ -1018,11 +981,7 @@ where
         let new_len = len + slice.len();
         assert!(new_len <= CAP, "new length exceeds capacity");
 
-        let dst_slice: &mut [MaybeUninit<T>] = unsafe {
-            let ptr = self._data.as_mut_ptr().add(Self::OFFSET).add(len).cast();
-            slice::from_raw_parts_mut(ptr, slice.len())
-        };
-        let dst = dst_slice.iter_mut();
+        let dst = self.data[len..new_len].iter_mut();
         let src = slice.iter();
         for ((dst, src), l) in dst.zip(src).zip(len + 1..=new_len) {
             dst.write(src.clone());
@@ -1068,12 +1027,7 @@ where
         let new_len = len + range_len;
         assert!(new_len <= CAP, "new length exceeds capacity");
 
-        let data_slice: &mut [MaybeUninit<T>] = unsafe {
-            let ptr = self._data.as_mut_ptr().add(Self::OFFSET).cast();
-            slice::from_raw_parts_mut(ptr, Self::CAP)
-        };
-
-        let (current, spare) = unsafe { data_slice.split_at_mut_unchecked(len) };
+        let (current, spare) = unsafe { self.data.split_at_mut_unchecked(len) };
         let dst = spare[0..range_len].iter_mut();
         let src = current[range].iter();
         for ((dst, src), l) in dst.zip(src).zip(len + 1..=new_len) {
@@ -1203,9 +1157,10 @@ where
         let new_len = len + slice.len();
         unsafe {
             self.set_len(new_len);
-            self.as_mut_ptr()
+            self.data
+                .as_mut_ptr()
                 .add(len)
-                .copy_from_nonoverlapping(slice.as_ptr(), slice.len());
+                .copy_from_nonoverlapping(slice.as_ptr().cast(), slice.len());
         }
     }
 
@@ -1267,13 +1222,8 @@ where
         let new_len = len + range.len();
         assert!(new_len <= CAP, "new length exceeds capacity");
 
-        let data_slice: &mut [MaybeUninit<T>] = unsafe {
-            let ptr = self._data.as_mut_ptr().add(Self::OFFSET).cast();
-            slice::from_raw_parts_mut(ptr, Self::CAP)
-        };
-
         // SAFETY: the range is valid and the source elements are initialized
-        let (current, spare) = unsafe { data_slice.split_at_mut_unchecked(len) };
+        let (current, spare) = unsafe { self.data.split_at_mut_unchecked(len) };
 
         // SAFETY: the range is valid and the source elements are initialized
         // the destination and the source do not overlap
@@ -1299,9 +1249,8 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> Drop for InlineVec<T, 
     fn drop(&mut self) {
         if core::mem::needs_drop::<T>() {
             let len = self.len();
-            let slice = self.data_mut();
             for i in 0..len {
-                unsafe { slice[i].assume_init_drop() };
+                unsafe { self.data[i].assume_init_drop() };
             }
         }
     }
@@ -1412,7 +1361,7 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> Iterator
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.start < self.end {
-            let value = unsafe { self.vec.data_mut()[self.start].assume_init_read() };
+            let value = unsafe { self.vec.data[self.start].assume_init_read() };
             self.start += 1;
             Some(value)
         } else {
@@ -1438,7 +1387,7 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> Drop for IntoIter<T, C
     fn drop(&mut self) {
         if core::mem::needs_drop::<T>() {
             for i in self.start..self.end {
-                unsafe { self.vec.data_mut()[i].assume_init_drop() };
+                unsafe { self.vec.data[i].assume_init_drop() };
             }
         }
     }
@@ -1450,7 +1399,7 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> DoubleEndedIterator
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.start < self.end {
             self.end -= 1;
-            let value = unsafe { self.vec.data_mut()[self.end].assume_init_read() };
+            let value = unsafe { self.vec.data[self.end].assume_init_read() };
             Some(value)
         } else {
             None
@@ -1644,7 +1593,7 @@ impl<T> fmt::Display for InsertError<T> {
 }
 
 /// Creates an inline vector in a syntax similar to array literal expressions.
-/// The inlive vector's payload size is either explicitly specified or
+/// The inlive vector's fixed capacity is either explicity specified or
 /// inferred by the compiler.
 ///
 /// They are multiple forms of this macros:
@@ -1688,22 +1637,22 @@ impl<T> fmt::Display for InsertError<T> {
 macro_rules! inline_vec {
     [$cap:expr => $($e:expr),* $(,)?] => {
         {
-            $crate::vecs::inline::InlineVec::<_, { $cap }>::from_array([$($e),*])
+            $crate::vecs::InlineVec::<_, { $cap }>::from_array([$($e),*])
         }
     };
     [$($e:expr),* $(,)?] => {
         {
-            $crate::vecs::inline::InlineVec::from_array([$($e),*])
+            $crate::vecs::InlineVec::from_array([$($e),*])
         }
     };
     [$cap:expr => $e:expr; $n:expr] => {
         {
-            $crate::vecs::inline::InlineVec::<_, { $cap }>::from_array([$e; $n])
+            $crate::vecs::InlineVec::<_, { $cap }>::from_array([$e; $n])
         }
     };
     [$e:expr; $n:expr] => {
         {
-            $crate::vecs::inline::InlineVec::from_array([$e; $n])
+            $crate::vecs::InlineVec::from_array([$e; $n])
         }
     };
 }
