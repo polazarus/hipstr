@@ -1042,7 +1042,7 @@ where
     ///
     /// ```
     /// use hipstr::inline_vec;
-    /// let mut characters = inline_vec![10 => 'a', 'b', 'c', 'd', 'e'];
+    /// let mut characters = inline_vec![43 => 'a', 'b', 'c', 'd', 'e'];
     /// characters.extend_from_within(2..);
     /// assert_eq!(characters, ['a', 'b', 'c', 'd', 'e', 'c', 'd', 'e']);
     ///
@@ -1050,7 +1050,7 @@ where
     /// numbers.extend_from_within(..2);
     /// assert_eq!(numbers, [0, 1, 2, 3, 4, 0, 1]);
     ///
-    /// let mut strings = inline_vec![6 => String::from("hello"), String::from("world"), String::from("!")];
+    /// let mut strings = inline_vec![55 => String::from("hello"), String::from("world"), String::from("!")];
     /// strings.extend_from_within(1..=2);
     /// assert_eq!(strings, ["hello", "world", "!", "world", "!"]);
     /// ```

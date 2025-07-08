@@ -28,11 +28,11 @@ fn tagged_len_too_large() {
 #[test]
 fn macros() {
     const CAP: usize = 7;
-    let inline = inline_vec![CAP => 1, 2, 3];
+    let inline = inline_vec![CAP => 1_u8, 2, 3];
     assert_eq!(inline.len(), 3);
     assert_eq!(inline.as_slice(), &[1, 2, 3]);
 
-    let inline = inline_vec![CAP => 1; 3];
+    let inline = inline_vec![CAP => 1_u8; 3];
     assert_eq!(inline.len(), 3);
     assert_eq!(inline.as_slice(), &[1, 1, 1]);
 }
@@ -427,7 +427,7 @@ fn into_iter() {
     assert_eq!(iter.next_back(), None);
     assert_eq!(iter.size_hint(), (0, Some(0)));
 
-    let inline = InlineVec::<Box<u8>, 3>::from_array([Box::new(1), Box::new(2), Box::new(3)]);
+    let inline = InlineVec::<Box<u8>, 31>::from_array([Box::new(1), Box::new(2), Box::new(3)]);
     let mut iter = inline.into_iter();
     assert_eq!(iter.next(), Some(Box::new(1)));
     assert_eq!(iter.next_back(), Some(Box::new(3)));
@@ -438,7 +438,7 @@ fn into_iter() {
     assert_eq!(iter.next_back(), None);
 
     {
-        let inline = InlineVec::<Box<u8>, 3>::from_array([Box::new(1), Box::new(2), Box::new(3)]);
+        let inline = InlineVec::<Box<u8>, 31>::from_array([Box::new(1), Box::new(2), Box::new(3)]);
         let mut iter = inline.into_iter();
         assert_eq!(iter.next(), Some(Box::new(1)));
     }
@@ -446,42 +446,45 @@ fn into_iter() {
 
 #[test]
 fn compare() {
-    let l = InlineVec::<u8, 7>::from_array([1, 2, 3]);
-    assert!(l < inline_vec![15 => 2]);
-    assert!(inline_vec![15 => 2] > l);
-    assert!(l < inline_vec![15 => 1, 2, 3, 1]);
-    assert!(inline_vec![15 => 1, 2, 3, 1] > l);
-    assert!(l > inline_vec![15 => 1, 2]);
-    assert!(inline_vec![15 => 1, 2] < l);
-    assert!(l >= inline_vec![15 => 1, 2, 3]);
-    assert!(inline_vec![15 => 1, 2, 3] <= l);
-    assert_eq!(l, inline_vec![15 => 1, 2, 3]);
+    let l = InlineVec::<u8, 7>::from_array([1_u8, 2, 3]);
+    assert!(l < inline_vec![15 => 2_u8]);
+    assert!(inline_vec![15 => 2_u8] > l);
+    assert!(l < inline_vec![15 => 1_u8, 2, 3, 1]);
+    assert!(inline_vec![15 => 1_u8, 2, 3, 1] > l);
+    assert!(l > inline_vec![15 => 1_u8, 2]);
+    assert!(inline_vec![15 => 1_u8, 2] < l);
+    assert!(l >= inline_vec![15 => 1_u8, 2, 3]);
+    assert!(inline_vec![15 => 1_u8, 2, 3] <= l);
+    assert_eq!(l, inline_vec![15 => 1_u8, 2, 3]);
 
-    assert!(l == inline_vec![15 => 1, 2, 3]);
-    assert!(l == [1, 2, 3]);
-    assert!(l == vec![1, 2, 3]);
-    assert!(l == *[1, 2, 3].as_slice());
-    assert!(l == [1, 2, 3].as_slice());
+    assert!(l == inline_vec![15 => 1_u8, 2, 3]);
+    assert!(l == [1_u8, 2, 3]);
+    assert!(l == vec![1_u8, 2, 3]);
+    assert!(l == *[1_u8, 2, 3].as_slice());
+    assert!(l == [1_u8, 2, 3].as_slice());
 
-    assert!(inline_vec![15 => 1, 2, 3] == l);
-    assert!([1, 2, 3] == l);
-    assert!(vec![1, 2, 3] == l);
-    assert!(*[1, 2, 3].as_slice() == l);
-    assert!([1, 2, 3].as_slice() == l);
+    assert!(inline_vec![15 => 1_u8, 2, 3] == l);
+    assert!([1_u8, 2, 3] == l);
+    assert!(vec![1_u8, 2, 3] == l);
+    assert!(*[1_u8, 2, 3].as_slice() == l);
+    assert!([1_u8, 2, 3].as_slice() == l);
 
-    assert!(l.eq(&inline_vec![15 => 1, 2, 3]));
-    assert!(l.partial_cmp(&inline_vec![15 => 1, 2, 3]).unwrap().is_eq());
-    assert!(l.cmp(&inline_vec![7 => 1, 2, 3]).is_eq());
-    assert!(l.ne(&inline_vec![15 => 1, 3]));
-    assert!(l.partial_cmp(&inline_vec![15 => 1, 3]).unwrap().is_lt());
-    assert!(l.cmp(&inline_vec![7 => 1, 3]).is_lt());
+    assert!(l.eq(&inline_vec![15 => 1_u8, 2, 3]));
+    assert!(l
+        .partial_cmp(&inline_vec![15 => 1_u8, 2, 3])
+        .unwrap()
+        .is_eq());
+    assert!(l.cmp(&inline_vec![7 => 1_u8, 2, 3]).is_eq());
+    assert!(l.ne(&inline_vec![15 => 1_u8, 3]));
+    assert!(l.partial_cmp(&inline_vec![15 => 1_u8, 3]).unwrap().is_lt());
+    assert!(l.cmp(&inline_vec![7 => 1_u8, 3]).is_lt());
 
     // NaN tests
     let i_f32 = InlineVec::<f32, 7>::from_array([f32::NAN]);
-    assert_ne!(i_f32, inline_vec![1 => f32::NAN]);
+    assert_ne!(i_f32, inline_vec![7 => f32::NAN]);
     assert_ne!(i_f32, [f32::NAN]);
-    assert!(!(i_f32 <= inline_vec![1 => f32::NAN]));
-    assert!(!(i_f32 >= inline_vec![1 => f32::NAN]));
+    assert!(!(i_f32 <= inline_vec![7 => f32::NAN]));
+    assert!(!(i_f32 >= inline_vec![7 => f32::NAN]));
 }
 
 #[test]
@@ -575,7 +578,7 @@ fn debug() {
     let debug = format!("{:?}", inline);
     assert_eq!(debug, "[1, 2, 3]");
 
-    let inline = InlineVec::<Box<u8>, 3>::from_array([Box::new(1), Box::new(2)]);
+    let inline = InlineVec::<Box<u8>, 31>::from_array([Box::new(1), Box::new(2)]);
     let debug = format!("{:?}", inline);
     assert_eq!(debug, "[1, 2]");
 }
@@ -604,7 +607,7 @@ fn clone() {
     let clone = inline.clone();
     assert_eq!(inline.as_slice(), clone.as_slice());
 
-    let inline = InlineVec::<Box<u8>, 3>::from_array([1, 2].map(Box::new));
+    let inline = InlineVec::<Box<u8>, 31>::from_array([1, 2].map(Box::new));
     let clone = inline.clone();
     assert_eq!(inline.as_slice(), clone.as_slice());
     assert!(!ptr::eq(&inline[0], &clone[0]));
@@ -631,7 +634,7 @@ fn drain() {
     assert_eq!(inline.as_slice(), [1, 2, 6, 7]);
     assert_eq!(inline.len(), 4);
 
-    let mut inline = InlineVec::<_, 7>::from_array([1, 2, 3, 4].map(Box::new));
+    let mut inline = InlineVec::<_, 63>::from_array([1, 2, 3, 4].map(Box::new));
     let _ = inline.drain(2..3);
     assert_eq!(inline.as_slice(), [1, 2, 4].map(Box::new));
 
@@ -833,17 +836,17 @@ fn from_impls() {
 
     let arr = [Box::new(1)];
     let p = &raw const *arr[0];
-    let v = InlineVec::<Box<i32>, 3>::from(arr);
+    let v = InlineVec::<Box<i32>, 23>::from(arr);
     assert_eq!(&raw const *v[0], p);
 
     let vec = vec![Box::new(1)];
     let p = &raw const *vec[0];
-    let v = InlineVec::<Box<i32>, 3>::from(vec);
+    let v = InlineVec::<Box<i32>, 23>::from(vec);
     assert_eq!(&raw const *v[0], p);
 
     let cow: Cow<'_, [Box<i32>]> = Cow::Owned(vec![Box::new(1)]);
     let p = &raw const *cow[0];
-    let v = InlineVec::<Box<i32>, 3>::from(cow);
+    let v = InlineVec::<Box<i32>, 23>::from(cow);
     assert_eq!(&raw const *v[0], p);
 }
 

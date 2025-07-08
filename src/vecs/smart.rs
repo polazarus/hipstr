@@ -217,7 +217,7 @@ impl<T, B: Backend> SmartVec<T, B> {
     }
 
     #[must_use]
-    fn from_thin(raw: SmartThinVec<T, B>) -> Self {
+    pub(crate) fn from_thin(raw: SmartThinVec<T, B>) -> Self {
         let tagged_ptr = TaggedSmart::from_thin(raw);
         Self(tagged_ptr)
     }

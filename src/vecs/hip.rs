@@ -1,13 +1,16 @@
 use core::hint::unreachable_unchecked;
 use core::marker::PhantomData;
-use core::mem::ManuallyDrop;
+use core::mem::{offset_of, ManuallyDrop};
 use core::ptr::NonNull;
 #[cfg(target_endian = "little")]
 use core::{mem::MaybeUninit, num::NonZeroU8};
 
 use crate::backend::Backend;
 use crate::common::manually_drop_as_ref;
-use crate::vecs::{InlineVec, SmartVec};
+use crate::vecs::{InlineVec, SmartThinVec, SmartVec};
+
+#[cfg(test)]
+mod tests;
 
 const WORD_SIZE_M1: usize = size_of::<*mut ()>() - 1;
 const INLINE_BYTES: usize = size_of::<*mut ()>() * 3 - 1;
@@ -49,6 +52,7 @@ struct WordView {
     tag: usize,
 }
 
+#[repr(C)]
 struct SliceView<T> {
     #[cfg(target_endian = "little")]
     tag: usize,
@@ -63,6 +67,14 @@ struct SliceView<T> {
     tag: usize,
 }
 
+impl<T> Copy for SliceView<T> {}
+
+impl<T> Clone for SliceView<T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
 impl<T> SliceView<T> {
     fn as_slice(&self) -> &[T] {
         unsafe {
@@ -72,23 +84,16 @@ impl<T> SliceView<T> {
     }
 }
 
-impl<T> Copy for SliceView<T> {}
-
-impl<T> Clone for SliceView<T> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
 #[repr(C)]
-pub union Union<'borrow, T, B: Backend> {
+union Union<'borrow, T, B: Backend> {
     /// Inline representation
-    pub inline: ManuallyDrop<InlineVec<T, INLINE_BYTES>>,
+    inline: ManuallyDrop<InlineVec<T, INLINE_BYTES>>,
 
     /// Heap-allocated
-    pub allocated: ManuallyDrop<Allocated<T, B>>,
+    allocated: ManuallyDrop<Allocated<T, B>>,
 
-    pub borrowed: Borrowed<'borrow, T>,
+    /// Borrowed slice
+    borrowed: Borrowed<'borrow, T>,
 
     /// Pivot representation with niche
     pivot: Pivot,
@@ -106,18 +111,36 @@ enum BorrowedTag {
     Value = TAG_FAT as usize, // reuse a tag of a fat vector
 }
 
+#[repr(C)]
 struct Borrowed<'borrow, T> {
     #[cfg(target_endian = "little")]
-    pub tag: BorrowedTag,
+    tag: BorrowedTag,
 
-    pub ptr: NonNull<T>,
+    ptr: *const T,
 
-    pub len: usize,
+    len: usize,
 
     #[cfg(target_endian = "big")]
     pub tag: BorrowedTag,
 
     phantom: PhantomData<&'borrow [T]>,
+}
+
+impl<'borrow, T> Borrowed<'borrow, T> {
+    #[inline]
+    pub const fn new(slice: &'borrow [T]) -> Self {
+        Self {
+            tag: BorrowedTag::Value,
+            ptr: slice.as_ptr(),
+            len: slice.len(),
+            phantom: PhantomData,
+        }
+    }
+
+    #[inline]
+    pub const fn as_slice(&self) -> &'borrow [T] {
+        unsafe { core::slice::from_raw_parts(self.ptr, self.len) }
+    }
 }
 
 impl<'borrow, T> Copy for Borrowed<'borrow, T> {}
@@ -128,14 +151,15 @@ impl<'borrow, T> Clone for Borrowed<'borrow, T> {
     }
 }
 
+#[repr(C)]
 struct Allocated<T, B: Backend> {
     owner: SmartVec<T, B>,
-    ptr: NonNull<T>,
+    ptr: *const T,
     len: usize,
 }
 
 impl<'borrow, T, B: Backend> Union<'borrow, T, B> {
-    fn make(self) -> HipVec<'borrow, T, B> {
+    const fn make(self) -> HipVec<'borrow, T, B> {
         unsafe {
             HipVec {
                 pivot: self.pivot,
@@ -162,11 +186,100 @@ unsafe impl<T: Sync, B: Backend + Sync> Sync for HipVec<'_, T, B> {}
 unsafe impl<T: Send, B: Backend + Send> Send for HipVec<'_, T, B> {}
 
 impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
-    const unsafe fn union(&self) -> &Union<'borrow, T, B> {
-        unsafe { &*(self as *const Self as *const Union<'borrow, T, B>) }
+    #[inline]
+    pub(crate) fn from_slice_clone(slice: &[T]) -> Self
+    where
+        T: Clone,
+    {
+        if slice.len() <= InlineVec::<T, INLINE_BYTES>::CAP {
+            Self::from_inline(InlineVec::from_slice_clone(slice))
+        } else {
+            let stv = SmartThinVec::from_slice_clone(slice);
+            let owner = SmartVec::from_thin(stv);
+            Self::from_smart_vec(owner)
+        }
     }
 
-    unsafe fn tag(&self) -> Tag {
+    #[inline]
+    pub(crate) fn from_slice_copy(slice: &[T]) -> Self
+    where
+        T: Copy,
+    {
+        if slice.len() <= InlineVec::<T, INLINE_BYTES>::CAP {
+            Self::from_inline(InlineVec::from_slice_copy(slice))
+        } else {
+            let stv = SmartThinVec::from_slice_copy(slice);
+            let owner = SmartVec::from_thin(stv);
+            Self::from_smart_vec(owner)
+        }
+    }
+
+    #[inline]
+    fn from_smart_vec(owner: SmartVec<T, B>) -> Self {
+        let ptr = owner.as_ptr();
+        let len = owner.len();
+        let allocated = ManuallyDrop::new(Allocated { owner, ptr, len });
+        let union = Union { allocated };
+        union.make()
+    }
+
+    #[inline]
+    const fn from_inline(inline: InlineVec<T, INLINE_BYTES>) -> Self {
+        let inline = ManuallyDrop::new(inline);
+        let union = Union { inline };
+        union.make()
+    }
+
+    #[inline]
+    pub fn is_unique(&self) -> bool {
+        match unsafe { self.tag() } {
+            Tag::Inline => true,
+            Tag::Thin | Tag::Fat => unsafe { self.as_allocated_unchecked().owner.is_unique() },
+            Tag::Borrowed => false,
+        }
+    }
+
+    pub const fn is_owned(&self) -> bool {
+        match unsafe { self.tag() } {
+            Tag::Inline => true,
+            Tag::Thin | Tag::Fat => true,
+            Tag::Borrowed => false,
+        }
+    }
+
+    pub const fn is_borrowed(&self) -> bool {
+        match unsafe { self.tag() } {
+            Tag::Inline => false,
+            Tag::Thin | Tag::Fat => false,
+            Tag::Borrowed => true,
+        }
+    }
+
+    pub const fn is_inline(&self) -> bool {
+        matches!(unsafe { self.tag() }, Tag::Inline)
+    }
+
+    #[inline]
+    pub const fn borrowed(slice: &'borrow [T]) -> Self {
+        let borrowed = Borrowed::new(slice);
+        let union = Union { borrowed };
+        union.make()
+    }
+
+    const unsafe fn union(&self) -> &Union<'borrow, T, B> {
+        const {
+            assert!(size_of::<Union<'borrow, T, B>>() == size_of::<Pivot>());
+            assert!(align_of::<Union<'borrow, T, B>>() == align_of::<Pivot>());
+        }
+
+        unsafe { &*(&raw const self.pivot as *const Union<'borrow, T, B>) }
+    }
+
+    const unsafe fn union_mut(&mut self) -> &mut Union<'borrow, T, B> {
+        unsafe { &mut *(&raw mut self.pivot as *mut Union<'borrow, T, B>) }
+    }
+
+    const unsafe fn tag(&self) -> Tag {
         let byte = unsafe { self.union().pivot.tag_byte.get() };
         match byte & 0x11 {
             0b00 => unsafe { unreachable_unchecked() },
