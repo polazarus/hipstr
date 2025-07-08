@@ -15,7 +15,7 @@ use core::{cmp, fmt, mem, ops, panic, ptr, slice};
 use crate::common::drain::Drain;
 use crate::common::{
     check_alloc, guarded_slice_clone, manually_drop_as_mut, manually_drop_as_ref,
-    maybe_uninit_write_copy_of_slice, panic_display, traits, RangeError,
+    maybe_uninit_write_copy_of_slice, panic_display, traits, Handle, RangeError,
 };
 use crate::{common, macros};
 
@@ -93,7 +93,7 @@ pub(crate) struct Header<T, P> {
 ///
 /// [`Vec`]: alloc::vec::Vec
 #[repr(transparent)]
-pub struct ThinVec<T, P = Reserved>(pub(super) NonNull<Header<T, P>>);
+pub struct ThinVec<T, P = Reserved>(pub(crate) NonNull<Header<T, P>>);
 
 impl<T, P> ThinVec<T, P>
 where
@@ -310,44 +310,8 @@ where
         other
     }
 
-    pub(crate) const unsafe fn handle(&self) -> ThinHandle<T, P> {
-        ThinHandle(ManuallyDrop::new(Self(self.0)), PhantomData)
-    }
-}
-
-pub(crate) struct ThinHandle<'a, T, P>(ManuallyDrop<ThinVec<T, P>>, PhantomData<&'a ()>);
-
-impl<T, P> ThinHandle<'_, T, P> {
-    pub(crate) const fn as_ref(&self) -> &ThinVec<T, P> {
-        manually_drop_as_ref(&self.0)
-    }
-
-    pub(crate) const fn as_mut(&mut self) -> &mut ThinVec<T, P> {
-        manually_drop_as_mut(&mut self.0)
-    }
-
-    pub(crate) const fn raw(&self) -> NonNull<Header<T, P>> {
-        manually_drop_as_ref(&self.0).0
-    }
-
-    pub(crate) const unsafe fn extend_lifetime<'a>(self) -> ThinHandle<'a, T, P> {
-        ThinHandle(self.0, PhantomData)
-    }
-}
-
-impl<T, P> Deref for ThinHandle<'_, T, P> {
-    type Target = ThinVec<T, P>;
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<T, P> DerefMut for ThinHandle<'_, T, P> {
-    #[inline]
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
+    pub(crate) const unsafe fn handle(&self) -> Handle<Self> {
+        unsafe { Handle::new(ManuallyDrop::new(Self(self.0))) }
     }
 }
 

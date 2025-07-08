@@ -8,10 +8,11 @@ use core::ptr;
 use core::ptr::NonNull;
 
 use super::smart_thin::SmartThinVec;
-use super::thin::ThinHandle;
+use super::thin::ThinVec;
 use crate::backend::{
     Backend, BackendImpl, CloneOnOverflow, Counter, PanicOnOverflow, UpdateResult,
 };
+use crate::common::Handle;
 use crate::macros::trait_impls;
 use crate::smart::{Inner, Smart};
 use crate::vecs::thin::Header;
@@ -428,7 +429,7 @@ impl<T, B: Backend> Drop for SmartVec<T, B> {
 
 #[must_use]
 pub struct RefMut<'a, T, B: Backend>(
-    Variant<&'a mut Vec<T>, ThinHandle<'a, T, B>>,
+    Variant<&'a mut Vec<T>, Handle<'a, ThinVec<T, B>>>,
     &'a mut SmartVec<T, B>,
 );
 
@@ -438,7 +439,7 @@ impl<T, B: Backend> Drop for RefMut<'_, T, B> {
             Variant::Fat(_) => {}
             Variant::Thin(thin) => {
                 // update the thin vector pointer in the smart vector
-                self.1 .0 = TaggedSmart::from_thin_ptr(thin.raw());
+                self.1 .0 = TaggedSmart::from_thin_ptr(thin.0);
             }
         }
     }

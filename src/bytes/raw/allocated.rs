@@ -178,7 +178,7 @@ impl<B: Backend> TaggedSmart<B> {
 
     fn update_thin(&mut self, thin: &mut ThinVec<u8, B>) {
         debug_assert!(self.is_thin());
-        let ptr = unsafe { thin.handle().raw() };
+        let ptr = unsafe { thin.handle().0 };
         *self = Self::from_thin_raw(ptr);
     }
 }
