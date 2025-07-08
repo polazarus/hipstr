@@ -148,6 +148,8 @@ impl<'borrow, T, B: Backend> Union<'borrow, T, B> {
 const TAG_INLINE: u8 = 0b01;
 const TAG_THIN: u8 = 0b10;
 const TAG_FAT: u8 = 0b11;
+const TAG_THIN_FAT_BORROWED: u8 = 0b10;
+const TAG_MASK: u8 = 0b11;
 
 enum Tag {
     Inline = 0b01,
@@ -160,7 +162,7 @@ unsafe impl<T: Sync, B: Backend + Sync> Sync for HipVec<'_, T, B> {}
 unsafe impl<T: Send, B: Backend + Send> Send for HipVec<'_, T, B> {}
 
 impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
-    unsafe fn union(&self) -> &Union<'borrow, T, B> {
+    const unsafe fn union(&self) -> &Union<'borrow, T, B> {
         unsafe { &*(self as *const Self as *const Union<'borrow, T, B>) }
     }
 
@@ -190,17 +192,30 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
         unsafe { manually_drop_as_ref(&self.union().allocated) }
     }
 
+    #[inline]
     unsafe fn as_inline_unchecked(&self) -> &InlineVec<T, INLINE_BYTES> {
         unsafe { manually_drop_as_ref(&self.union().inline) }
     }
 
+    #[inline]
+    const unsafe fn as_slice_view(&self) -> &SliceView<T> {
+        let view = unsafe { &self.union().slice };
+        debug_assert!(
+            view.tag & TAG_THIN_FAT_BORROWED as usize != 0,
+            "invalid repr (allocated or borrowed expected)"
+        );
+        view
+    }
+
+    #[inline]
     pub fn as_slice(&self) -> &[T] {
         match unsafe { self.tag() } {
             Tag::Inline => unsafe { self.as_inline_unchecked().as_slice() },
-            _ => unsafe { &self.union().slice }.as_slice(),
+            _ => unsafe { self.as_slice_view() }.as_slice(),
         }
     }
 
+    #[inline]
     pub fn as_ptr(&self) -> *const T {
         match unsafe { self.tag() } {
             Tag::Inline => unsafe { self.as_inline_unchecked().as_ptr() },
@@ -208,10 +223,24 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
         }
     }
 
+    #[inline]
     pub fn len(&self) -> usize {
         match unsafe { self.tag() } {
             Tag::Inline => unsafe { self.as_inline_unchecked().len() },
-            _ => unsafe { self.union().slice.len },
+            _ => unsafe { self.as_slice_view() }.len,
         }
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    #[inline]
+    pub fn force_clone_or_copy(&self) -> Self
+    where
+        T: Copy,
+    {
+        todo!()
     }
 }
