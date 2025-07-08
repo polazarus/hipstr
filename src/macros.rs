@@ -88,15 +88,15 @@ macro_rules! trait_impls {
         impl $(< $($gen)* >)? crate::common::traits::sealed::Sealed for $t $(where $($wh)*)? {}
         impl $(< $($gen)* >)? crate::common::traits::Vector for $t $(where $($wh)*)? {
             type Item = $item;
+            #[inline]
             fn len(&self) -> usize {
                 self.len()
             }
+            #[inline]
             fn capacity(&self) -> usize {
                 self.capacity()
             }
-            fn as_slice(&self) -> &[Self::Item] {
-                self.as_slice()
-            }
+            #[inline]
             fn as_ptr(&self) -> *const Self::Item {
                 self.as_ptr()
             }
@@ -106,16 +106,12 @@ macro_rules! trait_impls {
 
     (@MutVector $([ $($gen:tt)* ] $( where [ $($wh:tt)* ])? )? { }) => {};
     (@MutVector $([ $($gen:tt)* ] $( where [ $($wh:tt)* ])? )? { $t:ty ; $($rest:tt)* }) => {
-        impl $(< $($gen)* >)? crate::common::traits::MutVector for $t $(where $($wh)*)? {
+        unsafe impl $(< $($gen)* >)? crate::common::traits::MutVector for $t $($(where $($wh)*)?)? {
+            #[inline]
             unsafe fn set_len(&mut self, len: usize) {
                 unsafe { self.set_len(len) }
             }
-            fn as_mut_ptr(&mut self) -> *mut Self::Item {
-                self.as_mut_ptr()
-            }
-            fn as_mut_slice(&mut self) -> &mut [Self::Item] {
-                self.as_mut_slice()
-            }
+            #[inline]
             fn as_non_null(&mut self) -> core::ptr::NonNull<Self::Item> {
                 self.as_non_null()
             }
@@ -125,7 +121,7 @@ macro_rules! trait_impls {
 
     (@Extend $([ $($gen:tt)* ] $( where [ $($wh:tt)* ])? )? { }) => {};
     (@Extend $([ $($gen:tt)* ] $( where [ $($wh:tt)* ])? )? { $el:ty => $t:ty ; $($rest:tt)* }) => {
-        impl $(< $($gen)* >)? Extend<$el> for $t $(where $($wh)*)? {
+        impl $(< $($gen)* >)? Extend<$el> for $t $($(where $($wh)*)?)? {
             fn extend<T001: IntoIterator<Item = $el>>(&mut self, iter: T001) {
                 self.extend_iter(iter)
             }

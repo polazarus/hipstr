@@ -4,7 +4,7 @@ use core::sync::atomic::{fence, AtomicUsize, Ordering};
 #[cfg(loom)]
 use loom::sync::atomic::{fence, AtomicUsize, Ordering};
 
-use super::*;
+use super::{BackendImpl, Counter, PanicOnOverflow, Sealed, UpdateResult};
 
 /// Atomic counter backend.
 pub type Arc = BackendImpl<AtomicCount, PanicOnOverflow>;

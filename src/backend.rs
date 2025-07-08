@@ -113,12 +113,6 @@ pub enum UpdateResult {
 ///
 /// This trait is sealed and cannot be implemented outside this crate.
 pub trait Counter: Sealed + Default + 'static {
-    /// Creates a new counter that starts at one.
-    #[inline]
-    fn one() -> Self {
-        Self::default()
-    }
-
     /// Tries to increment the counter.
     ///
     /// In case of atomics, the [`Ordering::Release`] semantics is expected on the write.

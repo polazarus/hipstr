@@ -2,8 +2,9 @@
 
 use alloc::alloc::handle_alloc_error;
 use core::alloc::Layout;
+use core::marker::PhantomData;
 use core::mem::{self, ManuallyDrop, MaybeUninit};
-use core::ops::{Bound, Range, RangeBounds};
+use core::ops::{Bound, Deref, DerefMut, Range, RangeBounds};
 use core::ptr::NonNull;
 use core::{error, fmt, ptr};
 
@@ -157,8 +158,9 @@ impl<T> Drop for SliceGuard<'_, T> {
     fn drop(&mut self) {
         if mem::needs_drop::<T>() {
             unsafe {
-                let slice: *mut [MaybeUninit<T>] = &mut self.slice[..self.initialized];
-                ptr::drop_in_place(slice as *mut [T]);
+                let slice_ptr = ptr::from_mut(&mut self.slice[..self.initialized]);
+                let slice_ptr = slice_ptr as *mut [T];
+                ptr::drop_in_place(slice_ptr);
             }
         }
     }
@@ -188,4 +190,45 @@ pub(crate) fn check_alloc(ptr: *mut u8, layout: Layout) -> NonNull<u8> {
         handle_alloc_error(layout);
     };
     ptr
+}
+
+/// A handle to some smart pointer-like type `T` that can be constructed from a
+/// `ManuallyDrop<T>`.
+///
+/// This handle allows for safe access to the underlying type `T` without
+/// really owning `T`.
+pub(crate) struct Handle<'a, T>(ManuallyDrop<T>, PhantomData<&'a mut T>);
+
+impl<T> Handle<'_, T> {
+    pub const unsafe fn new(m: ManuallyDrop<T>) -> Self {
+        Handle(m, PhantomData)
+    }
+
+    pub const fn as_ref(&self) -> &T {
+        manually_drop_as_ref(&self.0)
+    }
+
+    pub const fn as_mut(&mut self) -> &mut T {
+        manually_drop_as_mut(&mut self.0)
+    }
+
+    pub const unsafe fn extend_lifetime<'a>(self) -> Handle<'a, T> {
+        Handle(self.0, PhantomData)
+    }
+}
+
+impl<T> Deref for Handle<'_, T> {
+    type Target = T;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T> DerefMut for Handle<'_, T> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
 }

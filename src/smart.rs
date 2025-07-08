@@ -7,9 +7,12 @@
 //! - atomically reference counted.
 
 use alloc::boxed::Box;
+use core::borrow::Borrow;
+use core::hash::{Hash, Hasher};
 use core::mem::ManuallyDrop;
 use core::ops::Deref;
 use core::ptr::NonNull;
+use core::{fmt, ptr};
 
 use crate::backend::{
     Backend, BackendImpl, CloneOnOverflow, Counter, PanicOnOverflow, UpdateResult,
@@ -19,11 +22,12 @@ use crate::backend::{
 mod tests;
 
 /// Smart pointer inner cell.
+#[repr(C)]
 pub struct Inner<T, C>
 where
     C: Backend,
 {
-    count: C,
+    pub(crate) count: C,
     value: T,
 }
 
@@ -34,14 +38,15 @@ where
 {
     fn clone(&self) -> Self {
         Self {
-            count: C::one(),
+            count: C::default(),
             value: self.value.clone(),
         }
     }
 }
 
 /// Basic smart pointer, with generic counter.
-pub struct Smart<T, C>(NonNull<Inner<T, C>>)
+#[repr(transparent)]
+pub struct Smart<T, C>(pub(crate) NonNull<Inner<T, C>>)
 where
     C: Backend;
 
@@ -66,7 +71,7 @@ where
     #[must_use]
     pub fn new(value: T) -> Self {
         let ptr = Box::into_raw(Box::new(Inner {
-            count: C::one(),
+            count: C::default(),
             value,
         }));
         Self(unsafe { NonNull::new_unchecked(ptr) })
@@ -120,15 +125,15 @@ where
     /// let q = unsafe { Smart::from_raw(ptr) };
     /// ```
     #[inline]
-    pub fn from_raw(ptr: NonNull<Inner<T, C>>) -> Self {
-        debug_assert!(ptr.is_aligned());
+    #[must_use]
+    pub const unsafe fn from_raw(ptr: NonNull<Inner<T, C>>) -> Self {
         unsafe { Self(ptr) }
     }
 
     /// Gets a reference to the value.
     #[inline]
     #[must_use]
-    pub const fn as_ref(this: &Self) -> &T {
+    pub const fn get(this: &Self) -> &T {
         &this.inner().value
     }
 
@@ -188,18 +193,22 @@ where
         inner.count.get()
     }
 
-    /// Try to unwrap to its inner value.
+    /// Tries to unwrap to its inner value.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err(this)` if the reference is shared.
     #[inline]
-    pub fn try_unwrap(self) -> Result<T, Self> {
+    pub fn try_unwrap(this: Self) -> Result<T, Self> {
         unsafe {
-            if self.is_unique() {
+            if this.is_unique() {
                 // do not drop `self`!
-                let this = ManuallyDrop::new(self);
+                let this = ManuallyDrop::new(this);
                 // SAFETY: type invariant, pointer must be valid
                 let inner = unsafe { Box::from_raw(this.0.as_ptr()) };
                 Ok(inner.value)
             } else {
-                Err(self)
+                Err(this)
             }
         }
     }
@@ -208,19 +217,118 @@ where
         self.inner().count.incr()
     }
 
-    pub(crate) fn force_clone(&self) -> Self
+    pub(crate) unsafe fn into_inner_unchecked(self) -> T {
+        debug_assert!(self.is_unique());
+
+        let this = ManuallyDrop::new(self);
+        // SAFETY: type invariant, pointer must be valid
+        let inner = unsafe { Box::from_raw(this.0.as_ptr()) };
+        inner.value
+    }
+
+    /// Tries to clone the smart pointer by increasing the reference count.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::smart::Smart;
+    /// # use hipstr::{Arc, Unique};
+    /// let p = Smart::<_, Arc>::new(42);
+    /// let q = p.try_clone().unwrap();;
+    /// assert_eq!(p.as_ref(), q.as_ref());
+    ///
+    /// let u = Smart::<_, Unique>::new(42);
+    /// let q = u.try_clone();
+    /// assert!(q.is_none());
+    /// ```
+    #[must_use]
+    pub fn try_clone(&self) -> Option<Self> {
+        if self.incr() == UpdateResult::Done {
+            Some(Self(self.0))
+        } else {
+            None
+        }
+    }
+
+    /// Clones the smart pointer even if the referenced count overflows, in
+    /// which case the underlying data is cloned.
+    ///
+    /// This is equivalent to calling [`Self::try_clone`] and cloning the inner
+    /// value if the reference count overflows.
+    ///
+    /// This is the default behavior of [`Clone::clone`] for `Unique`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::smart::Smart;
+    /// # use hipstr::{Arc, Unique};
+    /// let p = Smart::<_, Arc>::new(42);
+    /// let q = Smart::force_clone(&p);
+    /// assert_eq!(p.as_ref(), q.as_ref());
+    /// assert_eq!(p.as_ref() as *const i32, q.as_ref() as *const i32);
+    ///
+    /// let u = Smart::<_, Unique>::new(42);
+    /// let q = Smart::force_clone(&u);
+    /// assert_eq!(u.as_ref(), q.as_ref());
+    /// assert_ne!(u.as_ref() as *const i32, q.as_ref() as *const i32);
+    /// ```
+    #[must_use]
+    pub fn force_clone(this: &Self) -> Self
     where
         T: Clone,
     {
-        if unsafe { &(*self.0.as_ptr()).count }.incr() == UpdateResult::Done {
-            Self(self.0)
+        if unsafe { &(*this.0.as_ptr()).count }.incr() == UpdateResult::Done {
+            Self(this.0)
         } else {
-            let inner = self.inner().clone();
+            let inner = this.inner().clone();
             let ptr = Box::into_raw(Box::new(inner));
             // SAFETY: duh
             let nonnull = unsafe { NonNull::new_unchecked(ptr) };
             Self(nonnull)
         }
+    }
+
+    #[inline]
+    pub fn mutate(this: &mut Self) -> &mut T
+    where
+        T: Clone,
+    {
+        if !this.is_unique() {
+            this.detach();
+        }
+        // SAFETY: uniqueness enforced
+        unsafe { this.as_mut_unchecked() }
+    }
+
+    #[inline]
+    pub fn mutate_copy(this: &mut Self) -> &mut T
+    where
+        T: Copy,
+    {
+        if !this.is_unique() {
+            this.detach_copy();
+        }
+        // SAFETY: uniqueness enforced
+        unsafe { this.as_mut_unchecked() }
+    }
+
+    pub(crate) fn detach(&mut self)
+    where
+        T: Clone,
+    {
+        *self = Self::new(Self::get(self).clone());
+    }
+
+    pub(crate) fn detach_copy(&mut self)
+    where
+        T: Copy,
+    {
+        *self = Self::new(*Self::get(self));
+    }
+
+    pub(crate) const fn count(&self) -> &C {
+        &self.inner().count
     }
 }
 
@@ -271,7 +379,7 @@ where
 
     #[inline]
     fn deref(&self) -> &Self::Target {
-        Smart::as_ref(self)
+        Self::get(self)
     }
 }
 
@@ -281,7 +389,7 @@ where
 {
     #[inline]
     fn as_ref(&self) -> &T {
-        Smart::as_ref(self)
+        Self::get(self)
     }
 }
 
@@ -297,4 +405,110 @@ where
     T: Sync + Send,
     C: Sync + Backend,
 {
+}
+
+impl<T, C> fmt::Debug for Smart<T, C>
+where
+    T: fmt::Debug,
+    C: Backend,
+{
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        T::fmt(self, f)
+    }
+}
+
+impl<T, C> fmt::Display for Smart<T, C>
+where
+    T: fmt::Display,
+    C: Backend,
+{
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        T::fmt(self, f)
+    }
+}
+
+impl<T, C> fmt::Pointer for Smart<T, C>
+where
+    C: Backend,
+{
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        ptr::from_ref(Self::get(self)).fmt(f)
+    }
+}
+
+impl<T, U, C1, C2> PartialEq<Smart<U, C2>> for Smart<T, C1>
+where
+    T: PartialEq<U>,
+    C1: Backend,
+    C2: Backend,
+{
+    #[inline]
+    fn eq(&self, other: &Smart<U, C2>) -> bool {
+        T::eq(self, other)
+    }
+}
+
+impl<T, C> Eq for Smart<T, C>
+where
+    T: Eq,
+    C: Backend,
+{
+}
+
+impl<T, U, C1, C2> PartialOrd<Smart<U, C2>> for Smart<T, C1>
+where
+    T: PartialOrd<U>,
+    C1: Backend,
+    C2: Backend,
+{
+    #[inline]
+    fn partial_cmp(&self, other: &Smart<U, C2>) -> Option<core::cmp::Ordering> {
+        T::partial_cmp(self, other)
+    }
+}
+
+impl<T, C> Ord for Smart<T, C>
+where
+    T: Ord,
+    C: Backend,
+{
+    #[inline]
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        T::cmp(self, other)
+    }
+}
+
+impl<T, C> Default for Smart<T, C>
+where
+    T: Default,
+    C: Backend,
+{
+    #[inline]
+    fn default() -> Self {
+        Self::new(T::default())
+    }
+}
+
+impl<T, C> Borrow<T> for Smart<T, C>
+where
+    C: Backend,
+{
+    #[inline]
+    fn borrow(&self) -> &T {
+        Self::get(self)
+    }
+}
+
+impl<T, C> Hash for Smart<T, C>
+where
+    T: Hash,
+    C: Backend,
+{
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        T::hash(self, state);
+    }
 }
