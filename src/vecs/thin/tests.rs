@@ -84,7 +84,7 @@ fn froms() {
     assert_eq!(v.as_slice(), &[1, 2, 3]);
 
     // inline vec
-    let v = ThinVec::from(crate::inline_vec![7 => 1, 2, 3]);
+    let v = ThinVec::from(crate::inline_vec![7 => 1_u8, 2, 3]);
     assert_eq!(v.as_slice(), &[1, 2, 3]);
 
     // array, check move

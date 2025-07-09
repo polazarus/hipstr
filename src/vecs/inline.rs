@@ -140,7 +140,6 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
     #[must_use]
     pub const fn new() -> Self {
         const {
-            assert!(BYTES != 0);
             assert!(BYTES <= TaggedU8::<SHIFT, TAG>::max());
             Self {
                 _aligned: [],

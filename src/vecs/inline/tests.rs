@@ -113,8 +113,9 @@ fn push_and_drop() {
     let counter = Cell::new(0);
 
     const CAP: usize = 7;
+    const BYTES: usize = size_of::<S>() * CAP + align_of::<S>() - 1;
     {
-        let mut inline = InlineVec::<S<'_>, CAP>::new();
+        let mut inline = InlineVec::<S<'_>, BYTES>::new();
         for _ in 0..CAP {
             inline.push(S(&counter));
             assert_eq!(counter.get(), 0);
@@ -314,7 +315,8 @@ fn niche() {
 #[test]
 fn zst() {
     const CAP: usize = TaggedU8::<SHIFT_DEFAULT, TAG_DEFAULT>::max();
-    let mut inline = InlineVec::<(), CAP>::new();
+    let mut inline = InlineVec::<(), 0>::new();
+    assert_eq!(inline.capacity(), CAP);
     assert_eq!(size_of_val(&inline), 1);
     assert_eq!(inline.len(), 0);
     for i in 1..=CAP {
