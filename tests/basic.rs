@@ -1,5 +1,7 @@
 use std::borrow::Cow;
+use std::cell::Cell;
 use std::hint::black_box;
+use std::marker::PhantomData;
 
 use hipstr::{HipByt, HipStr};
 
@@ -48,4 +50,48 @@ fn test_borrow() {
 fn test_clone() {
     let h: HipByt<'static> = b"a".into();
     let _ = black_box(klone(&h));
+}
+
+// use pointer because they are cheaper to optimize away than cell reference
+struct IsCopy<T>(*mut bool, PhantomData<T>);
+
+impl<T> Clone for IsCopy<T> {
+    #[inline(always)]
+    fn clone(&self) -> Self {
+        if let Some(r) = unsafe { self.0.as_mut() } {
+            *r = false;
+        }
+        IsCopy(self.0, self.1)
+    }
+}
+
+impl<T: Copy> Copy for IsCopy<T> {}
+
+#[inline(always)]
+fn is_copy<T>() -> bool {
+    let mut result = true;
+    {
+        let array = [IsCopy::<T>(&raw mut result, PhantomData)];
+        let _ = array.clone();
+    }
+    result
+}
+
+#[inline(never)]
+#[unsafe(no_mangle)]
+pub extern "C" fn is_copy_i32() -> bool {
+    is_copy::<i32>()
+}
+
+#[inline(never)]
+#[unsafe(no_mangle)]
+pub extern "C" fn is_copy_vec_i32() -> bool {
+    is_copy::<Vec<i32>>()
+}
+
+#[test]
+#[inline(never)]
+pub fn test_clone_copy() {
+    assert!(is_copy::<[i32; 4]>());
+    assert!(!is_copy::<Vec<i32>>());
 }

@@ -20,11 +20,9 @@ use crate::vecs::thin::Header;
 #[cfg(test)]
 mod tests;
 
-const TAG_MASK: usize = 0b11;
-const THIN_BIT: usize = 0b01;
-const TAG_THIN: usize = 0b11;
-const TAG_FAT: usize = 0b10;
-const TAG_OWNED_MASK: usize = 0b10;
+const TAG_MASK: usize = super::TAG_MASK as usize;
+const TAG_THIN: usize = super::TAG_THIN as usize;
+const TAG_FAT: usize = super::TAG_FAT as usize;
 
 #[derive(Clone, Copy)]
 enum Variant<F, T> {
@@ -67,13 +65,13 @@ impl<T, B: Backend> TaggedSmart<T, B> {
     #[inline]
     fn is_thin(self) -> bool {
         debug_assert!(self.check_tag());
-        self.addr() & THIN_BIT != 0
+        self.addr() & TAG_MASK == TAG_THIN
     }
 
     #[inline]
     fn is_fat(self) -> bool {
         debug_assert!(self.check_tag());
-        self.addr() & THIN_BIT == 0
+        self.addr() & TAG_MASK == TAG_FAT
     }
 
     fn ptr(self) -> NonNull<()> {
@@ -167,7 +165,9 @@ impl<T, B: Backend> TaggedSmart<T, B> {
     #[inline]
     fn check_tag(self) -> bool {
         let addr = self.0.addr().get();
-        (addr & !TAG_MASK) != 0 && (addr & TAG_OWNED_MASK) != 0
+        let tag = addr & TAG_MASK;
+        let addr = addr & !TAG_MASK;
+        addr != 0 && matches!(tag, TAG_FAT | TAG_THIN)
     }
 }
 

@@ -358,7 +358,7 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
     /// Creates a new empty inline `HipByt`.
     #[inline]
     pub(super) const fn inline_empty() -> Self {
-        const { Self::from_inline(InlineVec::new()) }
+        const { Self::from_inline(Inline::new()) }
     }
 
     /// Creates a new `HipByt` from a short slice.
@@ -368,7 +368,7 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
     /// The input slice's length MUST be at most `INLINE_CAPACITY`.
     pub(super) const unsafe fn inline_unchecked(bytes: &[u8]) -> Self {
         // SAFETY: see function precondition
-        let inline = unsafe { InlineVec::from_slice_copy_unchecked(bytes) };
+        let inline = unsafe { Inline::from_slice_copy_unchecked(bytes) };
         Self::from_inline(inline)
     }
 
