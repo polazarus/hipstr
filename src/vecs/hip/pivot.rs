@@ -6,6 +6,7 @@ use super::borrowed::Borrowed;
 use super::inline::InlineVec;
 use super::{Allocated, INLINE_BYTES, WORD_SIZE_M1};
 use crate::backend::Backend;
+use crate::vecs::hip::allocated::{Fat, SharedCountView, Thin};
 
 #[derive(Clone, Copy)]
 #[repr(C)]
@@ -75,8 +76,11 @@ impl<T> SliceView<T> {
 
 #[repr(C)]
 pub(crate) union Union<'borrow, T, B: Backend> {
-    /// Heap-allocated
-    pub(crate) allocated: ManuallyDrop<Allocated<T, B>>,
+    /// Heap-allocated thin
+    pub(crate) thin: ManuallyDrop<Thin<T, B>>,
+
+    /// Heap-allocated fat
+    pub(crate) fat: ManuallyDrop<Fat<T, B>>,
 
     /// Borrowed slice
     pub(crate) borrowed: Borrowed<'borrow, T>,
@@ -89,9 +93,13 @@ pub(crate) union Union<'borrow, T, B: Backend> {
 
     /// View to access the slice
     pub(crate) slice: SliceView<T>,
+
+    /// View to access the counter
+    pub(crate) shared: SharedCountView<B>,
 }
 
-pub enum Tag {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Repr {
     Inline = 0b01,
     Thin = 0b10,
     Fat = 0b11,
