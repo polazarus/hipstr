@@ -1,13 +1,15 @@
 use core::hint::unreachable_unchecked;
 use core::marker::PhantomData;
-use core::mem::{transmute, ManuallyDrop, MaybeUninit};
+use core::mem::{offset_of, transmute, ManuallyDrop, MaybeUninit};
 use core::num::NonZeroU8;
 use core::ptr::NonNull;
 
 use crate::backend::Backend;
-use crate::vecs::hip::allocated::{Fat, SharedCountView, Thin};
+use crate::common::traits::MutVector;
+use crate::vecs::hip::allocated::{Allocated, Fat, SharedCountView, Thin};
 use crate::vecs::hip::Inline;
 use crate::vecs::{TAG_BORROWED, TAG_BORROWED_MASKED, TAG_FAT, TAG_INLINE, TAG_MASK, TAG_THIN};
+use crate::Rc;
 
 const WORD_SIZE_M1: usize = size_of::<*mut ()>() - 1;
 
@@ -55,13 +57,6 @@ impl Repr {
             TAG_THIN => Tag::Thin,
             TAG_FAT => Tag::Fat,
             _ => unsafe { unreachable_unchecked() },
-        }
-    }
-
-    pub const unsafe fn union<'borrow, T, B: Backend>(&self) -> &Union<'borrow, T, B> {
-        unsafe {
-            // SAFETY: The layout of `Pivot` matches the union layout.
-            transmute::<&Repr, &Union<'borrow, T, B>>(self)
         }
     }
 
@@ -135,13 +130,45 @@ impl Repr {
             "alignment mismatch between Inline and Repr (Repr alignment is insufficient)"
         );
 
-        union Tr<T> {
-            pivot: Repr,
-            inline: ManuallyDrop<Inline<T>>,
-        }
         let inline = ManuallyDrop::new(inline);
-        unsafe { Tr { inline }.pivot }
+        unsafe { InlineRepr { inline }.pivot }
     }
+
+    pub const unsafe fn inline_mut<T>(&mut self) -> &mut Inline<T> {
+        debug_assert!(
+            size_of::<Inline<T>>() == size_of::<Repr>(),
+            "size mismatch between Inline and Repr"
+        );
+        debug_assert!(
+            matches!(self.repr(), Tag::Inline),
+            "invalid repr (inline expected)"
+        );
+
+        unsafe { transmute::<&mut Self, &mut Inline<T>>(self) }
+    }
+
+    pub const unsafe fn thin_mut<T, B: Backend>(&mut self) -> &mut Thin<T, B> {
+        debug_assert!(
+            matches!(self.repr(), Tag::Thin),
+            "invalid repr (thin expected)"
+        );
+        // SAFETY: The layout of `Pivot` matches the layout of `Thin<T, B>`.
+        unsafe { transmute::<&mut Self, &mut Thin<T, B>>(self) }
+    }
+
+    pub const unsafe fn fat_mut<T, B: Backend>(&mut self) -> &mut Fat<T, B> {
+        debug_assert!(
+            matches!(self.repr(), Tag::Fat),
+            "invalid repr (fat expected)"
+        );
+        // SAFETY: The layout of `Pivot` matches the layout of `Fat<T, B>`.
+        unsafe { transmute::<&mut Self, &mut Fat<T, B>>(self) }
+    }
+}
+
+union InlineRepr<T> {
+    pivot: Repr,
+    inline: ManuallyDrop<Inline<T>>,
 }
 
 #[derive(Clone, Copy)]
@@ -258,3 +285,9 @@ impl<'borrow, T> Clone for Borrowed<'borrow, T> {
         *self
     }
 }
+
+const ASSERTS: () = {
+    assert!(offset_of!(Borrowed::<u8>, ptr) == offset_of!(SliceView::<u8>, ptr));
+    assert!(offset_of!(Thin::<u8, Rc>, ptr) == offset_of!(SliceView::<u8>, ptr));
+    assert!(offset_of!(Fat::<u8, Rc>, ptr) == offset_of!(SliceView::<u8>, ptr));
+};

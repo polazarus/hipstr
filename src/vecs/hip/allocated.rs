@@ -1,8 +1,8 @@
 use alloc::vec::Vec;
 use core::marker::PhantomData;
-use core::mem::transmute;
+use core::mem::{transmute, MaybeUninit};
 use core::num::NonZeroUsize;
-use core::ops::{Deref, Range};
+use core::ops::{Deref, DerefMut, Range};
 use core::ptr::NonNull;
 
 use self::sealed::Sealed;
@@ -50,8 +50,13 @@ impl<O: VecPtr<T>, T, const TAG: usize, const MASK: usize> Allocated<O, T, TAG, 
             result
         })
     }
+
+    pub unsafe fn owner_mut(&self) -> RefMut<O> {
+        unsafe { self.owner.get_mut() }
+    }
 }
 
+#[repr(transparent)]
 pub struct TaggedPtr<T, O: VecPtr<T>, const TAG: usize, const MASK: usize>(
     NonNull<()>,
     PhantomData<(O, [T])>,
@@ -93,6 +98,10 @@ impl<T, O: VecPtr<T>, const TAG: usize, const MASK: usize> TaggedPtr<T, O, TAG, 
             });
         }
         result
+    }
+
+    unsafe fn get_mut(&self) -> RefMut<O> {
+        RefMut(self.untagged(), PhantomData)
     }
 }
 
@@ -179,17 +188,57 @@ impl<T, B: Backend> VecPtr<T> for SmartThinVec<T, B> {
 
 pub struct Ref<'a, O>(NonNull<()>, PhantomData<&'a O>);
 
-impl<O> Deref for Ref<'_, O> {
-    type Target = O;
-
-    fn deref(&self) -> &Self::Target {
+impl<'a, O> Ref<'a, O> {
+    #[inline]
+    pub const fn as_ref(&self) -> &O {
         unsafe { transmute::<&NonNull<()>, &O>(&self.0) }
     }
 }
 
+impl<O> Deref for Ref<'_, O> {
+    type Target = O;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        self.as_ref()
+    }
+}
+
+pub struct RefMut<'a, O>(NonNull<()>, PhantomData<&'a O>);
+
+impl<'a, O> RefMut<'a, O> {
+    #[inline]
+    pub const fn as_ref(&self) -> &O {
+        unsafe { transmute::<&NonNull<()>, &O>(&self.0) }
+    }
+    #[inline]
+    pub const fn as_mut(&mut self) -> &mut O {
+        unsafe { transmute::<&mut NonNull<()>, &mut O>(&mut self.0) }
+    }
+}
+
+impl<O> Deref for RefMut<'_, O> {
+    type Target = O;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        self.as_ref()
+    }
+}
+
+impl<O> DerefMut for RefMut<'_, O> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.as_mut()
+    }
+}
+
+#[repr(C)]
 #[derive(Debug)]
 pub struct SharedCountView<B> {
     pub(crate) tagged_ptr: NonNull<B>,
+    pub _ptr: MaybeUninit<*mut ()>,
+    pub _len: MaybeUninit<usize>,
 }
 
 impl<B> Copy for SharedCountView<B> {}

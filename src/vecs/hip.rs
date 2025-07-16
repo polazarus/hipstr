@@ -3,13 +3,15 @@ use core::hint::unreachable_unchecked;
 use core::marker::PhantomData;
 use core::mem::ManuallyDrop;
 use core::ops::RangeBounds;
-use core::panic;
+use core::{panic, ptr};
 
 use self::allocated::Allocated;
 use self::inline::InlineVec;
 pub use self::reprs::Tag;
 use self::reprs::{Borrowed, Repr, Union};
-use crate::backend::{Backend, Counter};
+use crate::backend::{
+    Backend, BackendImpl, CloneOnOverflow, Counter, PanicOnOverflow, UpdateResult,
+};
 use crate::common::{self, RangeError};
 use crate::smart::Smart;
 use crate::vecs::hip::allocated::{Fat, Thin};
@@ -114,19 +116,17 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
     }
 
     #[inline]
-    const fn from_pivot(pivot: Repr) -> Self {
-        Self {
-            repr: pivot,
-            _marker: PhantomData,
-        }
-    }
-
-    #[inline]
     const fn from_union(union: reprs::Union<'borrow, T, B>) -> Self {
         Self {
             repr: unsafe { union.pivot },
             _marker: PhantomData,
         }
+    }
+
+    #[inline]
+    pub fn from_vec(value: Vec<T>) -> Self {
+        let owner = Smart::new(value);
+        Self::from_fat(owner)
     }
 
     #[inline]
@@ -156,6 +156,28 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
         }
     }
 
+    /// Returns `true` if the vector is not shared currently.
+    ///
+    /// If the vector is inline, it is always unique.
+    /// Conversely, if the vector is borrowed, it is never unique.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use hipstr::vecs::HipVec;
+    /// use hipstr::vecs::hip::Tag;
+    /// use hipstr::Arc;
+    /// let vec1 = HipVec::<u8, Arc>::from_array([1, 2, 3]);
+    /// assert!(vec1.is_unique());
+    ///
+    /// let array = [1, 2, 3];
+    /// let vec2 = HipVec::<u8, Arc>::borrowed(&array);
+    /// assert!(!vec.is_unique());
+    ///
+    /// let vec3 = vec1.clone();
+    /// assert!(!vec1.is_unique());
+    /// assert!(!vec3.is_unique());
+    /// ```
     #[inline]
     pub fn is_unique(&self) -> bool {
         match self.tag() {
@@ -302,22 +324,20 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
     }
 
     const fn thin(&self) -> Option<&Thin<T, B>> {
-        match self.tag() {
-            Tag::Thin => {
-                // SAFETY: the representaiton is checked
-                Some(unsafe { self.repr.thin() })
-            }
-            _ => None,
+        if let Tag::Thin = self.tag() {
+            // SAFETY: the representaiton is checked
+            Some(unsafe { self.repr.thin() })
+        } else {
+            None
         }
     }
 
     const fn fat(&self) -> Option<&Fat<T, B>> {
-        match self.tag() {
-            Tag::Fat => {
-                // SAFETY: the representation is checked
-                Some(unsafe { self.repr.fat() })
-            }
-            _ => None,
+        if let Tag::Fat = self.tag() {
+            // SAFETY: the representation is checked
+            Some(unsafe { self.repr.fat() })
+        } else {
+            None
         }
     }
 
@@ -325,20 +345,6 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
 
     const fn fit_inline(len: usize) -> bool {
         Self::MAY_INLINE && len < Inline::<T>::CAP
-    }
-
-    #[inline]
-    const unsafe fn as_inline_unchecked(&self) -> &InlineVec<T, INLINE_BYTES> {
-        debug_assert!(Self::MAY_INLINE, "inline should be possible");
-        // SAFETY: inline by precondition
-        unsafe { self.repr.inline() }
-    }
-
-    #[inline]
-    const unsafe fn as_slice_view(&self) -> &reprs::SliceView<T> {
-        // SAFETY: the pivot is guaranteed to be a SliceView<T> when not inline
-        let view = unsafe { &self.repr.slice_view() };
-        view
     }
 
     /// Returns a slice of the vector.
@@ -421,35 +427,57 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
         core::mem::replace(self, Self::EMPTY)
     }
 
-    const fn into_union(self) -> reprs::Union<'borrow, T, B> {
-        let pivot = self.repr;
-        core::mem::forget(self);
-        Union { pivot }
-    }
-
-    const unsafe fn into_inline_unchecked(self) -> Inline<T> {
-        debug_assert!(Self::MAY_INLINE, "inline should be possible");
-        debug_assert!(
-            self.is_inline(),
-            "invalid repr (allocated or borrowed expected)"
-        );
-        assert!(
-            size_of::<Inline<T>>() == size_of::<Repr>(),
-            "inline size mismatch"
-        );
-        assert!(
-            align_of::<Inline<T>>() <= align_of::<Repr>(),
-            "inline alignment mismatch"
-        );
-        union Tr<T> {
-            pivot: Repr,
-            inline: ManuallyDrop<Inline<T>>,
+    /// Clones the hip vector without cloning or copying the elements if
+    /// possible, returns `None` otherwise.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use hipstr::vecs::HipVec;
+    /// use hipstr::vecs::hip::Tag;
+    /// use hipstr::{Arc, Unique};
+    ///
+    /// let vec = HipVec::<u8, Arc>::from_array([1, 2, 3]);
+    /// assert_eq!(vec.tag(), Tag::Inline);
+    /// let cloned = vec.try_clone();
+    /// assert!(cloned.is_none(), "inline vector cannot be shared");
+    ///
+    /// let vec = HipVec::<u8, Unique>::from_array([1; 40]);
+    /// assert_eq!(vec.tag(), Tag::Thin);
+    /// let cloned = vec.try_clone();
+    /// assert!(cloned.is_none(), "unique vector cannot be shared");
+    ///
+    /// let vec = HipVec::<u8, Arc>::from_array([1; 40]);
+    /// assert_eq!(vec.tag(), Tag::Thin);
+    /// let cloned = vec.try_clone();
+    /// assert!(cloned.is_some(), "arc thin vector can be shared");
+    ///
+    /// let arr = [1,2,3,4,5];
+    /// let vec = HipVec::<u8, Arc>::borrowed(&arr);
+    /// assert_eq!(vec.tag(), Tag::Borrowed);
+    /// let cloned = vec.try_clone();
+    /// assert!(cloned.is_some(), "borrowed vector can be shared");
+    #[inline]
+    pub fn try_clone(&self) -> Option<Self> {
+        match self.tag() {
+            Tag::Inline => None,
+            Tag::Thin | Tag::Fat => {
+                // SAFETY: the repr is checked above
+                let view = unsafe { self.repr.shared_view::<B>() };
+                let result = view.with(|counter| counter.incr());
+                match result {
+                    UpdateResult::Done => Some(Self {
+                        repr: self.repr,
+                        _marker: PhantomData,
+                    }),
+                    UpdateResult::Overflow => None,
+                }
+            }
+            Tag::Borrowed => Some(Self {
+                repr: self.repr,
+                _marker: PhantomData,
+            }),
         }
-
-        let pivot = self.repr;
-        core::mem::forget(self);
-
-        ManuallyDrop::into_inner(unsafe { Tr { pivot }.inline })
     }
 }
 
@@ -530,6 +558,53 @@ impl<'borrow, T: Clone, B: Backend> HipVec<'borrow, T, B> {
             }
         }
     }
+
+    /// Clones the vector, returning a new hip vector that contains the same
+    /// elements, possibly clong them if necessary.
+    ///
+    /// It will clone the data if either the vector is inline or the sharing
+    /// is impossible.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use hipstr::vecs::HipVec;
+    /// use hipstr::vecs::hip::Tag;
+    /// use hipstr::{Arc, Unique};
+    /// let vec = HipVec::<u8, Arc>::from_array([1, 2, 3]);
+    /// assert_eq!(vec.tag(), Tag::Inline);
+    /// let cloned = vec.force_clone();
+    /// assert_eq!(cloned.tag(), Tag::Inline);
+    ///
+    /// let vec = HipVec::<u8, Unique>::from_array([0; 40]);
+    /// assert_eq!(vec.tag(), Tag::Thin);
+    /// let cloned = vec.force_clone();
+    /// assert_eq!(cloned.tag(), Tag::Thin);
+    ///
+    ///
+    /// let vec = HipVec::<u8, Arc>::from_array([0; 40]);
+    /// assert_eq!(vec.tag(), Tag::Thin);
+    /// let cloned = vec.force_clone();
+    /// assert_eq!(cloned.tag(), Tag::Thin);
+    /// assert_eq!(cloned.as_ptr(), vec.as_ptr());
+    /// ```
+    #[inline]
+    pub fn force_clone(&self) -> Self {
+        self.try_clone()
+            .unwrap_or_else(|| Self::from_slice_clone(self.as_slice()))
+    }
+
+    pub fn detach(&mut self) {
+        match self.tag() {
+            Tag::Inline => {
+                // do nothing
+            }
+            Tag::Thin | Tag::Fat if self.is_unique() => {
+                // do nothing
+            }
+            _ => *self = Self::from_slice_clone(self.as_slice()),
+        }
+    }
 }
 
 impl<'borrow, T: Copy, B: Backend> HipVec<'borrow, T, B> {
@@ -590,12 +665,71 @@ impl<'borrow, T: Copy, B: Backend> HipVec<'borrow, T, B> {
     where
         T: Copy,
     {
-        todo!()
+        self.try_clone()
+            .unwrap_or_else(|| Self::from_slice_copy(self.as_slice()))
+    }
+
+    #[inline]
+    pub fn detach_copy(&mut self) {
+        match self.tag() {
+            Tag::Inline => {
+                // do nothing
+            }
+            Tag::Thin | Tag::Fat if self.is_unique() => {
+                // do nothing
+            }
+            _ => *self = Self::from_slice_copy(self.as_slice()),
+        }
     }
 }
 
 impl<'borrow, T, B: Backend> Default for HipVec<'borrow, T, B> {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl<'borrow, T, C: Counter> Clone for HipVec<'borrow, T, BackendImpl<C, PanicOnOverflow>> {
+    fn clone(&self) -> Self {
+        self.try_clone().unwrap_or_else(|| panic!("count overflow"))
+    }
+}
+
+impl<'borrow, T: Clone, C: Counter> Clone for HipVec<'borrow, T, BackendImpl<C, CloneOnOverflow>> {
+    fn clone(&self) -> Self {
+        self.force_clone()
+    }
+}
+
+impl<'borrow, T, B: Backend> Drop for HipVec<'borrow, T, B> {
+    fn drop(&mut self) {
+        match self.tag() {
+            Tag::Inline => {
+                // SAFETY: representation is inline
+                // converts to inline mut ref and drops it in place
+                unsafe {
+                    ptr::drop_in_place(self.repr.inline_mut::<T>());
+                }
+            }
+            Tag::Thin => {
+                // SAFETY: representation is thin
+                // converts to thin mut ref and drops the owner in place
+                unsafe {
+                    ptr::drop_in_place(self.repr.thin_mut::<T, B>().owner_mut().as_mut());
+                }
+            }
+            Tag::Fat => {
+                // SAFETY: representation is fat
+                // converts to fat mut ref and drops the owner in place
+                unsafe {
+                    ptr::drop_in_place(self.repr.fat_mut::<T, B>().owner_mut().as_mut());
+                }
+            }
+
+            Tag::Borrowed => {
+                // do nothing, borrowed repr does not own the data
+            }
+            _ => unreachable!(),
+        }
     }
 }
