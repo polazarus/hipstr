@@ -5,8 +5,7 @@ use core::num::NonZeroU8;
 use core::ptr::NonNull;
 
 use crate::backend::Backend;
-use crate::common::traits::MutVector;
-use crate::vecs::hip::allocated::{Allocated, Fat, SharedCountView, Thin};
+use crate::vecs::hip::allocated::{Fat, SharedCountView, Thin};
 use crate::vecs::hip::Inline;
 use crate::vecs::{TAG_BORROWED, TAG_BORROWED_MASKED, TAG_FAT, TAG_INLINE, TAG_MASK, TAG_THIN};
 use crate::Rc;
@@ -24,7 +23,7 @@ pub enum Tag {
 /// Internal pivot representation for a "hip" vector.
 #[derive(Clone, Copy)]
 #[repr(C)]
-pub(crate) struct Repr {
+pub struct Repr {
     _align: [usize; 0],
 
     #[cfg(target_endian = "little")]
@@ -62,7 +61,7 @@ impl Repr {
 
     pub const unsafe fn inline<T>(&self) -> &Inline<T> {
         debug_assert!(
-            size_of::<Inline<T>>() == size_of::<Repr>(),
+            size_of::<Inline<T>>() == size_of::<Self>(),
             "size mismatch between Inline and Repr"
         );
         debug_assert!(
@@ -71,7 +70,7 @@ impl Repr {
         );
         unsafe {
             // SAFETY: The layout of `Pivot` matches the layout of `Inline<T>`.
-            transmute::<&Repr, &Inline<T>>(self)
+            transmute::<&Self, &Inline<T>>(self)
         }
     }
 
@@ -81,7 +80,7 @@ impl Repr {
             "invalid repr (thin, fat or borrowed expected)"
         );
         // SAFETY: The layout of `Pivot` matches the layout of `SliceView<T>`.
-        unsafe { transmute::<&Repr, &SliceView<T>>(self) }
+        unsafe { transmute::<&Self, &SliceView<T>>(self) }
     }
 
     pub const unsafe fn borrowed<'borrow, T>(&self) -> &Borrowed<'borrow, T> {
@@ -90,7 +89,7 @@ impl Repr {
             "invalid repr (borrowed expected)"
         );
         // SAFETY: The layout of `Pivot` matches the layout of `Borrowed<'borrow, T>`.
-        unsafe { transmute::<&Repr, &Borrowed<'borrow, T>>(self) }
+        unsafe { transmute::<&Self, &Borrowed<'borrow, T>>(self) }
     }
 
     pub const unsafe fn thin<T, B: Backend>(&self) -> &Thin<T, B> {
@@ -99,7 +98,7 @@ impl Repr {
             "invalid repr (thin expected)"
         );
         // SAFETY: The layout of `Pivot` matches the layout of `Thin<T, B>`.
-        unsafe { transmute::<&Repr, &Thin<T, B>>(self) }
+        unsafe { transmute::<&Self, &Thin<T, B>>(self) }
     }
 
     pub const unsafe fn fat<T, B: Backend>(&self) -> &Fat<T, B> {
@@ -108,7 +107,7 @@ impl Repr {
             "invalid repr (fat expected)"
         );
         // SAFETY: The layout of `Pivot` matches the layout of `Fat<T, B>`.
-        unsafe { transmute::<&Repr, &Fat<T, B>>(self) }
+        unsafe { transmute::<&Self, &Fat<T, B>>(self) }
     }
 
     pub const unsafe fn shared_view<B: Backend>(&self) -> &SharedCountView<B> {
@@ -117,10 +116,10 @@ impl Repr {
             "invalid repr (thin or fat expected)"
         );
         // SAFETY: The layout of `Pivot` matches the layout of `SharedCountView<B>`.
-        unsafe { transmute::<&Repr, &SharedCountView<B>>(self) }
+        unsafe { transmute::<&Self, &SharedCountView<B>>(self) }
     }
 
-    pub const unsafe fn from_inline<T>(inline: Inline<T>) -> Repr {
+    pub const unsafe fn from_inline<T>(inline: Inline<T>) -> Self {
         assert!(
             size_of::<Inline<T>>() == size_of::<Self>(),
             "size mismatch between Inline and Repr"
@@ -136,8 +135,12 @@ impl Repr {
 
     pub const unsafe fn inline_mut<T>(&mut self) -> &mut Inline<T> {
         debug_assert!(
-            size_of::<Inline<T>>() == size_of::<Repr>(),
+            size_of::<Inline<T>>() == size_of::<Self>(),
             "size mismatch between Inline and Repr"
+        );
+        assert!(
+            align_of::<Inline<T>>() <= align_of::<Self>(),
+            "alignment mismatch between Inline and Repr (Repr alignment is insufficient)"
         );
         debug_assert!(
             matches!(self.repr(), Tag::Inline),
@@ -182,29 +185,29 @@ union InlineRepr<T> {
 
 #[derive(Clone, Copy)]
 #[repr(C)]
-pub(crate) struct WordView {
+pub struct WordView {
     #[cfg(target_endian = "little")]
-    pub(crate) tag: usize,
+    pub tag: usize,
 
-    pub(crate) _others: [MaybeUninit<*mut ()>; 2],
+    pub _others: [MaybeUninit<*mut ()>; 2],
 
     #[cfg(target_endian = "big")]
-    pub(crate) tag: usize,
+    pub tag: usize,
 }
 
 #[repr(C)]
-pub(crate) struct SliceView<T> {
+pub struct SliceView<T> {
     #[cfg(target_endian = "little")]
-    pub(crate) tag: usize,
+    pub tag: usize,
 
     /// Pointer to the slice data
-    pub(crate) ptr: NonNull<T>,
+    pub ptr: NonNull<T>,
 
     /// Length of the slice
-    pub(crate) len: usize,
+    pub len: usize,
 
     #[cfg(target_endian = "big")]
-    pub(crate) tag: usize,
+    pub tag: usize,
 }
 
 impl<T> Copy for SliceView<T> {}
@@ -216,7 +219,7 @@ impl<T> Clone for SliceView<T> {
 }
 
 impl<T> SliceView<T> {
-    pub(crate) const fn as_slice(&self) -> &[T] {
+    pub const fn as_slice(&self) -> &[T] {
         unsafe {
             // SAFETY: The pointer is guaranteed to be valid and the length is non-negative.
             core::slice::from_raw_parts(self.ptr.as_ptr(), self.len)
@@ -225,53 +228,53 @@ impl<T> SliceView<T> {
 }
 
 #[repr(C)]
-pub(crate) union Union<'borrow, T, B: Backend> {
+pub union Union<'borrow, T, B: Backend> {
     /// Heap-allocated thin
-    pub(crate) thin: ManuallyDrop<Thin<T, B>>,
+    pub thin: ManuallyDrop<Thin<T, B>>,
 
     /// Heap-allocated fat
-    pub(crate) fat: ManuallyDrop<Fat<T, B>>,
+    pub fat: ManuallyDrop<Fat<T, B>>,
 
     /// Borrowed slice
-    pub(crate) borrowed: Borrowed<'borrow, T>,
+    pub borrowed: Borrowed<'borrow, T>,
 
     /// Pivot representation with niche
-    pub(crate) pivot: Repr,
+    pub pivot: Repr,
 
     /// View to access the tagged word
-    pub(crate) words: WordView,
+    pub words: WordView,
 
     /// View to access the slice
-    pub(crate) slice: SliceView<T>,
+    pub slice: SliceView<T>,
 
     /// View to access the counter
-    pub(crate) shared: SharedCountView<B>,
+    pub shared: SharedCountView<B>,
 }
 
 #[repr(usize)]
 #[derive(Clone, Copy)]
-pub(crate) enum BorrowedTag {
+pub enum BorrowedTag {
     Value = TAG_BORROWED as usize, // reuse a tag of a fat vector
 }
 
 #[repr(C)]
-pub(crate) struct Borrowed<'borrow, T> {
+pub struct Borrowed<'borrow, T> {
     #[cfg(target_endian = "little")]
-    pub(crate) tag: BorrowedTag,
+    pub tag: BorrowedTag,
 
-    pub(crate) ptr: *const T,
+    pub ptr: *const T,
 
-    pub(crate) len: usize,
+    pub len: usize,
 
     #[cfg(target_endian = "big")]
     pub tag: BorrowedTag,
 
-    pub(crate) phantom: PhantomData<&'borrow [T]>,
+    pub phantom: PhantomData<&'borrow [T]>,
 }
 
 impl<'borrow, T> Borrowed<'borrow, T> {
     #[inline]
-    pub(crate) const fn new(slice: &'borrow [T]) -> Self {
+    pub const fn new(slice: &'borrow [T]) -> Self {
         Self {
             tag: BorrowedTag::Value,
             ptr: slice.as_ptr(),
@@ -281,21 +284,29 @@ impl<'borrow, T> Borrowed<'borrow, T> {
     }
 
     #[inline]
-    pub(crate) const fn as_slice(&self) -> &'borrow [T] {
+    pub const fn as_slice(&self) -> &'borrow [T] {
         // SAFETY: validity ensured by construction.
-        unsafe { core::slice::from_raw_parts(self.ptr as *const T, self.len) }
+        unsafe { core::slice::from_raw_parts(self.ptr, self.len) }
     }
 }
 
-impl<'borrow, T> Copy for Borrowed<'borrow, T> {}
+impl<T> Copy for Borrowed<'_, T> {}
 
-impl<'borrow, T> Clone for Borrowed<'borrow, T> {
+impl<T> Clone for Borrowed<'_, T> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-const ASSERTS: () = {
+const _ASSERTS: () = {
+    // the union should be tight
+    assert!(size_of::<Repr>() == size_of::<Union<u8, crate::Rc>>());
+
+    // for some basic types, the inline representation should be the same size as `Repr`
+    assert!(size_of::<Repr>() == size_of::<Inline<u8>>());
+    assert!(size_of::<Repr>() == size_of::<Inline<u16>>());
+    assert!(size_of::<Repr>() == size_of::<Inline<u32>>());
+
     assert!(offset_of!(Borrowed::<u8>, ptr) == offset_of!(SliceView::<u8>, ptr));
     assert!(offset_of!(Thin::<u8, Rc>, ptr) == offset_of!(SliceView::<u8>, ptr));
     assert!(offset_of!(Fat::<u8, Rc>, ptr) == offset_of!(SliceView::<u8>, ptr));
