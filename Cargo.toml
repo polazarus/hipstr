@@ -73,6 +73,15 @@ unexpected_cfgs = { level = "warn", check-cfg = [
     'cfg(loom)',
 ] }
 
+[lints.clippy]
+pedantic = { level = "warn" }
+nursery = { level = "warn" }
+cargo = { level = "warn" }
+alloc_instead_of_core = { level = "warn" }
+std_instead_of_alloc = { level = "warn" }
+std_instead_of_core = { level = "warn" }
+shadow_unrelated = { level = "warn" }
+
 [[bench]]
 name = "main"
 harness = false

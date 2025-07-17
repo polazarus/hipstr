@@ -87,8 +87,6 @@
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 #![cfg_attr(docsrs, feature(doc_cfg))]
-#![warn(clippy::pedantic, clippy::nursery, clippy::cargo)]
-#![warn(unsafe_op_in_unsafe_fn)]
 
 extern crate alloc;
 #[cfg(feature = "std")]
