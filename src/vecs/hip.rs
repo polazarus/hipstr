@@ -64,6 +64,7 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
     /// assert_eq!(vec.as_slice(), &[]);
     /// ```
     #[inline]
+    #[must_use]
     pub const fn new() -> Self {
         Self::EMPTY
     }
@@ -106,6 +107,7 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
     /// assert_eq!(vec.as_slice(), [1; 40]);
     /// ```
     #[inline]
+    #[must_use]
     pub fn from_array<const N: usize>(arr: [T; N]) -> Self {
         if const { Self::fit_inline(N) } {
             Self::from_inline(Inline::from_array(arr))
@@ -116,7 +118,7 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
     }
 
     #[inline]
-    const fn from_union(union: reprs::Union<'borrow, T, B>) -> Self {
+    const fn from_union(union: Union<'borrow, T, B>) -> Self {
         Self {
             repr: unsafe { union.pivot },
             _marker: PhantomData,
@@ -124,6 +126,7 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
     }
 
     #[inline]
+    #[must_use]
     pub fn from_vec(value: Vec<T>) -> Self {
         let owner = Smart::new(value);
         Self::from_fat(owner)
@@ -184,7 +187,7 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
             Tag::Borrowed => false,
             Tag::Inline => true,
             Tag::Thin | Tag::Fat => {
-                unsafe { &self.repr.shared_view::<B>() }.with(Counter::is_unique)
+                unsafe { self.repr.shared_view::<B>() }.with(Counter::is_unique)
             }
         }
     }
@@ -203,6 +206,7 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
     /// assert!(vec.is_allocated());
     /// ```
     #[inline]
+    #[must_use]
     pub const fn is_allocated(&self) -> bool {
         matches!(self.tag(), Tag::Thin | Tag::Fat)
     }
@@ -222,6 +226,7 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
     /// assert!(vec.is_borrowed());
     /// assert_eq!(vec.as_ptr(), array.as_ptr());
     /// ```
+    #[must_use]
     pub const fn is_borrowed(&self) -> bool {
         matches!(self.tag(), Tag::Borrowed)
     }
@@ -239,6 +244,7 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
     /// let vec = HipVec::<u8, Arc>::from_array([0; 1024]);
     /// assert!(!vec.is_inline());
     /// ```
+    #[must_use]
     pub const fn is_inline(&self) -> bool {
         matches!(self.tag(), Tag::Inline)
     }
@@ -246,7 +252,7 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
     /// Creates a new `HipVec` from a borrowed slice.
     ///
     /// # Examples
-    /// /// ```rust
+    /// ```rust
     /// use hipstr::vecs::HipVec;
     /// use hipstr::Arc;
     /// let array = [1, 2, 3];
@@ -255,6 +261,7 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
     /// assert_eq!(&raw const *vec.as_slice(), &raw const *array.as_slice());
     /// ```
     #[inline]
+    #[must_use]
     pub const fn borrowed(slice: &'borrow [T]) -> Self {
         let borrowed = Borrowed::new(slice);
         let union: Union<'borrow, T, B> = Union { borrowed };
@@ -283,6 +290,7 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
     /// let vec = HipVec::<u8, Arc>::borrowed(&array);
     /// assert_eq!(vec.tag(), Tag::Borrowed);
     /// ```
+    #[must_use]
     pub const fn tag(&self) -> Tag {
         self.repr.repr()
     }
@@ -293,6 +301,7 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
     ///
     /// This function assumes that the vector is borrowed.
     #[inline]
+    #[must_use]
     pub const unsafe fn as_borrowed_unchecked(&self) -> &'borrow [T] {
         // SAFETY: repr precondition
         let borrowed = unsafe { self.repr.borrowed() };
@@ -313,29 +322,13 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
     /// assert_eq!(vec.as_borrowed(), None);
     /// ```
     #[inline]
+    #[must_use]
     pub const fn as_borrowed(&self) -> Option<&'borrow [T]> {
+        #[allow(clippy::equatable_if_let, reason = "const")]
         if let Tag::Borrowed = self.tag() {
             // SAFETY: repr is checked above
             let borrowed = unsafe { &self.repr.borrowed() };
             Some(borrowed.as_slice())
-        } else {
-            None
-        }
-    }
-
-    const fn thin(&self) -> Option<&Thin<T, B>> {
-        if let Tag::Thin = self.tag() {
-            // SAFETY: the representaiton is checked
-            Some(unsafe { self.repr.thin() })
-        } else {
-            None
-        }
-    }
-
-    const fn fat(&self) -> Option<&Fat<T, B>> {
-        if let Tag::Fat = self.tag() {
-            // SAFETY: the representation is checked
-            Some(unsafe { self.repr.fat() })
         } else {
             None
         }
@@ -358,7 +351,9 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
     /// assert_eq!(vec.as_slice(), &[1, 2, 3]);
     /// ```
     #[inline]
-    pub fn as_slice(&self) -> &[T] {
+    #[must_use]
+    pub const fn as_slice(&self) -> &[T] {
+        #[allow(clippy::equatable_if_let, reason = "const")]
         if let Tag::Inline = self.tag() {
             unsafe { self.repr.inline() }.as_slice()
         } else {
@@ -380,7 +375,9 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
     /// assert_eq!(vec.as_ptr(), array.as_ptr());
     /// ```
     #[inline]
-    pub fn as_ptr(&self) -> *const T {
+    #[must_use]
+    pub const fn as_ptr(&self) -> *const T {
+        #[allow(clippy::equatable_if_let, reason = "const")]
         if let Tag::Inline = self.tag() {
             unsafe { self.repr.inline() }.as_ptr()
         } else {
@@ -399,7 +396,9 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
     /// assert_eq!(vec.len(), 3);
     /// ```
     #[inline]
+    #[must_use]
     pub const fn len(&self) -> usize {
+        #[allow(clippy::equatable_if_let, reason = "const")]
         if let Tag::Inline = self.tag() {
             unsafe { self.repr.inline::<T>() }.len()
         } else {
@@ -419,12 +418,9 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
     /// let vec = HipVec::<u8, Arc>::from_array([1, 2, 3]);
     /// assert!(!vec.is_empty());
     #[inline]
-    pub fn is_empty(&self) -> bool {
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
         self.len() == 0
-    }
-
-    pub const fn take(&mut self) -> Self {
-        core::mem::replace(self, Self::EMPTY)
     }
 
     /// Clones the hip vector without cloning or copying the elements if
@@ -458,13 +454,14 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
     /// let cloned = vec.try_clone();
     /// assert!(cloned.is_some(), "borrowed vector can be shared");
     #[inline]
+    #[must_use]
     pub fn try_clone(&self) -> Option<Self> {
         match self.tag() {
             Tag::Inline => None,
             Tag::Thin | Tag::Fat => {
                 // SAFETY: the repr is checked above
                 let view = unsafe { self.repr.shared_view::<B>() };
-                let result = view.with(|counter| counter.incr());
+                let result = view.with(Counter::incr);
                 match result {
                     UpdateResult::Done => Some(Self {
                         repr: self.repr,
@@ -481,7 +478,7 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
     }
 }
 
-impl<'borrow, T: Clone, B: Backend> HipVec<'borrow, T, B> {
+impl<T: Clone, B: Backend> HipVec<'_, T, B> {
     #[inline]
     #[must_use]
     pub fn from_slice_clone(slice: &[T]) -> Self {
@@ -493,6 +490,35 @@ impl<'borrow, T: Clone, B: Backend> HipVec<'borrow, T, B> {
         }
     }
 
+    /// Slices the vector, returning a new `HipVec` that contains the specified
+    /// range.
+    ///
+    /// It may clone the data if necessary, for example, if the vector is inline
+    /// or if the sharing is impossible.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if the range is out of bounds or invalid.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use hipstr::vecs::HipVec;
+    /// use hipstr::vecs::hip::Tag;
+    /// use hipstr::{Arc, Unique};
+    /// let vec = HipVec::<u8, Arc>::from_array([1, 2, 3, 4, 5]);
+    /// assert_eq!(vec.tag(), Tag::Inline);
+    /// let sliced = vec.slice(1..4);
+    /// assert_eq!(sliced.as_slice(), &[2, 3, 4]);
+    ///
+    /// let vec = HipVec::<u8, Unique>::from_array([1; 40]);
+    /// assert_eq!(vec.tag(), Tag::Thin);
+    /// let sliced = vec.slice(0..4);
+    /// assert_eq!(sliced.tag(), Tag::Inline); // normalized to inline
+    /// assert_eq!(sliced.as_slice(), &[1, 1, 1, 1]);
+    /// let sliced = vec.slice(0..39);
+    /// assert_eq!(sliced.as_slice(), &[1; 39]);
+    /// ```
     #[inline]
     #[must_use]
     pub fn slice(&self, range: impl RangeBounds<usize>) -> Self {
@@ -604,6 +630,7 @@ impl<'borrow, T: Clone, B: Backend> HipVec<'borrow, T, B> {
     /// assert_eq!(cloned.as_ptr(), vec.as_ptr());
     /// ```
     #[inline]
+    #[must_use]
     pub fn force_clone(&self) -> Self {
         self.try_clone()
             .unwrap_or_else(|| Self::from_slice_clone(self.as_slice()))
@@ -622,7 +649,7 @@ impl<'borrow, T: Clone, B: Backend> HipVec<'borrow, T, B> {
     }
 }
 
-impl<'borrow, T: Copy, B: Backend> HipVec<'borrow, T, B> {
+impl<T: Copy, B: Backend> HipVec<'_, T, B> {
     #[inline]
     pub fn from_slice_copy(slice: &[T]) -> Self
     where
@@ -636,6 +663,26 @@ impl<'borrow, T: Copy, B: Backend> HipVec<'borrow, T, B> {
         }
     }
 
+    /// Slices the vector, returning a new `HipVec` that contains the specified range.
+    ///
+    /// It may copy the data if necessary, for example, if the vector is inline
+    /// or if the sharing is impossible.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the range is out of bounds or invalid.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use hipstr::vecs::HipVec;
+    /// use hipstr::vecs::hip::Tag;
+    /// use hipstr::Arc;
+    /// let vec = HipVec::<u8, Arc>::from_array([1, 2, 3, 4, 5]);
+    /// assert_eq!(vec.tag(), Tag::Inline);
+    /// let sliced = vec.slice_copy(1..4);
+    /// assert_eq!(sliced.as_slice(), &[2, 3, 4]);
+    /// ```
     pub fn slice_copy(&self, range: impl RangeBounds<usize>) -> Self {
         match self.try_slice_copy(range) {
             Ok(slice) => slice,
@@ -652,30 +699,43 @@ impl<'borrow, T: Copy, B: Backend> HipVec<'borrow, T, B> {
         if len == 0 {
             Ok(Self::EMPTY)
         } else if Self::fit_inline(len) {
+            // normalize to inline if possible
             let slice = unsafe { self.as_slice().get_unchecked(range) };
             Ok(Self::from_inline(Inline::from_slice_copy(slice)))
         } else {
             match self.tag() {
-                Tag::Inline => {
-                    // SAFETY: a subslice of an inline vector is always inlinable. Already done above.
-                    unsafe {
-                        unreachable_unchecked();
-                    }
-                }
+                Tag::Inline => unsafe { unreachable_unchecked() },
                 Tag::Thin | Tag::Fat => {
-                    todo!()
+                    let shared_view = unsafe { self.repr.shared_view::<B>() };
+
+                    let UpdateResult::Done = shared_view.with(Counter::incr) else {
+                        // the counter overflows, we need to clone the data
+                        let slice = unsafe { self.as_slice().get_unchecked(range) };
+                        return Ok(Self::from_slice_copy(slice));
+                    };
+
+                    // do nothing here, will update the slice below
                 }
-                Tag::Borrowed => {
-                    // SAFETY: tag is checked.
-                    let borrowed = unsafe { self.as_borrowed_unchecked() };
-                    let slice = unsafe { borrowed.get_unchecked(range) };
-                    Ok(Self::borrowed(slice))
-                }
+                Tag::Borrowed => {} // do nothing here, will update the slice below
             }
+
+            // copy the whole structure
+            let mut new = Self {
+                repr: self.repr,
+                _marker: PhantomData,
+            };
+
+            // update the slice part
+            let ref_mut = unsafe { new.repr.slice_view_mut::<T>() };
+            ref_mut.ptr = unsafe { ref_mut.ptr.add(range.start) };
+            ref_mut.len = len;
+
+            Ok(new)
         }
     }
 
     #[inline]
+    #[must_use]
     pub fn force_clone_or_copy(&self) -> Self
     where
         T: Copy,

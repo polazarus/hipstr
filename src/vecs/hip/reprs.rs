@@ -216,7 +216,7 @@ impl<T> Clone for SliceView<T> {
 }
 
 impl<T> SliceView<T> {
-    pub(crate) fn as_slice(&self) -> &[T] {
+    pub(crate) const fn as_slice(&self) -> &[T] {
         unsafe {
             // SAFETY: The pointer is guaranteed to be valid and the length is non-negative.
             core::slice::from_raw_parts(self.ptr.as_ptr(), self.len)
