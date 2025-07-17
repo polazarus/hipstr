@@ -483,6 +483,7 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
 
 impl<'borrow, T: Clone, B: Backend> HipVec<'borrow, T, B> {
     #[inline]
+    #[must_use]
     pub fn from_slice_clone(slice: &[T]) -> Self {
         if Self::fit_inline(slice.len()) {
             Self::from_inline(Inline::from_slice_clone(slice))
@@ -492,6 +493,8 @@ impl<'borrow, T: Clone, B: Backend> HipVec<'borrow, T, B> {
         }
     }
 
+    #[inline]
+    #[must_use]
     pub fn slice(&self, range: impl RangeBounds<usize>) -> Self {
         match self.try_slice_clone(range) {
             Ok(slice) => slice,
@@ -500,6 +503,33 @@ impl<'borrow, T: Clone, B: Backend> HipVec<'borrow, T, B> {
     }
 
     /// Slices the vector, returning a new `HipVec` that contains the specified range.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the range is out of bounds or invalid.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use hipstr::vecs::HipVec;
+    /// use hipstr::vecs::hip::Tag;
+    /// use hipstr::Arc;
+    /// let vec = HipVec::<u8, Arc>::from_array([1, 2, 3, 4, 5]);
+    /// assert_eq!(vec.tag(), Tag::Inline);
+    /// let sliced = vec.slice(1..4);
+    /// assert_eq!(sliced.as_slice(), &[2, 3, 4]);
+    ///
+    /// let vec = HipVec::<u8, Arc>::from_array([1; 40]);
+    /// assert_eq!(vec.tag(), Tag::Thin);
+    /// let sliced = vec.slice(0..4);
+    /// assert_eq!(sliced.tag(), Tag::Inline); // normalized to inline
+    /// assert_eq!(sliced.as_slice(), &[1, 1, 1, 1]);
+    ///
+    /// let sliced = vec.slice(0..39);
+    /// assert_eq!(sliced.as_slice(), &[1; 39]);
+    /// assert_eq!(sliced.tag(), Tag::Thin); // remains thin
+    /// assert_eq!(sliced.as_ptr(), vec.as_ptr()); // no copy
+    /// ```
     pub fn try_slice_clone(&self, range: impl RangeBounds<usize>) -> Result<Self, RangeError>
     where
         T: Clone,
@@ -509,53 +539,38 @@ impl<'borrow, T: Clone, B: Backend> HipVec<'borrow, T, B> {
         if len == 0 {
             Ok(Self::EMPTY)
         } else if Self::fit_inline(len) {
+            // normalize to inline if possible
             let slice = unsafe { self.as_slice().get_unchecked(range) };
             Ok(Self::from_inline(Inline::from_slice_clone(slice)))
         } else {
             match self.tag() {
                 Tag::Inline => unsafe { unreachable_unchecked() },
-                Tag::Thin => {
-                    let thin = unsafe { self.thin().unwrap_unchecked() };
-                    let owner = thin.owner();
-                    if let Some(owner) = owner.try_clone() {
-                        Ok(Self::from_union(Union {
-                            thin: ManuallyDrop::new(Allocated::new(
-                                owner,
-                                unsafe { thin.ptr.add(range.start) },
-                                len,
-                            )),
-                        }))
-                    } else {
-                        //let new_owner = owner.detached_clone();
-                        // force_clone()
-                        // retrieve the slice's index
-                        // set correctly the new ptr/len
-                        todo!();
-                    }
+                Tag::Thin | Tag::Fat => {
+                    let shared_view = unsafe { self.repr.shared_view::<B>() };
+
+                    let UpdateResult::Done = shared_view.with(Counter::incr) else {
+                        // the counter overflows, we need to clone the data
+                        let slice = unsafe { self.as_slice().get_unchecked(range) };
+                        return Ok(Self::from_slice_clone(slice));
+                    };
+
+                    // do nothing here, will update the slice below
                 }
-                Tag::Fat => {
-                    let fat = unsafe { self.fat().unwrap_unchecked() };
-                    if let Some(owner) = fat.owner().try_clone() {
-                        Ok(Self::from_union(Union {
-                            fat: ManuallyDrop::new(Allocated::new(
-                                owner,
-                                unsafe { fat.ptr.add(range.start) },
-                                len,
-                            )),
-                        }))
-                    } else {
-                        // force_clone()
-                        // retrieve the slice's index
-                        // set correctly the new ptr/len
-                        todo!();
-                    }
-                }
-                Tag::Borrowed => {
-                    let borrowed = unsafe { self.as_borrowed_unchecked() };
-                    let slice = unsafe { borrowed.get_unchecked(range) };
-                    Ok(Self::borrowed(slice))
-                }
+                Tag::Borrowed => {} // do nothing here, will update the slice below
             }
+
+            // copy the whole structure
+            let mut new = Self {
+                repr: self.repr,
+                _marker: PhantomData,
+            };
+
+            // update the slice part
+            let ref_mut = unsafe { new.repr.slice_view_mut::<T>() };
+            ref_mut.ptr = unsafe { ref_mut.ptr.add(range.start) };
+            ref_mut.len = len;
+
+            Ok(new)
         }
     }
 
@@ -683,25 +698,25 @@ impl<'borrow, T: Copy, B: Backend> HipVec<'borrow, T, B> {
     }
 }
 
-impl<'borrow, T, B: Backend> Default for HipVec<'borrow, T, B> {
+impl<T, B: Backend> Default for HipVec<'_, T, B> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<'borrow, T, C: Counter> Clone for HipVec<'borrow, T, BackendImpl<C, PanicOnOverflow>> {
+impl<T, C: Counter> Clone for HipVec<'_, T, BackendImpl<C, PanicOnOverflow>> {
     fn clone(&self) -> Self {
         self.try_clone().unwrap_or_else(|| panic!("count overflow"))
     }
 }
 
-impl<'borrow, T: Clone, C: Counter> Clone for HipVec<'borrow, T, BackendImpl<C, CloneOnOverflow>> {
+impl<T: Clone, C: Counter> Clone for HipVec<'_, T, BackendImpl<C, CloneOnOverflow>> {
     fn clone(&self) -> Self {
         self.force_clone()
     }
 }
 
-impl<'borrow, T, B: Backend> Drop for HipVec<'borrow, T, B> {
+impl<T, B: Backend> Drop for HipVec<'_, T, B> {
     fn drop(&mut self) {
         match self.tag() {
             Tag::Inline => {

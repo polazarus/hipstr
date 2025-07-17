@@ -164,6 +164,15 @@ impl Repr {
         // SAFETY: The layout of `Pivot` matches the layout of `Fat<T, B>`.
         unsafe { transmute::<&mut Self, &mut Fat<T, B>>(self) }
     }
+
+    pub const unsafe fn slice_view_mut<T>(&mut self) -> &mut SliceView<T> {
+        debug_assert!(
+            matches!(self.repr(), Tag::Thin | Tag::Fat | Tag::Borrowed),
+            "invalid repr (thin, fat or borrowed expected)"
+        );
+        // SAFETY: The layout of `Pivot` matches the layout of `SliceView<T>`.
+        unsafe { transmute::<&mut Self, &mut SliceView<T>>(self) }
+    }
 }
 
 union InlineRepr<T> {
