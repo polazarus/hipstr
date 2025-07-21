@@ -2,9 +2,9 @@
 
 use alloc::borrow::Cow;
 use alloc::boxed::Box;
+use core::ptr;
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
-use std::ptr;
 
 use super::HipPath;
 use crate::backend::Backend;

@@ -1,7 +1,7 @@
 //! Comparison trait implementations for `HipOsStr`
 
-use std::borrow::Cow;
-use std::boxed::Box;
+use alloc::borrow::Cow;
+use alloc::boxed::Box;
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 

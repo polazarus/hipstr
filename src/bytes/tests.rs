@@ -491,6 +491,7 @@ fn test_slice_panic_end() {
 
 #[test]
 #[should_panic]
+#[expect(clippy::reversed_empty_ranges)]
 fn test_slice_panic_mixed() {
     let a = H::borrowed(ABC);
     let _b = a.slice(3..2);
@@ -529,6 +530,7 @@ fn test_slice_unchecked_debug_panic_end() {
 #[test]
 #[cfg(debug_assertions)]
 #[should_panic]
+#[expect(clippy::reversed_empty_ranges)]
 fn test_slice_unchecked_debug_panic_mixed() {
     let a = H::borrowed(ABC);
     let _ = unsafe { a.slice_unchecked(3..2) };
@@ -544,6 +546,7 @@ fn test_slice_ok() {
 }
 
 #[test]
+#[expect(clippy::reversed_empty_ranges)]
 fn test_try_slice_start_out_of_bounds() {
     let err = H_ABCDEF.try_slice(7..).unwrap_err();
     assert_eq!(err.kind(), SliceErrorKind::StartOutOfBounds);
@@ -575,6 +578,7 @@ fn test_try_slice_end_out_of_bounds() {
 }
 
 #[test]
+#[expect(clippy::reversed_empty_ranges)]
 fn test_try_slice_start_greater_than_end() {
     let err = H_ABCDEF.try_slice(1..0).unwrap_err();
     assert_eq!(err.kind(), SliceErrorKind::StartGreaterThanEnd);
@@ -1152,6 +1156,7 @@ fn test_repeat() {
 }
 
 #[test]
+#[expect(clippy::reversed_empty_ranges)]
 fn test_simplify_range() {
     assert_eq!(simplify_range(0..10, 10), Ok(0..10));
     assert_eq!(simplify_range(.., 10), Ok(0..10));
