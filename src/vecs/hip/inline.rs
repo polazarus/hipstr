@@ -97,7 +97,7 @@ pub struct InlineVec<
     #[cfg(target_endian = "little")]
     len: TaggedU8<SHIFT, TAG>,
 
-    _data: [MaybeUninit<u8>; BYTES],
+    data: [MaybeUninit<u8>; BYTES],
 
     #[cfg(target_endian = "big")]
     len: TaggedU8<SHIFT, TAG>,
@@ -144,7 +144,7 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
             Self {
                 _aligned: [],
                 len: TaggedU8::new(0),
-                _data: [MaybeUninit::uninit(); BYTES],
+                data: [MaybeUninit::uninit(); BYTES],
             }
         }
     }
@@ -166,7 +166,7 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
         Self {
             _aligned: [],
             len: TaggedU8::new(new_len),
-            _data: [MaybeUninit::zeroed(); BYTES],
+            data: [MaybeUninit::zeroed(); BYTES],
         }
     }
 
@@ -316,6 +316,7 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
     /// assert_eq!(inline.capacity(), 7);
     /// ```
     #[inline]
+    #[expect(clippy::unused_self, reason = "Vec-like behavior")]
     pub const fn capacity(&self) -> usize {
         Self::CAP
     }
@@ -337,7 +338,7 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
     /// ```
     #[inline]
     pub const fn as_ptr(&self) -> *const T {
-        unsafe { self._data.as_ptr().add(Self::OFFSET).cast() }
+        unsafe { self.data.as_ptr().add(Self::OFFSET).cast() }
     }
 
     /// Returns a `NonNull` pointer to the inline vector data.
@@ -357,7 +358,7 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
     /// would also make any pointers to it invalid.
     #[inline]
     pub const fn as_mut_ptr(&mut self) -> *mut T {
-        unsafe { self._data.as_mut_ptr().add(Self::OFFSET).cast() }
+        unsafe { self.data.as_mut_ptr().add(Self::OFFSET).cast() }
     }
 
     /// Attempts to push a value into the inline vector.
@@ -472,7 +473,7 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
     pub const fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<T>] {
         unsafe {
             let len = self.len();
-            let ptr = self._data.as_mut_ptr().add(Self::OFFSET).add(len).cast();
+            let ptr = self.data.as_mut_ptr().add(Self::OFFSET).add(len).cast();
             slice::from_raw_parts_mut(ptr, Self::CAP - len)
         }
     }
@@ -956,7 +957,7 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
 
     const fn data_mut(&mut self) -> &mut [MaybeUninit<T>] {
         unsafe {
-            let ptr = self._data.as_mut_ptr().add(Self::OFFSET).cast();
+            let ptr = self.data.as_mut_ptr().add(Self::OFFSET).cast();
             slice::from_raw_parts_mut(ptr, Self::CAP)
         }
     }
@@ -1016,7 +1017,7 @@ where
         assert!(new_len <= CAP, "new length exceeds capacity");
 
         let dst_slice: &mut [MaybeUninit<T>] = unsafe {
-            let ptr = self._data.as_mut_ptr().add(Self::OFFSET).add(len).cast();
+            let ptr = self.data.as_mut_ptr().add(Self::OFFSET).add(len).cast();
             slice::from_raw_parts_mut(ptr, slice.len())
         };
         let dst = dst_slice.iter_mut();
@@ -1066,7 +1067,7 @@ where
         assert!(new_len <= CAP, "new length exceeds capacity");
 
         let data_slice: &mut [MaybeUninit<T>] = unsafe {
-            let ptr = self._data.as_mut_ptr().add(Self::OFFSET).cast();
+            let ptr = self.data.as_mut_ptr().add(Self::OFFSET).cast();
             slice::from_raw_parts_mut(ptr, Self::CAP)
         };
 
@@ -1265,7 +1266,7 @@ where
         assert!(new_len <= CAP, "new length exceeds capacity");
 
         let data_slice: &mut [MaybeUninit<T>] = unsafe {
-            let ptr = self._data.as_mut_ptr().add(Self::OFFSET).cast();
+            let ptr = self.data.as_mut_ptr().add(Self::OFFSET).cast();
             slice::from_raw_parts_mut(ptr, Self::CAP)
         };
 
@@ -1295,10 +1296,9 @@ where
 impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> Drop for InlineVec<T, CAP, SHIFT, TAG> {
     fn drop(&mut self) {
         if core::mem::needs_drop::<T>() {
-            let len = self.len();
-            let slice = self.data_mut();
-            for i in 0..len {
-                unsafe { slice[i].assume_init_drop() };
+            let slice = self.as_mut_slice();
+            unsafe {
+                core::ptr::drop_in_place(slice);
             }
         }
     }

@@ -14,7 +14,6 @@ use crate::backend::{
 };
 use crate::common::{self, RangeError};
 use crate::smart::Smart;
-use crate::vecs::hip::allocated::{Fat, Thin};
 use crate::vecs::SmartThinVec;
 
 mod allocated;
@@ -787,24 +786,21 @@ impl<T, B: Backend> Drop for HipVec<'_, T, B> {
                 }
             }
             Tag::Thin => {
-                // SAFETY: representation is thin
-                // converts to thin mut ref and drops the owner in place
-                unsafe {
-                    ptr::drop_in_place(self.repr.thin_mut::<T, B>().owner_mut().as_mut());
-                }
+                // SAFETY:
+                // - representation is thin
+                // - the handle is not used after
+                let _ = unsafe { self.repr.into_thin::<T, B>() };
             }
             Tag::Fat => {
-                // SAFETY: representation is fat
-                // converts to fat mut ref and drops the owner in place
-                unsafe {
-                    ptr::drop_in_place(self.repr.fat_mut::<T, B>().owner_mut().as_mut());
-                }
+                // SAFETY:
+                // - representation is fat
+                // - the handle is not used after
+                let _ = unsafe { self.repr.into_fat::<T, B>() };
             }
 
             Tag::Borrowed => {
                 // do nothing, borrowed repr does not own the data
             }
-            _ => unreachable!(),
         }
     }
 }

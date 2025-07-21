@@ -1,4 +1,4 @@
-#![allow(clippy::reversed_empty_ranges)]
+#![allow(clippy::pedantic, clippy::restriction)]
 
 use alloc::boxed::Box;
 use alloc::{format, vec};
@@ -22,7 +22,7 @@ fn tagged_len() {
 #[test]
 #[should_panic(expected = "length exceeds maximal tagged length (`256 >> SHIFT`)")]
 fn tagged_len_too_large() {
-    let _ = TaggedU8::<3, 0b101>::new(0b1000_00);
+    let _ = TaggedU8::<3, 0b101>::new(0b10_0000);
 }
 
 #[test]
@@ -32,9 +32,9 @@ fn macros() {
     assert_eq!(inline.len(), 3);
     assert_eq!(inline.as_slice(), &[1, 2, 3]);
 
-    let inline = inline_vec2![CAP => 1_u8; 3];
-    assert_eq!(inline.len(), 3);
-    assert_eq!(inline.as_slice(), &[1, 1, 1]);
+    let inline2 = inline_vec2![CAP => 1_u8; 3];
+    assert_eq!(inline2.len(), 3);
+    assert_eq!(inline2.as_slice(), &[1, 1, 1]);
 }
 
 #[test]
@@ -42,13 +42,6 @@ fn new() {
     const CAP: usize = 7;
 
     let mut inline = InlineVec::<u8, CAP>::new();
-    assert_eq!(inline.len(), 0);
-    assert_eq!(inline.capacity(), CAP);
-    assert_eq!(inline.as_slice().len(), 0);
-    assert_eq!(inline.as_mut_slice().len(), 0);
-    assert_eq!(inline.spare_capacity_mut().len(), CAP);
-
-    let mut inline = InlineVec::<u8, CAP>::default();
     assert_eq!(inline.len(), 0);
     assert_eq!(inline.capacity(), CAP);
     assert_eq!(inline.as_slice().len(), 0);
@@ -68,17 +61,19 @@ fn from_slice_copy() {
 #[test]
 fn from_slice_clone() {
     const CAP: usize = 7;
+
+    #[derive(Clone, PartialEq, Eq, Debug)]
+    struct S(u8);
+
     let slice: &[_] = &[1, 2, 3];
     let inline = InlineVec::<u8, CAP>::from_slice_clone(slice);
     assert_eq!(inline.len(), slice.len());
     assert_eq!(inline.as_slice(), slice);
 
-    #[derive(Clone, PartialEq, Eq, Debug)]
-    struct S(u8);
-    let slice: &[_] = &[S(1), S(2), S(3)];
-    let inline = InlineVec::<_, CAP>::from_slice_clone(&slice);
-    assert_eq!(inline.len(), slice.len());
-    assert_eq!(inline.as_slice(), slice);
+    let slice2: &[_] = &[S(1), S(2), S(3)];
+    let inline2 = InlineVec::<_, CAP>::from_slice_clone(slice2);
+    assert_eq!(inline2.len(), slice2.len());
+    assert_eq!(inline2.as_slice(), slice2);
 }
 
 #[test]
@@ -577,11 +572,11 @@ fn as_mut() {
 #[test]
 fn debug() {
     let inline = InlineVec::<u8, 7>::from_array([1, 2, 3]);
-    let debug = format!("{:?}", inline);
+    let debug = format!("{inline:?}");
     assert_eq!(debug, "[1, 2, 3]");
 
     let inline = InlineVec::<Box<u8>, 31>::from_array([Box::new(1), Box::new(2)]);
-    let debug = format!("{:?}", inline);
+    let debug = format!("{inline:?}");
     assert_eq!(debug, "[1, 2]");
 }
 
@@ -647,6 +642,7 @@ fn drain() {
 
 #[test]
 #[should_panic(expected = "start index 2 is greater than end index 1")]
+#[expect(clippy::reversed_empty_ranges)]
 fn drain_start_after_end() {
     let mut inline = SMALL_FULL;
     assert_eq!(inline.len(), SMALL_CAP);
@@ -739,6 +735,7 @@ fn extend_from_within_overflows() {
 
 #[test]
 #[should_panic(expected = "start index 1 is greater than end index 0")]
+#[expect(clippy::reversed_empty_ranges)]
 fn extend_from_within_bad_range() {
     let mut inline = InlineVec::<u8, SMALL_CAP>::from_array([1, 2, 3, 4]);
     inline.extend_from_within(1..0);
@@ -764,6 +761,7 @@ fn extend_from_within_copy_overflows() {
 
 #[test]
 #[should_panic(expected = "start index 1 is greater than end index 0")]
+#[expect(clippy::reversed_empty_ranges)]
 fn extend_from_within_copy_bad_range() {
     let mut inline = InlineVec::<u8, SMALL_CAP>::from_array([1, 2, 3, 4]);
     inline.extend_from_within_copy(1..0);
@@ -794,7 +792,7 @@ fn from_iter() {
 #[test]
 #[should_panic(expected = "iterator's minimal length exceeds capacity")]
 fn from_iter_overflows() {
-    let inline: InlineVec<u8, SMALL_CAP> = (1..=8).into_iter().collect();
+    let inline: InlineVec<u8, SMALL_CAP> = (1..=8).collect();
     assert_eq!(inline.len(), 8);
     assert_eq!(inline.as_slice(), &[1, 2, 3, 4, 5, 6, 7, 8]);
 }

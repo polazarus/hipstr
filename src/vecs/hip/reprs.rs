@@ -176,6 +176,14 @@ impl Repr {
         // SAFETY: The layout of `Pivot` matches the layout of `SliceView<T>`.
         unsafe { transmute::<&mut Self, &mut SliceView<T>>(self) }
     }
+
+    pub const unsafe fn into_thin<T, B: Backend>(self) -> Thin<T, B> {
+        unsafe { transmute::<Self, Thin<T, B>>(self) }
+    }
+
+    pub const unsafe fn into_fat<T, B: Backend>(self) -> Fat<T, B> {
+        unsafe { transmute::<Self, Fat<T, B>>(self) }
+    }
 }
 
 union InlineRepr<T> {

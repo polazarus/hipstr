@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 use core::marker::PhantomData;
-use core::mem::{transmute, MaybeUninit};
+use core::mem::{offset_of, transmute, ManuallyDrop, MaybeUninit};
 use core::num::NonZeroUsize;
 use core::ops::{Deref, DerefMut, Range};
 use core::ptr::NonNull;
@@ -17,19 +17,15 @@ pub type Thin<T, B> = Allocated<SmartThinVec<T, B>, T, TAG_THIN, TAG_MASK>;
 pub type Fat<T, B> = Allocated<Smart<Vec<T>, B>, T, TAG_FAT, TAG_MASK>;
 #[repr(C)]
 pub struct Allocated<O: VecPtr<T>, T, const TAG: usize, const MASK: usize> {
-    pub owner: TaggedPtr<T, O, TAG, MASK>,
+    pub owner: TaggedOwner<T, O, TAG, MASK>,
     pub ptr: *const T,
     pub len: usize,
 }
 
 impl<O: VecPtr<T>, T, const TAG: usize, const MASK: usize> Allocated<O, T, TAG, MASK> {
     pub fn new(owner: O, ptr: *const T, len: usize) -> Self {
-        let owner = TaggedPtr::new(owner.into_raw());
+        let owner = TaggedOwner::new(owner.into_raw());
         Self { owner, ptr, len }
-    }
-
-    pub fn owner(&self) -> Ref<O> {
-        self.owner.get()
     }
 
     pub fn with_mut<R>(&mut self, f: impl FnOnce(&mut O, &Range<usize>) -> R) -> R {
@@ -50,19 +46,15 @@ impl<O: VecPtr<T>, T, const TAG: usize, const MASK: usize> Allocated<O, T, TAG, 
             result
         })
     }
-
-    pub unsafe fn owner_mut(&self) -> RefMut<O> {
-        unsafe { self.owner.get_mut() }
-    }
 }
 
 #[repr(transparent)]
-pub struct TaggedPtr<T, O: VecPtr<T>, const TAG: usize, const MASK: usize>(
+pub struct TaggedOwner<T, O: VecPtr<T>, const TAG: usize, const MASK: usize>(
     NonNull<()>,
     PhantomData<(O, [T])>,
 );
 
-impl<T, O: VecPtr<T>, const TAG: usize, const MASK: usize> TaggedPtr<T, O, TAG, MASK> {
+impl<T, O: VecPtr<T>, const TAG: usize, const MASK: usize> TaggedOwner<T, O, TAG, MASK> {
     fn new(ptr: NonNull<()>) -> Self {
         Self(
             ptr.map_addr(|addr| {
@@ -83,12 +75,12 @@ impl<T, O: VecPtr<T>, const TAG: usize, const MASK: usize> TaggedPtr<T, O, TAG, 
     }
 
     pub fn with_mut<F: FnOnce(&mut O) -> R, R>(&mut self, f: F) -> R {
-        unsafe fn to_ref<O>(ptr: &mut NonNull<()>) -> &mut O {
-            unsafe { transmute(ptr) }
+        unsafe fn transmute_ref_mut<O>(ptr: &mut NonNull<()>) -> &mut O {
+            unsafe { transmute::<&mut NonNull<()>, &mut O>(ptr) }
         }
         let mut ptr = self.untagged();
         let backup = ptr;
-        let ref_mut = unsafe { to_ref(&mut ptr) };
+        let ref_mut = unsafe { transmute_ref_mut(&mut ptr) };
 
         let result = f(ref_mut);
         if ptr != backup {
@@ -105,7 +97,7 @@ impl<T, O: VecPtr<T>, const TAG: usize, const MASK: usize> TaggedPtr<T, O, TAG, 
     }
 }
 
-impl<T, O: VecPtr<T>, const TAG: usize, const MASK: usize> Drop for TaggedPtr<T, O, TAG, MASK> {
+impl<T, O: VecPtr<T>, const TAG: usize, const MASK: usize> Drop for TaggedOwner<T, O, TAG, MASK> {
     fn drop(&mut self) {
         let _ = O::from_raw(self.untagged());
     }
@@ -156,15 +148,17 @@ impl<T, B: Backend> VecPtr<T> for Smart<Vec<T>, B> {
     }
 
     fn into_raw(self) -> NonNull<()> {
-        self.0.cast()
+        let result = self.0.cast();
+        let _ = ManuallyDrop::new(self); // prevent double drop
+        result
     }
 
     fn data_ptr(&self) -> *const T {
-        Smart::get(&self).as_ptr()
+        Self::get(self).as_ptr()
     }
 
     fn data_len(&self) -> usize {
-        Smart::get(&self).len()
+        Self::get(self).len()
     }
 }
 
@@ -174,7 +168,9 @@ impl<T, B: Backend> VecPtr<T> for SmartThinVec<T, B> {
     }
 
     fn into_raw(self) -> NonNull<()> {
-        self.0.cast()
+        let result = self.0.cast();
+        let _ = ManuallyDrop::new(self); // prevent double drop
+        result
     }
 
     fn data_ptr(&self) -> *const T {
@@ -188,7 +184,7 @@ impl<T, B: Backend> VecPtr<T> for SmartThinVec<T, B> {
 
 pub struct Ref<'a, O>(NonNull<()>, PhantomData<&'a O>);
 
-impl<'a, O> Ref<'a, O> {
+impl<O> Ref<'_, O> {
     #[inline]
     pub const fn as_ref(&self) -> &O {
         unsafe { transmute::<&NonNull<()>, &O>(&self.0) }
@@ -206,7 +202,7 @@ impl<O> Deref for Ref<'_, O> {
 
 pub struct RefMut<'a, O>(NonNull<()>, PhantomData<&'a O>);
 
-impl<'a, O> RefMut<'a, O> {
+impl<O> RefMut<'_, O> {
     #[inline]
     pub const fn as_ref(&self) -> &O {
         unsafe { transmute::<&NonNull<()>, &O>(&self.0) }
@@ -266,3 +262,11 @@ impl<B: Backend> SharedCountView<B> {
         f(unsafe { ptr.as_ref() })
     }
 }
+
+const _ASSERTS: () = {
+    use crate::backend::Rc;
+
+    assert!(offset_of!(SharedCountView<()>, tagged_ptr) == 0);
+    assert!(offset_of!(Thin<u8, Rc>, owner) == 0);
+    assert!(offset_of!(Fat<u8, Rc>, owner) == 0);
+};

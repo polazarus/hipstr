@@ -1,10 +1,11 @@
 //! Thin vector implementation.
 #![allow(unused)]
 
-use alloc::alloc::{alloc, dealloc, realloc, Layout};
+use alloc::alloc::{alloc, dealloc, realloc};
 use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
+use core::alloc::Layout;
 use core::iter::FusedIterator;
 use core::marker::PhantomData;
 use core::mem::{offset_of, ManuallyDrop, MaybeUninit};
