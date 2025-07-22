@@ -18,7 +18,8 @@ use core::ptr::NonNull;
 use core::{error, hash, slice};
 
 use crate::common::drain::Drain;
-use crate::common::{panic_display, traits};
+use crate::common::methods::{methods, MutableView};
+use crate::common::{drop_slice, panic_display, traits};
 use crate::{common, macros};
 
 #[cfg(test)]
@@ -84,7 +85,7 @@ impl<const SHIFT: u8, const TAG: u8> TaggedU8<SHIFT, TAG> {
 /// # Zero-sized types
 ///
 /// `InlineVec` is not well suited to store zero-sized types (ZSTs) like `()`.
-/// This is because the maximal length is capped by `u8::MAX >> TAG_SHIFT`.
+/// This is because the maximal length is capped by `u8::MAX >> SHIFT`.
 #[repr(C)]
 pub struct InlineVec<
     T,
@@ -125,6 +126,10 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
     } else {
         0
     };
+
+    const fn as_mutable_view(&mut self) -> MutableView<'_, T> {
+        unsafe { MutableView::new(self.as_non_null(), Self::CAP, self.len()) }
+    }
 
     /// Creates a new inline vector with the specified capacity.
     ///
@@ -300,7 +305,7 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
     /// Returns a mutable slice of the inline vector.
     #[inline]
     pub const fn as_mut_slice(&mut self) -> &mut [T] {
-        unsafe { slice::from_raw_parts_mut(self.as_mut_ptr(), self.len()) }
+        self.as_mutable_view().as_mut_slice()
     }
 
     /// Returns the capacity of the inline vector, that is, `CAP`.
@@ -361,37 +366,26 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
         unsafe { self.data.as_mut_ptr().add(Self::OFFSET).cast() }
     }
 
-    /// Attempts to push a value into the inline vector.
-    ///
-    /// # Errors
-    ///
-    /// Returns `Err(value)` if the inline vector is full, that is, the current
-    /// [`len`] is greater than the `CAP`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use hipstr::inline_vec;
-    /// let mut inline = inline_vec2![3 => 1, 2];
-    /// assert_eq!(inline.try_push(1), Ok(()));
-    /// assert_eq!(inline.try_push(2), Err(2));
-    /// ```
-    ///
-    /// [`len`]: Self::len
-    #[inline]
-    pub const fn try_push(&mut self, value: T) -> Result<(), T> {
-        let len = self.len();
-        if len < Self::CAP {
-            self.data_mut()[len].write(value);
-            unsafe {
-                self.set_len(len + 1);
-            }
-            Ok(())
-        } else {
-            // If the inline vector is full, we need to return an error.
-            // We can use a `Result` to indicate success or failure.
-            Err(value)
-        }
+    methods! {
+        /// Attempts to push a value into the inline vector.
+        ///
+        /// # Errors
+        ///
+        /// Returns `Err(value)` if the inline vector is full, that is, the current
+        /// [`len`] is greater than the `CAP`.
+        ///
+        /// # Examples
+        ///
+        /// ```
+        /// use hipstr::inline_vec;
+        /// let mut inline = inline_vec2![3 => 1, 2];
+        /// assert_eq!(inline.try_push(1), Ok(()));
+        /// assert_eq!(inline.try_push(2), Err(2));
+        /// ```
+        ///
+        /// [`len`]: Self::len
+        #[inline]
+        pub const fn try_push
     }
 
     /// Appends a value to the back of the inline vector.
@@ -456,74 +450,57 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
         self.len = TaggedU8::new(new_len);
     }
 
-    /// Returns a mutable slice of the spare capacity of the inline vector.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use hipstr::vecs::InlineVec;
-    /// let mut inline = InlineVec::<u8, 7>::new();
-    /// assert_eq!(inline.spare_capacity_mut().len(), 7);
-    /// inline.spare_capacity_mut()[0].write(5);
-    /// unsafe {
-    ///     inline.set_len(1);
-    /// }
-    /// ```
-    #[inline]
-    pub const fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<T>] {
-        unsafe {
-            let len = self.len();
-            let ptr = self.data.as_mut_ptr().add(Self::OFFSET).add(len).cast();
-            slice::from_raw_parts_mut(ptr, Self::CAP - len)
-        }
+    methods! {
+        /// Returns a mutable slice of the spare capacity of the inline vector.
+        ///
+        /// # Examples
+        ///
+        /// ```
+        /// use hipstr::vecs::InlineVec;
+        /// let mut inline = InlineVec::<u8, 7>::new();
+        /// assert_eq!(inline.spare_capacity_mut().len(), 7);
+        /// inline.spare_capacity_mut()[0].write(5);
+        /// unsafe {
+        ///     inline.set_len(1);
+        /// }
+        /// ```
+        #[inline]
+        pub const fn spare_capacity_mut<T>
     }
 
-    /// Removes the last element from the inline vector and returns it, or `None`
-    /// if the array is empty.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use hipstr::vecs::InlineVec;
-    /// let mut inline = InlineVec::<u8, 7>::new();
-    /// inline.push(1);
-    /// assert_eq!(inline.pop(), Some(1));
-    /// assert_eq!(inline.pop(), None);
-    /// ```
-    pub const fn pop(&mut self) -> Option<T> {
-        let len = self.len.get();
-        if len == 0 {
-            None
-        } else {
-            let value = unsafe { self.data_mut()[len - 1].assume_init_read() };
-            self.len = TaggedU8::new(len - 1);
-            Some(value)
-        }
+    methods! {
+        /// Removes the last element from the inline vector and returns it, or `None`
+        /// if the array is empty.
+        ///
+        /// # Examples
+        ///
+        /// ```
+        /// use hipstr::vecs::InlineVec;
+        /// let mut inline = InlineVec::<u8, 7>::new();
+        /// inline.push(1);
+        /// assert_eq!(inline.pop(), Some(1));
+        /// assert_eq!(inline.pop(), None);
+        /// ```
+        pub const fn pop
     }
 
-    /// Removes and returns the last element from a vector if the predicate
-    /// returns `true`, or [`None`] if the predicate returns false or the vector
-    /// is empty.
-    ///
-    /// The predicate is not called if the vector is empty.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use hipstr::inline_vec;
-    /// let mut inline = inline_vec2![7 => 1_u8, 2, 3, 4];
-    /// assert_eq!(inline.pop_if(|x| *x % 2 == 0), Some(4));
-    /// assert_eq!(inline.as_slice(), &[1, 2, 3]);
-    /// assert_eq!(inline.pop_if(|x| *x % 2 == 0), None);
-    /// ```
-    pub fn pop_if(&mut self, predicate: impl FnOnce(&mut T) -> bool) -> Option<T> {
-        let last = self.last_mut()?;
-
-        if predicate(last) {
-            self.pop()
-        } else {
-            None
-        }
+    methods! {
+        /// Removes and returns the last element from a vector if the predicate
+        /// returns `true`, or [`None`] if the predicate returns false or the vector
+        /// is empty.
+        ///
+        /// The predicate is not called if the vector is empty.
+        ///
+        /// # Examples
+        ///
+        /// ```
+        /// use hipstr::inline_vec;
+        /// let mut inline = inline_vec2![7 => 1_u8, 2, 3, 4];
+        /// assert_eq!(inline.pop_if(|x| *x % 2 == 0), Some(4));
+        /// assert_eq!(inline.as_slice(), &[1, 2, 3]);
+        /// assert_eq!(inline.pop_if(|x| *x % 2 == 0), None);
+        /// ```
+        pub fn pop_if
     }
 
     /// Moves all the elements of `other` into `self`, leaving `other` empty.
@@ -599,51 +576,45 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
         }
     }
 
-    /// Clears the inline vector, removing all elements.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use hipstr::vecs::InlineVec;
-    /// let mut inline = InlineVec::<u8, 7>::new();
-    /// inline.push(1);
-    /// inline.push(2);
-    /// assert_eq!(inline.len(), 2);
-    /// inline.clear();
-    /// assert_eq!(inline.len(), 0);
-    /// ```
-    #[inline]
-    pub fn clear(&mut self) {
-        self.truncate(0);
+    methods! {
+        /// Clears the inline vector, removing all elements.
+        ///
+        /// # Examples
+        ///
+        /// ```
+        /// use hipstr::vecs::InlineVec;
+        /// let mut inline = InlineVec::<u8, 7>::new();
+        /// inline.push(1);
+        /// inline.push(2);
+        /// assert_eq!(inline.len(), 2);
+        /// inline.clear();
+        /// assert_eq!(inline.len(), 0);
+        /// ```
+        #[inline]
+        pub fn clear
     }
 
-    /// Truncates the inline vector to the specified length, dropping any excess
-    /// elements.
-    ///
-    /// Do nothing if the new length is greater than or equal to the current
-    /// length.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use hipstr::vecs::InlineVec;
-    /// let mut inline = InlineVec::<u8, 7>::new();
-    /// inline.push(1);
-    /// inline.push(2);
-    /// assert_eq!(inline.len(), 2);
-    /// inline.truncate(1);
-    /// assert_eq!(inline.len(), 1);
-    /// inline.truncate(0);
-    /// assert_eq!(inline.len(), 0);
-    /// ```
-    pub fn truncate(&mut self, new_len: usize) {
-        let old_len = self.len();
-        if new_len < old_len {
-            self.len = TaggedU8::new(new_len);
-            for i in new_len..old_len {
-                unsafe { self.data_mut()[i].assume_init_drop() };
-            }
-        }
+    methods! {
+        /// Truncates the inline vector to the specified length, dropping any excess
+        /// elements.
+        ///
+        /// Do nothing if the new length is greater than or equal to the current
+        /// length.
+        ///
+        /// # Examples
+        ///
+        /// ```
+        /// use hipstr::vecs::InlineVec;
+        /// let mut inline = InlineVec::<u8, 7>::new();
+        /// inline.push(1);
+        /// inline.push(2);
+        /// assert_eq!(inline.len(), 2);
+        /// inline.truncate(1);
+        /// assert_eq!(inline.len(), 1);
+        /// inline.truncate(0);
+        /// assert_eq!(inline.len(), 0);
+        /// ```
+        pub fn truncate
     }
 
     /// Removes and returns the element at the specified index, replacing it
@@ -1295,11 +1266,8 @@ where
 
 impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> Drop for InlineVec<T, CAP, SHIFT, TAG> {
     fn drop(&mut self) {
-        if core::mem::needs_drop::<T>() {
-            let slice = self.as_mut_slice();
-            unsafe {
-                core::ptr::drop_in_place(slice);
-            }
+        unsafe {
+            drop_slice(self.as_mut_ptr(), self.len());
         }
     }
 }

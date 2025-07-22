@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 use core::hint::unreachable_unchecked;
 use core::marker::PhantomData;
-use core::mem::ManuallyDrop;
+use core::mem::{ManuallyDrop, MaybeUninit};
 use core::ops::RangeBounds;
 use core::{panic, ptr};
 
@@ -12,9 +12,10 @@ use self::reprs::{Borrowed, Repr, Union};
 use crate::backend::{
     Backend, BackendImpl, CloneOnOverflow, Counter, PanicOnOverflow, UpdateResult,
 };
+use crate::common::traits::MutVectorExt;
 use crate::common::{self, RangeError};
 use crate::smart::Smart;
-use crate::vecs::SmartThinVec;
+use crate::vecs::{thin, SmartThinVec};
 
 mod allocated;
 mod inline;
@@ -473,6 +474,98 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
                 repr: self.repr,
                 _marker: PhantomData,
             }),
+        }
+    }
+
+    pub fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<T>] {
+        match self.tag() {
+            Tag::Inline => {
+                // SAFETY: repr is inline
+                let inline = unsafe { self.repr.inline_mut::<T>() };
+                inline.spare_capacity_mut()
+            }
+            tag @ (Tag::Fat | Tag::Thin) => {
+                // SAFETY: repr is thin or fat
+                let view = unsafe { self.repr.shared_view::<B>() };
+                if view.with(Counter::is_unique) {
+                    if tag == Tag::Thin {
+                        // SAFETY: repr is thin
+                        let thin = unsafe { self.repr.thin_mut::<T, B>() };
+                        let range = thin.range();
+                        let thin_mut = unsafe { thin.mut_vector() };
+                        thin_mut.truncate(range.end);
+                        thin_mut.spare_capacity_mut()
+                    } else {
+                        // SAFETY: repr is fat
+                        let fat = unsafe { self.repr.fat_mut::<T, B>() };
+                        let range = fat.range();
+                        let fat_mut = unsafe { fat.mut_vector() };
+                        fat_mut.truncate(range.end);
+                        fat_mut.spare_capacity_mut()
+                    }
+                } else {
+                    &mut []
+                }
+            }
+            Tag::Borrowed => &mut [],
+        }
+    }
+
+    pub fn truncate(&mut self, len: usize) {
+        match self.tag() {
+            Tag::Inline => {
+                // SAFETY: repr is inline
+                let inline = unsafe { self.repr.inline_mut::<T>() };
+                inline.truncate(len);
+            }
+            Tag::Thin | Tag::Fat if self.is_unique() => {
+                todo!();
+            }
+            Tag::Thin | Tag::Fat | Tag::Borrowed => {
+                let slice_view = unsafe { self.repr.slice_view_mut::<B>() };
+                if len < slice_view.len {
+                    slice_view.len = len;
+                }
+            }
+        }
+    }
+
+    pub fn try_push(&mut self, value: T) -> Result<(), T> {
+        match self.tag() {
+            Tag::Inline => unsafe { self.repr.inline_mut() }.try_push(value),
+            tag @ (Tag::Thin | Tag::Fat) => {
+                let shared_view = unsafe { self.repr.shared_view::<B>() };
+                if shared_view.with(Counter::is_unique) {
+                    if tag == Tag::Thin {
+                        // SAFETY: repr is thin
+                        let thin = unsafe { self.repr.thin_mut::<T, B>() };
+                        thin.with_mut(|t, range| {
+                            // SAFETY: vec is unique
+                            let t = unsafe { t.as_mut_unchecked() };
+                            t.truncate(range.end);
+                            t.try_push(value)
+                        })
+                    } else {
+                        // SAFETY: repr is fat and unique
+                        let fat = unsafe { self.repr.fat_mut::<T, B>() };
+                        fat.with_mut(|v, range| {
+                            // SAFETY: vec is unique
+                            let v = unsafe { v.as_mut_unchecked() };
+                            v.truncate(range.end);
+                            let spare = v.spare_capacity_mut();
+                            if let [e, ..] = spare {
+                                e.write(value);
+                                Ok(())
+                            } else {
+                                Err(value)
+                            }
+                        })
+                    }
+                } else {
+                    Err(value)
+                }
+            }
+            Tag::Borrowed => Err(value),
         }
     }
 }

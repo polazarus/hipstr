@@ -716,6 +716,20 @@ impl<T, P> ThinVec<T, P> {
         }
     }
 
+    pub fn try_push(&mut self, value: T) -> Result<(), T> {
+        let len = self.len();
+        if len < self.capacity() {
+            // SAFETY: the capacity has been checked beforehand
+            unsafe {
+                self.ptr().add(len).write(value);
+                self.set_len(len + 1);
+            }
+            Ok(())
+        } else {
+            Err(value)
+        }
+    }
+
     /// Removes the last element from the vector and returns it, or `None` if it
     /// is empty.
     ///

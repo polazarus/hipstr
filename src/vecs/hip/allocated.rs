@@ -6,6 +6,7 @@ use core::ops::{Deref, DerefMut, Range};
 use core::ptr::NonNull;
 
 use self::sealed::Sealed;
+use crate::common::traits::MutVector;
 use crate::vecs::{Smart, SmartThinVec};
 use crate::Backend;
 
@@ -40,11 +41,24 @@ impl<O: VecPtr<T>, T, const TAG: usize, const MASK: usize> Allocated<O, T, TAG, 
             let result = f(o, &range);
 
             // Update the pointer and length based on the new range
-            self.ptr = unsafe { o.data_ptr().add(range.start) };
+            self.ptr = unsafe { o.ptr().add(range.start) };
             self.len = range.end - range.start;
 
             result
         })
+    }
+
+    pub(crate) fn range(&self) -> Range<usize> {
+        let o = self.owner.get();
+        unsafe {
+            o.subslice_range(core::slice::from_raw_parts(self.ptr, self.len))
+                .unwrap_unchecked()
+        }
+    }
+
+    pub(crate) unsafe fn mut_vector(&self) -> &mut impl MutVector<Item = T> {
+        let r: &mut O = unsafe { self.owner.untagged().cast().as_mut() };
+        r
     }
 }
 
@@ -78,12 +92,13 @@ impl<T, O: VecPtr<T>, const TAG: usize, const MASK: usize> TaggedOwner<T, O, TAG
         unsafe fn transmute_ref_mut<O>(ptr: &mut NonNull<()>) -> &mut O {
             unsafe { transmute::<&mut NonNull<()>, &mut O>(ptr) }
         }
+
         let mut ptr = self.untagged();
         let backup = ptr;
         let ref_mut = unsafe { transmute_ref_mut(&mut ptr) };
 
         let result = f(ref_mut);
-        if ptr != backup {
+        if O::PTR_CHANGE && ptr != backup {
             self.0 = ptr.map_addr(|addr| {
                 debug_assert!(addr.get() & MASK == 0);
                 unsafe { NonZeroUsize::new_unchecked(addr.get() | TAG) }
@@ -116,17 +131,19 @@ mod sealed {
     impl<T, B: Backend> Sealed for SmartThinVec<T, B> {}
 }
 
-pub trait VecPtr<T>: Sealed {
+pub trait VecPtr<T>: MutVector<Item = T> + Sealed {
+    const PTR_CHANGE: bool;
+
     fn from_raw(ptr: NonNull<()>) -> Self;
     fn into_raw(self) -> NonNull<()>;
 
-    fn data_ptr(&self) -> *const T;
-    fn data_len(&self) -> usize;
+    fn ptr(&self) -> *const T;
+    unsafe fn data_ptr_mut(&mut self) -> *mut T;
 
     #[inline]
     fn subslice_range(&self, slice: &[T]) -> Option<Range<usize>> {
-        let data_ptr = self.data_ptr();
-        let data_len = self.data_len();
+        let data_ptr = self.ptr();
+        let data_len = self.len();
 
         if (data_ptr..(unsafe { data_ptr.add(data_len) })).contains(&slice.as_ptr()) {
             return None; // slice start is not within the owner
@@ -143,6 +160,7 @@ pub trait VecPtr<T>: Sealed {
 }
 
 impl<T, B: Backend> VecPtr<T> for Smart<Vec<T>, B> {
+    const PTR_CHANGE: bool = false;
     fn from_raw(ptr: NonNull<()>) -> Self {
         Self(ptr.cast())
     }
@@ -153,16 +171,30 @@ impl<T, B: Backend> VecPtr<T> for Smart<Vec<T>, B> {
         result
     }
 
-    fn data_ptr(&self) -> *const T {
+    fn ptr(&self) -> *const T {
         Self::get(self).as_ptr()
     }
 
-    fn data_len(&self) -> usize {
+    fn len(&self) -> usize {
         Self::get(self).len()
+    }
+
+    unsafe fn set_len(&mut self, new_len: usize) {
+        Self::as_mut_unchecked(self).set_len(new_len);
+    }
+
+    fn data_capacity(&self) -> usize {
+        Self::get(self).capacity()
+    }
+
+    unsafe fn data_ptr_mut(&mut self) -> *mut T {
+        unsafe { Self::as_mut_unchecked(self) }.as_mut_ptr()
     }
 }
 
 impl<T, B: Backend> VecPtr<T> for SmartThinVec<T, B> {
+    const PTR_CHANGE: bool = true;
+
     fn from_raw(ptr: NonNull<()>) -> Self {
         Self(ptr.cast())
     }
@@ -173,12 +205,24 @@ impl<T, B: Backend> VecPtr<T> for SmartThinVec<T, B> {
         result
     }
 
-    fn data_ptr(&self) -> *const T {
+    fn ptr(&self) -> *const T {
         self.as_thin_vec().as_ptr()
     }
 
-    fn data_len(&self) -> usize {
+    fn len(&self) -> usize {
         self.as_thin_vec().len()
+    }
+
+    unsafe fn set_len(&mut self, new_len: usize) {
+        unsafe { self.as_mut_unchecked() }.set_len(new_len);
+    }
+
+    fn data_capacity(&self) -> usize {
+        self.as_thin_vec().capacity()
+    }
+
+    unsafe fn data_ptr_mut(&mut self) -> *mut T {
+        unsafe { self.as_mut_unchecked() }.as_mut_ptr()
     }
 }
 

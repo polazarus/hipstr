@@ -9,6 +9,7 @@ use core::ptr::NonNull;
 use core::{error, fmt, ptr};
 
 pub mod drain;
+pub mod methods;
 #[cfg(test)]
 mod tests;
 pub mod traits;
@@ -230,5 +231,21 @@ impl<T> DerefMut for Handle<'_, T> {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
+    }
+}
+
+/// Drops a slice of elements given a raw pointer and a length.
+///
+/// # Safety
+///
+/// The caller must ensure that the pointer is valid and that the length is correct.
+#[inline]
+pub(crate) unsafe fn drop_slice<T>(ptr: *mut T, len: usize) {
+    if mem::needs_drop::<T>() {
+        // SAFETY: precondition
+        unsafe {
+            let slice = core::slice::from_raw_parts_mut(ptr, len);
+            core::ptr::drop_in_place(slice);
+        }
     }
 }
