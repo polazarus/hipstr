@@ -129,9 +129,38 @@ impl<T, C: Backend> SmartThinVec<T, C> {
     pub(crate) const unsafe fn from_raw(ptr: NonNull<Header<T, C>>) -> Self {
         Self(ptr)
     }
+
     pub(crate) fn into_raw(self) -> NonNull<Header<T, C>> {
         let this = ManuallyDrop::new(self);
         this.0
+    }
+
+    /// Returns a pointer to the underlying data.
+    #[inline]
+    #[must_use]
+    pub const fn as_ptr(&self) -> *const T {
+        self.as_thin_vec().as_ptr()
+    }
+
+    /// Returns the length of the vector.
+    #[inline]
+    #[must_use]
+    pub const fn len(&self) -> usize {
+        self.as_thin_vec().len()
+    }
+
+    /// Returns `true` if the vector is empty.
+    #[inline]
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.as_thin_vec().is_empty()
+    }
+
+    /// Returns the capacity of the vector.
+    #[inline]
+    #[must_use]
+    pub const fn capacity(&self) -> usize {
+        self.as_thin_vec().capacity()
     }
 
     /// Creates a new empty vector.
@@ -555,6 +584,12 @@ trait_impls! {
         From {
             Vec<T> => SmartThinVec<T, C> = Self::from_mut_vector;
             Box<[T]> => SmartThinVec<T, C> = Self::from_boxed_slice;
+        }
+    }
+
+    [T, C] where [C: Backend] {
+        Vector {
+            SmartThinVec<T, C> : T;
         }
     }
 

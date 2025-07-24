@@ -14,6 +14,9 @@ use core::ptr::NonNull;
 use core::{cmp, fmt, mem, ops, panic, ptr, slice};
 
 use crate::common::drain::Drain;
+use crate::common::methods::{
+    pop_if_impl, pop_impl, push_within_capacity, spare_capacity_mut_impl, truncate_impl,
+};
 use crate::common::{
     check_alloc, guarded_slice_clone, manually_drop_as_mut, manually_drop_as_ref,
     maybe_uninit_write_copy_of_slice, panic_display, traits, Handle, RangeError,
@@ -609,7 +612,7 @@ impl<T, P> ThinVec<T, P> {
     ///
     /// - `new_len` must be less than or equal to the capacity of the vector.
     /// - The elements at `old_len..new_len` must be initialized.
-    pub unsafe fn set_len(&mut self, new_len: usize) {
+    pub const unsafe fn set_len(&mut self, new_len: usize) {
         debug_assert!(new_len <= self.capacity());
         unsafe {
             self.header_mut().len = new_len;
@@ -672,21 +675,7 @@ impl<T, P> ThinVec<T, P> {
     /// Note that this method has no effect on the allocated capacity of the
     /// vector.
     pub fn truncate(&mut self, len: usize) {
-        if len > self.len() {
-            return;
-        }
-        // get a raw pointer to the elements to drop
-        let ptr = &raw mut self.as_mut_slice()[len..];
-
-        // SAFETY:
-        // * `ptr` is a pointer to the elements to drop
-        // * `len` of the vector is shrunk before calling `drop_in_place`
-        //    so that no value can be dropped twice if the call to
-        //    `drop_in_place` panics
-        unsafe {
-            self.set_len(len);
-            ptr::drop_in_place(ptr);
-        }
+        truncate_impl!(self, len);
     }
 
     /// Appends an element to the back of the vector.
@@ -706,28 +695,37 @@ impl<T, P> ThinVec<T, P> {
     /// assert_eq!(vec.as_slice(), [1, 2, 3]);
     /// ```
     pub fn push(&mut self, value: T) {
-        let len = self.len();
         self.reserve(1);
-
-        // SAFETY: the capacity has been checked/updated beforehand
+        let res = self.push_within_capacity(value);
         unsafe {
-            self.ptr().add(len).write(value);
-            self.set_len(len + 1);
+            res.unwrap_unchecked();
         }
     }
 
-    pub fn try_push(&mut self, value: T) -> Result<(), T> {
-        let len = self.len();
-        if len < self.capacity() {
-            // SAFETY: the capacity has been checked beforehand
-            unsafe {
-                self.ptr().add(len).write(value);
-                self.set_len(len + 1);
-            }
-            Ok(())
-        } else {
-            Err(value)
-        }
+    /// Appends an element to the back of the vector if there is sufficient
+    /// spare capacity.
+    ///
+    /// # Errors
+    ///
+    /// This function returns back the value if it cannot be pushed to the
+    /// vector without increasing the vector capacity.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::ThinVec;
+    /// let mut vec = ThinVec::with_capacity(4);
+    /// assert!(vec.push_within_capacity(1).is_ok());
+    /// for i in 2.. {
+    ///     // try_push will fail once the effective capacity is reached (may be greater than 4)
+    ///     if vec.push_within_capacity(i).is_err() {
+    ///         assert!(i > 4);
+    ///         break;
+    ///     }
+    /// }
+    /// ```
+    pub const fn push_within_capacity(&mut self, value: T) -> Result<(), T> {
+        push_within_capacity!(self, value)
     }
 
     /// Removes the last element from the vector and returns it, or `None` if it
@@ -745,17 +743,11 @@ impl<T, P> ThinVec<T, P> {
     /// assert_eq!(vec.pop(), None);
     /// ```
     pub const fn pop(&mut self) -> Option<T> {
-        let len = self.len();
-        if len == 0 {
-            return None;
-        }
+        pop_impl!(self)
+    }
 
-        // SAFETY: the length is checked above
-        unsafe {
-            let value = self.ptr().add(len - 1).read();
-            self.header_mut().len = len - 1;
-            Some(value)
-        }
+    pub fn pop_if(&mut self, f: impl FnOnce(&T) -> bool) -> Option<T> {
+        pop_if_impl!(self, f)
     }
 
     /// Inserts an element at position `index` within the vector, shifting all
@@ -936,17 +928,7 @@ impl<T, P> ThinVec<T, P> {
     /// ```
     #[inline]
     pub fn clear(&mut self) {
-        let slice: *mut [T] = self.as_mut_slice();
-
-        // SAFETY:
-        // - `slice` is a valid slice
-        // - the slice cannot not accessed after the call to `drop_in_place`
-        //   even if an element's drop panics because the length is set to 0
-        //   before the call to `drop_in_place`
-        unsafe {
-            self.set_len(0);
-            ptr::drop_in_place(slice);
-        }
+        self.truncate(0);
     }
 
     /// Returns the remaining spare capacity of the vector as a slice of
@@ -979,14 +961,7 @@ impl<T, P> ThinVec<T, P> {
     /// assert_eq!(&v, &[0, 1, 2]);
     /// ```
     pub const fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<T>] {
-        let len = self.len();
-        let cap = self.capacity();
-
-        // SAFETY: the slice is within the bounds of the buffer
-        unsafe {
-            let ptr = self.ptr().add(len).cast().as_ptr();
-            slice::from_raw_parts_mut(ptr, cap - len)
-        }
+        spare_capacity_mut_impl!(self)
     }
 
     /// Creates a draining iterator that removes the specified range in the vector

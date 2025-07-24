@@ -10,6 +10,7 @@ use core::{error, fmt, ptr};
 
 pub mod drain;
 pub mod methods;
+pub(crate) mod non_zero;
 #[cfg(test)]
 mod tests;
 pub mod traits;
@@ -174,8 +175,8 @@ pub(crate) fn guarded_slice_clone<T: Clone>(dst: &mut [MaybeUninit<T>], src: &[T
         initialized: 0,
     };
 
-    for (dst, src) in guard.slice.iter_mut().zip(src.iter()) {
-        dst.write(src.clone());
+    for (dst_elem, src_elem) in guard.slice.iter_mut().zip(src.iter()) {
+        dst_elem.write(src_elem.clone());
         guard.initialized += 1;
     }
 
@@ -240,7 +241,7 @@ impl<T> DerefMut for Handle<'_, T> {
 ///
 /// The caller must ensure that the pointer is valid and that the length is correct.
 #[inline]
-pub(crate) unsafe fn drop_slice<T>(ptr: *mut T, len: usize) {
+pub(crate) unsafe fn drop_raw_slice<T>(ptr: *mut T, len: usize) {
     if mem::needs_drop::<T>() {
         // SAFETY: precondition
         unsafe {

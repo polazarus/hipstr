@@ -163,9 +163,9 @@ where
     ///
     /// Any caller should check the uniqueness first with [`Self::is_unique`].
     #[inline]
-    pub const unsafe fn as_mut_unchecked(&mut self) -> &mut T {
+    pub const unsafe fn get_mut_unchecked(this: &mut Self) -> &mut T {
         // SAFETY: uniqueness precondition
-        unsafe { &mut self.0.as_mut().value }
+        unsafe { &mut this.0.as_mut().value }
     }
 
     /// Gets a mutable reference to the value without checking the uniqueness
@@ -298,7 +298,7 @@ where
             this.detach();
         }
         // SAFETY: uniqueness enforced
-        unsafe { this.as_mut_unchecked() }
+        unsafe { Self::get_mut_unchecked(this) }
     }
 
     #[inline]
@@ -310,7 +310,7 @@ where
             this.detach_copy();
         }
         // SAFETY: uniqueness enforced
-        unsafe { this.as_mut_unchecked() }
+        unsafe { Self::get_mut_unchecked(this) }
     }
 
     pub(crate) fn detach(&mut self)

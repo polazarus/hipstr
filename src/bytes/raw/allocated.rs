@@ -494,7 +494,7 @@ impl<B: Backend> Allocated<B> {
         #[allow(clippy::cast_sign_loss)]
         match &mut *owner {
             Variant::Fat(fat) => {
-                let fat = unsafe { fat.as_mut_unchecked() };
+                let fat = unsafe { Smart::get_mut_unchecked(fat) };
 
                 // SAFETY: compute the shift from within the vector range (type invariant)
                 shift = unsafe { self.ptr.offset_from(fat.as_ptr()) as usize };
@@ -588,7 +588,7 @@ impl<B: Backend> Allocated<B> {
         match &mut *owner {
             Variant::Fat(fat) => {
                 // SAFETY: uniqueness is a precondition
-                let vec = unsafe { fat.as_mut_unchecked() };
+                let vec = unsafe { Smart::get_mut_unchecked(fat) };
 
                 // SAFETY: compute the shift from within the vector range (type invariant)
                 #[allow(clippy::cast_sign_loss)]

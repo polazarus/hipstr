@@ -44,7 +44,7 @@ unsafe impl<T: Sync, B: Backend + Sync> Sync for HipVec<'_, T, B> {}
 
 unsafe impl<T: Send, B: Backend + Send> Send for HipVec<'_, T, B> {}
 
-type Inline<T> = InlineVec<T, INLINE_BYTES>;
+type Inline<T> = InlineVec<T, u8, INLINE_BYTES>;
 
 impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
     /// An empty `HipVec` constant.
@@ -543,14 +543,14 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
                             // SAFETY: vec is unique
                             let t = unsafe { t.as_mut_unchecked() };
                             t.truncate(range.end);
-                            t.try_push(value)
+                            t.push_within_capacity(value)
                         })
                     } else {
                         // SAFETY: repr is fat and unique
                         let fat = unsafe { self.repr.fat_mut::<T, B>() };
                         fat.with_mut(|v, range| {
                             // SAFETY: vec is unique
-                            let v = unsafe { v.as_mut_unchecked() };
+                            let v = unsafe { Smart::get_mut_unchecked(v) };
                             v.truncate(range.end);
                             let spare = v.spare_capacity_mut();
                             if let [e, ..] = spare {

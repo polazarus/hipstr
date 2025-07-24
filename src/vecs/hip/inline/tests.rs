@@ -1,28 +1,38 @@
 #![allow(clippy::pedantic, clippy::restriction)]
 
+use alloc::borrow::Cow;
 use alloc::boxed::Box;
+use alloc::vec::Vec;
 use alloc::{format, vec};
 use core::hash::BuildHasher;
 use core::mem::size_of;
 use core::ptr;
 
-use super::*;
+use super::{inline_vec2, InsertError, InsertErrorKind, TaggedLen, SHIFT_DEFAULT, TAG_DEFAULT};
 use crate::common::traits::{MutVector, MutVectorExt, VectorExt};
 use crate::thin_vec;
+
+type InlineVec<T, const CAP: usize> = super::InlineVec<T, u8, CAP>;
 
 const SMALL_CAP: usize = 7;
 const SMALL_FULL: InlineVec<u8, SMALL_CAP> = InlineVec::from_array([1, 2, 3, 4, 5, 6, 7]);
 
 #[test]
+fn tagged_len_zero() {
+    let _tagged = TaggedLen::<u8, 2, 1>::zero();
+}
+
+#[test]
 fn tagged_len() {
-    let tagged = TaggedU8::<3, 0b101>::new(0b10);
+    let tagged = TaggedLen::<u8, 3, 0b101>::new(0b10).unwrap();
     assert_eq!(tagged.0.get(), 0b10_101);
 }
 
 #[test]
-#[should_panic(expected = "length exceeds maximal tagged length (`256 >> SHIFT`)")]
+#[should_panic(expected = "length exceeds maximal tagged length")]
 fn tagged_len_too_large() {
-    let _ = TaggedU8::<3, 0b101>::new(0b10_0000);
+    let _ =
+        TaggedLen::<u8, 3, 0b101>::new(0b10_0000).expect("length exceeds maximal tagged length");
 }
 
 #[test]
@@ -309,7 +319,7 @@ fn niche() {
 
 #[test]
 fn zst() {
-    const CAP: usize = TaggedU8::<SHIFT_DEFAULT, TAG_DEFAULT>::max();
+    const CAP: usize = TaggedLen::<u8, SHIFT_DEFAULT, TAG_DEFAULT>::max();
     let mut inline = InlineVec::<(), 0>::new();
     assert_eq!(inline.capacity(), CAP);
     assert_eq!(size_of_val(&inline), 1);

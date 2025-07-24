@@ -6,7 +6,7 @@ use core::ops::{Deref, DerefMut, Range};
 use core::ptr::NonNull;
 
 use self::sealed::Sealed;
-use crate::common::traits::MutVector;
+use crate::common::traits::{MutVector, Vector};
 use crate::vecs::{Smart, SmartThinVec};
 use crate::Backend;
 
@@ -56,9 +56,15 @@ impl<O: VecPtr<T>, T, const TAG: usize, const MASK: usize> Allocated<O, T, TAG, 
         }
     }
 
-    pub(crate) unsafe fn mut_vector(&self) -> &mut impl MutVector<Item = T> {
+    /// Returns a mutable reference to the underlying vector.
+    ///
+    /// # Safety
+    ///
+    /// - Should be unique
+    /// - Do not use if the modification requires a change in the pointer
+    pub(crate) unsafe fn mut_vector(&mut self) -> &mut (impl MutVector<Item = T> + '_) {
         let r: &mut O = unsafe { self.owner.untagged().cast().as_mut() };
-        r
+        r.as_mut_unchecked()
     }
 }
 
@@ -131,7 +137,7 @@ mod sealed {
     impl<T, B: Backend> Sealed for SmartThinVec<T, B> {}
 }
 
-pub trait VecPtr<T>: MutVector<Item = T> + Sealed {
+pub trait VecPtr<T>: Vector<Item = T> + Sealed {
     const PTR_CHANGE: bool;
 
     fn from_raw(ptr: NonNull<()>) -> Self;
@@ -157,6 +163,8 @@ pub trait VecPtr<T>: MutVector<Item = T> + Sealed {
 
         Some(start..end)
     }
+
+    unsafe fn as_mut_unchecked(&mut self) -> &mut (impl MutVector<Item = T> + '_);
 }
 
 impl<T, B: Backend> VecPtr<T> for Smart<Vec<T>, B> {
@@ -175,20 +183,12 @@ impl<T, B: Backend> VecPtr<T> for Smart<Vec<T>, B> {
         Self::get(self).as_ptr()
     }
 
-    fn len(&self) -> usize {
-        Self::get(self).len()
-    }
-
-    unsafe fn set_len(&mut self, new_len: usize) {
-        Self::as_mut_unchecked(self).set_len(new_len);
-    }
-
-    fn data_capacity(&self) -> usize {
-        Self::get(self).capacity()
-    }
-
     unsafe fn data_ptr_mut(&mut self) -> *mut T {
-        unsafe { Self::as_mut_unchecked(self) }.as_mut_ptr()
+        unsafe { Self::get_mut_unchecked(self) }.as_mut_ptr()
+    }
+
+    unsafe fn as_mut_unchecked(&mut self) -> &mut impl MutVector<Item = T> {
+        Self::get_mut_unchecked(self)
     }
 }
 
@@ -209,20 +209,12 @@ impl<T, B: Backend> VecPtr<T> for SmartThinVec<T, B> {
         self.as_thin_vec().as_ptr()
     }
 
-    fn len(&self) -> usize {
-        self.as_thin_vec().len()
-    }
-
-    unsafe fn set_len(&mut self, new_len: usize) {
-        unsafe { self.as_mut_unchecked() }.set_len(new_len);
-    }
-
-    fn data_capacity(&self) -> usize {
-        self.as_thin_vec().capacity()
-    }
-
     unsafe fn data_ptr_mut(&mut self) -> *mut T {
         unsafe { self.as_mut_unchecked() }.as_mut_ptr()
+    }
+
+    unsafe fn as_mut_unchecked(&mut self) -> &mut impl MutVector<Item = T> {
+        self.as_mut_unchecked()
     }
 }
 

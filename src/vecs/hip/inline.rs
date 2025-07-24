@@ -10,58 +10,65 @@ use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::fmt::{self};
+use core::hint::unreachable_unchecked;
 use core::iter::FusedIterator;
-use core::mem::{self, ManuallyDrop, MaybeUninit};
-use core::num::NonZeroU8;
+use core::mem::{ManuallyDrop, MaybeUninit};
 use core::ops::{Deref, DerefMut, Range, RangeBounds};
 use core::ptr::NonNull;
 use core::{error, hash, slice};
 
 use crate::common::drain::Drain;
-use crate::common::methods::{methods, MutableView};
-use crate::common::{drop_slice, panic_display, traits};
+use crate::common::methods::{
+    const_slice_swap_unchecked, extend_from_array_impl, extend_from_boxed_impl,
+    extend_from_slice_impl, pop_if_impl, pop_impl, push_within_capacity, spare_capacity_mut_impl,
+    truncate_impl,
+};
+use crate::common::non_zero::{self, NZ};
+use crate::common::{drop_raw_slice, panic_display, traits};
 use crate::{common, macros};
 
 #[cfg(test)]
 mod tests;
 
-pub const SHIFT_DEFAULT: u8 = super::super::TAG_SHIFT;
-pub const TAG_DEFAULT: u8 = super::super::TAG_INLINE;
-
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(transparent)]
-#[derive(Clone, Copy)]
-pub(super) struct TaggedU8<const SHIFT: u8, const TAG: u8>(pub(super) NonZeroU8);
+struct TaggedLen<T: NZ, const SHIFT: usize, const TAG: usize>(T::NonZero);
 
-impl<const SHIFT: u8, const TAG: u8> TaggedU8<SHIFT, TAG> {
-    pub(super) const fn max() -> usize {
-        const {
-            assert!(SHIFT > 0, "SHIFT must be greater than 0");
-            assert!(SHIFT < 8, "SHIFT must be less than 8");
+impl<T: NZ, const SHIFT: usize, const TAG: usize> TaggedLen<T, SHIFT, TAG> {
+    const fn new(value: usize) -> Option<Self> {
+        if value < Self::max() {
+            let tagged = non_zero::from_usize::<T>((value << SHIFT) | TAG);
+            let tagged = unsafe { tagged.unwrap_unchecked() };
+            Some(Self(tagged))
+        } else {
+            None
         }
-        u8::MAX as usize >> SHIFT
     }
 
-    pub(super) const fn new(len: usize) -> Self {
+    const fn max() -> usize {
         const {
             assert!(SHIFT > 0, "SHIFT must be greater than 0");
             assert!(SHIFT < 8, "SHIFT must be less than 8");
             assert!(TAG > 0, "TAG must be greater than 0");
             assert!(TAG < (1 << SHIFT), "TAG must be less than 1 << SHIFT");
         }
-        assert!(
-            len <= Self::max(),
-            "length exceeds maximal tagged length (`256 >> SHIFT`)"
-        );
-        let shifted = len << SHIFT;
-        #[expect(clippy::cast_possible_truncation)]
-        let value = shifted as u8 | TAG;
-        Self(unsafe { NonZeroU8::new_unchecked(value) })
+        (u8::MAX as usize >> SHIFT) - TAG
     }
 
-    pub(super) const fn get(self) -> usize {
-        (self.0.get() >> SHIFT) as usize
+    const fn get(self) -> usize {
+        non_zero::into_usize::<T>(self.0) >> SHIFT
+    }
+
+    const fn zero() -> Self {
+        let tagged = non_zero::from_usize::<T>(TAG);
+        let tagged = unsafe { tagged.unwrap_unchecked() };
+        Self(tagged)
     }
 }
+
+pub const SHIFT_DEFAULT: usize = super::super::TAG_SHIFT as usize;
+pub const TAG_DEFAULT: usize = super::super::TAG_INLINE as usize;
+pub const BYTES_DEFAULT: usize = size_of::<*mut ()>() * 3 - 1;
 
 /// A vector that can store a small number of elements inline.
 ///
@@ -69,6 +76,11 @@ impl<const SHIFT: u8, const TAG: u8> TaggedU8<SHIFT, TAG> {
 /// elements is small and known at compile time. It uses a fixed-size array
 /// internally to store the elements, and it can be more efficient than using a
 /// heap-allocated vector for small collections.
+///
+/// # Generic parameters
+///
+/// - `T`, the type of the elements stored in the vector.
+/// - `L`, the type of the tagged length, one of: `u8`, `u16`, `u32`, `u64`, and `usize`.
 ///
 /// # Examples
 ///
@@ -89,26 +101,29 @@ impl<const SHIFT: u8, const TAG: u8> TaggedU8<SHIFT, TAG> {
 #[repr(C)]
 pub struct InlineVec<
     T,
-    const BYTES: usize,
-    const SHIFT: u8 = SHIFT_DEFAULT,
-    const TAG: u8 = TAG_DEFAULT,
+    L: NZ = u8,
+    const BYTES: usize = BYTES_DEFAULT,
+    const SHIFT: usize = SHIFT_DEFAULT,
+    const TAG: usize = TAG_DEFAULT,
 > {
     _aligned: [T; 0],
 
     #[cfg(target_endian = "little")]
-    len: TaggedU8<SHIFT, TAG>,
+    len: TaggedLen<L, SHIFT, TAG>,
 
     data: [MaybeUninit<u8>; BYTES],
 
     #[cfg(target_endian = "big")]
-    len: TaggedU8<SHIFT, TAG>,
+    len: TaggedLen<L, SHIFT, TAG>,
 }
 
-impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, SHIFT, TAG> {
+impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
+    InlineVec<T, L, BYTES, SHIFT, TAG>
+{
     pub(crate) const CAP: usize = if size_of::<Self>() < size_of::<T>() {
         0
     } else {
-        let max = TaggedU8::<SHIFT, TAG>::max();
+        let max = TaggedLen::<L, SHIFT, TAG>::max();
         if size_of::<T>() == 0 {
             max
         } else {
@@ -127,10 +142,6 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
         0
     };
 
-    const fn as_mutable_view(&mut self) -> MutableView<'_, T> {
-        unsafe { MutableView::new(self.as_non_null(), Self::CAP, self.len()) }
-    }
-
     /// Creates a new inline vector with the specified capacity.
     ///
     /// # Examples
@@ -145,10 +156,10 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
     #[must_use]
     pub const fn new() -> Self {
         const {
-            assert!(BYTES <= TaggedU8::<SHIFT, TAG>::max());
+            assert!(BYTES <= TaggedLen::<L, SHIFT, TAG>::max());
             Self {
                 _aligned: [],
-                len: TaggedU8::new(0),
+                len: TaggedLen::zero(),
                 data: [MaybeUninit::uninit(); BYTES],
             }
         }
@@ -166,11 +177,14 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
     pub(crate) const unsafe fn zeroed(new_len: usize) -> Self {
         const {
             assert!(BYTES != 0);
-            assert!(BYTES <= TaggedU8::<SHIFT, TAG>::max());
+            assert!(BYTES <= TaggedLen::<L, SHIFT, TAG>::max());
         }
+        let Some(len) = TaggedLen::new(new_len) else {
+            panic!("length exceeds maximal tagged length (`256 >> SHIFT`)");
+        };
         Self {
             _aligned: [],
-            len: TaggedU8::new(new_len),
+            len,
             data: [MaybeUninit::zeroed(); BYTES],
         }
     }
@@ -210,22 +224,7 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
     #[must_use]
     pub(crate) fn from_boxed_slice(boxed: Box<[T]>) -> Self {
         let mut this = Self::new();
-        let len = boxed.len();
-        assert!(len <= Self::CAP, "boxed slice's length exceeds capacity");
-
-        unsafe {
-            // move the box content to the inline vector
-            let ptr = this.as_mut_ptr();
-            ptr.copy_from_nonoverlapping(boxed.as_ptr().cast(), len);
-
-            // update the inline vector length
-            this.set_len(len);
-        }
-
-        // drop the box without dropping the moved content
-        // SAFETY: ManuallyDrop is a transparent wrapper
-        let _: Box<[ManuallyDrop<T>]> = unsafe { mem::transmute(boxed) };
-
+        this.extend_from_boxed(boxed);
         this
     }
 
@@ -302,10 +301,9 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
         unsafe { slice::from_raw_parts(self.as_ptr(), self.len()) }
     }
 
-    /// Returns a mutable slice of the inline vector.
     #[inline]
     pub const fn as_mut_slice(&mut self) -> &mut [T] {
-        self.as_mutable_view().as_mut_slice()
+        unsafe { slice::from_raw_parts_mut(self.as_mut_ptr(), self.len()) }
     }
 
     /// Returns the capacity of the inline vector, that is, `CAP`.
@@ -366,26 +364,26 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
         unsafe { self.data.as_mut_ptr().add(Self::OFFSET).cast() }
     }
 
-    methods! {
-        /// Attempts to push a value into the inline vector.
-        ///
-        /// # Errors
-        ///
-        /// Returns `Err(value)` if the inline vector is full, that is, the current
-        /// [`len`] is greater than the `CAP`.
-        ///
-        /// # Examples
-        ///
-        /// ```
-        /// use hipstr::inline_vec;
-        /// let mut inline = inline_vec2![3 => 1, 2];
-        /// assert_eq!(inline.try_push(1), Ok(()));
-        /// assert_eq!(inline.try_push(2), Err(2));
-        /// ```
-        ///
-        /// [`len`]: Self::len
-        #[inline]
-        pub const fn try_push
+    /// Attempts to push a value into the inline vector.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err(value)` if the inline vector is full, that is, the current
+    /// [`len`] is greater than the `CAP`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::inline_vec;
+    /// let mut inline = inline_vec2![3 => 1, 2];
+    /// assert_eq!(inline.try_push(1), Ok(()));
+    /// assert_eq!(inline.try_push(2), Err(2));
+    /// ```
+    ///
+    /// [`len`]: Self::len
+    #[inline]
+    pub const fn try_push(&mut self, value: T) -> Result<(), T> {
+        push_within_capacity!(self, value)
     }
 
     /// Appends a value to the back of the inline vector.
@@ -447,60 +445,63 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
     #[inline]
     pub const unsafe fn set_len(&mut self, new_len: usize) {
         debug_assert!(new_len <= Self::CAP);
-        self.len = TaggedU8::new(new_len);
+        let Some(len) = TaggedLen::new(new_len) else {
+            unreachable_unchecked();
+        };
+        self.len = len;
     }
 
-    methods! {
-        /// Returns a mutable slice of the spare capacity of the inline vector.
-        ///
-        /// # Examples
-        ///
-        /// ```
-        /// use hipstr::vecs::InlineVec;
-        /// let mut inline = InlineVec::<u8, 7>::new();
-        /// assert_eq!(inline.spare_capacity_mut().len(), 7);
-        /// inline.spare_capacity_mut()[0].write(5);
-        /// unsafe {
-        ///     inline.set_len(1);
-        /// }
-        /// ```
-        #[inline]
-        pub const fn spare_capacity_mut<T>
+    /// Returns a mutable slice of the spare capacity of the inline vector.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::InlineVec;
+    /// let mut inline = InlineVec::<u8, 7>::new();
+    /// assert_eq!(inline.spare_capacity_mut().len(), 7);
+    /// inline.spare_capacity_mut()[0].write(5);
+    /// unsafe {
+    ///     inline.set_len(1);
+    /// }
+    /// ```
+    #[inline]
+    pub const fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<T>] {
+        spare_capacity_mut_impl!(self)
     }
 
-    methods! {
-        /// Removes the last element from the inline vector and returns it, or `None`
-        /// if the array is empty.
-        ///
-        /// # Examples
-        ///
-        /// ```
-        /// use hipstr::vecs::InlineVec;
-        /// let mut inline = InlineVec::<u8, 7>::new();
-        /// inline.push(1);
-        /// assert_eq!(inline.pop(), Some(1));
-        /// assert_eq!(inline.pop(), None);
-        /// ```
-        pub const fn pop
+    /// Removes the last element from the inline vector and returns it, or `None`
+    /// if the array is empty.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::InlineVec;
+    /// let mut inline = InlineVec::<u8, 7>::new();
+    /// inline.push(1);
+    /// assert_eq!(inline.pop(), Some(1));
+    /// assert_eq!(inline.pop(), None);
+    /// ```
+    pub const fn pop(&mut self) -> Option<T> {
+        pop_impl!(self)
     }
 
-    methods! {
-        /// Removes and returns the last element from a vector if the predicate
-        /// returns `true`, or [`None`] if the predicate returns false or the vector
-        /// is empty.
-        ///
-        /// The predicate is not called if the vector is empty.
-        ///
-        /// # Examples
-        ///
-        /// ```
-        /// use hipstr::inline_vec;
-        /// let mut inline = inline_vec2![7 => 1_u8, 2, 3, 4];
-        /// assert_eq!(inline.pop_if(|x| *x % 2 == 0), Some(4));
-        /// assert_eq!(inline.as_slice(), &[1, 2, 3]);
-        /// assert_eq!(inline.pop_if(|x| *x % 2 == 0), None);
-        /// ```
-        pub fn pop_if
+    /// Removes and returns the last element from a vector if the predicate
+    /// returns `true`, or [`None`] if the predicate returns false or the vector
+    /// is empty.
+    ///
+    /// The predicate is not called if the vector is empty.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::inline_vec;
+    /// let mut inline = inline_vec2![7 => 1_u8, 2, 3, 4];
+    /// assert_eq!(inline.pop_if(|x| *x % 2 == 0), Some(4));
+    /// assert_eq!(inline.as_slice(), &[1, 2, 3]);
+    /// assert_eq!(inline.pop_if(|x| *x % 2 == 0), None);
+    /// ```
+    pub fn pop_if(&mut self, f: impl FnOnce(&T) -> bool) -> Option<T> {
+        pop_if_impl!(self, f)
     }
 
     /// Moves all the elements of `other` into `self`, leaving `other` empty.
@@ -554,9 +555,14 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
     /// assert_eq!(inline1, [1, 2, 3, 4]);
     /// assert!(inline2.is_empty());
     /// ```
-    pub const fn const_append<const BYTE_CAP2: usize, const SHIFT2: u8, const TAG2: u8>(
+    pub const fn const_append<
+        L2: NZ,
+        const BYTE_CAP2: usize,
+        const SHIFT2: usize,
+        const TAG2: usize,
+    >(
         &mut self,
-        other: &mut InlineVec<T, BYTE_CAP2, SHIFT2, TAG2>,
+        other: &mut InlineVec<T, L2, BYTE_CAP2, SHIFT2, TAG2>,
     ) {
         let len = self.len();
         let other_len = other.len();
@@ -576,45 +582,45 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
         }
     }
 
-    methods! {
-        /// Clears the inline vector, removing all elements.
-        ///
-        /// # Examples
-        ///
-        /// ```
-        /// use hipstr::vecs::InlineVec;
-        /// let mut inline = InlineVec::<u8, 7>::new();
-        /// inline.push(1);
-        /// inline.push(2);
-        /// assert_eq!(inline.len(), 2);
-        /// inline.clear();
-        /// assert_eq!(inline.len(), 0);
-        /// ```
-        #[inline]
-        pub fn clear
+    /// Clears the inline vector, removing all elements.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::InlineVec;
+    /// let mut inline = InlineVec::<u8, 7>::new();
+    /// inline.push(1);
+    /// inline.push(2);
+    /// assert_eq!(inline.len(), 2);
+    /// inline.clear();
+    /// assert_eq!(inline.len(), 0);
+    /// ```
+    #[inline]
+    pub fn clear(&mut self) {
+        self.truncate(0);
     }
 
-    methods! {
-        /// Truncates the inline vector to the specified length, dropping any excess
-        /// elements.
-        ///
-        /// Do nothing if the new length is greater than or equal to the current
-        /// length.
-        ///
-        /// # Examples
-        ///
-        /// ```
-        /// use hipstr::vecs::InlineVec;
-        /// let mut inline = InlineVec::<u8, 7>::new();
-        /// inline.push(1);
-        /// inline.push(2);
-        /// assert_eq!(inline.len(), 2);
-        /// inline.truncate(1);
-        /// assert_eq!(inline.len(), 1);
-        /// inline.truncate(0);
-        /// assert_eq!(inline.len(), 0);
-        /// ```
-        pub fn truncate
+    /// Truncates the inline vector to the specified length, dropping any excess
+    /// elements.
+    ///
+    /// Do nothing if the new length is greater than or equal to the current
+    /// length.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::InlineVec;
+    /// let mut inline = InlineVec::<u8, 7>::new();
+    /// inline.push(1);
+    /// inline.push(2);
+    /// assert_eq!(inline.len(), 2);
+    /// inline.truncate(1);
+    /// assert_eq!(inline.len(), 1);
+    /// inline.truncate(0);
+    /// assert_eq!(inline.len(), 0);
+    /// ```
+    pub fn truncate(&mut self, new_len: usize) {
+        truncate_impl!(self, new_len);
     }
 
     /// Removes and returns the element at the specified index, replacing it
@@ -875,17 +881,11 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
     #[doc(alias = "push_array")]
     #[track_caller]
     pub const fn extend_from_array<const N: usize>(&mut self, array: [T; N]) {
-        assert!(N <= Self::CAP, "array larger than capacity");
-        let len = self.len();
-        let new_len = len + N;
-        assert!(new_len <= Self::CAP, "new length exceeds capacity");
-        unsafe {
-            self.set_len(new_len);
-            self.as_mut_ptr()
-                .add(len)
-                .copy_from_nonoverlapping(array.as_ptr().cast(), N);
-        }
-        core::mem::forget(array);
+        extend_from_array_impl!(self, array);
+    }
+
+    pub fn extend_from_boxed(&mut self, boxed: Box<[T]>) {
+        extend_from_boxed_impl!(self, boxed);
     }
 
     /// Removes the subslice indicated by the given range from the inline
@@ -932,9 +932,21 @@ impl<T, const BYTES: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, BYTES, 
             slice::from_raw_parts_mut(ptr, Self::CAP)
         }
     }
+
+    pub const fn swap(&mut self, a: usize, b: usize) {
+        self.as_mut_slice().swap(a, b);
+    }
+
+    pub const unsafe fn swap_unchecked(&mut self, a: usize, b: usize) {
+        // SAFETY: precondition
+        unsafe {
+            const_slice_swap_unchecked(self.as_mut_slice(), a, b);
+        }
+    }
 }
 
-impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIFT, TAG>
+impl<T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize>
+    InlineVec<T, L, CAP, SHIFT, TAG>
 where
     T: Clone,
 {
@@ -983,20 +995,7 @@ where
     #[doc(alias = "push_slice_clone")]
     #[track_caller]
     pub fn extend_from_slice(&mut self, slice: &[T]) {
-        let len = self.len();
-        let new_len = len + slice.len();
-        assert!(new_len <= CAP, "new length exceeds capacity");
-
-        let dst_slice: &mut [MaybeUninit<T>] = unsafe {
-            let ptr = self.data.as_mut_ptr().add(Self::OFFSET).add(len).cast();
-            slice::from_raw_parts_mut(ptr, slice.len())
-        };
-        let dst = dst_slice.iter_mut();
-        let src = slice.iter();
-        for ((dst, src), l) in dst.zip(src).zip(len + 1..=new_len) {
-            dst.write(src.clone());
-            self.len = TaggedU8::new(l);
-        }
+        extend_from_slice_impl!(self, slice);
     }
 
     /// Given a range `src`, clones a slice of elements in that range and
@@ -1045,10 +1044,11 @@ where
         let (current, spare) = unsafe { data_slice.split_at_mut_unchecked(len) };
         let dst = spare[0..range_len].iter_mut();
         let src = current[range].iter();
-        for ((dst, src), l) in dst.zip(src).zip(len + 1..=new_len) {
+
+        for ((dst_elem, src_elem), l) in dst.zip(src).zip(len + 1..=new_len) {
             // SAFETY: the source is in the initialized range
-            dst.write(unsafe { src.assume_init_ref() }.clone());
-            self.len = TaggedU8::new(l);
+            dst_elem.write(unsafe { src_elem.assume_init_ref() }.clone());
+            self.len = unsafe { TaggedLen::new(l).unwrap_unchecked() };
         }
     }
 
@@ -1077,7 +1077,8 @@ where
     }
 }
 
-impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIFT, TAG>
+impl<T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize>
+    InlineVec<T, L, CAP, SHIFT, TAG>
 where
     T: Copy,
 {
@@ -1255,7 +1256,8 @@ where
     }
 }
 
-impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> Clone for InlineVec<T, CAP, SHIFT, TAG>
+impl<T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize> Clone
+    for InlineVec<T, L, CAP, SHIFT, TAG>
 where
     T: Clone,
 {
@@ -1264,15 +1266,19 @@ where
     }
 }
 
-impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> Drop for InlineVec<T, CAP, SHIFT, TAG> {
+impl<T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize> Drop
+    for InlineVec<T, L, CAP, SHIFT, TAG>
+{
     fn drop(&mut self) {
         unsafe {
-            drop_slice(self.as_mut_ptr(), self.len());
+            drop_raw_slice(self.as_mut_ptr(), self.len());
         }
     }
 }
 
-impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> Deref for InlineVec<T, CAP, SHIFT, TAG> {
+impl<T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize> Deref
+    for InlineVec<T, L, CAP, SHIFT, TAG>
+{
     type Target = [T];
 
     #[inline]
@@ -1281,8 +1287,8 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> Deref for InlineVec<T,
     }
 }
 
-impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> DerefMut
-    for InlineVec<T, CAP, SHIFT, TAG>
+impl<T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize> DerefMut
+    for InlineVec<T, L, CAP, SHIFT, TAG>
 {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
@@ -1290,8 +1296,8 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> DerefMut
     }
 }
 
-impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> AsRef<[T]>
-    for InlineVec<T, CAP, SHIFT, TAG>
+impl<T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize> AsRef<[T]>
+    for InlineVec<T, L, CAP, SHIFT, TAG>
 {
     #[inline]
     fn as_ref(&self) -> &[T] {
@@ -1299,8 +1305,8 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> AsRef<[T]>
     }
 }
 
-impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> AsMut<[T]>
-    for InlineVec<T, CAP, SHIFT, TAG>
+impl<T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize> AsMut<[T]>
+    for InlineVec<T, L, CAP, SHIFT, TAG>
 {
     #[inline]
     fn as_mut(&mut self) -> &mut [T] {
@@ -1308,32 +1314,32 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> AsMut<[T]>
     }
 }
 
-impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> Default
-    for InlineVec<T, CAP, SHIFT, TAG>
+impl<T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize> Default
+    for InlineVec<T, L, CAP, SHIFT, TAG>
 {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T: fmt::Debug, const CAP: usize, const SHIFT: u8, const TAG: u8> fmt::Debug
-    for InlineVec<T, CAP, SHIFT, TAG>
+impl<T: fmt::Debug, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize> fmt::Debug
+    for InlineVec<T, L, CAP, SHIFT, TAG>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.as_slice().fmt(f)
     }
 }
 
-impl<T: hash::Hash, const CAP: usize, const SHIFT: u8, const TAG: u8> hash::Hash
-    for InlineVec<T, CAP, SHIFT, TAG>
+impl<T: hash::Hash, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize> hash::Hash
+    for InlineVec<T, L, CAP, SHIFT, TAG>
 {
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
         self.as_slice().hash(state);
     }
 }
 
-impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> Extend<T>
-    for InlineVec<T, CAP, SHIFT, TAG>
+impl<T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize> Extend<T>
+    for InlineVec<T, L, CAP, SHIFT, TAG>
 {
     fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
         // May be improve by specialization if Rust offers it one day. Is it
@@ -1345,11 +1351,11 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> Extend<T>
     }
 }
 
-impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> IntoIterator
-    for InlineVec<T, CAP, SHIFT, TAG>
+impl<T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize> IntoIterator
+    for InlineVec<T, L, CAP, SHIFT, TAG>
 {
     type Item = T;
-    type IntoIter = IntoIter<T, CAP, SHIFT, TAG>;
+    type IntoIter = IntoIter<T, L, CAP, SHIFT, TAG>;
 
     fn into_iter(self) -> Self::IntoIter {
         let end = self.len();
@@ -1364,14 +1370,14 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> IntoIterator
 /// the `InlineVec` while iterating over its elements.
 ///
 /// [`into_iter`]: InlineVec::into_iter
-pub struct IntoIter<T, const CAP: usize, const SHIFT: u8, const TAG: u8> {
+pub struct IntoIter<T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize> {
     start: usize,
     end: usize,
-    vec: ManuallyDrop<InlineVec<T, CAP, SHIFT, TAG>>,
+    vec: ManuallyDrop<InlineVec<T, L, CAP, SHIFT, TAG>>,
 }
 
-impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> Iterator
-    for IntoIter<T, CAP, SHIFT, TAG>
+impl<T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize> Iterator
+    for IntoIter<T, L, CAP, SHIFT, TAG>
 {
     type Item = T;
 
@@ -1391,15 +1397,17 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> Iterator
     }
 }
 
-impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> ExactSizeIterator
-    for IntoIter<T, CAP, SHIFT, TAG>
+impl<T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize> ExactSizeIterator
+    for IntoIter<T, L, CAP, SHIFT, TAG>
 {
     fn len(&self) -> usize {
         self.end - self.start
     }
 }
 
-impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> Drop for IntoIter<T, CAP, SHIFT, TAG> {
+impl<T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize> Drop
+    for IntoIter<T, L, CAP, SHIFT, TAG>
+{
     fn drop(&mut self) {
         if core::mem::needs_drop::<T>() {
             for i in self.start..self.end {
@@ -1409,8 +1417,8 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> Drop for IntoIter<T, C
     }
 }
 
-impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> DoubleEndedIterator
-    for IntoIter<T, CAP, SHIFT, TAG>
+impl<T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize> DoubleEndedIterator
+    for IntoIter<T, L, CAP, SHIFT, TAG>
 {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.start < self.end {
@@ -1423,136 +1431,139 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> DoubleEndedIterator
     }
 }
 
-impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> FusedIterator
-    for IntoIter<T, CAP, SHIFT, TAG>
+impl<T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize> FusedIterator
+    for IntoIter<T, L, CAP, SHIFT, TAG>
 {
 }
 
-impl<T: Eq, const CAP: usize, const SHIFT: u8, const TAG: u8> Eq for InlineVec<T, CAP, SHIFT, TAG> {}
+impl<T: Eq, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize> Eq
+    for InlineVec<T, L, CAP, SHIFT, TAG>
+{
+}
 
 macros::trait_impls! {
-    [T, U, const CAP1: usize, const SHIFT1: u8, const TAG1: u8, const CAP2: usize, const SHIFT2: u8, const TAG2: u8]
+    [T, U, L1: NZ, L2: NZ, const CAP1: usize, const SHIFT1: usize, const TAG1: usize, const CAP2: usize, const SHIFT2: usize, const TAG2: usize]
     where [T: PartialEq<U>]
     {
         PartialEq {
-            InlineVec<T, CAP1, SHIFT1, TAG1>, InlineVec<U, CAP2, SHIFT2, TAG2>;
+            InlineVec<T, L1, CAP1, SHIFT1, TAG1>, InlineVec<U, L2, CAP2, SHIFT2, TAG2>;
         }
     }
 
-    [T, U, const CAP: usize, const SHIFT: u8, const TAG: u8]
+    [T, U, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize]
     where [T: PartialEq<U>]
     {
         PartialEq {
-            InlineVec<T, CAP, SHIFT, TAG>, [U];
-            InlineVec<T, CAP, SHIFT, TAG>, &[U];
-            InlineVec<T, CAP, SHIFT, TAG>, &mut [U];
-            InlineVec<T, CAP, SHIFT, TAG>, Vec<U>;
+            InlineVec<T, L, CAP, SHIFT, TAG>, [U];
+            InlineVec<T, L, CAP, SHIFT, TAG>, &[U];
+            InlineVec<T, L, CAP, SHIFT, TAG>, &mut [U];
+            InlineVec<T, L, CAP, SHIFT, TAG>, Vec<U>;
 
 
-            [T], InlineVec<U, CAP, SHIFT, TAG>;
-            &[T], InlineVec<U, CAP, SHIFT, TAG>;
-            &mut [T], InlineVec<U, CAP, SHIFT, TAG>;
-            Vec<T>, InlineVec<U, CAP, SHIFT, TAG>;
+            [T], InlineVec<U, L, CAP, SHIFT, TAG>;
+            &[T], InlineVec<U, L, CAP, SHIFT, TAG>;
+            &mut [T], InlineVec<U, L, CAP, SHIFT, TAG>;
+            Vec<T>, InlineVec<U, L, CAP, SHIFT, TAG>;
 
         }
     }
 
-    [T, U, const CAP: usize, const SHIFT: u8, const TAG: u8]
+    [T, U, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize]
     where [T: PartialEq<U>, U: Clone]
     {
         PartialEq {
-            InlineVec<T, CAP, SHIFT, TAG>, alloc::borrow::Cow<'_, [U]>;
+            InlineVec<T, L, CAP, SHIFT, TAG>, alloc::borrow::Cow<'_, [U]>;
         }
     }
 
-    [T, U, const CAP: usize, const SHIFT: u8, const TAG: u8]
+    [T, U, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize]
     where [T: PartialEq<U>, T: Clone]
     {
         PartialEq {
-            alloc::borrow::Cow<'_, [T]>, InlineVec<U, CAP, SHIFT, TAG>;
+            alloc::borrow::Cow<'_, [T]>, InlineVec<U, L, CAP, SHIFT, TAG>;
         }
     }
 
-    [T, U, const CAP: usize, const SHIFT: u8, const TAG: u8, const N: usize]
+    [T, U, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize, const N: usize]
     where [T: PartialEq<U>]
     {
         PartialEq {
-        [T; N], InlineVec<U, CAP, SHIFT, TAG>;
-        InlineVec<T, CAP, SHIFT, TAG>, [U; N];
+        [T; N], InlineVec<U, L, CAP, SHIFT, TAG>;
+        InlineVec<T, L, CAP, SHIFT, TAG>, [U; N];
 
-        &[T; N], InlineVec<U, CAP, SHIFT, TAG>;
-        InlineVec<T, CAP, SHIFT, TAG>, &[U; N];
+        &[T; N], InlineVec<U, L, CAP, SHIFT, TAG>;
+        InlineVec<T, L, CAP, SHIFT, TAG>, &[U; N];
 
-        &mut [T; N], InlineVec<U, CAP, SHIFT, TAG>;
-        InlineVec<T, CAP, SHIFT, TAG>, &mut [U; N];
+        &mut [T; N], InlineVec<U, L, CAP, SHIFT, TAG>;
+        InlineVec<T, L, CAP, SHIFT, TAG>, &mut [U; N];
         }
     }
 
-    [T, const CAP1: usize, const SHIFT1: u8, const TAG1: u8, const CAP2: usize, const SHIFT2: u8, const TAG2: u8]
+    [T, L1: NZ, L2:NZ, const CAP1: usize, const SHIFT1: usize, const TAG1: usize, const CAP2: usize, const SHIFT2: usize, const TAG2: usize]
     where [T: PartialOrd]
     {
         PartialOrd {
-            InlineVec<T, CAP1, SHIFT1, TAG1>, InlineVec<T, CAP2, SHIFT2, TAG2>;
+            InlineVec<T, L1, CAP1, SHIFT1, TAG1>, InlineVec<T, L2, CAP2, SHIFT2, TAG2>;
         }
     }
 
-    [T, const CAP: usize, const SHIFT: u8, const TAG: u8]
+    [T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize]
     {
         Vector {
-            InlineVec<T, CAP, SHIFT, TAG> : T;
+            InlineVec<T, L, CAP, SHIFT, TAG> : T;
         }
         MutVector {
-            InlineVec<T, CAP, SHIFT, TAG>;
+            InlineVec<T, L, CAP, SHIFT, TAG>;
         }
     }
 
-    [T, const CAP: usize, const SHIFT: u8, const TAG: u8, const N: usize]
+    [T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize, const N: usize]
     {
         From {
-            [T; N] => InlineVec<T, CAP, SHIFT, TAG> = Self::from_array;
+            [T; N] => InlineVec<T, L, CAP, SHIFT, TAG> = Self::from_array;
         }
     }
 
-    [T, const CAP: usize, const SHIFT: u8, const TAG: u8]
+    [T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize]
     {
         FromIterator {
-            T => InlineVec<T, CAP, SHIFT, TAG> = Self::from_iter;
+            T => InlineVec<T, L, CAP, SHIFT, TAG> = Self::from_iter;
         }
         From {
-            Box<[T]> => InlineVec<T, CAP, SHIFT, TAG> = Self::from_boxed_slice;
-            Vec<T> => InlineVec<T, CAP, SHIFT, TAG> = Self::from_mut_vector;
+            Box<[T]> => InlineVec<T, L, CAP, SHIFT, TAG> = Self::from_boxed_slice;
+            Vec<T> => InlineVec<T, L, CAP, SHIFT, TAG> = Self::from_mut_vector;
         }
     }
 
-    [T, P, const CAP: usize, const SHIFT: u8, const TAG: u8]
+    [T, P, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize]
     {
         From {
-            crate::vecs::thin::ThinVec<T, P> => InlineVec<T, CAP, SHIFT, TAG> = Self::from_mut_vector;
+            crate::vecs::thin::ThinVec<T, P> => InlineVec<T, L, CAP, SHIFT, TAG> = Self::from_mut_vector;
         }
     }
 
-    [T, const CAP: usize, const SHIFT: u8, const TAG: u8]
+    [T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize]
     where [T: Clone]
     {
         From {
-            &[T] => InlineVec<T, CAP, SHIFT, TAG> = Self::from_slice_clone;
-            &mut [T] => InlineVec<T, CAP, SHIFT, TAG> = Self::from_slice_clone;
-            Cow<'_, [T]> => InlineVec<T, CAP, SHIFT, TAG> = Self::from_cow;
+            &[T] => InlineVec<T, L, CAP, SHIFT, TAG> = Self::from_slice_clone;
+            &mut [T] => InlineVec<T, L, CAP, SHIFT, TAG> = Self::from_slice_clone;
+            Cow<'_, [T]> => InlineVec<T, L, CAP, SHIFT, TAG> = Self::from_cow;
         }
     }
 
-    [T, const CAP: usize, const SHIFT: u8, const TAG: u8, const N: usize]
+    [T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize, const N: usize]
     where [T: Clone]
     {
         From {
-            &[T; N] => InlineVec<T, CAP, SHIFT, TAG> = Self::from_slice_clone;
-            &mut [T; N] => InlineVec<T, CAP, SHIFT, TAG> = Self::from_slice_clone;
+            &[T; N] => InlineVec<T, L, CAP, SHIFT, TAG> = Self::from_slice_clone;
+            &mut [T; N] => InlineVec<T, L, CAP, SHIFT, TAG> = Self::from_slice_clone;
         }
     }
 }
 
-impl<T: Ord, const CAP: usize, const SHIFT: u8, const TAG: u8> Ord
-    for InlineVec<T, CAP, SHIFT, TAG>
+impl<T: Ord, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize> Ord
+    for InlineVec<T, L, CAP, SHIFT, TAG>
 {
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         self.as_slice().cmp(other.as_slice())
@@ -1652,7 +1663,7 @@ impl<T> fmt::Display for InsertError<T> {
 macro_rules! inline_vec2 {
     [$cap:expr => $($e:expr),* $(,)?] => {
         {
-            $crate::vecs::hip::inline::InlineVec::<_, { $cap }>::from_array([$($e),*])
+            $crate::vecs::hip::inline::InlineVec::<_, u8, { $cap }>::from_array([$($e),*])
         }
     };
     [$($e:expr),* $(,)?] => {
@@ -1662,7 +1673,7 @@ macro_rules! inline_vec2 {
     };
     [$cap:expr => $e:expr; $n:expr] => {
         {
-            $crate::vecs::hip::inline::InlineVec::<_, { $cap }>::from_array([$e; $n])
+            $crate::vecs::hip::inline::InlineVec::<_, u8,  { $cap }>::from_array([$e; $n])
         }
     };
     [$e:expr; $n:expr] => {

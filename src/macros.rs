@@ -1,11 +1,11 @@
 macro_rules! trait_impls {
     () => {};
-    ( $( [ $($gen:tt)* ] $(where [ $($wh: tt)* ])? )? { $($body:tt)* } $($rest:tt)*) => {
+    ( $( [ $($gen:tt)* ] $(where [ $($wh:tt)* ])? )? { $($body:tt)* } $($rest:tt)*) => {
         $crate::macros::trait_impls!(@@ $( [ $($gen)* ] $( where [ $($wh)* ] )? )? { $($body)* });
         $crate::macros::trait_impls!($($rest)*);
     };
-    ( @@ $( [ $($gen:tt)* ] $( where [ $($wh: tt)* ])? )? {} ) => {};
-    ( @@ $( [ $($gen:tt)* ] $( where [ $($wh: tt)* ])? )? { $name:ident { $($body:tt)* } $($rest:tt)* } ) => {
+    ( @@ $( [ $($gen:tt)* ] $( where [ $($wh:tt)* ])? )? {} ) => {};
+    ( @@ $( [ $($gen:tt)* ] $( where [ $($wh:tt)* ])? )? { $name:ident { $($body:tt)* } $($rest:tt)* } ) => {
         $crate::macros::trait_impls!(@$name $( [ $($gen)* ] $( where [ $($wh)* ] )? )? { $($body)* } );
         $crate::macros::trait_impls!(@@ $( [ $($gen)* ] $( where [ $($wh)* ] )? )? { $($rest)* });
     };
@@ -85,8 +85,8 @@ macro_rules! trait_impls {
 
     (@Vector $([ $($gen:tt)* ] $( where [ $($wh:tt)* ])? )? { }) => {};
     (@Vector $([ $($gen:tt)* ] $( where [ $($wh:tt)* ])? )? { $t:ty : $item:ty ; $($rest:tt)* }) => {
-        impl $(< $($gen)* >)? crate::common::traits::sealed::Sealed for $t $(where $($wh)*)? {}
-        impl $(< $($gen)* >)? crate::common::traits::Vector for $t $(where $($wh)*)? {
+        impl $(< $($gen)* >)? crate::common::traits::sealed::Sealed for $t $($(where $($wh)* )?)? {}
+        impl $(< $($gen)* >)? crate::common::traits::Vector for $t $($(where $($wh)*)?)? {
             type Item = $item;
             #[inline]
             fn len(&self) -> usize {

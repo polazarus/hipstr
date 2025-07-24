@@ -1,181 +1,184 @@
 use core::mem::MaybeUninit;
 use core::ptr::NonNull;
 
-macro_rules! methods {
-    ($( #[ $attr:meta ] )* $visibility:vis fn $($tail:tt)* ) => {
-        methods!(@ [ $([$attr])* , $visibility, ,] $($tail)*);
-    };
-
-    ($( #[ $attr:meta ] )* $visibility:vis const fn $($tail:tt)* ) => {
-        methods!(@ [ $([$attr])* , $visibility, const, ] $($tail)*);
-    };
-
-    ($( #[ $attr:meta ] )* $visibility:vis const unsafe fn $($tail:tt)* ) => {
-        methods!(@ [ $([$attr])* , $visibility, const, unsafe ] $($tail)*);
-    };
-
-    ($( #[ $attr:meta ] )* $visibility:vis unsafe fn $($tail:tt)* ) => {
-        methods!(@ [ $([$attr])* , $visibility, , unsafe ] $($tail)*);
-    };
-
-
-    (@ [ $([$attr:meta])*, $visibility:vis, $($const:ident)?, ] spare_capacity_mut <$T:path>) => {
-        $(#[ $attr ])*
-        $visibility $($const)? fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<$T>] {
-            let ptr = self.as_mut_ptr();
-            let len = self.len();
-            let capacity = self.capacity();
-            let spare_len = capacity - len;
-            unsafe { core::slice::from_raw_parts_mut(ptr.add(len).cast(), spare_len) }
-        }
-    };
-
-    (@ [ $([$attr:meta])*, $visibility:vis, $($const:ident)?, ] try_push) => {
-        $(#[ $attr ])*
-        $visibility $($const)? fn try_push(&mut self, value: T) -> Result<(), T> {
-            let len = self.len();
-            if len < self.capacity() {
-                // SAFETY: capacity is guaranteed to be greater than length
-                unsafe {
-                    let ptr = self.as_mut_ptr().add(len);
-                    ptr.write(value);
-                    self.set_len(len + 1);
-                }
-                Ok(())
-            } else {
-                Err(value)
-            }
-        }
-    };
-
-
-    (@ [ $([$attr:meta])*, $visibility:vis, $($const:ident)?, ] pop) => {
-        $(#[ $attr ])*
-        $visibility $($const)? fn pop(&mut self) -> Option<T> {
-            let len = self.len();
-            if len > 0 {
-                // SAFETY: length is guaranteed to be greater than zero
-                unsafe {
-                    let ptr = self.as_mut_ptr().add(len - 1);
-                    let value = ptr.read();
-                    self.set_len(len - 1);
-                    Some(value)
-                }
-            } else {
-                None
-            }
-        }
-    };
-
-    (@ [ $([$attr:meta])*, $visibility:vis, , ] pop_if) => {
-        $(#[ $attr ])*
-        $visibility fn pop_if(&mut self, f: impl FnOnce(&T) -> bool) -> Option<T> {
-            let len = self.len();
-            if len > 0 {
-                // SAFETY: length is guaranteed to be greater than zero
-                let ptr = unsafe { self.as_mut_ptr().add(len - 1) };
-                // SAFETY: we are reading from a valid pointer
-                if f(unsafe { &*ptr }) {
-                    // move out the last element
-
-                    // SAFETY: the length decreases
-                    unsafe { self.set_len(len - 1); }
-
-                    // SAFETY: length is guaranteed to be greater than zero
-                    let value = unsafe { ptr.read() };
-                    return Some(value);
-                }
-            }
-            None
-        }
-    };
-
-    (@ [ $([$attr:meta])*, $visibility:vis, $($const:ident)?, ] try_append) => {
-        $(#[ $attr ])*
-        $visibility $($const)? fn try_append(&mut self, other: &mut Self) -> bool{
-            let old_len = self.len();
-            let new_len = old_len + other.len();
-            if new_len <= self.capacity() {
-                let dst = unsafe { self.as_mut_ptr().add(old_len) };
-                unsafe {
-                    self.set_len(new_len);
-                    other.set_len(0);
-                    dst.copy_from_nonoverlapping(other.as_mut_ptr(), other.len());
-                }
-            }
-        }
-    };
-
-    (@ [ $([$attr:meta])*, $visibility:vis, $($const:ident)?, $($unsafe:ident)?] truncate) => {
-        $(#[ $attr ])*
-        $visibility $($const)? $($unsafe)? fn truncate(&mut self, new_len: usize) {
-            let old_len = self.len();
-            if new_len < old_len {
-                // SAFETY: strict decrease
-                unsafe {
-                    self.set_len(new_len);
-                }
-
-                // SAFETY: type invariant
-                unsafe {
-                    $crate::common::drop_slice(
-                        self.as_mut_ptr().add(new_len),
-                        old_len - new_len,
-                    );
-                }
-            }
-        }
-    };
-
-    (@ [ $([$attr:meta])*, $visibility:vis, $($const:ident)?, ] clear) => {
-        $(#[ $attr ])*
-        $visibility $($const)? fn clear(&mut self) {
-            self.truncate(0);
-        }
-    };
-
-}
-
-pub(crate) use methods;
-
-#[derive(Debug, Clone, Copy)]
-pub struct MutableView<'a, T> {
-    ptr: NonNull<T>,
-    capacity: usize,
-    len: usize,
-    phantom: core::marker::PhantomData<&'a [T]>,
-}
-
-impl<'a, T> MutableView<'a, T> {
-    pub const unsafe fn new(ptr: NonNull<T>, capacity: usize, len: usize) -> Self {
-        Self {
-            ptr,
-            capacity,
-            len,
-            phantom: core::marker::PhantomData,
-        }
-    }
-
-    pub const fn as_mut_slice(self) -> &'a mut [T] {
-        unsafe { core::slice::from_raw_parts_mut(self.ptr.as_ptr(), self.len) }
-    }
-
-    pub const fn spare_capacity_mut(self) -> &'a mut [MaybeUninit<T>] {
-        unsafe {
-            let start = self.ptr.add(self.len).cast();
-            core::slice::from_raw_parts_mut(start.as_ptr(), self.capacity - self.len)
-        }
-    }
-
-    pub fn append(self, other: Self) -> Option<(usize, usize)> {
-        if self.len + other.len <= self.capacity {
-            let dst = unsafe { self.ptr.add(self.len) };
+macro_rules! truncate_impl {
+    ($self:ident, $new_len:expr) => {{
+        let old_len = $self.len();
+        let new_len = $new_len;
+        if new_len < old_len {
+            // SAFETY: strict decrease
             unsafe {
-                dst.copy_from_nonoverlapping(other.ptr, other.len);
+                $self.set_len(new_len);
             }
-            Some((self.len + other.len, 0))
+
+            // SAFETY: type invariant
+            unsafe {
+                $crate::common::drop_raw_slice($self.as_mut_ptr().add(new_len), old_len - new_len);
+            }
+        }
+    }};
+}
+
+macro_rules! pop_impl {
+    ($self:ident) => {{
+        let len = $self.len();
+        if len > 0 {
+            // SAFETY: length is guaranteed to be greater than zero
+            unsafe {
+                let ptr = $self.as_mut_ptr().add(len - 1);
+                let value = ptr.read();
+                $self.set_len(len - 1);
+                Some(value)
+            }
         } else {
             None
         }
+    }};
+}
+
+macro_rules! pop_if_impl {
+    ($self:ident, $f:ident) => {{
+        let len = $self.len();
+        if len > 0 {
+            // SAFETY: length is guaranteed to be greater than zero
+            let ptr = unsafe { $self.as_mut_ptr().add(len - 1) };
+            // SAFETY: we are reading from a valid pointer
+            if $f(unsafe { &*ptr }) {
+                // move out the last element
+
+                // SAFETY: the length decreases
+                unsafe {
+                    $self.set_len(len - 1);
+                }
+
+                // SAFETY: length is guaranteed to be greater than zero
+                let value = unsafe { ptr.read() };
+                return Some(value);
+            }
+        }
+        None
+    }};
+}
+
+macro_rules! spare_capacity_mut_impl {
+    ($self:ident) => {{
+        let ptr = $self.as_mut_ptr();
+        let len = $self.len();
+        let capacity = $self.capacity();
+
+        // SAFETY: ptr in the valid range by type invariant
+        let slice_ptr: *mut core::mem::MaybeUninit<_> = unsafe { ptr.add(len).cast() };
+        // do not underflow by type invariant
+        let slice_len = capacity - len;
+        // SAFETY: slice is valid but uninitialized by type invariant
+        unsafe { core::slice::from_raw_parts_mut(slice_ptr, slice_len) }
+    }};
+}
+
+macro_rules! push_within_capacity {
+    ($self:ident, $value:expr) => {{
+        let len = $self.len();
+        if len < $self.capacity() {
+            // SAFETY: capacity is guaranteed to be greater than length
+            unsafe {
+                let ptr = $self.as_mut_ptr().add(len);
+                ptr.write($value);
+                $self.set_len(len + 1);
+            }
+            Ok(())
+        } else {
+            Err($value)
+        }
+    }};
+}
+
+macro_rules! extend_from_array_impl {
+    ($self:ident, $array:expr) => {{
+        let array = $array;
+        let len = $self.len();
+        let new_len = len + array.len();
+        assert!(new_len <= $self.capacity(), "new length exceeds capacity");
+        // SAFETY: capacity ≥ new length
+        unsafe {
+            $self.set_len(new_len);
+            $self
+                .as_mut_ptr()
+                .add(len)
+                .copy_from_nonoverlapping(array.as_ptr().cast(), array.len());
+        }
+        core::mem::forget(array);
+    }};
+}
+
+macro_rules! extend_from_boxed_impl {
+    ($self:ident, $boxed:expr) => {{
+        use alloc::boxed::Box;
+        use core::mem::{transmute, MaybeUninit};
+
+        fn into_maybe_uninit_boxed<T>(boxed: Box<[T]>) -> Box<[MaybeUninit<T>]> {
+            // SAFETY: the boxed slice is valid and uninitialized
+            unsafe { transmute(boxed) }
+        }
+
+        let boxed = into_maybe_uninit_boxed($boxed);
+        let len = $self.len();
+        let new_len = len + boxed.len();
+        assert!(new_len <= $self.capacity(), "new length exceeds capacity");
+        // SAFETY: capacity ≥ new length
+        unsafe {
+            $self.set_len(new_len);
+            $self
+                .as_mut_ptr()
+                .add(len)
+                .copy_from_nonoverlapping(boxed.as_ptr().cast(), boxed.len());
+        }
+        // boxed is dropped, but the content is not dropped due to the
+        // transmutation to MaybeUninit
+    }};
+}
+
+macro_rules! extend_from_slice_impl {
+    ($self:ident, $slice:expr) => {{
+        let slice = $slice;
+        let len = $self.len();
+        let new_len = len + slice.len();
+        assert!(new_len <= $self.capacity(), "new length exceeds capacity");
+        let ptr = $self.as_mut_ptr();
+        for (i, e) in (len..).zip(slice) {
+            let e = e.clone();
+            // SAFETY: capacity ≥ new length
+            unsafe {
+                ptr.add(i).write(e);
+            }
+            // SAFETY: the length is updated after writing
+            unsafe {
+                $self.set_len(i + 1);
+            }
+        }
+    }};
+}
+
+/// Swaps two elements in a slice without bounds checking.
+///
+/// # Panics
+///
+/// In debug only, it panics if the indices are out of bounds.
+///
+/// # Safety
+///
+/// The indices must be valid indices for the slice.
+pub const unsafe fn const_slice_swap_unchecked<T>(slice: &mut [T], a: usize, b: usize) {
+    debug_assert!(
+        a < slice.len() && b < slice.len(),
+        "unchecked swap is out of bounds"
+    );
+    unsafe {
+        let ptr = slice.as_mut_ptr();
+        ptr.add(a).swap(ptr.add(b));
     }
 }
+
+pub(crate) use {
+    extend_from_array_impl, extend_from_boxed_impl, extend_from_slice_impl, pop_if_impl, pop_impl,
+    push_within_capacity, spare_capacity_mut_impl, truncate_impl,
+};

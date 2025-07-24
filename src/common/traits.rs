@@ -1,11 +1,11 @@
 #![allow(clippy::len_without_is_empty)]
 
-use core::mem::{self, MaybeUninit};
+use core::mem::MaybeUninit;
 use core::ptr::NonNull;
 
 use sealed::Sealed;
 
-use crate::common::methods::methods;
+use crate::common::methods::{spare_capacity_mut_impl, truncate_impl};
 
 #[cfg(test)]
 pub(crate) mod tests;
@@ -80,13 +80,17 @@ pub trait MutVectorExt: MutVector {
         self.as_non_null().as_ptr()
     }
 
-    methods! {
-        /// Returns a mutable slice to the spare capacity of the vector.
-        fn spare_capacity_mut<Self::Item>
+    /// Returns a mutable slice to the spare capacity of the vector.
+    fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<Self::Item>] {
+        spare_capacity_mut_impl!(self)
     }
 
-    methods! {
-        fn truncate
+    fn truncate(&mut self, new_len: usize) {
+        truncate_impl!(self, new_len);
+    }
+
+    fn clear(&mut self) {
+        self.truncate(0);
     }
 }
 
