@@ -59,9 +59,7 @@ impl Counter for AtomicCount {
     #[inline]
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn set(&self, value: usize) {
-        if value == 0 {
-            panic!("invalid counter value");
-        }
+        assert!(value != 0, "invalid counter value");
         self.0.store(value - 1, Ordering::Release);
     }
 

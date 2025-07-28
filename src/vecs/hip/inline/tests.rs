@@ -117,7 +117,7 @@ fn push_and_drop() {
 
     let counter = Cell::new(0);
 
-    const CAP: usize = 7;
+    const CAP: usize = 6;
     const BYTES: usize = size_of::<S>() * CAP + align_of::<S>() - 1;
     {
         let mut inline = InlineVec::<S<'_>, BYTES>::new();
@@ -861,7 +861,7 @@ fn from_impls() {
 }
 
 #[test]
-#[should_panic(expected = "boxed slice's length exceeds capacity")]
+#[should_panic(expected = "new length exceeds capacity")]
 fn from_boxed_slice_panic() {
     let boxed: Box<[_]> = Box::new([1, 2, 3, 4, 5, 6, 7, 8]);
     let _ = InlineVec::<u8, 7>::from(boxed);
@@ -874,7 +874,7 @@ fn from_slice_panic() {
 }
 
 #[test]
-#[should_panic(expected = "vector's length exceeds capacity")]
+#[should_panic(expected = "length exceeds capacity")]
 fn from_vec_panic() {
     let _ = InlineVec::<u8, 7>::from(vec![1, 2, 3, 4, 5, 6, 7, 8]);
 }

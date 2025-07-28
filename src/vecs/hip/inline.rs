@@ -10,18 +10,16 @@ use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::fmt::{self};
-use core::hint::unreachable_unchecked;
 use core::iter::FusedIterator;
-use core::mem::{ManuallyDrop, MaybeUninit};
+use core::mem::{offset_of, ManuallyDrop, MaybeUninit};
 use core::ops::{Deref, DerefMut, Range, RangeBounds};
 use core::ptr::NonNull;
 use core::{error, hash, slice};
 
 use crate::common::drain::Drain;
 use crate::common::methods::{
-    const_slice_swap_unchecked, extend_from_array_impl, extend_from_boxed_impl,
-    extend_from_slice_impl, pop_if_impl, pop_impl, push_within_capacity, spare_capacity_mut_impl,
-    truncate_impl,
+    extend_from_array_impl, extend_from_boxed_impl, extend_from_slice_impl, pop_if_impl, pop_impl,
+    push_within_capacity, slice_swap_unchecked, spare_capacity_mut_impl, truncate_impl,
 };
 use crate::common::non_zero::{self, NZ};
 use crate::common::{drop_raw_slice, panic_display, traits};
@@ -36,13 +34,21 @@ struct TaggedLen<T: NZ, const SHIFT: usize, const TAG: usize>(T::NonZero);
 
 impl<T: NZ, const SHIFT: usize, const TAG: usize> TaggedLen<T, SHIFT, TAG> {
     const fn new(value: usize) -> Option<Self> {
-        if value < Self::max() {
-            let tagged = non_zero::from_usize::<T>((value << SHIFT) | TAG);
-            let tagged = unsafe { tagged.unwrap_unchecked() };
-            Some(Self(tagged))
+        if value <= Self::max() {
+            Some(unsafe { Self::new_unchecked(value) })
         } else {
             None
         }
+    }
+
+    const unsafe fn new_unchecked(value: usize) -> Self {
+        debug_assert!(value <= Self::max(), "value exceeds maximum tagged length");
+        let tagged = non_zero::from_usize::<T>((value << SHIFT) | TAG);
+
+        debug_assert!(tagged.is_some(), "tagged value must not be zero");
+        let tagged = unsafe { tagged.unwrap_unchecked() };
+
+        Self(tagged)
     }
 
     const fn max() -> usize {
@@ -74,7 +80,7 @@ pub const BYTES_DEFAULT: usize = size_of::<*mut ()>() * 3 - 1;
 ///
 /// This struct is designed to be used in situations where the maximum number of
 /// elements is small and known at compile time. It uses a fixed-size array
-/// internally to store the elements, and it can be more efficient than using a
+/// internally to store the elements, and it can be moore efficient than using a
 /// heap-allocated vector for small collections.
 ///
 /// # Generic parameters
@@ -120,27 +126,38 @@ pub struct InlineVec<
 impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     InlineVec<T, L, BYTES, SHIFT, TAG>
 {
-    pub(crate) const CAP: usize = if size_of::<Self>() < size_of::<T>() {
-        0
-    } else {
+    const fn capacity_offset() -> (usize, usize) {
+        let payload = size_of::<[MaybeUninit<u8>; BYTES]>();
+
+        let off = if cfg!(target_endian = "little") {
+            align_of::<T>() - offset_of!(Self, data)
+        } else {
+            0
+        };
+
+        if off > payload {
+            return (0, 0);
+        }
+
+        let aligned_payload = payload - off;
         let max = TaggedLen::<L, SHIFT, TAG>::max();
-        if size_of::<T>() == 0 {
+        let zst = size_of::<T>() == 0;
+
+        let cap = if zst {
             max
         } else {
-            let cap = size_of::<Self>() / size_of::<T>() - 1;
+            let cap = aligned_payload / size_of::<T>();
             if cap > max {
                 max
             } else {
                 cap
             }
-        }
-    };
+        };
+        (cap, off)
+    }
 
-    const OFFSET: usize = if cfg!(target_endian = "little") {
-        align_of::<T>() - 1
-    } else {
-        0
-    };
+    pub(crate) const CAP: usize = Self::capacity_offset().0;
+    const OFFSET: usize = Self::capacity_offset().1;
 
     /// Creates a new inline vector with the specified capacity.
     ///
@@ -156,7 +173,14 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     #[must_use]
     pub const fn new() -> Self {
         const {
-            assert!(BYTES <= TaggedLen::<L, SHIFT, TAG>::max());
+            debug_assert!(
+                align_of::<Self>() >= align_of::<T>(),
+                "insufficient alignment"
+            );
+            debug_assert!(
+                Self::CAP <= TaggedLen::<L, SHIFT, TAG>::max(),
+                "capacity exceeds maximum tagged length"
+            );
             Self {
                 _aligned: [],
                 len: TaggedLen::zero(),
@@ -174,10 +198,16 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     ///   capacity of the inline vector.
     /// - The caller must ensure that the elements are initialized.
     #[inline]
-    pub(crate) const unsafe fn zeroed(new_len: usize) -> Self {
+    pub const unsafe fn zeroed(new_len: usize) -> Self {
         const {
-            assert!(BYTES != 0);
-            assert!(BYTES <= TaggedLen::<L, SHIFT, TAG>::max());
+            debug_assert!(
+                align_of::<Self>() >= align_of::<T>(),
+                "insufficient alignment"
+            );
+            debug_assert!(
+                Self::CAP <= TaggedLen::<L, SHIFT, TAG>::max(),
+                "capacity exceeds maximum tagged length"
+            );
         }
         let Some(len) = TaggedLen::new(new_len) else {
             panic!("length exceeds maximal tagged length (`256 >> SHIFT`)");
@@ -232,7 +262,7 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     pub(crate) fn from_mut_vector(mut vec: impl traits::MutVector<Item = T>) -> Self {
         let mut this = Self::new();
         let len = vec.len();
-        assert!(len <= Self::CAP, "vector's length exceeds capacity");
+        assert!(len <= Self::CAP, "new length exceeds capacity");
 
         unsafe {
             let ptr = this.as_mut_ptr();
@@ -444,10 +474,8 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     /// [`spare_capacity_mut`]: Self::spare_capacity_mut
     #[inline]
     pub const unsafe fn set_len(&mut self, new_len: usize) {
-        debug_assert!(new_len <= Self::CAP);
-        let Some(len) = TaggedLen::new(new_len) else {
-            unreachable_unchecked();
-        };
+        debug_assert!(new_len <= Self::CAP, "new length exceeds capacity");
+        let len = unsafe { TaggedLen::new_unchecked(new_len) };
         self.len = len;
     }
 
@@ -940,7 +968,7 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     pub const unsafe fn swap_unchecked(&mut self, a: usize, b: usize) {
         // SAFETY: precondition
         unsafe {
-            const_slice_swap_unchecked(self.as_mut_slice(), a, b);
+            slice_swap_unchecked(self.as_mut_slice(), a, b);
         }
     }
 }
@@ -1048,7 +1076,7 @@ where
         for ((dst_elem, src_elem), l) in dst.zip(src).zip(len + 1..=new_len) {
             // SAFETY: the source is in the initialized range
             dst_elem.write(unsafe { src_elem.assume_init_ref() }.clone());
-            self.len = unsafe { TaggedLen::new(l).unwrap_unchecked() };
+            self.len = unsafe { TaggedLen::new_unchecked(l) };
         }
     }
 
@@ -1488,14 +1516,14 @@ macros::trait_impls! {
     where [T: PartialEq<U>]
     {
         PartialEq {
-        [T; N], InlineVec<U, L, CAP, SHIFT, TAG>;
-        InlineVec<T, L, CAP, SHIFT, TAG>, [U; N];
+            [T; N], InlineVec<U, L, CAP, SHIFT, TAG>;
+            InlineVec<T, L, CAP, SHIFT, TAG>, [U; N];
 
-        &[T; N], InlineVec<U, L, CAP, SHIFT, TAG>;
-        InlineVec<T, L, CAP, SHIFT, TAG>, &[U; N];
+            &[T; N], InlineVec<U, L, CAP, SHIFT, TAG>;
+            InlineVec<T, L, CAP, SHIFT, TAG>, &[U; N];
 
-        &mut [T; N], InlineVec<U, L, CAP, SHIFT, TAG>;
-        InlineVec<T, L, CAP, SHIFT, TAG>, &mut [U; N];
+            &mut [T; N], InlineVec<U, L, CAP, SHIFT, TAG>;
+            InlineVec<T, L, CAP, SHIFT, TAG>, &mut [U; N];
         }
     }
 

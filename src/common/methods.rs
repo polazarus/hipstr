@@ -1,6 +1,4 @@
-use core::mem::MaybeUninit;
-use core::ptr::NonNull;
-
+/// `truncate` impl, requires `len`, set_`len, and `as_mut_ptr`
 macro_rules! truncate_impl {
     ($self:ident, $new_len:expr) => {{
         let old_len = $self.len();
@@ -19,6 +17,7 @@ macro_rules! truncate_impl {
     }};
 }
 
+/// `pop` impl, requires `len`, `set_len`, and `as_mut_ptr`
 macro_rules! pop_impl {
     ($self:ident) => {{
         let len = $self.len();
@@ -36,14 +35,13 @@ macro_rules! pop_impl {
     }};
 }
 
+/// `pop_if` impl, requires `len`, `set_len`, and `as_mut_ptr`
 macro_rules! pop_if_impl {
     ($self:ident, $f:ident) => {{
         let len = $self.len();
         if len > 0 {
             // SAFETY: length is guaranteed to be greater than zero
-            let ptr = unsafe { $self.as_mut_ptr().add(len - 1) };
-            // SAFETY: we are reading from a valid pointer
-            if $f(unsafe { &*ptr }) {
+            if $f(unsafe { &*$self.as_mut_ptr().add(len - 1) }) {
                 // move out the last element
 
                 // SAFETY: the length decreases
@@ -52,7 +50,7 @@ macro_rules! pop_if_impl {
                 }
 
                 // SAFETY: length is guaranteed to be greater than zero
-                let value = unsafe { ptr.read() };
+                let value = unsafe { $self.as_mut_ptr().add(len - 1).read() };
                 return Some(value);
             }
         }
@@ -60,6 +58,7 @@ macro_rules! pop_if_impl {
     }};
 }
 
+/// `spare_capacity_mut` impl, requires `as_mut_ptr`, `len`,  and `capacity`
 macro_rules! spare_capacity_mut_impl {
     ($self:ident) => {{
         let ptr = $self.as_mut_ptr();
@@ -75,6 +74,7 @@ macro_rules! spare_capacity_mut_impl {
     }};
 }
 
+/// `push_within_capacity` impl, requires `len`, `capacity` `set_len`, and `as_mut_ptr`
 macro_rules! push_within_capacity {
     ($self:ident, $value:expr) => {{
         let len = $self.len();
@@ -92,6 +92,7 @@ macro_rules! push_within_capacity {
     }};
 }
 
+/// `extend_from_array` impl, requires `len`, `capacity`, `set_len`, and `as_mut_ptr`
 macro_rules! extend_from_array_impl {
     ($self:ident, $array:expr) => {{
         let array = $array;
@@ -110,6 +111,7 @@ macro_rules! extend_from_array_impl {
     }};
 }
 
+/// `extend_from_boxed` impl, requires `len`, `capacity`, `set_len`, and `as_mut_ptr`
 macro_rules! extend_from_boxed_impl {
     ($self:ident, $boxed:expr) => {{
         use alloc::boxed::Box;
@@ -137,28 +139,25 @@ macro_rules! extend_from_boxed_impl {
     }};
 }
 
+/// `extend_from_slice` impl, requires `len`, `capacity` and `try_push`
 macro_rules! extend_from_slice_impl {
     ($self:ident, $slice:expr) => {{
         let slice = $slice;
         let len = $self.len();
         let new_len = len + slice.len();
         assert!(new_len <= $self.capacity(), "new length exceeds capacity");
-        let ptr = $self.as_mut_ptr();
-        for (i, e) in (len..).zip(slice) {
+        for e in slice {
             let e = e.clone();
-            // SAFETY: capacity ≥ new length
             unsafe {
-                ptr.add(i).write(e);
-            }
-            // SAFETY: the length is updated after writing
-            unsafe {
-                $self.set_len(i + 1);
+                $self.try_push(e).unwrap_unchecked();
             }
         }
     }};
 }
 
 /// Swaps two elements in a slice without bounds checking.
+///
+/// `slice::swap_unchecked` is not stable as of Rust 1.88.0.
 ///
 /// # Panics
 ///
@@ -167,7 +166,7 @@ macro_rules! extend_from_slice_impl {
 /// # Safety
 ///
 /// The indices must be valid indices for the slice.
-pub const unsafe fn const_slice_swap_unchecked<T>(slice: &mut [T], a: usize, b: usize) {
+pub const unsafe fn slice_swap_unchecked<T>(slice: &mut [T], a: usize, b: usize) {
     debug_assert!(
         a < slice.len() && b < slice.len(),
         "unchecked swap is out of bounds"
