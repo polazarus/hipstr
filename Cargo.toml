@@ -36,8 +36,7 @@ serde_json = { version = "1.0.45", default-features = false, features = [
 divan = "0.1.17"
 
 [dependencies]
-const-default = "1.0.0"
-generic-array = { version = "1.2.0", features = ["const-default"] }
+rules_derive = "0.1.0"
 
 [dependencies.bstr]
 version = "1.3"

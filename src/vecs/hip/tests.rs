@@ -38,9 +38,21 @@ fn drop_count() {
     assert_eq!(counts.drops(), 50);
 }
 
+#[test]
+fn drop_count_inline() {
+    let counts = CloneAndDropCounts::new();
+
+    {
+        let v = HipVec::<_, Arc>::from_array([0; 2].map(|_| counts.witness()));
+        assert_eq!(v.tag(), Tag::Inline);
+    }
+    assert_eq!(counts.clones(), 0);
+    assert_eq!(counts.drops(), 2);
+}
+
 struct CloneAndDropCounts {
-    clones: Cell<usize>,
-    drops: Cell<usize>,
+    clones: Cell<u16>,
+    drops: Cell<u16>,
 }
 
 impl CloneAndDropCounts {
@@ -52,11 +64,11 @@ impl CloneAndDropCounts {
     }
 
     fn clones(&self) -> usize {
-        self.clones.get()
+        self.clones.get().into()
     }
 
     fn drops(&self) -> usize {
-        self.drops.get()
+        self.drops.get().into()
     }
 
     fn witness(&self) -> CloneAndDropWitness {

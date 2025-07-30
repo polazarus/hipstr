@@ -332,7 +332,7 @@ where
     }
 }
 
-impl<T: Clone, C: Counter> Clone for Smart<T, BackendImpl<C, CloneOnOverflow>> {
+impl<T: Clone, C: Counter, I: 'static> Clone for Smart<T, BackendImpl<C, CloneOnOverflow, I>> {
     fn clone(&self) -> Self {
         if unsafe { &(*self.0.as_ptr()).count }.incr() == UpdateResult::Done {
             Self(self.0)
@@ -346,7 +346,7 @@ impl<T: Clone, C: Counter> Clone for Smart<T, BackendImpl<C, CloneOnOverflow>> {
     }
 }
 
-impl<T, C: Counter> Clone for Smart<T, BackendImpl<C, PanicOnOverflow>> {
+impl<T, C: Counter, I: 'static> Clone for Smart<T, BackendImpl<C, PanicOnOverflow, I>> {
     fn clone(&self) -> Self {
         if self.incr() == UpdateResult::Done {
             Self(self.0)

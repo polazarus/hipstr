@@ -4,10 +4,10 @@ use core::sync::atomic::{fence, AtomicUsize, Ordering};
 #[cfg(loom)]
 use loom::sync::atomic::{fence, AtomicUsize, Ordering};
 
-use super::{BackendImpl, Counter, PanicOnOverflow, Sealed, UpdateResult};
+use super::{BackendImpl, CloneOnInlineClone, Counter, PanicOnOverflow, Sealed, UpdateResult};
 
 /// Atomic counter backend.
-pub type Arc = BackendImpl<AtomicCount, PanicOnOverflow>;
+pub type Arc = BackendImpl<AtomicCount, PanicOnOverflow, CloneOnInlineClone>;
 
 #[deprecated(note = "renamed to Arc")]
 pub type ThreadSafe = Arc;

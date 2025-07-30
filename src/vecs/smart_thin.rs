@@ -527,13 +527,15 @@ impl<T, C: Backend> SmartThinVec<T, C> {
     }
 }
 
-impl<T, C: Counter> Clone for SmartThinVec<T, BackendImpl<C, PanicOnOverflow>> {
+impl<T, C: Counter, I: 'static> Clone for SmartThinVec<T, BackendImpl<C, PanicOnOverflow, I>> {
     fn clone(&self) -> Self {
         self.try_clone().unwrap_or_else(|| panic!("count overflow"))
     }
 }
 
-impl<T: Clone, C: Counter> Clone for SmartThinVec<T, BackendImpl<C, CloneOnOverflow>> {
+impl<T: Clone, C: Counter, I: 'static> Clone
+    for SmartThinVec<T, BackendImpl<C, CloneOnOverflow, I>>
+{
     fn clone(&self) -> Self {
         self.try_clone().unwrap_or_else(|| {
             let thin_vec: ThinVec<_, _> = self.as_thin_vec().fresh_clone();

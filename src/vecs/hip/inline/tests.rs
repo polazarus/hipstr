@@ -452,7 +452,7 @@ fn into_iter() {
 }
 
 #[test]
-fn compare() {
+fn compare_partial_ord() {
     let l = InlineVec::<u8, 7>::from_array([1_u8, 2, 3]);
     assert!(l < inline_vec2![15 => 2_u8]);
     assert!(inline_vec2![15 => 2_u8] > l);
@@ -464,6 +464,19 @@ fn compare() {
     assert!(inline_vec2![15 => 1_u8, 2, 3] <= l);
     assert_eq!(l, inline_vec2![15 => 1_u8, 2, 3]);
 
+    assert!(l
+        .partial_cmp(&inline_vec2![15 => 1_u8, 2, 3])
+        .unwrap()
+        .is_eq());
+    assert!(l.cmp(&inline_vec2![7 => 1_u8, 2, 3]).is_eq());
+    assert!(l.ne(&inline_vec2![15 => 1_u8, 3]));
+    assert!(l.partial_cmp(&inline_vec2![15 => 1_u8, 3]).unwrap().is_lt());
+    assert!(l.cmp(&inline_vec2![7 => 1_u8, 3]).is_lt());
+}
+
+#[test]
+fn compare_eq() {
+    let l = InlineVec::<u8, 7>::from_array([1_u8, 2, 3]);
     assert!(l == inline_vec2![15 => 1_u8, 2, 3]);
     assert!(l == [1_u8, 2, 3]);
     assert!(l == vec![1_u8, 2, 3]);
@@ -477,15 +490,11 @@ fn compare() {
     assert!([1_u8, 2, 3].as_slice() == l);
 
     assert!(l.eq(&inline_vec2![15 => 1_u8, 2, 3]));
-    assert!(l
-        .partial_cmp(&inline_vec2![15 => 1_u8, 2, 3])
-        .unwrap()
-        .is_eq());
-    assert!(l.cmp(&inline_vec2![7 => 1_u8, 2, 3]).is_eq());
-    assert!(l.ne(&inline_vec2![15 => 1_u8, 3]));
-    assert!(l.partial_cmp(&inline_vec2![15 => 1_u8, 3]).unwrap().is_lt());
-    assert!(l.cmp(&inline_vec2![7 => 1_u8, 3]).is_lt());
+}
 
+#[test]
+#[expect(clippy::neg_cmp_op_on_partial_ord)]
+fn compare_nan() {
     // NaN tests
     let i_f32 = InlineVec::<f32, 7>::from_array([f32::NAN]);
     assert_ne!(i_f32, inline_vec2![7 => f32::NAN]);

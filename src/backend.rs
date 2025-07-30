@@ -9,11 +9,12 @@ use crate::common::traits::sealed::Sealed;
 #[cfg(target_has_atomic = "ptr")]
 mod atomic;
 
+#[cfg(target_has_atomic = "ptr")]
 pub use atomic::*;
 
-pub type Rc = BackendImpl<Count, PanicOnOverflow>;
+pub type Rc = BackendImpl<Count, PanicOnOverflow, CloneOnInlineClone>;
 
-pub type Unique = BackendImpl<(), CloneOnOverflow>;
+pub type Unique = BackendImpl<(), CloneOnOverflow, CloneOnInlineClone>;
 
 #[deprecated(note = "renamed to Rc")]
 pub type Local = Rc;
@@ -21,24 +22,24 @@ pub type Local = Rc;
 /// Sealed marker trait for allocated backend.
 pub trait Backend: Counter + 'static {}
 
-impl<C: Counter, B: OverflowBehavior> Backend for BackendImpl<C, B> {}
+impl<C: Counter, B: 'static, I: 'static> Backend for BackendImpl<C, B, I> {}
 
 #[cfg(test)]
-pub type PanickyUnique = BackendImpl<Unique, PanicOnOverflow>;
+pub type PanickyUnique = BackendImpl<Unique, PanicOnOverflow, PanicOnInlineClone>;
 
 #[derive(Clone, Copy, Debug)]
-pub struct BackendImpl<C: Counter, B: OverflowBehavior>(pub(crate) C, PhantomData<B>);
+pub struct BackendImpl<C: Counter, B, I>(pub(crate) C, PhantomData<(B, I)>);
 
-impl<C: Counter, B: OverflowBehavior> Sealed for BackendImpl<C, B> {}
+impl<C: Counter, B, I> Sealed for BackendImpl<C, B, I> {}
 
-impl<C: Counter, B: OverflowBehavior> Default for BackendImpl<C, B> {
+impl<C: Counter, B, I> Default for BackendImpl<C, B, I> {
     #[inline]
     fn default() -> Self {
         Self(C::default(), PhantomData)
     }
 }
 
-impl<C: Counter, B: OverflowBehavior> Counter for BackendImpl<C, B> {
+impl<C: Counter, B: 'static, I: 'static> Counter for BackendImpl<C, B, I> {
     #[inline]
     fn incr(&self) -> UpdateResult {
         self.0.incr()
@@ -245,3 +246,14 @@ impl Default for Count {
 }
 
 impl RefUnwindSafe for Count {}
+
+pub trait InlineBehavior: Sealed + 'static {}
+
+pub struct CloneOnInlineClone(PhantomData<()>);
+pub struct PanicOnInlineClone(PhantomData<()>);
+
+impl Sealed for CloneOnInlineClone {}
+impl InlineBehavior for CloneOnInlineClone {}
+
+impl Sealed for PanicOnInlineClone {}
+impl InlineBehavior for PanicOnInlineClone {}

@@ -8,8 +8,9 @@ use core::ops::{Bound, Deref, DerefMut, Range, RangeBounds};
 use core::ptr::NonNull;
 use core::{error, fmt, ptr};
 
+pub(crate) mod derives;
 pub mod drain;
-pub mod methods;
+pub(crate) mod methods;
 pub(crate) mod non_zero;
 #[cfg(test)]
 mod tests;

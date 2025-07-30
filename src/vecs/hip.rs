@@ -5,15 +5,18 @@ use core::mem::{ManuallyDrop, MaybeUninit};
 use core::ops::RangeBounds;
 use core::{panic, ptr};
 
+use rules_derive::rules_derive;
+
 use self::allocated::Allocated;
 use self::inline::InlineVec;
 pub use self::reprs::Tag;
 use self::reprs::{Borrowed, Repr, Union};
 use crate::backend::{
-    Backend, BackendImpl, CloneOnOverflow, Counter, PanicOnOverflow, UpdateResult,
+    Backend, BackendImpl, CloneOnInlineClone, CloneOnOverflow, Counter, PanicOnInlineClone,
+    PanicOnOverflow, UpdateResult,
 };
 use crate::common::traits::MutVectorExt;
-use crate::common::{self, RangeError};
+use crate::common::{self, derives, RangeError};
 use crate::smart::Smart;
 use crate::vecs::{thin, SmartThinVec};
 
@@ -35,6 +38,15 @@ const INLINE_BYTES: usize = size_of::<*mut ()>() * 3 - 1;
 /// - reuse of existing “fat” [`Vec`] to avoid unnecessary copy
 /// - thin vector to lower the overhead for new allocations
 //  - and shared slices
+#[rules_derive(
+    derives::AsRefAndDeref(target = [T], method = as_slice),
+    derives::Default,
+    derives::From(
+        bindings = (<'borrow, T, B: Backend,const N: usize>),
+        source = [T; N],
+        cons = Self::from_array
+    ),
+)]
 pub struct HipVec<'borrow, T, B: Backend> {
     repr: Repr,
     _marker: PhantomData<&'borrow (T, B)>,
@@ -337,7 +349,7 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
     const MAY_INLINE: bool = align_of::<T>() <= align_of::<Repr>() && Inline::<T>::CAP > 0;
 
     const fn fit_inline(len: usize) -> bool {
-        Self::MAY_INLINE && len < Inline::<T>::CAP
+        Self::MAY_INLINE && len <= Inline::<T>::CAP
     }
 
     /// Returns a slice of the vector.
@@ -775,6 +787,7 @@ impl<T: Copy, B: Backend> HipVec<'_, T, B> {
     /// let sliced = vec.slice_copy(1..4);
     /// assert_eq!(sliced.as_slice(), &[2, 3, 4]);
     /// ```
+    #[must_use]
     pub fn slice_copy(&self, range: impl RangeBounds<usize>) -> Self {
         match self.try_slice_copy(range) {
             Ok(slice) => slice,
@@ -782,6 +795,16 @@ impl<T: Copy, B: Backend> HipVec<'_, T, B> {
         }
     }
 
+    /// Slices the vector, returning a new `HipVec` that contains the specified range.
+    ///
+    /// It may copy the data if necessary, for example, if the vector is inline
+    /// or if the sharing is impossible.
+    ///
+    /// See [`slice_copy`](Self::slice_copy) for the panicky equivalent.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the range is out of bounds or invalid.
     pub fn try_slice_copy(&self, range: impl RangeBounds<usize>) -> Result<Self, RangeError>
     where
         T: Copy,
@@ -850,19 +873,49 @@ impl<T: Copy, B: Backend> HipVec<'_, T, B> {
     }
 }
 
-impl<T, B: Backend> Default for HipVec<'_, T, B> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<T, C: Counter> Clone for HipVec<'_, T, BackendImpl<C, PanicOnOverflow>> {
+impl<T, C: Counter> Clone for HipVec<'_, T, BackendImpl<C, PanicOnOverflow, PanicOnInlineClone>> {
     fn clone(&self) -> Self {
-        self.try_clone().unwrap_or_else(|| panic!("count overflow"))
+        self.try_clone().unwrap_or_else(|| {
+            if self.is_inline() {
+                panic!("inline clone");
+            } else {
+                panic!("count overflow");
+            }
+        })
     }
 }
 
-impl<T: Clone, C: Counter> Clone for HipVec<'_, T, BackendImpl<C, CloneOnOverflow>> {
+impl<T: Clone, C: Counter> Clone
+    for HipVec<'_, T, BackendImpl<C, PanicOnOverflow, CloneOnInlineClone>>
+{
+    fn clone(&self) -> Self {
+        self.try_clone().unwrap_or_else(|| {
+            if self.is_inline() {
+                Self::from_slice_clone(self.as_slice())
+            } else {
+                panic!("count overflow");
+            }
+        })
+    }
+}
+
+impl<T: Clone, C: Counter> Clone
+    for HipVec<'_, T, BackendImpl<C, CloneOnOverflow, PanicOnInlineClone>>
+{
+    fn clone(&self) -> Self {
+        self.try_clone().unwrap_or_else(|| {
+            if self.is_inline() {
+                panic!("inline clone");
+            } else {
+                Self::from_slice_clone(self.as_slice())
+            }
+        })
+    }
+}
+
+impl<T: Clone, C: Counter> Clone
+    for HipVec<'_, T, BackendImpl<C, CloneOnOverflow, CloneOnInlineClone>>
+{
     fn clone(&self) -> Self {
         self.force_clone()
     }

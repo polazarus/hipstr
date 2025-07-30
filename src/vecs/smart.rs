@@ -10,7 +10,7 @@ use core::ptr::NonNull;
 use super::smart_thin::SmartThinVec;
 use super::thin::ThinVec;
 use crate::backend::{
-    Backend, BackendImpl, CloneOnOverflow, Counter, PanicOnOverflow, UpdateResult,
+    Backend, BackendImpl, CloneOnOverflow, Counter, InlineBehavior, PanicOnOverflow, UpdateResult,
 };
 use crate::common::Handle;
 use crate::macros::trait_impls;
@@ -409,13 +409,13 @@ impl<T, B: Backend> SmartVec<T, B> {
     }
 }
 
-impl<T, C: Counter> Clone for SmartVec<T, BackendImpl<C, PanicOnOverflow>> {
+impl<T, C: Counter, I: 'static> Clone for SmartVec<T, BackendImpl<C, PanicOnOverflow, I>> {
     fn clone(&self) -> Self {
         self.try_clone().unwrap_or_else(|| panic!("count overflow"))
     }
 }
 
-impl<T: Clone, C: Counter> Clone for SmartVec<T, BackendImpl<C, CloneOnOverflow>> {
+impl<T: Clone, C: Counter, I: 'static> Clone for SmartVec<T, BackendImpl<C, CloneOnOverflow, I>> {
     fn clone(&self) -> Self {
         self.force_clone()
     }
