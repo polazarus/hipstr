@@ -287,7 +287,7 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
         }
     }
 
-    /// Returns a value identifying the current reprenstaiton of this vector.
+    /// Returns a value identifying the current representation of this vector.
     ///
     /// # Examples
     ///
@@ -346,8 +346,10 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
         }
     }
 
+    /// Can the type be inlined?
     const MAY_INLINE: bool = align_of::<T>() <= align_of::<Repr>() && Inline::<T>::CAP > 0;
 
+    /// Checks if the given length fits in the inline repr.
     const fn fit_inline(len: usize) -> bool {
         Self::MAY_INLINE && len <= Inline::<T>::CAP
     }
