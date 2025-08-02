@@ -92,24 +92,6 @@ impl Repr {
         unsafe { transmute::<&Self, &Borrowed<'borrow, T>>(self) }
     }
 
-    pub const unsafe fn thin<T, B: Backend>(&self) -> &Thin<T, B> {
-        debug_assert!(
-            matches!(self.repr(), Tag::Thin),
-            "invalid repr (thin expected)"
-        );
-        // SAFETY: The layout of `Pivot` matches the layout of `Thin<T, B>`.
-        unsafe { transmute::<&Self, &Thin<T, B>>(self) }
-    }
-
-    pub const unsafe fn fat<T, B: Backend>(&self) -> &Fat<T, B> {
-        debug_assert!(
-            matches!(self.repr(), Tag::Fat),
-            "invalid repr (fat expected)"
-        );
-        // SAFETY: The layout of `Pivot` matches the layout of `Fat<T, B>`.
-        unsafe { transmute::<&Self, &Fat<T, B>>(self) }
-    }
-
     pub const unsafe fn shared_view<B: Backend>(&self) -> &SharedCountView<B> {
         debug_assert!(
             matches!(self.repr(), Tag::Thin | Tag::Fat),
