@@ -1,6 +1,7 @@
 //! Common functions and types.
 
 use alloc::alloc::handle_alloc_error;
+use alloc::vec::Vec;
 use core::alloc::Layout;
 use core::marker::PhantomData;
 use core::mem::{self, ManuallyDrop, MaybeUninit};
@@ -249,5 +250,16 @@ pub(crate) unsafe fn drop_raw_slice<T>(ptr: *mut T, len: usize) {
             let slice = core::slice::from_raw_parts_mut(ptr, len);
             core::ptr::drop_in_place(slice);
         }
+    }
+}
+
+/// [`Vec::push_within_capacity`] stable implementation.
+pub(crate) fn vec_push_within_capacity<T>(v: &mut Vec<T>, value: T) -> Result<(), T> {
+    let spare = v.spare_capacity_mut();
+    if let [e, ..] = spare {
+        e.write(value);
+        Ok(())
+    } else {
+        Err(value)
     }
 }
