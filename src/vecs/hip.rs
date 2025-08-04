@@ -186,6 +186,18 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
         }
     }
 
+    /// Creates a new `HipVec` from a raw pointer and length by moving data (taking ownership)
+    #[inline]
+    #[must_use]
+    pub(crate) fn from_raw(ptr: *mut T, len: usize) -> Self {
+        if Self::fit_inline(len) {
+            Self::from_inline(Inline::from_raw(ptr, len))
+        } else {
+            let owner = SmartThinVec::from_raw_ptr(ptr, len);
+            Self::from_thin(owner)
+        }
+    }
+
     /// Creates a new `HipVec` from a [`Vec`]`.
     /// If the vector fits inline, it will be stored inline.
     /// Otherwise, it will be stored as a fat vector to spare the move and the allocation.
@@ -628,6 +640,128 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
             Tag::Borrowed => unsafe { unreachable_unchecked() },
         }
     }
+
+    pub fn try_pop(&mut self) -> Result<T, PopError> {
+        if !self.is_unique() {
+            return Err(PopError::Shared);
+        }
+
+        match self.tag() {
+            Tag::Inline => unsafe { self.repr.inline_mut() }.pop(),
+
+            Tag::Thin => {
+                // SAFETY: repr is thin
+                let thin = unsafe { self.repr.thin_mut::<T, B>() };
+                thin.with_mut(|t, range| {
+                    // SAFETY: vec is unique
+                    let t = unsafe { t.as_mut_unchecked() };
+                    t.truncate(range.end);
+                    t.pop()
+                })
+            }
+
+            Tag::Fat => {
+                // SAFETY: repr is fat and unique
+                let fat = unsafe { self.repr.fat_mut::<T, B>() };
+                fat.with_mut(|v, range| {
+                    // SAFETY: vec is unique
+                    let v = unsafe { Smart::get_mut_unchecked(v) };
+                    v.truncate(range.end);
+                    v.pop()
+                })
+            }
+
+            // SAFETY: repr borrowed cannot be unique
+            Tag::Borrowed => unsafe { unreachable_unchecked() },
+        }
+        .ok_or(PopError::Empty)
+    }
+
+    pub fn try_pop_if(&mut self, predicate: impl FnOnce(&mut T) -> bool) -> Result<T, PopError> {
+        if !self.is_unique() {
+            return Err(PopError::Shared);
+        }
+
+        match self.tag() {
+            Tag::Inline => unsafe { self.repr.inline_mut() }.pop_if(predicate),
+
+            Tag::Thin => {
+                // SAFETY: repr is thin
+                let thin = unsafe { self.repr.thin_mut::<T, B>() };
+                thin.with_mut(|t, range| {
+                    // SAFETY: vec is unique
+                    let t = unsafe { t.as_mut_unchecked() };
+                    t.truncate(range.end);
+                    t.pop_if(predicate)
+                })
+            }
+
+            Tag::Fat => {
+                // SAFETY: repr is fat and unique
+                let fat = unsafe { self.repr.fat_mut::<T, B>() };
+                fat.with_mut(|v, range| {
+                    // SAFETY: vec is unique
+                    let v = unsafe { Smart::get_mut_unchecked(v) };
+                    v.truncate(range.end);
+                    v.pop_if(predicate)
+                })
+            }
+
+            // SAFETY: repr borrowed cannot be unique
+            Tag::Borrowed => unsafe { unreachable_unchecked() },
+        }
+        .ok_or(PopError::Empty)
+    }
+
+    pub fn try_split_off(&mut self, offset: usize) -> Option<Self> {
+        if !self.is_unique() {
+            return None;
+        }
+
+        match self.tag() {
+            Tag::Inline => {
+                let new_inline = unsafe { self.repr.inline_mut() }.split_off(offset);
+                Some(Self::from_inline(new_inline))
+            }
+
+            Tag::Thin => {
+                // SAFETY: repr is thin
+                let thin = unsafe { self.repr.thin_mut::<T, B>() };
+                thin.with_mut(|t, range| {
+                    // SAFETY: vec is unique
+                    let t = unsafe { t.as_mut_unchecked() };
+                    t.truncate(range.end);
+                    unsafe {
+                        t.set_len(range.start + offset);
+                        Some(Self::from_raw(
+                            t.as_mut_ptr().add(offset),
+                            range.end - offset,
+                        ))
+                    }
+                })
+            }
+
+            Tag::Fat => {
+                // SAFETY: repr is fat and unique
+                let fat = unsafe { self.repr.fat_mut::<T, B>() };
+                fat.with_mut(|v, range| {
+                    // SAFETY: vec is unique
+                    let v = unsafe { Smart::get_mut_unchecked(v) };
+                    v.truncate(range.end);
+                    unsafe {
+                        v.set_len(range.start + offset);
+                        Some(Self::from_raw(
+                            v.as_mut_ptr().add(offset),
+                            range.end - offset,
+                        ))
+                    }
+                })
+            }
+
+            // SAFETY: repr borrowed cannot be unique
+            Tag::Borrowed => unsafe { unreachable_unchecked() },
+        }
+    }
 }
 
 impl<T: Clone, B: Backend> HipVec<'_, T, B> {
@@ -807,6 +941,57 @@ impl<T: Clone, B: Backend> HipVec<'_, T, B> {
             _ => *self = Self::from_slice_clone(self.as_slice()),
         }
     }
+
+    pub fn pop(&mut self) -> Option<T> {
+        match self.try_pop() {
+            Ok(value) => Some(value),
+            Err(PopError::Empty) => None,
+            Err(PopError::Shared) => {
+                let value = self.as_slice().last().cloned()?;
+                *self = Self::from_slice_clone(unsafe {
+                    self.as_slice().get_unchecked(0..self.len() - 1)
+                });
+                Some(value)
+            }
+        }
+    }
+
+    pub fn pop_if(&mut self, predicate: impl FnOnce(&T) -> bool) -> Option<T> {
+        if self.is_empty() {
+            return None;
+        }
+        if self.is_unique() {
+            match self.tag() {
+                Tag::Inline => return unsafe { self.repr.inline_mut() }.pop_if(|v| predicate(v)),
+                Tag::Thin => {
+                    // SAFETY: repr is thin
+                    let thin = unsafe { self.repr.thin_mut::<T, B>() };
+                    return thin.with_mut(|t, range| {
+                        // SAFETY: vec is unique
+                        let t = unsafe { t.as_mut_unchecked() };
+                        t.truncate(range.end);
+                        t.pop_if(|v| predicate(v))
+                    });
+                }
+                Tag::Fat => {
+                    // SAFETY: repr is fat and unique
+                    let fat = unsafe { self.repr.fat_mut::<T, B>() };
+                    return fat.with_mut(|v, range| {
+                        // SAFETY: vec is unique
+                        let v = unsafe { Smart::get_mut_unchecked(v) };
+                        v.truncate(range.end);
+                        v.pop_if(|v| predicate(v))
+                    });
+                }
+                Tag::Borrowed => unsafe { unreachable_unchecked() },
+            }
+        } else {
+            let value = self.as_slice().last().filter(|p| predicate(*p)).cloned()?;
+            *self =
+                Self::from_slice_clone(unsafe { self.as_slice().get_unchecked(0..self.len() - 1) });
+            Some(value)
+        }
+    }
 }
 
 impl<T: Copy, B: Backend> HipVec<'_, T, B> {
@@ -933,6 +1118,59 @@ impl<T: Copy, B: Backend> HipVec<'_, T, B> {
             _ => *self = Self::from_slice_copy(self.as_slice()),
         }
     }
+
+    pub fn pop_copy(&mut self) -> Option<T> {
+        match self.try_pop() {
+            Ok(value) => Some(value),
+            Err(PopError::Empty) => None,
+            Err(PopError::Shared) => {
+                let value = self.as_slice().last().copied()?;
+                *self = Self::from_slice_copy(unsafe {
+                    self.as_slice().get_unchecked(0..self.len() - 1)
+                });
+                Some(value)
+            }
+        }
+    }
+
+    pub fn pop_if_copy(&mut self, predicate: impl FnOnce(&T) -> bool) -> Option<T> {
+        if self.is_empty() {
+            return None;
+        }
+
+        if self.is_unique() {
+            match self.tag() {
+                Tag::Inline => return unsafe { self.repr.inline_mut() }.pop_if(|v| predicate(v)),
+                Tag::Thin => {
+                    // SAFETY: repr is thin
+                    let thin = unsafe { self.repr.thin_mut::<T, B>() };
+                    return thin.with_mut(|t, range| {
+                        // SAFETY: vec is unique
+                        let t = unsafe { t.as_mut_unchecked() };
+                        t.truncate(range.end);
+                        t.pop_if(|v| predicate(v))
+                    });
+                }
+                Tag::Fat => {
+                    // SAFETY: repr is fat and unique
+                    let fat = unsafe { self.repr.fat_mut::<T, B>() };
+                    return fat.with_mut(|v, range| {
+                        // SAFETY: vec is unique
+                        let v = unsafe { Smart::get_mut_unchecked(v) };
+                        v.truncate(range.end);
+                        v.pop_if(|v| predicate(v))
+                    });
+                }
+                Tag::Borrowed => unsafe { unreachable_unchecked() },
+            }
+        } else {
+            let value = self.as_slice().last().filter(|p| predicate(*p)).copied()?;
+            // SAFETY: slice checked above
+            let slice = unsafe { self.as_slice().get_unchecked(0..self.len() - 1) };
+            *self = Self::from_slice_copy(slice);
+            Some(value)
+        }
+    }
 }
 
 impl<T, C: Counter> Clone for HipVec<'_, T, BackendImpl<C, PanicOnOverflow, PanicOnInlineClone>> {
@@ -1015,4 +1253,9 @@ impl<T, B: Backend> Drop for HipVec<'_, T, B> {
             }
         }
     }
+}
+
+pub enum PopError {
+    Empty,
+    Shared,
 }

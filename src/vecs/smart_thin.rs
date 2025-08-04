@@ -395,6 +395,13 @@ impl<T, C: Backend> SmartThinVec<T, C> {
 
     #[inline]
     #[must_use]
+    pub(crate) fn from_raw_ptr(ptr: *mut T, len: usize) -> Self {
+        let thin_vec = ThinVec::from_raw_ptr(ptr, len);
+        unsafe { Self::from_thin_vec_unchecked(thin_vec) }
+    }
+
+    #[inline]
+    #[must_use]
     pub(crate) fn from_slice_clone(slice: &[T]) -> Self
     where
         T: Clone,

@@ -15,7 +15,8 @@ use core::{cmp, fmt, mem, ops, panic, ptr, slice};
 
 use crate::common::drain::Drain;
 use crate::common::methods::{
-    pop_if_impl, pop_impl, push_within_capacity, spare_capacity_mut_impl, truncate_impl,
+    extend_from_raw_nonoverlapping, pop_if_impl, pop_impl, push_within_capacity,
+    spare_capacity_mut_impl, truncate_impl,
 };
 use crate::common::{
     check_alloc, guarded_slice_clone, manually_drop_as_mut, manually_drop_as_ref,
@@ -185,6 +186,13 @@ where
         // SAFETY: ManuallyDrop is a transparent wrapper
         let _: Box<[ManuallyDrop<T>]> = unsafe { mem::transmute(boxed) };
 
+        this
+    }
+
+    #[inline]
+    pub(crate) fn from_raw_ptr(ptr: *mut T, len: usize) -> Self {
+        let mut this = Self::with_capacity(len);
+        extend_from_raw_nonoverlapping!(this, ptr, len);
         this
     }
 
@@ -746,7 +754,7 @@ impl<T, P> ThinVec<T, P> {
         pop_impl!(self)
     }
 
-    pub fn pop_if(&mut self, f: impl FnOnce(&T) -> bool) -> Option<T> {
+    pub fn pop_if(&mut self, f: impl FnOnce(&mut T) -> bool) -> Option<T> {
         pop_if_impl!(self, f)
     }
 
@@ -1165,6 +1173,11 @@ impl<T, P> ThinVec<T, P> {
                 self.set_len(len + i + 1);
             }
         }
+    }
+
+    pub(crate) fn extend_from_raw_nonoverlapping(&mut self, ptr: *mut T, len: usize) {
+        self.reserve(len);
+        extend_from_raw_nonoverlapping!(self, ptr, len);
     }
 
     /// Appends a slice of elements to the thin vector.

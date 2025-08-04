@@ -41,7 +41,7 @@ macro_rules! pop_if_impl {
         let len = $self.len();
         if len > 0 {
             // SAFETY: length is guaranteed to be greater than zero
-            if $f(unsafe { &*$self.as_mut_ptr().add(len - 1) }) {
+            if $f(unsafe { &mut *$self.as_mut_ptr().add(len - 1) }) {
                 // move out the last element
 
                 // SAFETY: the length decreases
@@ -88,6 +88,22 @@ macro_rules! push_within_capacity {
             Ok(())
         } else {
             Err($value)
+        }
+    }};
+}
+
+macro_rules! extend_from_raw_nonoverlapping {
+    ($self:ident, $ptr:expr, $len:expr) => {{
+        let len = $self.len();
+        let new_len = len + $len;
+        assert!(new_len <= $self.capacity(), "new length exceeds capacity");
+        // SAFETY: capacity ≥ new length
+        unsafe {
+            $self.set_len(new_len);
+            $self
+                .as_mut_ptr()
+                .add(len)
+                .copy_from_nonoverlapping($ptr.cast(), $len);
         }
     }};
 }
@@ -178,6 +194,7 @@ pub const unsafe fn slice_swap_unchecked<T>(slice: &mut [T], a: usize, b: usize)
 }
 
 pub(crate) use {
-    extend_from_array_impl, extend_from_boxed_impl, extend_from_slice_impl, pop_if_impl, pop_impl,
-    push_within_capacity, spare_capacity_mut_impl, truncate_impl,
+    extend_from_array_impl, extend_from_boxed_impl, extend_from_raw_nonoverlapping,
+    extend_from_slice_impl, pop_if_impl, pop_impl, push_within_capacity, spare_capacity_mut_impl,
+    truncate_impl,
 };

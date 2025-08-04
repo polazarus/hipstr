@@ -18,8 +18,9 @@ use core::{error, hash, slice};
 
 use crate::common::drain::Drain;
 use crate::common::methods::{
-    extend_from_array_impl, extend_from_boxed_impl, extend_from_slice_impl, pop_if_impl, pop_impl,
-    push_within_capacity, slice_swap_unchecked, spare_capacity_mut_impl, truncate_impl,
+    extend_from_array_impl, extend_from_boxed_impl, extend_from_raw_nonoverlapping,
+    extend_from_slice_impl, pop_if_impl, pop_impl, push_within_capacity, slice_swap_unchecked,
+    spare_capacity_mut_impl, truncate_impl,
 };
 use crate::common::non_zero::{self, NZ};
 use crate::common::{drop_raw_slice, panic_display, traits};
@@ -255,6 +256,13 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     pub(crate) fn from_boxed_slice(boxed: Box<[T]>) -> Self {
         let mut this = Self::new();
         this.extend_from_boxed(boxed);
+        this
+    }
+
+    #[must_use]
+    pub(crate) fn from_raw(ptr: *mut T, len: usize) -> Self {
+        let mut this = Self::new();
+        this.extend_from_raw_nonoverlapping(ptr, len);
         this
     }
 
@@ -528,7 +536,7 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     /// assert_eq!(inline.as_slice(), &[1, 2, 3]);
     /// assert_eq!(inline.pop_if(|x| *x % 2 == 0), None);
     /// ```
-    pub fn pop_if(&mut self, f: impl FnOnce(&T) -> bool) -> Option<T> {
+    pub fn pop_if(&mut self, f: impl FnOnce(&mut T) -> bool) -> Option<T> {
         pop_if_impl!(self, f)
     }
 
@@ -914,6 +922,10 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
 
     pub fn extend_from_boxed(&mut self, boxed: Box<[T]>) {
         extend_from_boxed_impl!(self, boxed);
+    }
+
+    pub(crate) fn extend_from_raw_nonoverlapping(&mut self, ptr: *mut T, len: usize) {
+        extend_from_raw_nonoverlapping!(self, ptr, len);
     }
 
     /// Removes the subslice indicated by the given range from the inline
