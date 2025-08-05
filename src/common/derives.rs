@@ -108,5 +108,33 @@ macro_rules! From {
     };
 }
 
+macro_rules! Vector {
+    (
+        { $item:ty }
+        $_attrs:tt $_vis:vis $_kind:ident $_name:ident
+        (($ty:ty) ($($generics_bindings:tt)*)
+        where ($($generics_where:tt)*))
+        $body:tt
+    ) => {
+        impl $($generics_bindings)* $crate::common::traits::sealed::Sealed for $ty where $($generics_where)* {}
+        impl $($generics_bindings)* $crate::common::traits::Vector for $ty where $($generics_where)* {
+            type Item = $item;
+
+            #[inline]
+            fn len(&self) -> usize {
+                self.len()
+            }
+            #[inline]
+            fn capacity(&self) -> usize {
+                self.capacity()
+            }
+            #[inline]
+            fn as_ptr(&self) -> *const Self::Item {
+                self.as_ptr()
+            }
+        }
+    };
+}
+
 #[allow(clippy::redundant_pub_crate)]
-pub(crate) use {AsRef, AsRefAndDeref, Default, Deref, From};
+pub(crate) use {AsRef, AsRefAndDeref, Default, Deref, From, Vector};

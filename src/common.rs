@@ -9,6 +9,7 @@ use core::ops::{Bound, Deref, DerefMut, Range, RangeBounds};
 use core::ptr::NonNull;
 use core::{error, fmt, ptr};
 
+pub mod boo;
 pub(crate) mod derives;
 pub mod drain;
 pub(crate) mod methods;

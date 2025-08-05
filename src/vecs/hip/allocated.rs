@@ -85,12 +85,12 @@ impl<T, O: VecPtr<T>, const TAG: usize, const MASK: usize> TaggedOwner<T, O, TAG
         )
     }
 
-    fn untagged(&self) -> NonNull<()> {
-        self.0
-            .map_addr(|addr| unsafe { NonZeroUsize::new_unchecked(addr.get() & !MASK) })
+    const fn untagged(&self) -> NonNull<()> {
+        // map_addr is not const
+        unsafe { self.0.sub(TAG) }
     }
 
-    pub fn get(&self) -> Ref<'_, O> {
+    pub const fn get(&self) -> Ref<'_, O> {
         Ref(self.untagged(), PhantomData)
     }
 
@@ -113,7 +113,7 @@ impl<T, O: VecPtr<T>, const TAG: usize, const MASK: usize> TaggedOwner<T, O, TAG
         result
     }
 
-    unsafe fn get_mut(&self) -> RefMut<O> {
+    const unsafe fn get_mut(&self) -> RefMut<O> {
         RefMut(self.untagged(), PhantomData)
     }
 }
@@ -267,21 +267,21 @@ impl<O> DerefMut for RefMut<'_, O> {
 
 #[repr(C)]
 #[derive(Debug)]
-pub struct SharedCountView<B> {
+pub struct AllocatedView<B> {
     pub(crate) tagged_ptr: NonNull<B>,
     pub _ptr: MaybeUninit<*mut ()>,
     pub _len: MaybeUninit<usize>,
 }
 
-impl<B> Copy for SharedCountView<B> {}
+impl<B> Copy for AllocatedView<B> {}
 
-impl<B> Clone for SharedCountView<B> {
+impl<B> Clone for AllocatedView<B> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<B: Backend> SharedCountView<B> {
+impl<B: Backend> AllocatedView<B> {
     pub fn with<R>(&self, f: impl FnOnce(&B) -> R) -> R {
         let ptr = self.tagged_ptr.map_addr(|addr| {
             let addr = addr.get();
@@ -302,7 +302,7 @@ impl<B: Backend> SharedCountView<B> {
 const _ASSERTS: () = {
     use crate::backend::Rc;
 
-    assert!(offset_of!(SharedCountView<()>, tagged_ptr) == 0);
+    assert!(offset_of!(AllocatedView<()>, tagged_ptr) == 0);
     assert!(offset_of!(Thin<u8, Rc>, owner) == 0);
     assert!(offset_of!(Fat<u8, Rc>, owner) == 0);
 };

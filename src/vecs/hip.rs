@@ -5,6 +5,7 @@ use core::marker::PhantomData;
 use core::mem::ManuallyDrop;
 use core::ops::RangeBounds;
 use core::{panic, ptr};
+use std::borrow::Cow;
 
 use rules_derive::rules_derive;
 
@@ -16,6 +17,7 @@ use crate::backend::{
     Backend, BackendImpl, CloneOnInlineClone, CloneOnOverflow, Counter, PanicOnInlineClone,
     PanicOnOverflow, UpdateResult,
 };
+use crate::common::boo::Boo;
 use crate::common::{self, derives, vec_push_within_capacity, RangeError};
 use crate::smart::Smart;
 use crate::vecs::SmartThinVec;
@@ -61,6 +63,7 @@ const INLINE_BYTES: usize = size_of::<*mut ()>() * 3 - 1;
         source = &[T],
         cons = Self::from_slice_clone
     ),
+    derives::Vector(T),
 )]
 pub struct HipVec<'borrow, T, B: Backend> {
     repr: Repr,
@@ -477,6 +480,38 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
         self.len() == 0
     }
 
+    /// Returns the capacity of the underlying buffer.
+    ///
+    /// If the vector is borrowed, it returns 0.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use hipstr::vecs::HipVec;
+    /// use hipstr::Arc;
+    /// let vec = HipVec::<u8, Arc>::from_array([1, 2, 3]);
+    /// assert!(vec.capacity() >= 3);
+    /// let vec2 = HipVec::<u8, Arc>::from_array([1; 40]);
+    /// assertq!(vec2.capacity() >= 40);
+    /// let slice = vec2.try_slice(0..16).unwrap();
+    /// assert_eq!(slice.capacity(), vec2.capacity());
+    /// ```
+    #[must_use]
+    pub const fn capacity(&self) -> usize {
+        match self.tag() {
+            Tag::Inline => Inline::<T>::CAP,
+            Tag::Thin => {
+                let v = unsafe { self.repr.thin::<T, B>() };
+                v.owner.get().as_ref().capacity()
+            }
+            Tag::Fat => {
+                let v = unsafe { self.repr.fat::<T, B>() };
+                v.owner.get().as_ref().capacity()
+            }
+            Tag::Borrowed => 0,
+        }
+    }
+
     /// Clones the hip vector without cloning or copying the elements if
     /// possible, returns `None` otherwise.
     ///
@@ -641,76 +676,171 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
         }
     }
 
-    pub fn try_pop(&mut self) -> Result<T, PopError> {
-        if !self.is_unique() {
-            return Err(PopError::Shared);
+    /// Tries to slice the vector, returning a new `HipVec` that contains the specified range,
+    /// without allocating or cloning.
+    ///
+    /// Note that this function do not normalize the vector, so it will never return an inline
+    /// vector.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for three distinct reasons:
+    ///
+    /// - the range is invalid,
+    /// - the vector is inline, which cannot be sliced without cloning,
+    /// - the vector is shared and the counter overflows.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::HipVec;
+    /// use hipstr::vecs::hip::Tag;
+    /// use hipstr::Arc;
+    ///
+    /// let vec = HipVec::<u8, Arc>::from_array([1, 2, 3, 4, 5]);
+    /// assert_eq!(vec.tag(), Tag::Inline);
+    /// assert!(vec.try_slice(1..4).is_err());
+    ///
+    /// let vec = HipVec::<u8, Arc>::from_array([1; 40]);
+    /// assert_eq!(vec.tag(), Tag::Thin);
+    /// let sliced = vec.try_slice(0..4).unwrap();
+    /// assert_eq!(sliced.tag(), Tag::Thin); // not normalized
+    ///
+    pub fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, SliceError> {
+        match common::range(range, self.len()) {
+            Err(range_error) => Err(SliceError::Range(range_error)),
+            Ok(range) if range.start == range.end => Ok(Self::EMPTY),
+            Ok(range) => match self.tag() {
+                Tag::Inline => Err(SliceError::Unshared),
+                Tag::Borrowed => {
+                    let slice = unsafe { self.as_borrowed_unchecked() };
+                    Ok(Self::borrowed(unsafe { slice.get_unchecked(range) }))
+                }
+                Tag::Thin | Tag::Fat => {
+                    // try to update the counter
+                    let shared_view = unsafe { self.repr.shared_view::<B>() };
+                    if shared_view.with(Counter::incr) == UpdateResult::Done {
+                        // copy the handle
+                        let mut this = Self {
+                            repr: self.repr,
+                            _marker: PhantomData,
+                        };
+
+                        // update the slice
+                        {
+                            let slice_view_mut = unsafe { this.repr.slice_view_mut::<T>() };
+                            slice_view_mut.len = range.end - range.start;
+                            slice_view_mut.ptr = unsafe { slice_view_mut.ptr.add(range.start) };
+                        }
+
+                        Ok(this)
+                    } else {
+                        Err(SliceError::Overflow)
+                    }
+                }
+            },
         }
-
-        match self.tag() {
-            Tag::Inline => unsafe { self.repr.inline_mut() }.pop(),
-
-            Tag::Thin => {
-                // SAFETY: repr is thin
-                let thin = unsafe { self.repr.thin_mut::<T, B>() };
-                thin.with_mut(|t, range| {
-                    // SAFETY: vec is unique
-                    let t = unsafe { t.as_mut_unchecked() };
-                    t.truncate(range.end);
-                    t.pop()
-                })
-            }
-
-            Tag::Fat => {
-                // SAFETY: repr is fat and unique
-                let fat = unsafe { self.repr.fat_mut::<T, B>() };
-                fat.with_mut(|v, range| {
-                    // SAFETY: vec is unique
-                    let v = unsafe { Smart::get_mut_unchecked(v) };
-                    v.truncate(range.end);
-                    v.pop()
-                })
-            }
-
-            // SAFETY: repr borrowed cannot be unique
-            Tag::Borrowed => unsafe { unreachable_unchecked() },
-        }
-        .ok_or(PopError::Empty)
     }
 
-    pub fn try_pop_if(&mut self, predicate: impl FnOnce(&mut T) -> bool) -> Result<T, PopError> {
-        if !self.is_unique() {
-            return Err(PopError::Shared);
-        }
+    pub fn try_pop(&mut self) -> Option<Boo<'_, T>> {
+        if self.is_unique() {
+            match self.tag() {
+                Tag::Inline => unsafe { self.repr.inline_mut() }.pop(),
 
-        match self.tag() {
-            Tag::Inline => unsafe { self.repr.inline_mut() }.pop_if(predicate),
+                Tag::Thin => {
+                    // SAFETY: repr is thin
+                    let thin = unsafe { self.repr.thin_mut::<T, B>() };
+                    thin.with_mut(|t, range| {
+                        // SAFETY: vec is unique
+                        let t = unsafe { t.as_mut_unchecked() };
+                        t.truncate(range.end);
+                        t.pop()
+                    })
+                }
 
-            Tag::Thin => {
-                // SAFETY: repr is thin
-                let thin = unsafe { self.repr.thin_mut::<T, B>() };
-                thin.with_mut(|t, range| {
-                    // SAFETY: vec is unique
-                    let t = unsafe { t.as_mut_unchecked() };
-                    t.truncate(range.end);
-                    t.pop_if(predicate)
-                })
+                Tag::Fat => {
+                    // SAFETY: repr is fat and unique
+                    let fat = unsafe { self.repr.fat_mut::<T, B>() };
+                    fat.with_mut(|v, range| {
+                        // SAFETY: vec is unique
+                        let v = unsafe { Smart::get_mut_unchecked(v) };
+                        v.truncate(range.end);
+                        v.pop()
+                    })
+                }
+
+                Tag::Borrowed => unreachable!(),
             }
-
-            Tag::Fat => {
-                // SAFETY: repr is fat and unique
-                let fat = unsafe { self.repr.fat_mut::<T, B>() };
-                fat.with_mut(|v, range| {
-                    // SAFETY: vec is unique
-                    let v = unsafe { Smart::get_mut_unchecked(v) };
-                    v.truncate(range.end);
-                    v.pop_if(predicate)
-                })
+            .map(Boo::Owned)
+        } else {
+            match self.tag() {
+                Tag::Inline => unreachable!(),
+                Tag::Borrowed | Tag::Thin | Tag::Fat => {
+                    // SAFETY: repr is borrowed, thin or fat
+                    let slice_view = unsafe { self.repr.slice_view::<T>() };
+                    if slice_view.len == 0 {
+                        None
+                    } else {
+                        // SAFETY: length is checked above
+                        let value = unsafe { slice_view.ptr.add(slice_view.len - 1).as_ref() };
+                        Some(Boo::Borrowed(value))
+                    }
+                }
             }
-
-            // SAFETY: repr borrowed cannot be unique
-            Tag::Borrowed => unsafe { unreachable_unchecked() },
         }
-        .ok_or(PopError::Empty)
+    }
+
+    pub fn try_pop_if(&mut self, predicate: impl FnOnce(&T) -> bool) -> Option<Boo<'_, T>> {
+        if self.is_unique() {
+            match self.tag() {
+                Tag::Inline => unsafe { self.repr.inline_mut() }.pop_if(|v| predicate(v)),
+
+                Tag::Thin => {
+                    // SAFETY: repr is thin
+                    let thin = unsafe { self.repr.thin_mut::<T, B>() };
+                    thin.with_mut(|t, range| {
+                        // SAFETY: vec is unique
+                        let t = unsafe { t.as_mut_unchecked() };
+                        t.truncate(range.end);
+                        t.pop_if(|v| predicate(v))
+                    })
+                }
+
+                Tag::Fat => {
+                    // SAFETY: repr is fat and unique
+                    let fat = unsafe { self.repr.fat_mut::<T, B>() };
+                    fat.with_mut(|v, range| {
+                        // SAFETY: vec is unique
+                        let v = unsafe { Smart::get_mut_unchecked(v) };
+                        v.truncate(range.end);
+                        v.pop_if(|v| predicate(v))
+                    })
+                }
+
+                // SAFETY: repr borrowed cannot be unique
+                Tag::Borrowed => unsafe { unreachable_unchecked() },
+            }
+            .map(Boo::Owned)
+        } else {
+            match self.tag() {
+                Tag::Inline => unreachable!(),
+                Tag::Borrowed | Tag::Thin | Tag::Fat => {
+                    // SAFETY: repr is borrowed, thin or fat
+                    let slice_view = unsafe { self.repr.slice_view::<T>() };
+                    if slice_view.len == 0 {
+                        None
+                    } else {
+                        // SAFETY: length is checked above
+                        let value = unsafe { slice_view.ptr.add(slice_view.len - 1).as_ref() };
+                        if predicate(value) {
+                            Some(Boo::Borrowed(value))
+                        } else {
+                            None
+                        }
+                    }
+                }
+            }
+        }
     }
 
     pub fn try_split_off(&mut self, offset: usize) -> Option<Self> {
@@ -943,17 +1073,7 @@ impl<T: Clone, B: Backend> HipVec<'_, T, B> {
     }
 
     pub fn pop(&mut self) -> Option<T> {
-        match self.try_pop() {
-            Ok(value) => Some(value),
-            Err(PopError::Empty) => None,
-            Err(PopError::Shared) => {
-                let value = self.as_slice().last().cloned()?;
-                *self = Self::from_slice_clone(unsafe {
-                    self.as_slice().get_unchecked(0..self.len() - 1)
-                });
-                Some(value)
-            }
-        }
+        self.try_pop().map(Boo::into_owned)
     }
 
     pub fn pop_if(&mut self, predicate: impl FnOnce(&T) -> bool) -> Option<T> {
@@ -1120,56 +1240,11 @@ impl<T: Copy, B: Backend> HipVec<'_, T, B> {
     }
 
     pub fn pop_copy(&mut self) -> Option<T> {
-        match self.try_pop() {
-            Ok(value) => Some(value),
-            Err(PopError::Empty) => None,
-            Err(PopError::Shared) => {
-                let value = self.as_slice().last().copied()?;
-                *self = Self::from_slice_copy(unsafe {
-                    self.as_slice().get_unchecked(0..self.len() - 1)
-                });
-                Some(value)
-            }
-        }
+        self.try_pop().map(Boo::into_copy)
     }
 
     pub fn pop_if_copy(&mut self, predicate: impl FnOnce(&T) -> bool) -> Option<T> {
-        if self.is_empty() {
-            return None;
-        }
-
-        if self.is_unique() {
-            match self.tag() {
-                Tag::Inline => return unsafe { self.repr.inline_mut() }.pop_if(|v| predicate(v)),
-                Tag::Thin => {
-                    // SAFETY: repr is thin
-                    let thin = unsafe { self.repr.thin_mut::<T, B>() };
-                    return thin.with_mut(|t, range| {
-                        // SAFETY: vec is unique
-                        let t = unsafe { t.as_mut_unchecked() };
-                        t.truncate(range.end);
-                        t.pop_if(|v| predicate(v))
-                    });
-                }
-                Tag::Fat => {
-                    // SAFETY: repr is fat and unique
-                    let fat = unsafe { self.repr.fat_mut::<T, B>() };
-                    return fat.with_mut(|v, range| {
-                        // SAFETY: vec is unique
-                        let v = unsafe { Smart::get_mut_unchecked(v) };
-                        v.truncate(range.end);
-                        v.pop_if(|v| predicate(v))
-                    });
-                }
-                Tag::Borrowed => unsafe { unreachable_unchecked() },
-            }
-        } else {
-            let value = self.as_slice().last().filter(|p| predicate(*p)).copied()?;
-            // SAFETY: slice checked above
-            let slice = unsafe { self.as_slice().get_unchecked(0..self.len() - 1) };
-            *self = Self::from_slice_copy(slice);
-            Some(value)
-        }
+        self.try_pop_if(predicate).map(Boo::into_copy)
     }
 }
 
@@ -1255,6 +1330,14 @@ impl<T, B: Backend> Drop for HipVec<'_, T, B> {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SliceError {
+    Range(RangeError),
+    Unshared,
+    Overflow,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PopError {
     Empty,
     Shared,

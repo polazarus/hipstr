@@ -5,8 +5,9 @@ use core::num::NonZeroU8;
 use core::ptr::NonNull;
 
 use crate::backend::Backend;
-use crate::vecs::hip::allocated::{Fat, SharedCountView, Thin};
+use crate::vecs::hip::allocated::{AllocatedView, Fat, Thin};
 use crate::vecs::hip::Inline;
+use crate::vecs::thin::ThinVec;
 use crate::vecs::{TAG_BORROWED, TAG_BORROWED_MASKED, TAG_FAT, TAG_INLINE, TAG_MASK, TAG_THIN};
 use crate::Rc;
 
@@ -92,13 +93,13 @@ impl Repr {
         unsafe { transmute::<&Self, &Borrowed<'borrow, T>>(self) }
     }
 
-    pub const unsafe fn shared_view<B: Backend>(&self) -> &SharedCountView<B> {
+    pub const unsafe fn shared_view<B: Backend>(&self) -> &AllocatedView<B> {
         debug_assert!(
             matches!(self.repr(), Tag::Thin | Tag::Fat),
             "invalid repr (thin or fat expected)"
         );
         // SAFETY: The layout of `Pivot` matches the layout of `SharedCountView<B>`.
-        unsafe { transmute::<&Self, &SharedCountView<B>>(self) }
+        unsafe { transmute::<&Self, &AllocatedView<B>>(self) }
     }
 
     pub const unsafe fn from_inline<T>(inline: Inline<T>) -> Self {
@@ -132,6 +133,15 @@ impl Repr {
         unsafe { transmute::<&mut Self, &mut Inline<T>>(self) }
     }
 
+    pub const unsafe fn thin<T, B: Backend>(&self) -> &Thin<T, B> {
+        debug_assert!(
+            matches!(self.repr(), Tag::Thin),
+            "invalid repr (thin expected)"
+        );
+        // SAFETY: The layout of `Pivot` s the layout of `Thin<T, B>`.
+        unsafe { transmute::<&Self, &Thin<T, B>>(self) }
+    }
+
     pub const unsafe fn thin_mut<T, B: Backend>(&mut self) -> &mut Thin<T, B> {
         debug_assert!(
             matches!(self.repr(), Tag::Thin),
@@ -139,6 +149,15 @@ impl Repr {
         );
         // SAFETY: The layout of `Pivot` matches the layout of `Thin<T, B>`.
         unsafe { transmute::<&mut Self, &mut Thin<T, B>>(self) }
+    }
+
+    pub const unsafe fn fat<T, B: Backend>(&self) -> &Fat<T, B> {
+        debug_assert!(
+            matches!(self.repr(), Tag::Fat),
+            "invalid repr (fat expected)"
+        );
+        // SAFETY: The layout of `Pivot` matches the layout of `Fat<T, B>`.
+        unsafe { transmute::<&Self, &Fat<T, B>>(self) }
     }
 
     pub const unsafe fn fat_mut<T, B: Backend>(&mut self) -> &mut Fat<T, B> {
@@ -238,7 +257,7 @@ pub union Union<'borrow, T, B: Backend> {
     pub slice: SliceView<T>,
 
     /// View to access the counter
-    pub shared: SharedCountView<B>,
+    pub shared: AllocatedView<B>,
 }
 
 #[repr(usize)]
