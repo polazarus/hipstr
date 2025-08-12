@@ -128,6 +128,12 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
         }
     }
 
+    #[inline]
+    pub(crate) const fn with_capacity(cap: usize) -> Self {
+        assert!(cap <= CAP, "required capacity exceeds inline capacity");
+        Self::new()
+    }
+
     /// Creates a new inline vector with the specified length, initialized to
     /// zero.
     ///

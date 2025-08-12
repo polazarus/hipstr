@@ -190,6 +190,15 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
         }
     }
 
+    #[inline]
+    pub(crate) const fn with_capacity(cap: usize) -> Self {
+        assert!(
+            cap <= Self::CAP,
+            "required capacity exceeds inline capacity"
+        );
+        Self::new()
+    }
+
     /// Creates a new inline vector with the specified length, initialized to
     /// zero.
     ///
@@ -260,7 +269,7 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     }
 
     #[must_use]
-    pub(crate) fn from_raw(ptr: *mut T, len: usize) -> Self {
+    pub(crate) fn from_raw(ptr: *const T, len: usize) -> Self {
         let mut this = Self::new();
         this.extend_from_raw_nonoverlapping(ptr, len);
         this
@@ -924,7 +933,7 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
         extend_from_boxed_impl!(self, boxed);
     }
 
-    pub(crate) fn extend_from_raw_nonoverlapping(&mut self, ptr: *mut T, len: usize) {
+    pub(crate) fn extend_from_raw_nonoverlapping(&mut self, ptr: *const T, len: usize) {
         extend_from_raw_nonoverlapping!(self, ptr, len);
     }
 

@@ -521,12 +521,15 @@ impl<T, C: Backend> SmartThinVec<T, C> {
     /// ```
     pub fn into_thin_vec(self) -> Result<ThinVec<T>, Self> {
         if self.is_unique() {
-            let this = ManuallyDrop::new(self);
-            let tv = ThinVec(this.0);
-            Ok(tv.fresh_move())
+            Ok(unsafe { self.into_thin_vec_unchecked() })
         } else {
             Err(self)
         }
+    }
+
+    pub(crate) unsafe fn into_thin_vec_unchecked(self) -> ThinVec<T> {
+        let this = ManuallyDrop::new(self);
+        ThinVec(this.0).fresh_move()
     }
 
     pub(crate) unsafe fn handle(&mut self) -> Handle<ThinVec<T, C>> {

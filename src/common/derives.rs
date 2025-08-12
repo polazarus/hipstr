@@ -15,6 +15,23 @@ macro_rules! AsRef {
     }
 }
 
+macro_rules! AsMut {
+    (
+        { target = $dst:ty, method = $method:ident }
+        $attrs:tt $vis:vis $kind:ident $name:ident
+        (($ty:ty) ($($generics_bindings:tt)*)
+        where ($($generics_where:tt)*))
+        $body:tt
+    ) => {
+        impl $($generics_bindings)* ::core::convert::AsMut<$dst> for $ty where $($generics_where)* {
+            #[inline]
+            fn as_mut(&mut self) -> &mut $dst {
+                self.$method()
+            }
+        }
+    }
+}
+
 macro_rules! Deref {
     (
         { target = $dst:ty, method = $method:ident }
@@ -34,12 +51,42 @@ macro_rules! Deref {
     }
 }
 
+macro_rules! DerefMut {
+    (
+        { method = $method:ident }
+        $attrs:tt $vis:vis $kind:ident $name:ident
+        (($ty:ty) ($($generics_bindings:tt)*)
+        where ($($generics_where:tt)*))
+        $body:tt
+    ) => {
+        impl $($generics_bindings)* ::core::ops::DerefMut for $ty where $($generics_where)* {
+            #[inline]
+            fn deref_mut(&mut self) -> &mut <Self as ::core::ops::Deref>::Target {
+                self.$method()
+            }
+        }
+    }
+}
+
 macro_rules! AsRefAndDeref {
     (
         $($parameters:tt)*
     ) => {
         $crate::common::derives::AsRef! { $($parameters)* }
         $crate::common::derives::Deref! { $($parameters)* }
+    }
+}
+
+macro_rules! AsRefAsMutDerefDerefMut {
+    (
+        {target= $dst:ty, method = $method:ident, method_mut = $method_mut:ident}
+        $($rest:tt)*
+    ) => {
+        $crate::common::derives::AsRef! { { target = $dst, method = $method } $($rest)* }
+        $crate::common::derives::Deref! { { target = $dst, method = $method } $($rest)* }
+        $crate::common::derives::AsMut! { { target = $dst, method = $method_mut } $($rest)* }
+        $crate::common::derives::DerefMut! { { method = $method_mut } $($rest)* }
+
     }
 }
 
@@ -69,8 +116,11 @@ macro_rules! From {
     (
         { bindings = ( $($generics_bindings:tt)* ) $( where ( $($generics_where:tt)* ) )?, source = $source:ty, cons = $cons:path }
         $_attrs:tt $_vis:vis $_kind:ident $_name:ident
-        (($ty:ty) ($($_generics_bindings:tt)*)
-        where ($($_generics_where:tt)*))
+        (
+            ($ty:ty)
+            ( $($_generics_bindings:tt)* )
+            where ( $($_generics_where:tt)* )
+        )
         $body:tt
     ) => {
         impl $($generics_bindings)*
@@ -88,29 +138,79 @@ macro_rules! From {
     };
 
     (
-        { $source:ty, $cons:path }
+        { source = $source:ty, cons = $cons:path }
+        $attrs:tt $vis:vis $kind:ident $name:ident
+        (
+            ( $ty:ty )
+            ( $($generics_bindings:tt)* )
+            where ( $($generics_where:tt)* )
+        )
+        $body:tt
+    ) => {
+        $crate::common::derives::From! {
+            { bindings = ( $($generics_bindings)* ) where ( $($generics_where)* ), source = $source, cons = $cons }
+            $attrs $vis $kind $name
+            (
+                ($ty)
+                ( $($generics_bindings)* )
+                where ( $($generics_where)* )
+            )
+            $body
+        }
+    };
+}
+
+macro_rules! Into {
+    (
+        { bindings = ( $($generics_bindings:tt)* ) $( where ( $($generics_where:tt)* ) )?, target = $target:ty, method = $method:ident }
         $_attrs:tt $_vis:vis $_kind:ident $_name:ident
-        (($ty:ty) ($($generics_bindings:tt)*)
-        where ($($generics_where:tt)*))
+        (
+            ($ty:ty)
+            ( $($_generics_bindings:tt)* )
+            where ( $($_generics_where:tt)* )
+        )
         $body:tt
     ) => {
         impl $($generics_bindings)*
-            ::core::convert::From<$source>
-        for $ty
-        where
+            ::core::convert::From<$ty>
+        for $target
+        $(where
             $($generics_where)*
+        )?
         {
             #[inline]
-            fn from(other: $source) -> Self {
-                $cons(other)
+            fn from(other: $ty) -> Self {
+                other.$method()
             }
+        }
+    };
+
+    (
+        { target = $target:ty, method = $method:ident }
+        $attrs:tt $vis:vis $kind:ident $name:ident
+        (
+            ( $ty:ty )
+            ( $($generics_bindings:tt)* )
+            where ( $($generics_where:tt)* )
+        )
+        $body:tt
+    ) => {
+        $crate::common::derives::Into! {
+            { bindings = ( $($generics_bindings)* ) where ( $($generics_where)* ), target = $target, method = $method }
+            $attrs $vis $kind $name
+            (
+                ($ty)
+                ( $($generics_bindings)* )
+                where ( $($generics_where)* )
+            )
+            $body
         }
     };
 }
 
 macro_rules! Vector {
     (
-        { $item:ty }
+        { item = $item:ty }
         $_attrs:tt $_vis:vis $_kind:ident $_name:ident
         (($ty:ty) ($($generics_bindings:tt)*)
         where ($($generics_where:tt)*))
@@ -137,4 +237,7 @@ macro_rules! Vector {
 }
 
 #[allow(clippy::redundant_pub_crate)]
-pub(crate) use {AsRef, AsRefAndDeref, Default, Deref, From, Vector};
+pub(crate) use {
+    AsMut, AsRef, AsRefAndDeref, AsRefAsMutDerefDerefMut, Default, Deref, DerefMut, From, Into,
+    Vector,
+};

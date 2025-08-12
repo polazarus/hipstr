@@ -1,3 +1,6 @@
+//! "Hip" vector for arbitrary data types.
+
+use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::hint::unreachable_unchecked;
@@ -5,7 +8,6 @@ use core::marker::PhantomData;
 use core::mem::ManuallyDrop;
 use core::ops::RangeBounds;
 use core::{panic, ptr};
-use std::borrow::Cow;
 
 use rules_derive::rules_derive;
 
@@ -20,7 +22,7 @@ use crate::backend::{
 use crate::common::boo::Boo;
 use crate::common::{self, derives, vec_push_within_capacity, RangeError};
 use crate::smart::Smart;
-use crate::vecs::SmartThinVec;
+use crate::vecs::{SmartThinVec, ThinVec};
 
 mod allocated;
 mod inline;
@@ -44,17 +46,15 @@ const INLINE_BYTES: usize = size_of::<*mut ()>() * 3 - 1;
     derives::AsRefAndDeref(target = [T], method = as_slice),
     derives::Default,
     derives::From(
-        bindings = (<'borrow, T, B: Backend,const N: usize>),
+        bindings = (<'borrow, T, B: Backend, const N: usize>),
         source = [T; N],
         cons = Self::from_array
     ),
     derives::From(
-        bindings = (<'borrow, T, B: Backend>),
         source = Box<[T]>,
         cons = Self::from_boxed_slice
     ),
     derives::From(
-        bindings = (<'borrow, T, B: Backend>),
         source = Vec<T>,
         cons = Self::from_vec
     ),
@@ -63,7 +63,12 @@ const INLINE_BYTES: usize = size_of::<*mut ()>() * 3 - 1;
         source = &[T],
         cons = Self::from_slice_clone
     ),
-    derives::Vector(T),
+    derives::From(
+        bindings = (<'borrow, T: Clone, B: Backend>),
+        source = Cow<'borrow, [T]>,
+        cons = Self::from_cow
+    )
+    derives::Vector(item = T),
 )]
 pub struct HipVec<'borrow, T, B: Backend> {
     repr: Repr,
@@ -82,6 +87,25 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
 
     /// Can the type be inlined?
     const MAY_INLINE: bool = align_of::<T>() <= align_of::<Repr>() && Inline::<T>::CAP > 0;
+
+    /// Capacity of the inline representation when available.
+    ///
+    /// Inline representation is *unavailable* for any type `T` with an alignment requirement greater that `usize`'s.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::HipVec;
+    /// use hipstr::Arc;
+    ///
+    /// assert_eq!(HipVec::<u8, Arc>::INLINE_CAPACITY.unwrap(), size_of::<usize>() * 3 - 1);
+    /// assert_eq!(HipVec::<u128, Arc>::INLINE_CAPACITY.is_none(), align_of::<u128>() > align_of::<usize>());
+    /// ```
+    pub const INLINE_CAPACITY: Option<usize> = if Self::MAY_INLINE {
+        Some(Inline::<T>::CAP)
+    } else {
+        None
+    };
 
     /// Checks if the given length fits in the inline repr.
     ///
@@ -360,6 +384,12 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
 
     /// Gets the borrowed slice.
     ///
+    /// See [`as_borrowed`] for the safe version of this method and [`as_slice`]
+    /// for a more general method.
+    ///
+    /// [`as_slice`]: Self::as_slice
+    /// [`as_borrowed`]: Self::as_borrowed
+    ///
     /// # Safety
     ///
     /// This function assumes that the vector is borrowed.
@@ -372,6 +402,12 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
     }
 
     /// Gets the borrowed slice if the vector is borrowed.
+    ///
+    /// See [`as_borrowed_unchecked`] for the unchecked version of this method
+    /// and [`as_slice`] for a more general method (with a restricted lifetime).
+    ///
+    /// [`as_slice`]: Self::as_slice
+    /// [`as_borrowed_unchecked`]: Self::as_borrowed_unchecked
     ///
     /// # Examples
     ///
@@ -892,6 +928,103 @@ impl<'borrow, T, B: Backend> HipVec<'borrow, T, B> {
             Tag::Borrowed => unsafe { unreachable_unchecked() },
         }
     }
+
+    pub fn try_mutate(&mut self) -> Option<RefMut<'_, 'borrow, T, B>> {
+        if !self.is_unique() {
+            return None;
+        }
+
+        Some(unsafe { self.mutate_unchecked() })
+    }
+
+    pub fn mutate_unchecked(&mut self) -> RefMut<'_, 'borrow, T, B> {
+        match self.tag() {
+            Tag::Inline => {
+                // SAFETY: repr is inline
+                let inline = unsafe { self.repr.inline_mut() };
+                let mut thin: ThinVec<T> = ThinVec::with_capacity(self.len());
+
+                // SAFETY:
+                // - set the length to zero before moving the inline data into
+                //   the new thin vector
+                // - capacity is sufficient by construction
+                unsafe {
+                    inline.set_len(0);
+                    thin.as_mut_ptr()
+                        .copy_from_nonoverlapping(inline.as_ptr(), inline.len());
+                }
+                // replace actual repr with empty
+                self.repr = Self::EMPTY.repr;
+                RefMut(Some(thin), self)
+            }
+
+            Tag::Thin => {
+                // SAFETY: repr is thin
+                let Allocated { owner, ptr, len } = unsafe { self.repr.into_thin::<T, B>() };
+                self.repr = Self::EMPTY.repr;
+
+                let owner = owner.into_untagged();
+                let mut owner = unsafe { owner.into_thin_vec_unchecked() };
+
+                let offset = unsafe { ptr.offset_from_unsigned(owner.as_ptr()) };
+
+                if offset != 0 {
+                    if len == 0 {
+                        owner.clear();
+                    } else {
+                        owner.truncate(offset + len);
+                        let _ = owner.drain(..offset);
+                    }
+                } else {
+                    owner.truncate(len);
+                }
+
+                RefMut(Some(owner), self)
+            }
+
+            Tag::Fat => {
+                // SAFETY: repr is fat and unique
+                let Allocated { owner, ptr, len } = unsafe { self.repr.into_fat::<T, B>() };
+                // replace actual repr with empty
+                self.repr = Self::EMPTY.repr;
+
+                let owner = owner.into_untagged();
+                let mut owner = unsafe { owner.into_inner_unchecked() };
+
+                let mut thin: ThinVec<T> = ThinVec::with_capacity(len);
+
+                let offset = unsafe { ptr.offset_from_unsigned(owner.as_ptr()) };
+
+                owner.truncate(offset + len);
+
+                // SAFETY:
+                // - set the length to `offset` before moving the ownership
+                // - capacity is sufficient by construction
+                unsafe {
+                    // copy the data
+                    thin.as_mut_ptr().copy_from_nonoverlapping(ptr, len);
+                    // invalidate the original owner
+                    owner.set_len(offset);
+                    // take ownership
+                    thin.set_len(len);
+                }
+
+                RefMut(Some(thin), self)
+            }
+
+            // SAFETY: repr borrowed cannot be unique
+            Tag::Borrowed => unsafe { unreachable_unchecked() },
+        }
+    }
+}
+
+impl<'borrow, T: Clone, B: Backend> HipVec<'borrow, T, B> {
+    pub(crate) fn from_cow(cow: Cow<'borrow, [T]>) -> Self {
+        match cow {
+            Cow::Borrowed(slice) => Self::borrowed(slice),
+            Cow::Owned(vec) => Self::from_vec(vec),
+        }
+    }
 }
 
 impl<T: Clone, B: Backend> HipVec<'_, T, B> {
@@ -1341,4 +1474,44 @@ pub enum SliceError {
 pub enum PopError {
     Empty,
     Shared,
+}
+
+#[rules_derive(
+    derives::AsRefAsMutDerefDerefMut(
+        target = ThinVec<T>,
+        method = as_thin_vec,
+        method_mut = as_mut_thin_vec
+    )
+)]
+pub struct RefMut<'a, 'borrow, T, B: Backend>(Option<ThinVec<T>>, &'a mut HipVec<'borrow, T, B>);
+
+impl<'a, 'borrow, T, B: Backend> RefMut<'a, 'borrow, T, B> {
+    pub(crate) fn new(thin: ThinVec<T>, hip_vec: &'a mut HipVec<'borrow, T, B>) -> Self {
+        Self(Some(thin), hip_vec)
+    }
+
+    pub fn as_thin_vec(&self) -> &ThinVec<T> {
+        unsafe { self.0.as_ref().unwrap_unchecked() }
+    }
+
+    pub fn as_mut_thin_vec(&mut self) -> &mut ThinVec<T> {
+        unsafe { self.0.as_mut().unwrap_unchecked() }
+    }
+}
+
+impl<'borrow, T, B: Backend> Drop for RefMut<'_, 'borrow, T, B> {
+    fn drop(&mut self) {
+        if let Some(mut thin) = self.0.take() {
+            let len = thin.len();
+            if HipVec::<'borrow, T, B>::fit_inline(len) {
+                unsafe {
+                    thin.set_len(0);
+                }
+                let inline = Inline::from_raw(self.1.as_ptr(), len);
+                *self.1 = HipVec::from_inline(inline);
+            } else {
+                *self.1 = HipVec::from_thin(SmartThinVec::from_thin_vec(thin));
+            }
+        }
+    }
 }

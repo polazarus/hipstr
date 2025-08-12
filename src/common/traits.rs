@@ -55,6 +55,10 @@ impl<T: Vector + ?Sized> VectorExt for T {}
 /// In particular, the intricate semantics of the length and capacity of the vector
 /// can lead to memory safety issues if not handled properly.
 pub unsafe trait MutVector: Vector {
+    fn with_capacity(capacity: usize) -> Self
+    where
+        Self: Sized;
+
     /// Sets the length of the vector.
     ///
     /// # Safety
@@ -115,6 +119,13 @@ impl<T> Vector for alloc::vec::Vec<T> {
 }
 
 unsafe impl<T> MutVector for alloc::vec::Vec<T> {
+    fn with_capacity(capacity: usize) -> Self
+    where
+        Self: Sized,
+    {
+        Self::with_capacity(capacity)
+    }
+
     unsafe fn set_len(&mut self, len: usize) {
         unsafe { self.set_len(len) }
     }

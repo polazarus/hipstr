@@ -107,6 +107,12 @@ macro_rules! trait_impls {
     (@MutVector $([ $($gen:tt)* ] $( where [ $($wh:tt)* ])? )? { }) => {};
     (@MutVector $([ $($gen:tt)* ] $( where [ $($wh:tt)* ])? )? { $t:ty ; $($rest:tt)* }) => {
         unsafe impl $(< $($gen)* >)? crate::common::traits::MutVector for $t $($(where $($wh)*)?)? {
+
+            #[inline]
+            fn with_capacity(capacity: usize) -> Self where Self: Sized {
+                Self::with_capacity(capacity)
+            }
+
             #[inline]
             unsafe fn set_len(&mut self, len: usize) {
                 unsafe { self.set_len(len) }

@@ -400,7 +400,7 @@ impl<T, P> ThinVec<T, P> {
     }
 
     #[inline]
-    const fn ptr(&self) -> NonNull<T> {
+    pub(crate) const fn ptr(&self) -> NonNull<T> {
         unsafe { self.0.byte_add(Self::DATA_OFFSET).cast() }
     }
 

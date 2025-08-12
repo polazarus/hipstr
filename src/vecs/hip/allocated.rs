@@ -3,11 +3,14 @@ use core::marker::PhantomData;
 use core::mem::{offset_of, transmute, ManuallyDrop, MaybeUninit};
 use core::num::NonZeroUsize;
 use core::ops::{Deref, DerefMut, Range};
-use core::ptr::NonNull;
+use core::ptr::{null_mut, NonNull};
+use core::slice::from_raw_parts;
+use std::boxed::Box;
 
 use self::sealed::Sealed;
 use crate::common::traits::{MutVector, Vector};
-use crate::vecs::{Smart, SmartThinVec};
+use crate::vecs::thin::ThinVec;
+use crate::vecs::{Smart, SmartThinVec, ThinVec};
 use crate::Backend;
 
 const TAG_MASK: usize = super::super::TAG_MASK as usize;
@@ -111,6 +114,17 @@ impl<T, O: VecPtr<T>, const TAG: usize, const MASK: usize> TaggedOwner<T, O, TAG
             });
         }
         result
+    }
+
+    pub(crate) const fn into_untagged(self) -> O {
+        let untagged = self.untagged();
+        std::mem::forget(self);
+        assert!(size_of::<O>() == size_of::<NonNull<()>>(), "size mismatch");
+        union Tr<O> {
+            in_: NonNull<()>,
+            out: ManuallyDrop<O>,
+        }
+        unsafe { ManuallyDrop::into_inner(Tr { in_: untagged }.out) }
     }
 
     const unsafe fn get_mut(&self) -> RefMut<O> {
@@ -306,3 +320,106 @@ const _ASSERTS: () = {
     assert!(offset_of!(Thin<u8, Rc>, owner) == 0);
     assert!(offset_of!(Fat<u8, Rc>, owner) == 0);
 };
+
+pub struct Hop<T, B> {
+    header: NonNull<()>,
+    _phantom: PhantomData<(T, B)>,
+}
+
+struct HopHeader<T, B> {
+    counter: B,
+    ptr: Option<NonNull<T>>,
+    cap: usize,
+    len: usize,
+}
+
+impl<T, B> Hop<T, B> {
+    const EMPTY: Self = Self {
+        header: NonNull::new(unsafe { null_mut::<()>().add(TAG_THIN) }).unwrap(),
+        _phantom: PhantomData,
+    };
+
+    pub const fn new() -> Self {
+        Self::EMPTY
+    }
+
+    pub fn from_vec(vec: Vec<T>) -> Self
+    where
+        B: Default,
+    {
+        let mut vec = ManuallyDrop::new(vec);
+        let alloc = Box::new(HopHeader {
+            counter: B::default(),
+            cap: vec.capacity(),
+            len: vec.len(),
+            ptr: NonNull::new(vec.as_mut_ptr()),
+        });
+        let ptr = Box::into_raw(alloc);
+        let header = unsafe { NonNull::new_unchecked(ptr).cast() };
+        Self {
+            header,
+            _phantom: PhantomData,
+        }
+    }
+
+    pub fn from_thin_vec<P>(vec: ThinVec<T, P>) -> Self
+    where
+        B: Default,
+    {
+        let vec = vec.fresh_move();
+        unsafe { transmute::<ThinVec<T, B>, Self>(vec) }
+    }
+
+    pub fn header(&self) -> Option<NonNull<HopHeader<T, B>>> {
+        let ptr = self
+            .header
+            .as_ptr()
+            .map_addr(|addr| addr & !TAG_MASK)
+            .cast();
+        NonNull::new(ptr)
+    }
+
+    pub fn header_ref(&self) -> Option<&HopHeader<T, B>> {
+        self.header().map(|h| unsafe { h.as_ref() })
+    }
+
+    pub fn len(&self) -> usize {
+        self.header_ref().map_or(0, |h| h.len)
+    }
+
+    pub fn capacity(&self) -> usize {
+        self.header_ref().map_or(0, |h| h.cap)
+    }
+
+    pub(crate) fn ptr(&self) -> NonNull<T> {
+        if let Some(header) = self.header() {
+            let is_thin = self.header.addr().get() & TAG_MASK == TAG_THIN;
+            if is_thin {
+                let thin = unsafe { transmute::<&Self, &ThinVec<T, B>>(self) };
+                thin.ptr()
+            } else {
+                let header = unsafe { header.as_ref() };
+                let ptr = unsafe { header.ptr.unwrap_unchecked() };
+                ptr
+            }
+        } else {
+            NonNull::dangling()
+        }
+    }
+
+    pub fn as_ptr(&self) -> *const T {
+        self.ptr().as_ptr().cast_const()
+    }
+
+    pub fn as_mut_ptr(&mut self) -> *mut T {
+        self.ptr().as_ptr()
+    }
+
+    pub fn as_slice(&self) -> &[T] {
+        unsafe { from_raw_parts(self.as_ptr(), self.len()) }
+    }
+
+    pub fn as_mut_slice(&mut self) -> &mut [T] {
+        unsafe { from_raw_parts_mut(self.as_mut_ptr(), self.len()) }
+    }
+}
