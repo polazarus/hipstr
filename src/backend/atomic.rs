@@ -76,9 +76,6 @@ impl Counter for AtomicCount {
     }
 }
 
-impl Default for AtomicCount {
-    #[inline]
-    fn default() -> Self {
-        Self(AtomicUsize::new(0))
-    }
+impl ConstDefault for AtomicCount {
+    const DEFAULT: Self = Self(AtomicUsize::new(0));
 }

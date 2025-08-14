@@ -15,7 +15,10 @@ use core::mem::{self, ManuallyDrop, MaybeUninit};
 use core::num::NonZeroU8;
 use core::ops::{Deref, DerefMut, Range, RangeBounds};
 use core::ptr::NonNull;
-use core::{error, hash, slice};
+use core::{error, slice};
+
+use const_default::ConstDefault;
+use rules_derive::rules_derive;
 
 use crate::common::drain::Drain;
 use crate::common::{panic_display, traits};
@@ -89,6 +92,12 @@ impl<const SHIFT: u8, const TAG: u8> TaggedU8<SHIFT, TAG> {
 /// The compiler will statically reject any `InlineVec` with `CAP` greater than
 /// `u8::MAX >> TAG_SHIFT`.
 #[repr(C)]
+#[rules_derive(
+    macros::ConstDefault(Self::new()),
+    macros::DelegateDebug(Self::as_slice, T: core::fmt::Debug),
+    macros::DelegateHash(Self::as_slice, T: core::hash::Hash),
+)]
+
 pub struct InlineVec<
     T,
     const CAP: usize,
@@ -1292,30 +1301,6 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> AsMut<[T]>
     }
 }
 
-impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> Default
-    for InlineVec<T, CAP, SHIFT, TAG>
-{
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<T: fmt::Debug, const CAP: usize, const SHIFT: u8, const TAG: u8> fmt::Debug
-    for InlineVec<T, CAP, SHIFT, TAG>
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.as_slice().fmt(f)
-    }
-}
-
-impl<T: hash::Hash, const CAP: usize, const SHIFT: u8, const TAG: u8> hash::Hash
-    for InlineVec<T, CAP, SHIFT, TAG>
-{
-    fn hash<H: hash::Hasher>(&self, state: &mut H) {
-        self.as_slice().hash(state);
-    }
-}
-
 impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> Extend<T>
     for InlineVec<T, CAP, SHIFT, TAG>
 {
@@ -1508,7 +1493,7 @@ macros::trait_impls! {
         }
     }
 
-    [T, P, const CAP: usize, const SHIFT: u8, const TAG: u8]
+    [T, P: ConstDefault, const CAP: usize, const SHIFT: u8, const TAG: u8]
     {
         From {
             super::thin::ThinVec<T, P> => InlineVec<T, CAP, SHIFT, TAG> = Self::from_mut_vector;

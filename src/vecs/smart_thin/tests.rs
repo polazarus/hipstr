@@ -3,6 +3,7 @@
 use alloc::vec;
 use alloc::vec::Vec;
 use core::cmp::Ordering;
+use core::ptr;
 
 use super::*;
 use crate::backend::PanickyUnique;

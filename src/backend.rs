@@ -10,6 +10,7 @@ use crate::common::traits::sealed::Sealed;
 mod atomic;
 
 pub use atomic::*;
+use const_default::ConstDefault;
 
 pub type Rc = BackendImpl<Count, PanicOnOverflow>;
 
@@ -31,11 +32,8 @@ pub struct BackendImpl<C: Counter, B: OverflowBehavior>(pub(crate) C, PhantomDat
 
 impl<C: Counter, B: OverflowBehavior> Sealed for BackendImpl<C, B> {}
 
-impl<C: Counter, B: OverflowBehavior> Default for BackendImpl<C, B> {
-    #[inline]
-    fn default() -> Self {
-        Self(C::default(), PhantomData)
-    }
+impl<C: Counter, B: OverflowBehavior> ConstDefault for BackendImpl<C, B> {
+    const DEFAULT: Self = Self(C::DEFAULT, PhantomData);
 }
 
 impl<C: Counter, B: OverflowBehavior> Counter for BackendImpl<C, B> {
@@ -112,11 +110,11 @@ pub enum UpdateResult {
 /// Trait for a basic reference counter.
 ///
 /// This trait is sealed and cannot be implemented outside this crate.
-pub trait Counter: Sealed + Default + 'static {
+pub trait Counter: Sealed + ConstDefault + 'static {
     /// Creates a new counter that starts at one.
     #[inline]
     fn one() -> Self {
-        Self::default()
+        Self::DEFAULT
     }
 
     /// Tries to increment the counter.
@@ -243,11 +241,8 @@ impl Counter for Count {
     }
 }
 
-impl Default for Count {
-    #[inline]
-    fn default() -> Self {
-        Self(Cell::new(0))
-    }
+impl ConstDefault for Count {
+    const DEFAULT: Self = Self(Cell::new(0));
 }
 
 impl RefUnwindSafe for Count {}

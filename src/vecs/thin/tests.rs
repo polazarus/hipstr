@@ -5,16 +5,16 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use alloc::{format, vec};
 use core::cmp::Ordering;
-use core::num::NonZeroI32;
 use core::ops::Bound;
 use core::{iter, ptr};
 
+use const_default::ConstDefault;
+
 use crate::common::traits::tests::test_mut_vector;
-use crate::common::traits::MutVector;
-use crate::common::{self, RangeError};
+use crate::common::RangeError;
+use crate::thin_vec;
 use crate::vecs::thin::{Reserved, ThinVec as GenericThinVec};
 use crate::vecs::ThinVec;
-use crate::{thin_vec, Arc};
 
 #[test]
 fn new() {
@@ -216,7 +216,7 @@ fn from_slice_clone_panic() {
     *DROP_COUNT.lock().unwrap() = 0;
 
     let array: [_; 4] = [false, false, true, false].map(S);
-    let r = std::panic::catch_unwind(|| {
+    let _r = std::panic::catch_unwind(|| {
         let _ = ThinVec::from(array.as_slice());
     })
     .unwrap_err();
@@ -768,10 +768,10 @@ fn deref_mut() {
 #[test]
 fn prefix() {
     let v = thin_vec![1, 2, 3];
-    let &Reserved::Reserved = v.prefix();
+    assert_eq!(v.prefix(), Some(&Reserved::Reserved));
 
     let v: GenericThinVec<_, ()> = GenericThinVec::from([1, 2, 3]);
-    let &() = v.prefix();
+    assert_eq!(v.prefix(), Some(&()));
 }
 
 #[test]
@@ -857,24 +857,27 @@ fn clone() {
 
 #[test]
 fn fresh_move() {
-    #[derive(Default)]
     #[repr(u8)]
     enum DistinctLayout {
         A,
-        #[default]
         B,
     }
+    impl ConstDefault for DistinctLayout {
+        const DEFAULT: Self = DistinctLayout::B;
+    }
+
     let v: ThinVec<u8> = (1..=10).collect();
     let p = v.as_ptr();
     let v2: GenericThinVec<u8, DistinctLayout> = v.fresh_move();
     assert_ne!(v2.as_ptr(), p);
 
-    #[derive(Default)]
     #[repr(usize)]
     enum SameLayout {
         A,
-        #[default]
         B,
+    }
+    impl ConstDefault for SameLayout {
+        const DEFAULT: Self = SameLayout::B;
     }
 
     let v: GenericThinVec<u8> = (1..=10).collect();
@@ -887,9 +890,13 @@ fn fresh_move() {
 #[cfg(feature = "std")]
 fn fresh_move_drop_prefix() {
     use std::sync::Mutex;
+
+    use const_default::ConstDefault;
     static WITNESS: Mutex<bool> = Mutex::new(false);
-    #[derive(Default)]
     struct S;
+    impl ConstDefault for S {
+        const DEFAULT: Self = S;
+    }
     impl Drop for S {
         fn drop(&mut self) {
             *WITNESS.lock().unwrap() = true;
@@ -901,13 +908,13 @@ fn fresh_move_drop_prefix() {
     let p = v.as_ptr();
     let v2: GenericThinVec<u8, ()> = v.fresh_move();
     assert_eq!(v2.as_ptr(), p);
-    assert_eq!(v2.prefix(), &());
+    assert_eq!(v2.prefix(), Some(&()));
     assert!(*WITNESS.lock().unwrap());
 }
 
 #[test]
 fn vector() {
-    let mut v = thin_vec![1, 2, 3];
+    let v = thin_vec![1, 2, 3];
     let ptr = v.as_ptr();
     let cap = v.capacity();
     let len = v.len();

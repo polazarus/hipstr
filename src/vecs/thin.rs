@@ -1,31 +1,33 @@
 //! Thin vector implementation.
-#![allow(unused)]
 
 use alloc::alloc::{alloc, dealloc, realloc, Layout};
 use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
-use core::iter::FusedIterator;
-use core::marker::PhantomData;
 use core::mem::{offset_of, ManuallyDrop, MaybeUninit};
-use core::ops::{Bound, Range, RangeBounds};
+use core::ops::{Range, RangeBounds};
 use core::ptr::NonNull;
-use core::{cmp, fmt, mem, ops, panic, ptr, slice};
+use core::{cmp, mem, ops, ptr, slice};
 
+use const_default::ConstDefault;
+use rules_derive::rules_derive;
+
+use super::reprs::ThinRepr;
 use crate::common::drain::Drain;
 use crate::common::{
     check_alloc, guarded_slice_clone, maybe_uninit_write_copy_of_slice, panic_display, traits,
     RangeError,
 };
+use crate::vecs::reprs::ThinHeader;
 use crate::{common, macros};
 
 #[cfg(test)]
 mod tests;
 
 #[repr(usize)]
-#[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[rules_derive(macros::ConstDefault(Self::Reserved))]
 pub enum Reserved {
-    #[default]
     Reserved = 0,
 }
 
@@ -71,16 +73,6 @@ macro_rules! thin_vec {
     };
 }
 
-/// A shared thin vector's header.
-#[derive(Clone, Copy, Debug)]
-#[repr(C)]
-pub(super) struct Header<T, P> {
-    prefix: P,
-    cap: usize,
-    len: usize,
-    phantom: PhantomData<T>,
-}
-
 /// A thin vector, that is, a contiguous growable array type with heap-allocated
 /// metadata (prefix, capacity, length) and contents.
 ///
@@ -93,129 +85,72 @@ pub(super) struct Header<T, P> {
 ///
 /// [`Vec`]: alloc::vec::Vec
 #[repr(transparent)]
-pub struct ThinVec<T, P = Reserved>(pub(super) NonNull<Header<T, P>>);
+#[rules_derive(
+    macros::ConstDefault(Self(ThinRepr::EMPTY)),
+    macros::DelegateDebug(Self::as_slice, T: core::fmt::Debug),
+    macros::DelegateHash(Self::as_slice, T: core::hash::Hash),
+    macros::AsRef([T], Self::as_slice),
+    macros::Deref([T], Self::as_slice, Self::as_mut_slice),
+)]
+pub struct ThinVec<T, P: ConstDefault = Reserved>(pub(super) ThinRepr<T, P>);
 
-impl<T, P> ThinVec<T, P>
-where
-    P: Default,
-{
-    /// Creates a new thin vector from a slice of elements by copying the
-    /// elements.
-    pub fn from_slice_copy(slice: &[T]) -> Self
-    where
-        T: Copy,
-    {
-        let len = slice.len();
-        let mut this = Self::with_capacity(len);
+impl<T, P: ConstDefault> ThinVec<T, P> {
+    const MINIMAL_CAPACITY: usize = match size_of::<T>() {
+        0 => usize::MAX,
+        64.. => 1,
+        32.. => 3,   // 32*3 data + 32 header => 128
+        n => 32 / n, // max 32 data + 32 header => 64
+    };
+    const DATA_OFFSET: usize = Self::layout(0).unwrap().1;
 
-        unsafe {
-            maybe_uninit_write_copy_of_slice(&mut this.spare_capacity_mut()[..len], slice);
-            this.set_len(len);
-        };
-
-        this
-    }
-
-    /// Creates a new thin vector from a slice of elements by cloning the
-    /// elements.
-    pub(crate) fn from_slice_clone(slice: &[T]) -> Self
-    where
-        T: Clone,
-    {
-        let len = slice.len();
-        let mut this = Self::with_capacity(len);
-
-        let written = guarded_slice_clone(this.spare_capacity_mut(), slice);
-        debug_assert_eq!(written, slice.len());
-        unsafe {
-            this.set_len(len);
-        };
-
-        this
-    }
-
-    /// Creates a new thin vector from a copy-on-write slice of elements,
-    /// possibly cloning elements if borrowed.
-    pub(crate) fn from_cow(cow: Cow<'_, [T]>) -> Self
-    where
-        T: Clone,
-    {
-        match cow {
-            Cow::Borrowed(slice) => Self::from_slice_clone(slice),
-            Cow::Owned(vec) => Self::from_mut_vector(vec),
-        }
-    }
-
-    /// Creates a new thin vector from an array of elements by copying the
-    /// elements.
     #[inline]
-    pub(crate) fn from_array<const N: usize>(array: [T; N]) -> Self {
-        let mut this = Self::with_capacity(N);
-        unsafe {
-            let uninit_array: &mut MaybeUninit<[T; N]> = this.ptr().cast().as_mut();
-            uninit_array.write(array);
-            this.set_len(N);
-            this
+    pub(super) const fn header(&self) -> Option<&ThinHeader<T, P>> {
+        if let Some(header) = self.0.get() {
+            // SAFETY: `header` is guaranteed to be valid as long as the vector is valid
+            Some(unsafe { header.as_ref() })
+        } else {
+            None
         }
     }
 
     #[inline]
-    pub(crate) fn from_boxed_slice(boxed: Box<[T]>) -> Self {
-        let len = boxed.len();
-        let mut this = Self::with_capacity(len);
-
-        // SAFETY:
-        // - `boxed` is a valid pointer to a slice of `T` and length `len`
-        // - `this` has a capacity >= `len`
-        unsafe {
-            // move the box's content to `this`
-            this.ptr()
-                .as_ptr()
-                .copy_from_nonoverlapping(boxed.as_ptr(), len);
-
-            // update the length
-            this.set_len(len);
+    pub(super) const fn header_mut(&mut self) -> Option<&mut ThinHeader<T, P>> {
+        if let Some(mut header) = self.0.get() {
+            // SAFETY: `header` is guaranteed to be valid as long as the vector is valid
+            Some(unsafe { header.as_mut() })
+        } else {
+            None
         }
-
-        // drop the box without dropping the moved content
-        // SAFETY: ManuallyDrop is a transparent wrapper
-        let _: Box<[ManuallyDrop<T>]> = unsafe { mem::transmute(boxed) };
-
-        this
     }
 
-    /// Creates a new thin vector from a vector.
     #[inline]
-    pub(crate) fn from_mut_vector(mut vec: impl traits::MutVector<Item = T>) -> Self {
-        let len = vec.len();
-        let mut this = Self::with_capacity(len);
-        unsafe {
-            this.ptr().copy_from_nonoverlapping(vec.as_non_null(), len);
-            vec.set_len(0);
-            this.set_len(len);
+    pub(super) const fn header_and_data_mut(
+        &mut self,
+    ) -> Option<(&mut ThinHeader<T, P>, NonNull<T>)> {
+        if let Some(mut header) = self.0.get() {
+            // SAFETY: `header` is guaranteed to be valid as long as the vector is valid
+            let header_mut = unsafe { header.as_mut() };
+            // SAFETY: the data do not overlap with the header
+            let data_mut = unsafe { header.byte_add(Self::DATA_OFFSET).cast() };
+            Some((header_mut, data_mut))
+        } else {
+            None
         }
-        this
     }
 
-    pub(crate) fn from_iter(iterable: impl IntoIterator<Item = T>) -> Self {
-        let iter = iterable.into_iter();
-        let min = iter.size_hint().0;
-        let mut this = Self::with_capacity(min);
-
-        for (i, value) in iter.enumerate() {
-            if i >= min {
-                this.reserve(1);
-            }
-            // SAFETY: the capacity is updated if necessary above
-            unsafe {
-                this.ptr().add(i).write(value);
-                this.set_len(i + 1);
-            }
+    #[inline]
+    const fn ptr(&self) -> NonNull<T> {
+        if let Some(header) = self.0.get() {
+            // SAFETY: `header` is guaranteed to be valid as long as the vector is valid
+            unsafe { header.byte_add(Self::DATA_OFFSET).cast() }
+        } else {
+            NonNull::dangling()
         }
-        this
     }
 
     /// Creates a new empty thin vector.
+    ///
+    /// This method does not allocate any memory.
     ///
     /// # Examples
     ///
@@ -226,108 +161,8 @@ where
     /// ```
     #[inline]
     #[must_use]
-    pub fn new() -> Self {
-        Self::with_capacity(Self::MINIMAL_CAPACITY)
-    }
-
-    /// Creates a new thin vector with the given capacity. The vector will be
-    /// able to hold at least `capacity` elements without reallocating.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the capacity overflows.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use hipstr::vecs::ThinVec;
-    /// let vec: ThinVec<i32> = ThinVec::with_capacity(10);
-    /// assert!(vec.capacity() >= 10);
-    /// ```
-    #[must_use]
-    pub fn with_capacity(capacity: usize) -> Self {
-        let capacity = capacity.max(Self::MINIMAL_CAPACITY);
-        let (layout, _offset, capacity) =
-            Self::layout(capacity).expect("invalid layout: buffer too large");
-        let ptr = unsafe { alloc(layout) };
-        let ptr = check_alloc(ptr, layout);
-        let mut ptr = ptr.cast();
-        let header: &mut Header<_, _> = unsafe { ptr.as_mut() };
-        header.prefix = P::default();
-        header.cap = capacity;
-        header.len = 0;
-        Self(ptr)
-    }
-
-    /// Splits the collection into two at the given index.
-    ///
-    /// Returns a newly allocated vector containing the elements in the range
-    /// `[at, len)`. After the call, the original vector will be left containing
-    /// the elements `[0, at)` with its previous capacity unchanged.
-    ///
-    /// - If you want to take ownership of the entire contents and capacity of
-    ///   the vector, see [`mem::take`] or [`mem::replace`].
-    /// - If you don't need the returned vector at all, see [`truncate`].
-    /// - If you want to take ownership of an arbitrary subslice, or you don't
-    ///   necessarily want to store the removed items in a vector, see [`drain`].
-    ///
-    /// # Panics
-    ///
-    /// Panics if `at > len`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use hipstr::thin_vec;
-    /// let mut v = thin_vec!['a', 'b', 'c'];
-    /// let w = v.split_off(1);
-    /// assert_eq!(v.as_slice(), ['a']);
-    /// assert_eq!(w.as_slice(), ['b', 'c']);
-    /// ```
-    ///
-    /// [`truncate`]: Self::truncate
-    /// [`drain`]: Self::drain
-    #[must_use = "use .truncate() if you don't need the returned vector"]
-    pub fn split_off(&mut self, at: usize) -> Self
-    where
-        P: Default,
-    {
-        let len = self.len();
-        assert!(at <= len, "index out of bounds");
-
-        let other_len = len - at;
-        let mut other = Self::with_capacity(other_len);
-
-        // SAFETY: `at` is checked above
-        unsafe {
-            let src = self.ptr().add(at);
-            let dst = other.ptr();
-            dst.copy_from_nonoverlapping(src, other_len);
-            self.set_len(at);
-            other.set_len(other_len);
-        }
-
-        other
-    }
-}
-
-impl<T, P> ThinVec<T, P> {
-    const MINIMAL_CAPACITY: usize = match size_of::<T>() {
-        0 => usize::MAX,
-        64.. => 1,
-        32.. => 3,   // 32*3 data + 32 header => 128
-        n => 32 / n, // max 32 data + 32 header => 64
-    };
-    const DATA_OFFSET: usize = Self::layout(0).unwrap().1;
-
-    #[inline]
-    pub(super) const fn header(&self) -> &Header<T, P> {
-        unsafe { self.0.as_ref() }
-    }
-
-    #[inline]
-    pub(super) const unsafe fn header_mut(&mut self) -> &mut Header<T, P> {
-        unsafe { self.0.as_mut() }
+    pub const fn new() -> Self {
+        Self::DEFAULT
     }
 
     /// Returns the capacity of the vector.
@@ -342,7 +177,11 @@ impl<T, P> ThinVec<T, P> {
     #[inline]
     #[must_use]
     pub const fn capacity(&self) -> usize {
-        self.header().cap
+        if let Some(header) = self.header() {
+            header.cap
+        } else {
+            0
+        }
     }
 
     /// Returns the number of elements in the vector.
@@ -359,7 +198,11 @@ impl<T, P> ThinVec<T, P> {
     #[inline]
     #[must_use]
     pub const fn len(&self) -> usize {
-        self.header().len
+        if let Some(header) = self.header() {
+            header.len
+        } else {
+            0
+        }
     }
 
     /// Returns `true` if the vector contains no elements.
@@ -379,13 +222,12 @@ impl<T, P> ThinVec<T, P> {
 
     /// Returns the current prefix associated with this thin vector.
     #[must_use]
-    pub const fn prefix(&self) -> &P {
-        &self.header().prefix
-    }
-
-    #[inline]
-    const fn ptr(&self) -> NonNull<T> {
-        unsafe { self.0.byte_add(Self::DATA_OFFSET).cast() }
+    pub const fn prefix(&self) -> Option<&P> {
+        if let Some(header) = self.header() {
+            Some(&header.prefix)
+        } else {
+            None
+        }
     }
 
     /// Returns a raw pointer to the vector's first element.
@@ -527,7 +369,7 @@ impl<T, P> ThinVec<T, P> {
     /// the payload, and the rounded up capacity.
     #[inline]
     const fn layout(payload: usize) -> Option<(Layout, usize, usize)> {
-        let layout = Layout::new::<Header<T, P>>();
+        let layout = Layout::new::<ThinHeader<T, P>>();
         let Ok(arr) = Layout::array::<T>(payload) else {
             return None;
         };
@@ -557,43 +399,6 @@ impl<T, P> ThinVec<T, P> {
         layout
     }
 
-    /// Sets the capacity of the vector to `new_cap`.
-    ///
-    /// # Safety
-    ///
-    /// This is a low-level operation that maintains few of the invariants of
-    /// the type.
-    ///
-    /// `new_cap` must be less than or equal to the current length of the
-    /// vector.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the new capacity overflows.
-    pub(crate) unsafe fn set_capacity(&mut self, new_cap: usize) {
-        debug_assert!(new_cap >= self.len());
-
-        let old_cap = self.capacity();
-
-        // SAFETY: layout checked at creation
-        let layout = self.current_layout();
-        let (new_layout, _, new_cap) =
-            Self::layout(new_cap).expect("invalid layout: buffer too large");
-
-        // checks if realloc is needed
-        if layout == new_layout {
-            return;
-        }
-
-        let ptr = unsafe { realloc(self.0.cast().as_ptr(), layout, new_layout.size()) };
-        let ptr = check_alloc(ptr, new_layout);
-
-        let mut ptr = ptr.cast();
-        let header: &mut Header<_, _> = unsafe { ptr.as_mut() };
-        header.cap = new_cap;
-        self.0 = ptr;
-    }
-
     /// Forces the length of the vector to `new_len`.
     ///
     /// This is a low-level operation that does not maintain any of the usual
@@ -606,55 +411,11 @@ impl<T, P> ThinVec<T, P> {
     /// - The elements at `old_len..new_len` must be initialized.
     pub unsafe fn set_len(&mut self, new_len: usize) {
         debug_assert!(new_len <= self.capacity());
-        unsafe {
-            self.header_mut().len = new_len;
-        }
-    }
-
-    /// Reserves the minimum capacity for at least `additional` more elements to
-    /// be inserted in the given `Thin<T, P>`. Unlike [`reserve`], this will not
-    /// intentionally over-allocate to potentially avoid frequent reallocations.
-    ///
-    /// Prefer [`reserve`] if future insertions are expected.
-    ///
-    /// [`reserve`]: Self::reserve
-    ///
-    /// # Panics
-    ///
-    /// Panics if the new capacity overflows.
-    pub fn reserve_exact(&mut self, additional: usize) {
-        if additional > self.capacity() - self.len() {
-            let required = self
-                .len()
-                .checked_add(additional)
-                .expect("capacity overflow");
-            unsafe {
-                self.set_capacity(required);
-            }
-        }
-    }
-
-    /// Reserves capacity for at least `additional` more elements to be inserted
-    /// in the given `Thin<T, P>`. The collection may reserve more space to
-    /// avoid frequent reallocations.
-    ///
-    /// Prefer [`reserve_exact`] if the exact amount of elements to be added is known.
-    ///
-    /// [`reserve_exact`]: Self::reserve_exact
-    ///
-    /// # Panics
-    ///
-    /// Panics if the new capacity overflows.
-    pub fn reserve(&mut self, additional: usize) {
-        if additional > self.capacity() - self.len() {
-            let required = self
-                .len()
-                .checked_add(additional)
-                .expect("capacity overflow");
-            let new_cap = cmp::max(required, self.capacity() * 2);
-            unsafe {
-                self.set_capacity(new_cap);
-            }
+        if let Some(header) = self.header_mut() {
+            // SAFETY: `header` is guaranteed to be valid as long as the vector is valid
+            header.len = new_len;
+        } else {
+            unreachable!("set_len called on an empty ThinVec");
         }
     }
 
@@ -684,33 +445,6 @@ impl<T, P> ThinVec<T, P> {
         }
     }
 
-    /// Appends an element to the back of the vector.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the new capacity overflows.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use hipstr::vecs::ThinVec;
-    /// let mut vec = ThinVec::new();
-    /// vec.push(1);
-    /// vec.push(2);
-    /// vec.push(3);
-    /// assert_eq!(vec.as_slice(), [1, 2, 3]);
-    /// ```
-    pub fn push(&mut self, value: T) {
-        let len = self.len();
-        self.reserve(1);
-
-        // SAFETY: the capacity has been checked/updated beforehand
-        unsafe {
-            self.ptr().add(len).write(value);
-            self.set_len(len + 1);
-        }
-    }
-
     /// Removes the last element from the vector and returns it, or `None` if it
     /// is empty.
     ///
@@ -726,59 +460,15 @@ impl<T, P> ThinVec<T, P> {
     /// assert_eq!(vec.pop(), None);
     /// ```
     pub fn pop(&mut self) -> Option<T> {
-        let len = self.len();
-        if len == 0 {
+        let (header_mut, data_mut) = self.header_and_data_mut()?;
+        if header_mut.len == 0 {
             return None;
         }
-
         // SAFETY: the length is checked above
         unsafe {
-            let value = self.ptr().add(len - 1).read();
-            self.header_mut().len = len - 1;
+            let value = data_mut.add(header_mut.len - 1).read();
+            header_mut.len -= 1;
             Some(value)
-        }
-    }
-
-    /// Inserts an element at position `index` within the vector, shifting all
-    /// elements after it to the right.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `index > len`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use hipstr::thin_vec;
-    /// let mut v = thin_vec!['a', 'c', 'd'];
-    /// v.insert(1, 'b');
-    /// assert_eq!(v, ['a', 'b', 'c', 'd']);
-    /// v.insert(4, 'e');
-    /// assert_eq!(v, ['a', 'b', 'c', 'd', 'e']);
-    /// ```
-    ///
-    /// # Time complexity
-    ///
-    /// Takes *O*([`len`]) time. All items after the insertion index must be
-    /// shifted to the right. In the worst case, all elements are shifted when
-    /// the insertion index is 0.
-    ///
-    /// [`len`]: Self::len
-    #[track_caller]
-    pub fn insert(&mut self, index: usize, element: T) {
-        let len = self.len();
-        assert!(index <= len, "index out of bounds");
-
-        self.reserve(1);
-
-        // SAFETY: index is checked above
-        unsafe {
-            let ptr = self.ptr().add(index);
-            if index < len {
-                ptr.add(1).copy_from(ptr, len - index);
-            }
-            ptr.write(element);
-            self.set_len(len + 1);
         }
     }
 
@@ -866,39 +556,6 @@ impl<T, P> ThinVec<T, P> {
             self.set_len(len - 1);
 
             value
-        }
-    }
-
-    /// Moves all the elements of `other` into `self`, leaving `other` empty.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the new buffer would be too large.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use hipstr::thin_vec;
-    /// let mut v = thin_vec![1, 2, 3];
-    /// let mut w = thin_vec![4, 5, 6];
-    /// v.append(&mut w);
-    /// assert_eq!(v, [1, 2, 3, 4, 5, 6]);
-    /// assert_eq!(w, []);
-    /// ```
-    pub fn append(&mut self, other: &mut impl traits::MutVector<Item = T>) {
-        unsafe {
-            self.append_raw(other.as_non_null(), other.len());
-            other.set_len(0);
-        }
-    }
-
-    unsafe fn append_raw(&mut self, ptr: NonNull<T>, len: usize) {
-        self.reserve(len);
-        let old_len = self.len();
-        unsafe {
-            let dst = self.ptr().add(old_len);
-            dst.copy_from_nonoverlapping(ptr, len);
-            self.set_len(old_len + len);
         }
     }
 
@@ -1038,35 +695,6 @@ impl<T, P> ThinVec<T, P> {
         Drain::new(self, range)
     }
 
-    /// Resizes the vector to the specified length, filling in new elements
-    /// with the specified value.
-    ///
-    /// If `new_len` is less than the current length, the vector is truncated.
-    /// If `new_len` is greater than the current length, the vector is extended
-    /// by cloning the specified value.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use hipstr::thin_vec;
-    /// let mut v = thin_vec![1, 2, 3];
-    /// v.resize(5, 0);
-    /// assert_eq!(v.as_slice(), [1, 2, 3, 0, 0]);
-    /// v.resize(2, 0);
-    /// assert_eq!(v.as_slice(), [1, 2]);
-    /// ```
-    pub fn resize(&mut self, new_len: usize, value: T)
-    where
-        T: Clone,
-    {
-        let len = self.len();
-        if new_len > len {
-            self.extend_clone(new_len - len, value);
-        } else {
-            self.truncate(new_len);
-        }
-    }
-
     /// Extends the vector by duplicating a range of elements within itself.
     ///
     /// This method is useful for duplicating a range of elements within the
@@ -1132,11 +760,444 @@ impl<T, P> ThinVec<T, P> {
         let ptr = self.ptr();
         unsafe {
             for (i, j) in (start..end).zip(len..) {
-                self.ptr().add(j).write(self.ptr().add(i).as_ref().clone());
+                ptr.add(j).write(ptr.add(i).as_ref().clone());
                 self.set_len(j + 1);
             }
         }
         Ok(())
+    }
+
+    /// Clones with a fresh prefix.
+    pub(crate) fn fresh_clone<Q: ConstDefault>(&self) -> ThinVec<T, Q>
+    where
+        T: Clone,
+    {
+        let len = self.len();
+        let mut this = ThinVec::with_capacity(len);
+        this.extend_from_slice(self.as_slice());
+        this
+    }
+
+    /// Moves the items to a new vector with a fresh prefix.
+    pub(crate) fn fresh_move<Q: ConstDefault>(mut self) -> ThinVec<T, Q> {
+        if can_reuse::<T, P, Q>() {
+            let this = ManuallyDrop::new(self);
+            let Some(mut header) = this.0.get() else {
+                return ThinVec::new();
+            };
+
+            // drop the old prefix if needed
+            if mem::needs_drop::<P>() {
+                // SAFETY: the prefix is valid by the type invariant
+                unsafe {
+                    ptr::drop_in_place(&raw mut header.as_mut().prefix);
+                }
+            }
+
+            let mut new_header: NonNull<ThinHeader<T, Q>> = header.cast();
+            // SAFETY: write the new prefix without dropping the already-drop prefix
+            unsafe { (&raw mut new_header.as_mut().prefix).write(Q::DEFAULT) }
+
+            ThinVec(ThinRepr::new(new_header))
+        } else {
+            let len = self.len();
+            let mut this = ThinVec::with_capacity(len);
+            unsafe {
+                this.ptr().copy_from_nonoverlapping(self.ptr(), len);
+                this.set_len(len);
+                self.set_len(0);
+            }
+            this
+        }
+    }
+
+    /// Creates a new thin vector from a slice of elements by copying the
+    /// elements.
+    pub fn from_slice_copy(slice: &[T]) -> Self
+    where
+        T: Copy,
+    {
+        let len = slice.len();
+        let mut this = Self::with_capacity(len);
+
+        unsafe {
+            maybe_uninit_write_copy_of_slice(&mut this.spare_capacity_mut()[..len], slice);
+            this.set_len(len);
+        };
+
+        this
+    }
+
+    /// Creates a new thin vector from a slice of elements by cloning the
+    /// elements.
+    pub(crate) fn from_slice_clone(slice: &[T]) -> Self
+    where
+        T: Clone,
+    {
+        let len = slice.len();
+        let mut this = Self::with_capacity(len);
+
+        let written = guarded_slice_clone(this.spare_capacity_mut(), slice);
+        debug_assert_eq!(written, slice.len());
+        unsafe {
+            this.set_len(len);
+        };
+
+        this
+    }
+
+    /// Creates a new thin vector from a copy-on-write slice of elements,
+    /// possibly cloning elements if borrowed.
+    pub(crate) fn from_cow(cow: Cow<'_, [T]>) -> Self
+    where
+        T: Clone,
+    {
+        match cow {
+            Cow::Borrowed(slice) => Self::from_slice_clone(slice),
+            Cow::Owned(vec) => Self::from_mut_vector(vec),
+        }
+    }
+
+    /// Creates a new thin vector from an array of elements by copying the
+    /// elements.
+    #[inline]
+    pub(crate) fn from_array<const N: usize>(array: [T; N]) -> Self {
+        let mut this = Self::with_capacity(N);
+        unsafe {
+            let uninit_array: &mut MaybeUninit<[T; N]> = this.ptr().cast().as_mut();
+            uninit_array.write(array);
+            this.set_len(N);
+            this
+        }
+    }
+
+    #[inline]
+    pub(crate) fn from_boxed_slice(boxed: Box<[T]>) -> Self {
+        let len = boxed.len();
+        let mut this = Self::with_capacity(len);
+
+        // SAFETY:
+        // - `boxed` is a valid pointer to a slice of `T` and length `len`
+        // - `this` has a capacity >= `len`
+        unsafe {
+            // move the box's content to `this`
+            this.ptr()
+                .as_ptr()
+                .copy_from_nonoverlapping(boxed.as_ptr(), len);
+
+            // update the length
+            this.set_len(len);
+        }
+
+        // drop the box without dropping the moved content
+        // SAFETY: ManuallyDrop is a transparent wrapper
+        let _: Box<[ManuallyDrop<T>]> = unsafe { mem::transmute(boxed) };
+
+        this
+    }
+
+    /// Creates a new thin vector from a vector.
+    #[inline]
+    pub(crate) fn from_mut_vector(mut vec: impl traits::MutVector<Item = T>) -> Self {
+        let len = vec.len();
+        let mut this = Self::with_capacity(len);
+        unsafe {
+            this.ptr().copy_from_nonoverlapping(vec.as_non_null(), len);
+            vec.set_len(0);
+            this.set_len(len);
+        }
+        this
+    }
+
+    pub(crate) fn from_iter(iterable: impl IntoIterator<Item = T>) -> Self {
+        let iter = iterable.into_iter();
+        let min = iter.size_hint().0;
+        let mut this = Self::with_capacity(min);
+
+        for (i, value) in iter.enumerate() {
+            if i >= min {
+                this.reserve(1);
+            }
+            // SAFETY: the capacity is updated if necessary above
+            unsafe {
+                this.ptr().add(i).write(value);
+                this.set_len(i + 1);
+            }
+        }
+        this
+    }
+
+    /// Creates a new thin vector with the given capacity. The vector will be
+    /// able to hold at least `capacity` elements without reallocating.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the capacity overflows.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::ThinVec;
+    /// let vec: ThinVec<i32> = ThinVec::with_capacity(10);
+    /// assert!(vec.capacity() >= 10);
+    /// ```
+    #[must_use]
+    pub fn with_capacity(capacity: usize) -> Self {
+        let capacity = capacity.max(Self::MINIMAL_CAPACITY);
+        let (layout, _offset, capacity) =
+            Self::layout(capacity).expect("invalid layout: buffer too large");
+        let ptr = unsafe { alloc(layout) };
+        let ptr = check_alloc(ptr, layout);
+        let mut ptr = ptr.cast();
+        let header: &mut ThinHeader<_, _> = unsafe { ptr.as_mut() };
+        header.prefix = P::DEFAULT;
+        header.cap = capacity;
+        header.len = 0;
+        Self(ThinRepr::new(ptr))
+    }
+
+    /// Splits the collection into two at the given index.
+    ///
+    /// Returns a newly allocated vector containing the elements in the range
+    /// `[at, len)`. After the call, the original vector will be left containing
+    /// the elements `[0, at)` with its previous capacity unchanged.
+    ///
+    /// - If you want to take ownership of the entire contents and capacity of
+    ///   the vector, see [`mem::take`] or [`mem::replace`].
+    /// - If you don't need the returned vector at all, see [`truncate`].
+    /// - If you want to take ownership of an arbitrary subslice, or you don't
+    ///   necessarily want to store the removed items in a vector, see [`drain`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if `at > len`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::thin_vec;
+    /// let mut v = thin_vec!['a', 'b', 'c'];
+    /// let w = v.split_off(1);
+    /// assert_eq!(v.as_slice(), ['a']);
+    /// assert_eq!(w.as_slice(), ['b', 'c']);
+    /// ```
+    ///
+    /// [`truncate`]: Self::truncate
+    /// [`drain`]: Self::drain
+    #[must_use = "use .truncate() if you don't need the returned vector"]
+    pub fn split_off(&mut self, at: usize) -> Self {
+        let len = self.len();
+        assert!(at <= len, "index out of bounds");
+
+        let other_len = len - at;
+        let mut other = Self::with_capacity(other_len);
+
+        // SAFETY: `at` is checked above
+        unsafe {
+            let src = self.ptr().add(at);
+            let dst = other.ptr();
+            dst.copy_from_nonoverlapping(src, other_len);
+            self.set_len(at);
+            other.set_len(other_len);
+        }
+
+        other
+    }
+
+    /// Sets the capacity of the vector to `new_cap`.
+    ///
+    /// # Safety
+    ///
+    /// This is a low-level operation that maintains few of the invariants of
+    /// the type.
+    ///
+    /// `new_cap` must be less than or equal to the current length of the
+    /// vector.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new capacity overflows.
+    pub(crate) unsafe fn set_capacity(&mut self, new_cap: usize) {
+        debug_assert!(new_cap >= self.len());
+
+        // SAFETY: layout checked at creation
+        let layout = self.current_layout();
+        let (new_layout, _, new_cap) =
+            Self::layout(new_cap).expect("invalid layout: buffer too large");
+
+        // checks if realloc is needed
+        if layout == new_layout {
+            return;
+        }
+
+        let ptr = if let Some(original_ptr) = self.0.get() {
+            let ptr = unsafe { realloc(original_ptr.as_ptr().cast(), layout, new_layout.size()) };
+            let ptr = check_alloc(ptr, new_layout);
+            let mut ptr = ptr.cast();
+            let header: &mut ThinHeader<_, _> = unsafe { ptr.as_mut() };
+            header.cap = new_cap;
+            ptr
+        } else {
+            let ptr = unsafe { alloc(new_layout) };
+            let ptr = check_alloc(ptr, new_layout);
+            let mut ptr = ptr.cast();
+            let header: &mut ThinHeader<_, _> = unsafe { ptr.as_mut() };
+            header.prefix = P::DEFAULT;
+            header.cap = new_cap;
+            header.len = 0;
+            ptr
+        };
+        self.0 = ThinRepr::new(ptr);
+    }
+
+    /// Reserves the minimum capacity for at least `additional` more elements to
+    /// be inserted in the given `Thin<T, P>`. Unlike [`reserve`], this will not
+    /// intentionally over-allocate to potentially avoid frequent reallocations.
+    ///
+    /// Prefer [`reserve`] if future insertions are expected.
+    ///
+    /// [`reserve`]: Self::reserve
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new capacity overflows.
+    pub fn reserve_exact(&mut self, additional: usize) {
+        if additional > self.capacity() - self.len() {
+            let required = self
+                .len()
+                .checked_add(additional)
+                .expect("capacity overflow");
+            unsafe {
+                self.set_capacity(required);
+            }
+        }
+    }
+
+    /// Reserves capacity for at least `additional` more elements to be inserted
+    /// in the given `Thin<T, P>`. The collection may reserve more space to
+    /// avoid frequent reallocations.
+    ///
+    /// Prefer [`reserve_exact`] if the exact amount of elements to be added is known.
+    ///
+    /// [`reserve_exact`]: Self::reserve_exact
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new capacity overflows.
+    pub fn reserve(&mut self, additional: usize) {
+        if additional > self.capacity() - self.len() {
+            let required = self
+                .len()
+                .checked_add(additional)
+                .expect("capacity overflow");
+            let new_cap = cmp::max(required, self.capacity() * 2);
+            unsafe {
+                self.set_capacity(new_cap);
+            }
+        }
+    }
+
+    /// Appends an element to the back of the vector.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new capacity overflows.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::ThinVec;
+    /// let mut vec = ThinVec::new();
+    /// vec.push(1);
+    /// vec.push(2);
+    /// vec.push(3);
+    /// assert_eq!(vec.as_slice(), [1, 2, 3]);
+    /// ```
+    pub fn push(&mut self, value: T) {
+        let len = self.len();
+        self.reserve(1);
+
+        // SAFETY: the capacity has been checked/updated beforehand
+        unsafe {
+            self.ptr().add(len).write(value);
+            self.set_len(len + 1);
+        }
+    }
+
+    /// Inserts an element at position `index` within the vector, shifting all
+    /// elements after it to the right.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index > len`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::thin_vec;
+    /// let mut v = thin_vec!['a', 'c', 'd'];
+    /// v.insert(1, 'b');
+    /// assert_eq!(v, ['a', 'b', 'c', 'd']);
+    /// v.insert(4, 'e');
+    /// assert_eq!(v, ['a', 'b', 'c', 'd', 'e']);
+    /// ```
+    ///
+    /// # Time complexity
+    ///
+    /// Takes *O*([`len`]) time. All items after the insertion index must be
+    /// shifted to the right. In the worst case, all elements are shifted when
+    /// the insertion index is 0.
+    ///
+    /// [`len`]: Self::len
+    #[track_caller]
+    pub fn insert(&mut self, index: usize, element: T) {
+        let len = self.len();
+        assert!(index <= len, "index out of bounds");
+
+        self.reserve(1);
+
+        // SAFETY: index is checked above
+        unsafe {
+            let ptr = self.ptr().add(index);
+            if index < len {
+                ptr.add(1).copy_from(ptr, len - index);
+            }
+            ptr.write(element);
+            self.set_len(len + 1);
+        }
+    }
+
+    /// Moves all the elements of `other` into `self`, leaving `other` empty.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new buffer would be too large.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::thin_vec;
+    /// let mut v = thin_vec![1, 2, 3];
+    /// let mut w = thin_vec![4, 5, 6];
+    /// v.append(&mut w);
+    /// assert_eq!(v, [1, 2, 3, 4, 5, 6]);
+    /// assert_eq!(w, []);
+    /// ```
+    pub fn append(&mut self, other: &mut impl traits::MutVector<Item = T>) {
+        unsafe {
+            self.append_raw(other.as_non_null(), other.len());
+            other.set_len(0);
+        }
+    }
+
+    unsafe fn append_raw(&mut self, ptr: NonNull<T>, len: usize) {
+        self.reserve(len);
+        let old_len = self.len();
+        unsafe {
+            let dst = self.ptr().add(old_len);
+            dst.copy_from_nonoverlapping(ptr, len);
+            self.set_len(old_len + len);
+        }
     }
 
     fn extend_clone(&mut self, n: usize, value: T)
@@ -1158,7 +1219,7 @@ impl<T, P> ThinVec<T, P> {
     }
 
     fn extend_iter(&mut self, iterable: impl IntoIterator<Item = T>) {
-        let mut iter = iterable.into_iter();
+        let iter = iterable.into_iter();
         let len = self.len();
         let min = iter.size_hint().0;
         self.reserve(min);
@@ -1296,100 +1357,90 @@ impl<T, P> ThinVec<T, P> {
         }
     }
 
-    /// Clones with a fresh prefix.
-    pub(crate) fn fresh_clone<Q: Default>(&self) -> ThinVec<T, Q>
+    /// Resizes the vector to the specified length, filling in new elements
+    /// with the specified value.
+    ///
+    /// If `new_len` is less than the current length, the vector is truncated.
+    /// If `new_len` is greater than the current length, the vector is extended
+    /// by cloning the specified value.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::thin_vec;
+    /// let mut v = thin_vec![1, 2, 3];
+    /// v.resize(5, 0);
+    /// assert_eq!(v.as_slice(), [1, 2, 3, 0, 0]);
+    /// v.resize(2, 0);
+    /// assert_eq!(v.as_slice(), [1, 2]);
+    /// ```
+    pub fn resize(&mut self, new_len: usize, value: T)
     where
         T: Clone,
     {
         let len = self.len();
-        let mut this = ThinVec::with_capacity(len);
-        this.extend_from_slice(self.as_slice());
-        this
-    }
-
-    /// Moves the items to a new vector with a fresh prefix.
-    pub(crate) fn fresh_move<Q: Default>(mut self) -> ThinVec<T, Q> {
-        if can_reuse::<T, P, Q>() {
-            let header = self.0;
-            mem::forget(self);
-
-            let header_ptr = header.as_ptr();
-
-            // drop the old prefix if needed
-            if mem::needs_drop::<P>() {
-                // SAFETY: the prefix is valid by the type invariant
-                unsafe {
-                    ptr::drop_in_place(&raw mut (*header_ptr).prefix);
-                }
-            }
-
-            let new_header: NonNull<Header<T, Q>> = header.cast();
-            let new_header_ptr = new_header.as_ptr();
-            // SAFETY: write the new prefix
-            unsafe {
-                (&raw mut (*new_header_ptr).prefix).write(Q::default());
-            }
-
-            ThinVec(new_header)
+        if new_len > len {
+            self.extend_clone(new_len - len, value);
         } else {
-            let len = self.len();
-            let mut this = ThinVec::with_capacity(len);
-            unsafe {
-                this.ptr().copy_from_nonoverlapping(self.ptr(), len);
-                this.set_len(len);
-                self.set_len(0);
-            }
-            this
+            self.truncate(new_len);
         }
     }
 }
 
-/// Checks if two prefix types are compatible to reuse a thin vec allocation
-/// when moving from one prefix type to the other.
+/// Checks if two prefix types `P` and `Q` are compatible to reuse a thin vec
+/// allocation when moving from the first prefix `P` type to the other `Q`.
 const fn can_reuse<T, P, Q>() -> bool {
     const {
         size_of::<P>() == size_of::<Q>()
-            && align_of::<P>() == align_of::<Q>()
-            && offset_of!(Header<T, P>, prefix) == offset_of!(Header<T, Q>, prefix)
+            && align_of::<P>() >= align_of::<Q>()
+            && offset_of!(ThinHeader<T, P>, prefix) == offset_of!(ThinHeader<T, Q>, prefix)
     }
 }
 
-impl<T, P> ops::Deref for ThinVec<T, P> {
-    type Target = [T];
+// impl<T, P: ConstDefault> ops::Deref for ThinVec<T, P> {
+//     type Target = [T];
 
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        self.as_slice()
-    }
-}
+//     #[inline]
+//     fn deref(&self) -> &Self::Target {
+//         self.as_slice()
+//     }
+// }
 
-impl<T, P> ops::DerefMut for ThinVec<T, P> {
-    #[inline]
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.as_mut_slice()
-    }
-}
+// impl<T, P: ConstDefault> ops::DerefMut for ThinVec<T, P> {
+//     #[inline]
+//     fn deref_mut(&mut self) -> &mut Self::Target {
+//         self.as_mut_slice()
+//     }
+// }
 
-impl<T, C> Drop for ThinVec<T, C> {
+impl<T, C: ConstDefault> Drop for ThinVec<T, C> {
     fn drop(&mut self) {
-        unsafe {
+        if let Some(header) = self.0.get() {
             if mem::needs_drop::<T>() {
-                ptr::drop_in_place(self.as_mut_slice());
+                // SAFETY: the slice is valid by the type invariant
+                unsafe {
+                    ptr::drop_in_place(self.as_mut_slice());
+                }
             }
             let layout = self.current_layout();
-            unsafe { dealloc(self.0.cast().as_ptr(), layout) };
+            // SAFETY: header is valid and the layout is correct
+            unsafe {
+                dealloc(header.cast().as_ptr(), layout);
+            }
+        } else {
+            // no alloc, no data
         }
     }
 }
 
-impl<T: Clone, P: Default> Clone for ThinVec<T, P> {
+impl<T: Clone, P: ConstDefault> Clone for ThinVec<T, P> {
     fn clone(&self) -> Self {
         self.fresh_clone()
     }
 }
 
 macros::trait_impls! {
-    [T, P] {
+    [T, P: ConstDefault] {
         Vector {
             ThinVec<T, P>: T;
         }
@@ -1399,27 +1450,6 @@ macros::trait_impls! {
         Extend {
             T => ThinVec<T, P>;
         }
-    }
-    [T, P] where [T: Clone, P: Default] {
-        From {
-            &[T] => ThinVec<T, P> = ThinVec::from_slice_clone;
-            &mut [T] => ThinVec<T, P> = ThinVec::from_slice_clone;
-            Cow<'_, [T]> => ThinVec<T, P> = ThinVec::from_cow;
-        }
-    }
-    [T, P, const N: usize] where [ T:Clone, P: Default] {
-        From {
-            &[T; N] => ThinVec<T, P> = ThinVec::from_slice_clone;
-            &mut [T; N] => ThinVec<T, P> = ThinVec::from_slice_clone;
-        }
-    }
-
-    [T, P, const N: usize] where [P: Default] {
-        From {
-            [T; N] => ThinVec<T, P> = ThinVec::from_array;
-        }
-    }
-    [T, P] where [P: Default] {
         FromIterator {
             T => ThinVec<T, P> = ThinVec::from_iter;
         }
@@ -1428,22 +1458,33 @@ macros::trait_impls! {
             Vec<T> => ThinVec<T, P> = Self::from_mut_vector;
         }
     }
+    [T, P] where [T: Clone, P: ConstDefault] {
+        From {
+            &[T] => ThinVec<T, P> = ThinVec::from_slice_clone;
+            &mut [T] => ThinVec<T, P> = ThinVec::from_slice_clone;
+            Cow<'_, [T]> => ThinVec<T, P> = ThinVec::from_cow;
+        }
+    }
+    [T, P, const N: usize] where [ T:Clone, P: ConstDefault] {
+        From {
+            &[T; N] => ThinVec<T, P> = ThinVec::from_slice_clone;
+            &mut [T; N] => ThinVec<T, P> = ThinVec::from_slice_clone;
+        }
+    }
 
-    [T, P, const CAP: usize, const SHIFT: u8, const TAG: u8]
-    where [P: Default]
+    [T, P, const N: usize] where [P: ConstDefault] {
+        From {
+            [T; N] => ThinVec<T, P> = ThinVec::from_array;
+        }
+    }
+    [T, P: ConstDefault, const CAP: usize, const SHIFT: u8, const TAG: u8]
     {
         From {
             super::inline::InlineVec<T, CAP, SHIFT, TAG> => ThinVec<T, P> = Self::from_mut_vector;
         }
     }
 
-    [T, P] where [T: core::fmt::Debug] {
-        Debug {
-            ThinVec<T, P>;
-        }
-    }
-
-    [T, U, P] where [T: PartialEq<U>] {
+    [T, U, P: ConstDefault] where [T: PartialEq<U>] {
         PartialEq {
             ThinVec<T, P>, ThinVec<U, P>;
 
@@ -1458,7 +1499,7 @@ macros::trait_impls! {
             ThinVec<T, P>, Vec<U>;
         }
     }
-    [T, U, P, const N: usize] where [T: PartialEq<U>] {
+    [T, U, P: ConstDefault, const N: usize] where [T: PartialEq<U>] {
         PartialEq {
             [T; N], ThinVec<U, P>;
             ThinVec<T, P>, [U; N];
@@ -1468,7 +1509,7 @@ macros::trait_impls! {
         }
     }
 
-    [T, P] where [T: PartialOrd] {
+    [T, P: ConstDefault] where [T: PartialOrd] {
         PartialOrd {
             ThinVec<T, P>;
 
@@ -1486,7 +1527,7 @@ macros::trait_impls! {
         }
     }
 
-    [T, P, const N: usize] where [T: PartialOrd] {
+    [T, P: ConstDefault, const N: usize] where [T: PartialOrd] {
         PartialOrd {
             [T; N], ThinVec<T, P>;
             ThinVec<T, P>, [T; N];

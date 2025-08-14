@@ -144,7 +144,7 @@ where
 #[inline]
 pub(crate) const fn manually_drop_as_mut<T>(m: &mut ManuallyDrop<T>) -> &mut T {
     // SAFETY: `ManuallyDrop<T>` is a transparent wrapper of `T`.
-    unsafe { core::mem::transmute::<&mut ManuallyDrop<T>, &mut T>(m) }
+    unsafe { mem::transmute::<&mut ManuallyDrop<T>, &mut T>(m) }
 }
 
 /// A guard that drops the initialized elements of a slice.

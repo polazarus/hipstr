@@ -40,14 +40,15 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::mem::ManuallyDrop;
 use core::ops::Deref;
-use core::ptr;
-use core::ptr::NonNull;
 
-use super::thin::{Header, Reserved, ThinVec};
+use const_default::ConstDefault;
+
+use super::thin::{Reserved, ThinVec};
 use crate::backend::{
     Backend, BackendImpl, CloneOnOverflow, Counter, PanicOnOverflow, UpdateResult,
 };
 use crate::common::traits::MutVector;
+use crate::common::{manually_drop_as_mut, manually_drop_as_ref};
 use crate::macros::trait_impls;
 
 #[cfg(test)]
@@ -102,7 +103,7 @@ macro_rules! smart_thin_vec {
 /// assert_eq!(v.as_ptr(), v2.as_ptr());
 /// ```
 #[repr(transparent)]
-pub struct SmartThinVec<T, C: Backend>(pub(super) NonNull<Header<T, C>>);
+pub struct SmartThinVec<T, C: Backend>(pub(super) ManuallyDrop<ThinVec<T, C>>);
 
 impl<T, C: Backend> Deref for SmartThinVec<T, C> {
     type Target = ThinVec<T, C>;
@@ -149,7 +150,7 @@ impl<T, C: Backend> SmartThinVec<T, C> {
         unsafe { Self::from_thin_vec_unchecked(tv) }
     }
 
-    const fn count(&self) -> &C {
+    const fn count(&self) -> Option<&C> {
         self.as_thin_vec().prefix()
     }
 
@@ -169,7 +170,11 @@ impl<T, C: Backend> SmartThinVec<T, C> {
     #[inline]
     #[must_use]
     pub fn is_unique(&self) -> bool {
-        self.count().is_unique()
+        if let Some(count) = self.count() {
+            count.is_unique()
+        } else {
+            true // no counter is present
+        }
     }
 
     /// Returns a mutable reference to the vector if it is unique. Otherwise,
@@ -208,8 +213,7 @@ impl<T, C: Backend> SmartThinVec<T, C> {
     /// This function is unsafe because it allows mutable access to the vector even if it is not unique.
     /// The caller must ensure that no other references to the vector exist while this function is used.
     pub unsafe fn as_mut_unchecked(&mut self) -> &mut ThinVec<T, C> {
-        let ptr = ptr::from_mut(self).cast();
-        unsafe { &mut *ptr }
+        manually_drop_as_mut(&mut self.0)
     }
 
     /// Returns a mutable reference to the vector, possibly cloning the data if
@@ -239,7 +243,7 @@ impl<T, C: Backend> SmartThinVec<T, C> {
     where
         T: Clone,
     {
-        if !self.count().is_unique() {
+        if !self.is_unique() {
             self.detach();
         }
         unsafe { self.as_mut_unchecked() }
@@ -261,19 +265,18 @@ impl<T, C: Backend> SmartThinVec<T, C> {
     /// Typically, this is the case when the `ThinVec` is created with a default counter.
     pub(crate) unsafe fn from_thin_vec_unchecked(t: ThinVec<T, C>) -> Self {
         let thin_vec = ManuallyDrop::new(t);
-        Self(thin_vec.0)
+        Self(thin_vec)
     }
 
     #[inline]
     #[must_use]
     pub(crate) const fn as_thin_vec(&self) -> &ThinVec<T, C> {
-        let ptr: *const ThinVec<T, C> = ptr::from_ref(self).cast();
-        unsafe { &*ptr }
+        manually_drop_as_ref(&self.0)
     }
 
     #[inline]
     #[must_use]
-    pub(crate) fn from_thin_vec<P>(thin_vec: ThinVec<T, P>) -> Self {
+    pub(crate) fn from_thin_vec<P: ConstDefault>(thin_vec: ThinVec<T, P>) -> Self {
         let thin_vec = ThinVec::fresh_move(thin_vec);
         unsafe { Self::from_thin_vec_unchecked(thin_vec) }
     }
@@ -334,11 +337,12 @@ impl<T, C: Backend> SmartThinVec<T, C> {
     /// ```
     #[must_use]
     pub fn try_clone(&self) -> Option<Self> {
-        if self.count().incr() == UpdateResult::Overflow {
-            None
-        } else {
-            Some(Self(self.0))
+        if let Some(count) = self.count() {
+            if count.incr() == UpdateResult::Overflow {
+                return None;
+            }
         }
+        Some(Self(ManuallyDrop::new(ThinVec((self.0).0.copy()))))
     }
 
     /// Converts into a [`ThinVec`] if the reference is unique.
@@ -357,8 +361,8 @@ impl<T, C: Backend> SmartThinVec<T, C> {
     /// ```
     pub fn into_thin_vec(self) -> Result<ThinVec<T>, Self> {
         if self.is_unique() {
-            let this = ManuallyDrop::new(self);
-            let tv = ThinVec(this.0);
+            let mut this = ManuallyDrop::new(self);
+            let tv = unsafe { ManuallyDrop::take(&mut this.0) };
             Ok(tv.fresh_move())
         } else {
             Err(self)
@@ -383,10 +387,13 @@ impl<T: Clone, C: Counter> Clone for SmartThinVec<T, BackendImpl<C, CloneOnOverf
 
 impl<T, C: Backend> Drop for SmartThinVec<T, C> {
     fn drop(&mut self) {
-        if self.count().decr() == UpdateResult::Overflow {
-            unsafe {
-                let thin_vec_ptr: *mut ThinVec<T, C> = ptr::from_mut(self).cast();
-                ptr::drop_in_place(thin_vec_ptr);
+        if let Some(count) = self.count() {
+            // Decrement the reference count
+            if count.decr() == UpdateResult::Overflow {
+                // SAFETY: if the count reaches zero, there is no other reference
+                unsafe {
+                    ManuallyDrop::drop(&mut self.0);
+                }
             }
         }
     }
@@ -439,7 +446,7 @@ trait_impls! {
         }
     }
 
-    [T, P, C] where [C: Backend] {
+    [T, P: ConstDefault, C] where [C: Backend] {
         From {
             ThinVec<T, P> => SmartThinVec<T, C> = Self::from_thin_vec;
         }
@@ -472,14 +479,14 @@ trait_impls! {
         }
     }
 
-    [T, U, C, P] where [T: PartialEq<U>, C: Backend] {
+    [T, U, C: Backend, P: ConstDefault] where [T: PartialEq<U>] {
         PartialEq {
             SmartThinVec<T, C>, ThinVec<U, P>;
             ThinVec<T, P>, SmartThinVec<U, C>;
         }
     }
 
-    [T, C, P] where [T: PartialOrd, C: Backend] {
+    [T, C: Backend, P: ConstDefault] where [T: PartialOrd] {
         PartialOrd {
             SmartThinVec<T, C>, ThinVec<T, P>;
             ThinVec<T, P>, SmartThinVec<T, C>;
