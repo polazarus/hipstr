@@ -4,7 +4,7 @@ use core::sync::atomic::{fence, AtomicUsize, Ordering};
 #[cfg(loom)]
 use loom::sync::atomic::{fence, AtomicUsize, Ordering};
 
-use super::*;
+use super::{BackendImpl, ConstDefault, Counter, PanicOnOverflow, Sealed, UpdateResult};
 
 /// Atomic counter backend.
 pub type Arc = BackendImpl<AtomicCount, PanicOnOverflow>;
@@ -59,9 +59,7 @@ impl Counter for AtomicCount {
     #[inline]
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn set(&self, value: usize) {
-        if value == 0 {
-            panic!("invalid counter value");
-        }
+        assert!(value != 0, "invalid counter value");
         self.0.store(value - 1, Ordering::Release);
     }
 
@@ -77,5 +75,6 @@ impl Counter for AtomicCount {
 }
 
 impl ConstDefault for AtomicCount {
+    #[allow(clippy::declare_interior_mutable_const)]
     const DEFAULT: Self = Self(AtomicUsize::new(0));
 }

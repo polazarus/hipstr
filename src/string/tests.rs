@@ -420,6 +420,7 @@ fn test_slice_panic_end() {
 
 #[test]
 #[should_panic]
+#[allow(clippy::reversed_empty_ranges)]
 fn test_slice_panic_mixed() {
     let a = H::borrowed(ABC);
     let _b = a.slice(3..2);
@@ -472,6 +473,7 @@ fn test_slice_unchecked_debug_panic_end() {
 #[test]
 #[cfg(debug_assertions)]
 #[should_panic]
+#[allow(clippy::reversed_empty_ranges)]
 fn test_slice_unchecked_debug_panic_mixed() {
     let a = H::borrowed(ABC);
     let _ = unsafe { a.slice_unchecked(3..2) };
@@ -539,6 +541,7 @@ fn test_try_slice_end_out_of_bounds() {
 }
 
 #[test]
+#[allow(clippy::reversed_empty_ranges)]
 fn test_try_slice_start_greater_than_end() {
     let err = RUST_CRAB.try_slice(4..2).unwrap_err();
     assert_eq!(err.kind(), SliceErrorKind::StartGreaterThanEnd);

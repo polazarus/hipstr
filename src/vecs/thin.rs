@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 use core::mem::{offset_of, ManuallyDrop, MaybeUninit};
 use core::ops::{Range, RangeBounds};
 use core::ptr::NonNull;
-use core::{cmp, mem, ops, ptr, slice};
+use core::{cmp, mem, ptr, slice};
 
 use const_default::ConstDefault;
 use rules_derive::rules_derive;
@@ -114,6 +114,7 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     }
 
     #[inline]
+    #[allow(clippy::needless_pass_by_ref_mut, reason = "morally mutable")]
     pub(super) const fn header_mut(&mut self) -> Option<&mut ThinHeader<T, P>> {
         if let Some(mut header) = self.0.get() {
             // SAFETY: `header` is guaranteed to be valid as long as the vector is valid
@@ -124,6 +125,7 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     }
 
     #[inline]
+    #[allow(clippy::needless_pass_by_ref_mut, reason = "morally mutable")]
     pub(super) const fn header_and_data_mut(
         &mut self,
     ) -> Option<(&mut ThinHeader<T, P>, NonNull<T>)> {
@@ -616,7 +618,7 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     ///
     /// assert_eq!(&v, &[0, 1, 2]);
     /// ```
-    pub fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<T>] {
+    pub const fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<T>] {
         let len = self.len();
         let cap = self.capacity();
 
@@ -943,6 +945,18 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     /// ```
     #[must_use]
     pub fn with_capacity(capacity: usize) -> Self {
+        if capacity == 0 {
+            return Self::new();
+        }
+
+        Self(Self::make_repr(capacity))
+    }
+
+    fn make_repr(capacity: usize) -> ThinRepr<T, P> {
+        if capacity == 0 {
+            return ThinRepr::EMPTY;
+        }
+
         let capacity = capacity.max(Self::MINIMAL_CAPACITY);
         let (layout, _offset, capacity) =
             Self::layout(capacity).expect("invalid layout: buffer too large");
@@ -953,7 +967,7 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
         header.prefix = P::DEFAULT;
         header.cap = capacity;
         header.len = 0;
-        Self(ThinRepr::new(ptr))
+        ThinRepr::new(ptr)
     }
 
     /// Splits the collection into two at the given index.
@@ -1020,6 +1034,11 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     pub(crate) unsafe fn set_capacity(&mut self, new_cap: usize) {
         debug_assert!(new_cap >= self.len());
 
+        let Some(original_ptr) = self.0.get() else {
+            self.0 = Self::make_repr(new_cap);
+            return;
+        };
+
         // SAFETY: layout checked at creation
         let layout = self.current_layout();
         let (new_layout, _, new_cap) =
@@ -1030,23 +1049,12 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
             return;
         }
 
-        let ptr = if let Some(original_ptr) = self.0.get() {
-            let ptr = unsafe { realloc(original_ptr.as_ptr().cast(), layout, new_layout.size()) };
-            let ptr = check_alloc(ptr, new_layout);
-            let mut ptr = ptr.cast();
-            let header: &mut ThinHeader<_, _> = unsafe { ptr.as_mut() };
-            header.cap = new_cap;
-            ptr
-        } else {
-            let ptr = unsafe { alloc(new_layout) };
-            let ptr = check_alloc(ptr, new_layout);
-            let mut ptr = ptr.cast();
-            let header: &mut ThinHeader<_, _> = unsafe { ptr.as_mut() };
-            header.prefix = P::DEFAULT;
-            header.cap = new_cap;
-            header.len = 0;
-            ptr
-        };
+        let ptr = unsafe { realloc(original_ptr.as_ptr().cast(), layout, new_layout.size()) };
+        let ptr = check_alloc(ptr, new_layout);
+        let mut ptr = ptr.cast();
+        let header: &mut ThinHeader<_, _> = unsafe { ptr.as_mut() };
+        header.cap = new_cap;
+
         self.0 = ThinRepr::new(ptr);
     }
 

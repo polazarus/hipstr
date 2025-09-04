@@ -452,7 +452,7 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     ///     inline.set_len(1);
     /// }
     /// ```
-    pub fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<T>] {
+    pub const fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<T>] {
         let len = self.len();
         unsafe { slice::from_raw_parts_mut(self.data.as_mut_ptr().add(len), CAP - len) }
     }
