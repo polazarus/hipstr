@@ -120,6 +120,7 @@ where
     /// let q = unsafe { Smart::from_raw(ptr) };
     /// ```
     #[inline]
+    #[must_use]
     pub fn from_raw(ptr: NonNull<Inner<T, C>>) -> Self {
         debug_assert!(ptr.is_aligned());
         unsafe { Self(ptr) }
@@ -276,7 +277,7 @@ where
 
     #[inline]
     fn deref(&self) -> &Self::Target {
-        Smart::as_ref(self)
+        Self::as_ref(self)
     }
 }
 
@@ -286,7 +287,7 @@ where
 {
     #[inline]
     fn as_ref(&self) -> &T {
-        Smart::as_ref(self)
+        Self::as_ref(self)
     }
 }
 

@@ -121,6 +121,7 @@ fn test_unique_drop() {
 }
 
 #[test]
+#[allow(clippy::redundant_clone)]
 fn test_unique_clone_drop() {
     let witness = local_witness::Witness::default();
     {

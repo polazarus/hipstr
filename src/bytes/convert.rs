@@ -117,6 +117,8 @@ mod tests {
 
     #[test]
     fn test_from() {
+        type H<'a> = crate::bytes::HipByt<'a, Arc>;
+
         let a = [32; 32];
         let v = Vec::from(a);
         let ptr_v = v.as_ptr();
@@ -140,7 +142,6 @@ mod tests {
         assert_eq!(fv.as_slice(), &a);
         assert!(ptr::eq(fv.as_ptr(), ptr_b));
 
-        type H<'a> = crate::bytes::HipByt<'a, Arc>;
         let fc1 = H::from(c1);
         assert_eq!(fc1.as_slice(), &a);
 
