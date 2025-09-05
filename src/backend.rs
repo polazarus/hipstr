@@ -58,7 +58,7 @@ impl<C: Counter, B: OverflowBehavior> Counter for BackendImpl<C, B> {
     #[cfg(test)]
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn set(&self, value: usize) {
-        self.0.set(value)
+        self.0.set(value);
     }
 
     #[inline]
@@ -99,6 +99,7 @@ impl OverflowBehavior for PanicOnOverflow {}
 pub struct Count(pub(crate) Cell<usize>);
 
 /// Counter update result.
+#[must_use]
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum UpdateResult {
     /// The update was successful.
@@ -111,12 +112,6 @@ pub enum UpdateResult {
 ///
 /// This trait is sealed and cannot be implemented outside this crate.
 pub trait Counter: Sealed + ConstDefault + 'static {
-    /// Creates a new counter that starts at one.
-    #[inline]
-    fn one() -> Self {
-        Self::DEFAULT
-    }
-
     /// Tries to increment the counter.
     ///
     /// In case of atomics, the [`Ordering::Release`] semantics is expected on the write.
@@ -178,9 +173,7 @@ impl Counter for () {
     #[cfg(test)]
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn set(&self, value: usize) {
-        if value != 1 {
-            panic!("invalid counter value");
-        }
+        assert!(value != 1, "invalid counter value");
     }
 
     #[inline]
@@ -229,9 +222,7 @@ impl Counter for Count {
     #[cfg(test)]
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn set(&self, value: usize) {
-        if value == 0 {
-            panic!("invalid counter value");
-        }
+        assert!(value != 0, "invalid counter value");
         self.0.set(value - 1);
     }
 
@@ -242,6 +233,7 @@ impl Counter for Count {
 }
 
 impl ConstDefault for Count {
+    #[allow(clippy::declare_interior_mutable_const)]
     const DEFAULT: Self = Self(Cell::new(0));
 }
 

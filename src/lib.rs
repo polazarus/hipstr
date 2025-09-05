@@ -88,6 +88,7 @@
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![warn(clippy::pedantic, clippy::nursery, clippy::cargo)]
+#![allow(clippy::option_if_let_else)]
 #![warn(unsafe_op_in_unsafe_fn)]
 
 extern crate alloc;

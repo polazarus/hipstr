@@ -114,6 +114,11 @@ impl<T, C: Backend> Deref for SmartThinVec<T, C> {
 }
 
 impl<T, C: Backend> SmartThinVec<T, C> {
+    /// Copies the smart vector without checking or updating the reference count.
+    const unsafe fn copy(&self) -> Self {
+        Self(ManuallyDrop::new(ThinVec(manually_drop_as_ref(&self.0).0)))
+    }
+
     /// Creates a new empty vector.
     ///
     /// # Examples
@@ -126,7 +131,7 @@ impl<T, C: Backend> SmartThinVec<T, C> {
     /// assert!(v.is_unique());
     /// ```
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         let tv = ThinVec::new();
         unsafe { Self::from_thin_vec_unchecked(tv) }
     }
@@ -212,7 +217,7 @@ impl<T, C: Backend> SmartThinVec<T, C> {
     ///
     /// This function is unsafe because it allows mutable access to the vector even if it is not unique.
     /// The caller must ensure that no other references to the vector exist while this function is used.
-    pub unsafe fn as_mut_unchecked(&mut self) -> &mut ThinVec<T, C> {
+    pub const unsafe fn as_mut_unchecked(&mut self) -> &mut ThinVec<T, C> {
         manually_drop_as_mut(&mut self.0)
     }
 
@@ -263,7 +268,7 @@ impl<T, C: Backend> SmartThinVec<T, C> {
     ///
     /// This function is unsafe because it assumes the input `ThinVec` has a consistent counter.
     /// Typically, this is the case when the `ThinVec` is created with a default counter.
-    pub(crate) unsafe fn from_thin_vec_unchecked(t: ThinVec<T, C>) -> Self {
+    pub(crate) const unsafe fn from_thin_vec_unchecked(t: ThinVec<T, C>) -> Self {
         let thin_vec = ManuallyDrop::new(t);
         Self(thin_vec)
     }
@@ -342,7 +347,7 @@ impl<T, C: Backend> SmartThinVec<T, C> {
                 return None;
             }
         }
-        Some(Self(ManuallyDrop::new(ThinVec((self.0).0.copy()))))
+        Some(unsafe { self.copy() })
     }
 
     /// Converts into a [`ThinVec`] if the reference is unique.

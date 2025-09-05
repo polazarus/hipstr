@@ -43,24 +43,24 @@ mod from_string {
     #[divan::bench(args = [0, 1, 16, 23, 32, 42])]
     fn bench_hipstr_from_string(b: Bencher, n: usize) {
         b.with_inputs(|| String::from(&S2[0..n]))
-            .bench_local_values(|s| HipStr::from(s));
+            .bench_local_values(HipStr::from);
     }
 
     #[divan::bench(args = [0, 1, 16, 23, 32, 42])]
     fn bench_arcstr_from_string(b: Bencher, n: usize) {
         b.with_inputs(|| String::from(&S2[0..n]))
-            .bench_local_values(|s| ArcStr::from(s));
+            .bench_local_values(ArcStr::from);
     }
 
     #[divan::bench(args = [0, 1, 16, 23, 32, 42])]
     fn bench_ecow_from_string(b: Bencher, n: usize) {
         b.with_inputs(|| String::from(&S2[0..n]))
-            .bench_local_values(|s| EcoString::from(s));
+            .bench_local_values(EcoString::from);
     }
 
     #[divan::bench(args = [0, 1, 16, 23, 32, 42])]
     fn bench_kstring_from_string(b: Bencher, n: usize) {
         b.with_inputs(|| String::from(&S2[0..n]))
-            .bench_local_values(|s| KString::from_string(s));
+            .bench_local_values(KString::from_string);
     }
 }

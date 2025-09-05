@@ -155,6 +155,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::op_ref)]
     fn test_eq() {
         for (a, b) in [
             ("abc", "abc"),
@@ -212,7 +213,7 @@ mod tests {
             assert_eq!((*a_bstr).partial_cmp(&b_hb), Some(expected));
 
             assert_eq!(a_bstring.partial_cmp(&b_hb), Some(expected));
-            assert_eq!((&a_bstring).partial_cmp(&b_hb), Some(expected));
+            assert_eq!(PartialOrd::partial_cmp(&&a_bstring, &b_hb), Some(expected));
         }
     }
 }

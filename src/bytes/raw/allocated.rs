@@ -489,7 +489,7 @@ mod tests {
     #[test]
     fn test_alloc() {
         let allocated = Allocated::<Rc>::new(vec![]);
-        let _ = allocated.explicit_drop();
+        allocated.explicit_drop();
     }
 
     #[test]

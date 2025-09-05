@@ -34,7 +34,7 @@ where
 {
     fn clone(&self) -> Self {
         Self {
-            count: C::one(),
+            count: C::DEFAULT,
             value: self.value.clone(),
         }
     }
@@ -66,7 +66,7 @@ where
     #[must_use]
     pub fn new(value: T) -> Self {
         let ptr = Box::into_raw(Box::new(Inner {
-            count: C::one(),
+            count: C::DEFAULT,
             value,
         }));
         Self(unsafe { NonNull::new_unchecked(ptr) })

@@ -469,7 +469,7 @@ impl<T, const CAP: usize, const SHIFT: u8, const TAG: u8> InlineVec<T, CAP, SHIF
     /// assert_eq!(inline.pop(), Some(1));
     /// assert_eq!(inline.pop(), None);
     /// ```
-    pub fn pop(&mut self) -> Option<T> {
+    pub const fn pop(&mut self) -> Option<T> {
         let len = self.len.get();
         if len == 0 {
             None

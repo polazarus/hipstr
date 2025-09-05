@@ -52,6 +52,7 @@ fn test_de_error() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn test_serde_borrow() {
     use serde_json::Value;
 

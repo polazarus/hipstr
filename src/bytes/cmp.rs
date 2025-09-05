@@ -152,6 +152,7 @@ mod tests {
     static H: HipByt = HipByt::from_static(b"abc");
 
     #[test]
+    #[allow(clippy::op_ref, clippy::cmp_owned)]
     fn test_ord_other() {
         assert_eq!(H.partial_cmp(b"abc".as_slice()), Some(Ordering::Equal));
         assert_eq!(H.partial_cmp(b"abc"), Some(Ordering::Equal));

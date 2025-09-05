@@ -42,10 +42,26 @@ pub(super) struct ThinRepr<T, P> {
     inner: NonNull<ThinHeader<T, P>>,
 }
 
+impl<T, P> Copy for ThinRepr<T, P> {}
+
+impl<T, P> Clone for ThinRepr<T, P> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
 /// An indirect fat vector representation.
 #[repr(C)]
 pub(super) struct FatRepr<T, P> {
     inner: NonNull<FatInner<T, P>>,
+}
+
+impl<T, P> Copy for FatRepr<T, P> {}
+
+impl<T, P> Clone for FatRepr<T, P> {
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 
 /// A representation that can be either fat or thin.
@@ -55,6 +71,14 @@ pub(super) struct FatRepr<T, P> {
 pub(super) struct FatOrThinRepr<T, P> {
     ptr: NonNull<FatOrThinView<P>>,
     _phantom: PhantomData<T>,
+}
+
+impl<T, P> Copy for FatOrThinRepr<T, P> {}
+
+impl<T, P> Clone for FatOrThinRepr<T, P> {
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 
 impl<T, P> ThinRepr<T, P> {
@@ -75,11 +99,6 @@ impl<T, P> ThinRepr<T, P> {
     pub(crate) const fn get(&self) -> Option<NonNull<ThinHeader<T, P>>> {
         let ptr = unsafe { self.inner.as_ptr().byte_sub(THIN) };
         NonNull::new(ptr)
-    }
-
-    pub(crate) const fn copy(&self) -> Self {
-        // SAFETY: we are just copying the pointer, which is safe
-        unsafe { Self::new(self.inner) }
     }
 }
 
@@ -124,35 +143,38 @@ impl<T, P> FatOrThinRepr<T, P> {
         }
     }
 
-    pub(super) fn is_fat(&self) -> bool {
+    pub(super) fn is_fat(self) -> bool {
         self.ptr.addr().get() & MASK == FAT
     }
 
-    pub(super) fn is_thin(&self) -> bool {
+    pub(super) fn is_thin(self) -> bool {
         self.ptr.addr().get() & MASK == THIN
     }
 
+    #[allow(clippy::transmute_ptr_to_ptr)]
     pub(super) fn split(&self) -> Variant<&ThinRepr<T, P>, &FatRepr<T, P>> {
         if self.is_thin() {
-            Variant::Thin(unsafe { mem::transmute(self) })
+            Variant::Thin(unsafe { mem::transmute::<&Self, &ThinRepr<T, P>>(self) })
         } else {
-            Variant::Fat(unsafe { mem::transmute(self) })
+            Variant::Fat(unsafe { mem::transmute::<&Self, &FatRepr<T, P>>(self) })
         }
     }
 
+    #[allow(clippy::transmute_ptr_to_ptr)]
     pub(super) fn split_mut(&mut self) -> Variant<&mut ThinRepr<T, P>, &mut FatRepr<T, P>> {
         if self.is_thin() {
-            Variant::Thin(unsafe { mem::transmute(self) })
+            Variant::Thin(unsafe { mem::transmute::<&mut Self, &mut ThinRepr<T, P>>(self) })
         } else {
-            Variant::Fat(unsafe { mem::transmute(self) })
+            Variant::Fat(unsafe { mem::transmute::<&mut Self, &mut FatRepr<T, P>>(self) })
         }
     }
 
-    pub(super) fn into_split(&mut self) -> Variant<ThinRepr<T, P>, FatRepr<T, P>> {
+    #[allow(clippy::transmute_ptr_to_ptr)]
+    pub(super) fn into_split(self) -> Variant<ThinRepr<T, P>, FatRepr<T, P>> {
         if self.is_thin() {
-            Variant::Thin(unsafe { mem::transmute(self) })
+            Variant::Thin(unsafe { mem::transmute::<Self, ThinRepr<T, P>>(self) })
         } else {
-            Variant::Fat(unsafe { mem::transmute(self) })
+            Variant::Fat(unsafe { mem::transmute::<Self, FatRepr<T, P>>(self) })
         }
     }
 }
