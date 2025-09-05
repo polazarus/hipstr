@@ -188,18 +188,23 @@ where
         inner.count.get()
     }
 
-    /// Try to unwrap to its inner value.
+    /// Tries to unwrap this smart pointer into its inner value if it is not
+    /// shared.
+    ///
+    /// # Errors
+    ///
+    /// If the value is shared, returns `this` itself as error.
     #[inline]
-    pub fn try_unwrap(self) -> Result<T, Self> {
+    pub fn try_unwrap(this: Self) -> Result<T, Self> {
         unsafe {
-            if self.is_unique() {
+            if this.is_unique() {
                 // do not drop `self`!
-                let this = ManuallyDrop::new(self);
+                let this = ManuallyDrop::new(this);
                 // SAFETY: type invariant, pointer must be valid
                 let inner = unsafe { Box::from_raw(this.0.as_ptr()) };
                 Ok(inner.value)
             } else {
-                Err(self)
+                Err(this)
             }
         }
     }

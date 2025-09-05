@@ -347,7 +347,7 @@ impl<B: Backend> Allocated<B> {
 
         let len = self.len();
 
-        self.into_owner().try_unwrap().map_or_else(
+        Smart::try_unwrap(self.into_owner()).map_or_else(
             |owner| {
                 forget(owner); // do not drop
                 Err(self)

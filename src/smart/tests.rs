@@ -108,8 +108,8 @@ fn test_unique_misc() {
     assert!(b.as_mut().is_some());
     assert_eq!(b.as_ref(), &1);
 
-    assert_eq!(a.try_unwrap().unwrap_or(0), 1);
-    assert_eq!(b.try_unwrap().unwrap_or(0), 1);
+    assert_eq!(Smart::try_unwrap(a).unwrap_or(0), 1);
+    assert_eq!(Smart::try_unwrap(b).unwrap_or(0), 1);
 }
 
 #[test]
@@ -146,10 +146,10 @@ fn test_local_misc() {
     assert_eq!(b.as_ref(), &1);
 
     // will drop b
-    assert!(b.try_unwrap().is_err());
+    assert!(Smart::try_unwrap(b).is_err());
 
     assert!(a.as_mut().is_some());
-    assert_eq!(a.try_unwrap().unwrap_or(0), 1);
+    assert_eq!(Smart::try_unwrap(a).unwrap_or(0), 1);
 }
 
 #[test]
@@ -188,11 +188,11 @@ fn test_atomic_misc() {
     assert!(b.as_mut().is_none());
 
     // will drop a
-    assert!(a.try_unwrap().is_err());
+    assert!(Smart::try_unwrap(a).is_err());
 
     assert_eq!(b.ref_count(), 1);
     assert!(b.as_mut().is_some());
-    assert_eq!(b.try_unwrap().unwrap_or(0), 1);
+    assert_eq!(Smart::try_unwrap(b).unwrap_or(0), 1);
 }
 
 #[test]

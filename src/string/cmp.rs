@@ -216,6 +216,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::cmp_owned)]
     fn test_cmp_string() {
         use alloc::string::String;
 
@@ -229,6 +230,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::cmp_owned, clippy::op_ref)]
     #[cfg(feature = "std")]
     fn test_cmp_os_str() {
         use std::ffi::OsStr;
@@ -251,6 +253,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::cmp_owned)]
     #[cfg(feature = "std")]
     fn test_cmp_os_string() {
         use std::ffi::OsString;
@@ -265,6 +268,7 @@ mod tests {
     }
 
     #[cfg(feature = "bstr")]
+    #[allow(clippy::cmp_owned, clippy::op_ref)]
     #[test]
     fn test_cmp_bstr() {
         use bstr::BStr;
@@ -287,6 +291,7 @@ mod tests {
     }
 
     #[cfg(feature = "bstr")]
+    #[allow(clippy::cmp_owned)]
     #[test]
     fn test_cmp_bstring() {
         use bstr::BString;

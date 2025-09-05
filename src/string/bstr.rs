@@ -107,6 +107,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::op_ref)]
     fn test_eq() {
         for (a, b) in [
             ("abc", "abc"),
@@ -144,7 +145,7 @@ mod tests {
             let b_bstr: &BStr = b.as_ref();
             let b_bstring = BString::from(b);
 
-            let expected = a.cmp(&b);
+            let expected = a.cmp(b);
 
             if expected == Ordering::Equal {
                 assert_eq!(a_hipstr, b_bstr);

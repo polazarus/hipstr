@@ -499,7 +499,7 @@ where
 
     #[inline]
     #[cfg(test)]
-    pub(crate) fn as_ptr(&self) -> *const u8 {
+    pub(crate) const fn as_ptr(&self) -> *const u8 {
         self.0.as_ptr()
     }
 
