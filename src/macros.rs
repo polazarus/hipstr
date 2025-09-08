@@ -249,6 +249,28 @@ macro_rules! AsRef {
             }
         }
     };
+    (
+        { $as_ty:ty, $delegate:path, $mut_delegate:path }
+        ($( ($($_attr:tt)*) )*)
+        $_vis:vis $_kind:ident $_name:ident
+        (($ty:ty) ($($generics_bindings:tt)*) where ($($generics_where:tt)*))
+        $_body:tt
+    ) => {
+        $crate::macros::AsRef! {
+            { $as_ty, $delegate }
+            ($( ($($_attr)*) )*)
+            $_vis $_kind $_name
+            (($ty) ($($generics_bindings)*) where ($($generics_where)*))
+            $_body
+        }
+
+        impl $($generics_bindings)* ::core::convert::AsMut<$as_ty> for $ty where $($generics_where)* {
+            #[inline]
+            fn as_mut(&mut self) -> &mut $as_ty {
+                $mut_delegate(self)
+            }
+        }
+    };
 }
 
 macro_rules! Deref {

@@ -1,13 +1,18 @@
 //! Common functions and types.
 
 use alloc::alloc::handle_alloc_error;
+use alloc::vec::Vec;
 use core::alloc::Layout;
 use core::mem::{self, ManuallyDrop, MaybeUninit};
-use core::ops::{Bound, Range, RangeBounds};
+use core::ops::{Bound, Deref, DerefMut, Range, RangeBounds};
 use core::ptr::NonNull;
 use core::{error, fmt, ptr};
 
+pub mod boo;
+pub(crate) mod derives;
 pub mod drain;
+pub(crate) mod methods;
+pub(crate) mod non_zero;
 #[cfg(test)]
 mod tests;
 pub mod traits;
@@ -144,7 +149,7 @@ where
 #[inline]
 pub(crate) const fn manually_drop_as_mut<T>(m: &mut ManuallyDrop<T>) -> &mut T {
     // SAFETY: `ManuallyDrop<T>` is a transparent wrapper of `T`.
-    unsafe { mem::transmute::<&mut ManuallyDrop<T>, &mut T>(m) }
+    unsafe { core::mem::transmute::<&mut ManuallyDrop<T>, &mut T>(m) }
 }
 
 /// A guard that drops the initialized elements of a slice.
@@ -171,8 +176,8 @@ pub(crate) fn guarded_slice_clone<T: Clone>(dst: &mut [MaybeUninit<T>], src: &[T
         initialized: 0,
     };
 
-    for (dst, src) in guard.slice.iter_mut().zip(src.iter()) {
-        dst.write(src.clone());
+    for (dst_elem, src_elem) in guard.slice.iter_mut().zip(src.iter()) {
+        dst_elem.write(src_elem.clone());
         guard.initialized += 1;
     }
 
@@ -188,4 +193,35 @@ pub(crate) fn check_alloc(ptr: *mut u8, layout: Layout) -> NonNull<u8> {
         handle_alloc_error(layout);
     };
     ptr
+}
+
+/// Drops a slice of elements given a raw pointer and a length.
+///
+/// # Safety
+///
+/// The caller must ensure that the pointer is valid and that the length is correct.
+#[inline]
+pub(crate) unsafe fn drop_raw_slice<T>(ptr: *mut T, len: usize) {
+    if mem::needs_drop::<T>() {
+        // SAFETY: precondition
+        unsafe {
+            let slice = core::slice::from_raw_parts_mut(ptr, len);
+            core::ptr::drop_in_place(slice);
+        }
+    }
+}
+
+/// [`Vec::push_within_capacity`] stable implementation.
+pub(crate) fn vec_push_within_capacity<T>(v: &mut Vec<T>, value: T) -> Result<(), T> {
+    let spare = v.spare_capacity_mut();
+    if let [e, ..] = spare {
+        e.write(value);
+        // SAFETY: we just initialized one more element.
+        unsafe {
+            v.set_len(v.len() + 1);
+        }
+        Ok(())
+    } else {
+        Err(value)
+    }
 }

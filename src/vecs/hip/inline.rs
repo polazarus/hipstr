@@ -1,4 +1,4 @@
-//! Inline vector implementation.
+//! Inline vector implementation with a fixed byte size.
 //!
 //! This module provides an inline vector implementation that can store up to a
 //! small and fixed number of elements inline.
@@ -12,19 +12,15 @@ use alloc::vec::Vec;
 use core::fmt::{self};
 use core::iter::FusedIterator;
 use core::mem::{offset_of, ManuallyDrop, MaybeUninit};
-use core::ops::{Range, RangeBounds};
+use core::ops::{Deref, DerefMut, Range, RangeBounds};
 use core::ptr::NonNull;
-use core::{error, slice};
+use core::{error, hash, slice};
 
-use const_default::ConstDefault;
-use rules_derive::rules_derive;
-
-use crate::common::derives::*;
 use crate::common::drain::Drain;
 use crate::common::methods::{
-    extend_from_array_impl, extend_from_slice_impl, pop_if_impl, pop_impl, push_within_capacity,
-    remove_unchecked_impl, slice_swap_unchecked, spare_capacity_mut_impl, swap_remove_impl,
-    truncate_impl,
+    extend_from_array_impl, extend_from_boxed_impl, extend_from_raw_nonoverlapping,
+    extend_from_slice_impl, pop_if_impl, pop_impl, push_within_capacity, slice_swap_unchecked,
+    spare_capacity_mut_impl, truncate_impl,
 };
 use crate::common::non_zero::{self, NZ};
 use crate::common::{drop_raw_slice, panic_display, traits};
@@ -77,8 +73,8 @@ impl<T: NZ, const SHIFT: usize, const TAG: usize> TaggedLen<T, SHIFT, TAG> {
     }
 }
 
-pub const SHIFT_DEFAULT: usize = super::reprs::TAG_SIZE;
-pub const TAG_DEFAULT: usize = super::reprs::INLINE;
+pub const SHIFT_DEFAULT: usize = super::super::TAG_SHIFT as usize;
+pub const TAG_DEFAULT: usize = super::super::TAG_INLINE as usize;
 pub const BYTES_DEFAULT: usize = size_of::<*mut ()>() * 3 - 1;
 
 /// A vector that can store a small number of elements inline.
@@ -110,17 +106,10 @@ pub const BYTES_DEFAULT: usize = size_of::<*mut ()>() * 3 - 1;
 /// `InlineVec` is not well suited to store zero-sized types (ZSTs) like `()`.
 /// This is because the maximal length is capped by `u8::MAX >> SHIFT`.
 #[repr(C)]
-#[rules_derive(
-    ConstDefault(Self::new()),
-    DelegateDebug(Self::as_slice, T: core::fmt::Debug),
-    DelegateHash(Self::as_slice, T: core::hash::Hash),
-    AsRef([T], Self::as_slice, Self::as_mut_slice),
-    Deref([T], Self::as_slice, Self::as_mut_slice),
-)]
 pub struct InlineVec<
     T,
-    const BYTES: usize = BYTES_DEFAULT,
     L: NZ = u8,
+    const BYTES: usize = BYTES_DEFAULT,
     const SHIFT: usize = SHIFT_DEFAULT,
     const TAG: usize = TAG_DEFAULT,
 > {
@@ -136,7 +125,7 @@ pub struct InlineVec<
 }
 
 impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
-    InlineVec<T, BYTES, L, SHIFT, TAG>
+    InlineVec<T, L, BYTES, SHIFT, TAG>
 {
     const fn capacity_offset() -> (usize, usize) {
         let payload = size_of::<[MaybeUninit<u8>; BYTES]>();
@@ -201,13 +190,8 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
         }
     }
 
-    /// Creates a new inline vector while checking the specified capacity.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the specified capacity exceeds the inline vector's capacity.
     #[inline]
-    pub const fn with_capacity(cap: usize) -> Self {
+    pub(crate) const fn with_capacity(cap: usize) -> Self {
         assert!(
             cap <= Self::CAP,
             "required capacity exceeds inline capacity"
@@ -224,7 +208,7 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     ///   capacity of the inline vector.
     /// - The caller must ensure that the elements are initialized.
     #[inline]
-    pub(crate) const unsafe fn zeroed(new_len: usize) -> Self {
+    pub const unsafe fn zeroed(new_len: usize) -> Self {
         const {
             debug_assert!(
                 align_of::<Self>() >= align_of::<T>(),
@@ -279,13 +263,31 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     /// vector.
     #[must_use]
     pub(crate) fn from_boxed_slice(boxed: Box<[T]>) -> Self {
-        Self::from_mut_vector(boxed.into_vec())
+        let mut this = Self::new();
+        this.extend_from_boxed(boxed);
+        this
+    }
+
+    #[must_use]
+    pub(crate) fn from_raw(ptr: *const T, len: usize) -> Self {
+        let mut this = Self::new();
+        this.extend_from_raw_nonoverlapping(ptr, len);
+        this
     }
 
     #[must_use]
     pub(crate) fn from_mut_vector(mut vec: impl traits::MutVector<Item = T>) -> Self {
         let mut this = Self::new();
-        this.append(&mut vec);
+        let len = vec.len();
+        assert!(len <= Self::CAP, "new length exceeds capacity");
+
+        unsafe {
+            let ptr = this.as_mut_ptr();
+            ptr.copy_from_nonoverlapping(vec.as_ptr().cast(), len);
+            this.set_len(len);
+            vec.set_len(0);
+        }
+
         this
     }
 
@@ -387,7 +389,7 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     /// ```
     #[inline]
     pub const fn as_ptr(&self) -> *const T {
-        self.data.as_ptr().cast()
+        unsafe { self.data.as_ptr().add(Self::OFFSET).cast() }
     }
 
     /// Returns a `NonNull` pointer to the inline vector data.
@@ -407,7 +409,7 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     /// would also make any pointers to it invalid.
     #[inline]
     pub const fn as_mut_ptr(&mut self) -> *mut T {
-        self.data.as_mut_ptr().cast()
+        unsafe { self.data.as_mut_ptr().add(Self::OFFSET).cast() }
     }
 
     /// Attempts to push a value into the inline vector.
@@ -421,7 +423,7 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     ///
     /// ```
     /// use hipstr::inline_vec;
-    /// let mut inline = inline_vec![3 => 1, 2];
+    /// let mut inline = inline_vec2![3 => 1, 2];
     /// assert_eq!(inline.try_push(1), Ok(()));
     /// assert_eq!(inline.try_push(2), Err(2));
     /// ```
@@ -539,7 +541,7 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     ///
     /// ```
     /// use hipstr::inline_vec;
-    /// let mut inline = inline_vec![7 => 1_u8, 2, 3, 4];
+    /// let mut inline = inline_vec2![7 => 1_u8, 2, 3, 4];
     /// assert_eq!(inline.pop_if(|x| *x % 2 == 0), Some(4));
     /// assert_eq!(inline.as_slice(), &[1, 2, 3]);
     /// assert_eq!(inline.pop_if(|x| *x % 2 == 0), None);
@@ -558,8 +560,8 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     ///
     /// ```
     /// use hipstr::inline_vec;
-    /// let mut inline1 = inline_vec![7 => 1_u8, 2];
-    /// let mut inline2 = inline_vec![7 => 3_u8, 4];
+    /// let mut inline1 = inline_vec2![7 => 1_u8, 2];
+    /// let mut inline2 = inline_vec2![7 => 3_u8, 4];
     /// let mut vec = vec![5 , 6];
     /// inline1.append(&mut inline2);
     /// assert_eq!(inline1, [1, 2, 3, 4]);
@@ -593,8 +595,8 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     ///
     /// ```
     /// use hipstr::inline_vec;
-    /// let mut inline1 = inline_vec![7 => 1_u8, 2];
-    /// let mut inline2 = inline_vec![7 => 3_u8, 4];
+    /// let mut inline1 = inline_vec2![7 => 1_u8, 2];
+    /// let mut inline2 = inline_vec2![7 => 3_u8, 4];
     /// inline1.const_append(&mut inline2);
     /// assert_eq!(inline1, [1, 2, 3, 4]);
     /// assert!(inline2.is_empty());
@@ -606,7 +608,7 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
         const TAG2: usize,
     >(
         &mut self,
-        other: &mut InlineVec<T, BYTE_CAP2, L2, SHIFT2, TAG2>,
+        other: &mut InlineVec<T, L2, BYTE_CAP2, SHIFT2, TAG2>,
     ) {
         let len = self.len();
         let other_len = other.len();
@@ -689,7 +691,17 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     /// assert_eq!(inline.as_slice(), &[1, 3]);
     /// ```
     pub const fn swap_remove(&mut self, index: usize) -> T {
-        swap_remove_impl!(self, index)
+        let len = self.len();
+        assert!(index < len, "index out of bounds");
+        self.data_mut().swap(index, len - 1);
+
+        // SAFETY: reduce the length of the vector
+        unsafe {
+            self.set_len(len - 1);
+        }
+
+        // SAFETY: initialized due to previous type invariant
+        unsafe { self.data_mut()[len - 1].assume_init_read() }
     }
 
     /// Inserts an element at the specified index, shifting all elements after
@@ -792,15 +804,26 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     }
 
     /// Removes and returns the element at the specified index, shifting all
-    /// elements after it to the left, without doing any bounds checking.
+    /// elements after it to the left.
     ///
     /// # Safety
     ///
     /// The caller must ensure that `index` is less than the current length of
     /// the inline vector.
-    #[inline]
     pub const unsafe fn remove_unchecked(&mut self, index: usize) -> T {
-        remove_unchecked_impl!(self, index)
+        let len = self.len();
+
+        // SAFETY:
+        // - index checked above
+        // - type invariant ensures that the element is initialized
+        // - the length is decremented after the element is removed
+        unsafe {
+            let ptr = self.data_mut().as_mut_ptr().add(index);
+            let value = (*ptr).assume_init_read();
+            ptr.copy_from(ptr.add(1), len - index - 1);
+            self.set_len(len - 1);
+            value
+        }
     }
 
     /// Splits the inline vector into two at the given index.
@@ -834,7 +857,7 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
         let remainder = len - at;
         unsafe {
             self.set_len(at);
-            let ptr = self.as_ptr().add(at);
+            let ptr = self.data_mut().as_ptr().add(at);
             other.as_mut_ptr().copy_from_nonoverlapping(ptr, remainder);
             other.set_len(remainder);
         }
@@ -894,7 +917,7 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     ///
     /// ```
     /// use hipstr::inline_vec;
-    /// let mut inline = inline_vec![7 => 1, 2];
+    /// let mut inline = inline_vec2![7 => 1, 2];
     /// inline.extend_from_array([3, 4]);
     /// assert_eq!(inline.as_slice(), &[1, 2, 3, 4]);
     /// ```
@@ -902,6 +925,14 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     #[track_caller]
     pub const fn extend_from_array<const N: usize>(&mut self, array: [T; N]) {
         extend_from_array_impl!(self, array);
+    }
+
+    pub fn extend_from_boxed(&mut self, boxed: Box<[T]>) {
+        extend_from_boxed_impl!(self, boxed);
+    }
+
+    pub(crate) fn extend_from_raw_nonoverlapping(&mut self, ptr: *const T, len: usize) {
+        extend_from_raw_nonoverlapping!(self, ptr, len);
     }
 
     /// Removes the subslice indicated by the given range from the inline
@@ -929,7 +960,7 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     /// ```
     /// # use hipstr::vecs::InlineVec;
     /// # use hipstr::inline_vec;
-    /// let mut v: InlineVec<u8, 7> = inline_vec![1, 2, 3];
+    /// let mut v: InlineVec<u8, 7> = inline_vec2![1, 2, 3];
     /// let u: InlineVec<u8, 7> = v.drain(1..).collect();
     /// assert_eq!(v, &[1]);
     /// assert_eq!(u, &[2, 3]);
@@ -938,7 +969,7 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     /// v.drain(..);
     /// assert_eq!(v, &[]);
     /// ```
-    pub fn drain(&mut self, range: impl RangeBounds<usize>) -> Drain<'_, Self> {
+    pub fn drain(&mut self, range: impl RangeBounds<usize>) -> Drain<Self> {
         Drain::new(self, range).unwrap_or_else(panic_display)
     }
 
@@ -962,7 +993,7 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
 }
 
 impl<T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize>
-    InlineVec<T, CAP, L, SHIFT, TAG>
+    InlineVec<T, L, CAP, SHIFT, TAG>
 where
     T: Clone,
 {
@@ -1002,7 +1033,7 @@ where
     ///
     /// ```
     /// use hipstr::inline_vec;
-    /// let mut inline = inline_vec![7 => 1, 2];
+    /// let mut inline = inline_vec2![7 => 1, 2];
     /// inline.extend_from_slice_copy(&[3, 4]);
     /// assert_eq!(inline.as_slice(), &[1, 2, 3, 4]);
     /// ```
@@ -1026,15 +1057,15 @@ where
     ///
     /// ```
     /// use hipstr::inline_vec;
-    /// let mut characters = inline_vec![43 => 'a', 'b', 'c', 'd', 'e'];
+    /// let mut characters = inline_vec2![43 => 'a', 'b', 'c', 'd', 'e'];
     /// characters.extend_from_within(2..);
     /// assert_eq!(characters, ['a', 'b', 'c', 'd', 'e', 'c', 'd', 'e']);
     ///
-    /// let mut numbers = inline_vec![7 => 0_u8, 1, 2, 3, 4];
+    /// let mut numbers = inline_vec2![7 => 0_u8, 1, 2, 3, 4];
     /// numbers.extend_from_within(..2);
     /// assert_eq!(numbers, [0, 1, 2, 3, 4, 0, 1]);
     ///
-    /// let mut strings = inline_vec![55 => String::from("hello"), String::from("world"), String::from("!")];
+    /// let mut strings = inline_vec2![55 => String::from("hello"), String::from("world"), String::from("!")];
     /// strings.extend_from_within(1..=2);
     /// assert_eq!(strings, ["hello", "world", "!", "world", "!"]);
     /// ```
@@ -1094,7 +1125,7 @@ where
 }
 
 impl<T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize>
-    InlineVec<T, CAP, L, SHIFT, TAG>
+    InlineVec<T, L, CAP, SHIFT, TAG>
 where
     T: Copy,
 {
@@ -1159,7 +1190,7 @@ where
     ///
     /// ```
     /// use hipstr::inline_vec;
-    /// let mut inline = inline_vec![7 => 1, 2];
+    /// let mut inline = inline_vec2![7 => 1, 2];
     /// inline.extend_from_slice_copy(&[3, 4]);
     /// assert_eq!(inline.as_slice(), &[1, 2, 3, 4]);
     /// ```
@@ -1232,11 +1263,11 @@ where
     ///
     /// ```
     /// use hipstr::inline_vec;
-    /// let mut characters = inline_vec![10 => 'a', 'b', 'c', 'd', 'e'];
+    /// let mut characters = inline_vec2![10 => 'a', 'b', 'c', 'd', 'e'];
     /// characters.extend_from_within_copy(2..);
     /// assert_eq!(characters, ['a', 'b', 'c', 'd', 'e', 'c', 'd', 'e']);
     ///
-    /// let mut numbers = inline_vec![7 => 0_u8, 1, 2, 3, 4];
+    /// let mut numbers = inline_vec2![7 => 0_u8, 1, 2, 3, 4];
     /// numbers.extend_from_within_copy(..2);
     /// assert_eq!(numbers, [0, 1, 2, 3, 4, 0, 1]);
     /// ```
@@ -1272,8 +1303,8 @@ where
     }
 }
 
-impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize> Clone
-    for InlineVec<T, BYTES, L, SHIFT, TAG>
+impl<T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize> Clone
+    for InlineVec<T, L, CAP, SHIFT, TAG>
 where
     T: Clone,
 {
@@ -1282,8 +1313,8 @@ where
     }
 }
 
-impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize> Drop
-    for InlineVec<T, BYTES, L, SHIFT, TAG>
+impl<T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize> Drop
+    for InlineVec<T, L, CAP, SHIFT, TAG>
 {
     fn drop(&mut self) {
         unsafe {
@@ -1292,8 +1323,70 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize> Drop
     }
 }
 
-impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize> Extend<T>
-    for InlineVec<T, BYTES, L, SHIFT, TAG>
+impl<T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize> Deref
+    for InlineVec<T, L, CAP, SHIFT, TAG>
+{
+    type Target = [T];
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        self.as_slice()
+    }
+}
+
+impl<T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize> DerefMut
+    for InlineVec<T, L, CAP, SHIFT, TAG>
+{
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.as_mut_slice()
+    }
+}
+
+impl<T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize> AsRef<[T]>
+    for InlineVec<T, L, CAP, SHIFT, TAG>
+{
+    #[inline]
+    fn as_ref(&self) -> &[T] {
+        self.as_slice()
+    }
+}
+
+impl<T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize> AsMut<[T]>
+    for InlineVec<T, L, CAP, SHIFT, TAG>
+{
+    #[inline]
+    fn as_mut(&mut self) -> &mut [T] {
+        self.as_mut_slice()
+    }
+}
+
+impl<T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize> Default
+    for InlineVec<T, L, CAP, SHIFT, TAG>
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T: fmt::Debug, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize> fmt::Debug
+    for InlineVec<T, L, CAP, SHIFT, TAG>
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.as_slice().fmt(f)
+    }
+}
+
+impl<T: hash::Hash, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize> hash::Hash
+    for InlineVec<T, L, CAP, SHIFT, TAG>
+{
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
+        self.as_slice().hash(state);
+    }
+}
+
+impl<T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize> Extend<T>
+    for InlineVec<T, L, CAP, SHIFT, TAG>
 {
     fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
         // May be improve by specialization if Rust offers it one day. Is it
@@ -1305,11 +1398,11 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize> Extend<
     }
 }
 
-impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize> IntoIterator
-    for InlineVec<T, BYTES, L, SHIFT, TAG>
+impl<T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize> IntoIterator
+    for InlineVec<T, L, CAP, SHIFT, TAG>
 {
     type Item = T;
-    type IntoIter = IntoIter<T, BYTES, L, SHIFT, TAG>;
+    type IntoIter = IntoIter<T, L, CAP, SHIFT, TAG>;
 
     fn into_iter(self) -> Self::IntoIter {
         let end = self.len();
@@ -1324,20 +1417,14 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize> IntoIte
 /// the `InlineVec` while iterating over its elements.
 ///
 /// [`into_iter`]: InlineVec::into_iter
-pub struct IntoIter<
-    T,
-    const BYTES: usize,
-    L: NZ = u8,
-    const SHIFT: usize = SHIFT_DEFAULT,
-    const TAG: usize = TAG_DEFAULT,
-> {
+pub struct IntoIter<T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize> {
     start: usize,
     end: usize,
-    vec: ManuallyDrop<InlineVec<T, BYTES, L, SHIFT, TAG>>,
+    vec: ManuallyDrop<InlineVec<T, L, CAP, SHIFT, TAG>>,
 }
 
-impl<T, const BYTES: usize, L: NZ, const SHIFT: usize, const TAG: usize> Iterator
-    for IntoIter<T, BYTES, L, SHIFT, TAG>
+impl<T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize> Iterator
+    for IntoIter<T, L, CAP, SHIFT, TAG>
 {
     type Item = T;
 
@@ -1357,16 +1444,16 @@ impl<T, const BYTES: usize, L: NZ, const SHIFT: usize, const TAG: usize> Iterato
     }
 }
 
-impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize> ExactSizeIterator
-    for IntoIter<T, BYTES, L, SHIFT, TAG>
+impl<T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize> ExactSizeIterator
+    for IntoIter<T, L, CAP, SHIFT, TAG>
 {
     fn len(&self) -> usize {
         self.end - self.start
     }
 }
 
-impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize> Drop
-    for IntoIter<T, BYTES, L, SHIFT, TAG>
+impl<T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize> Drop
+    for IntoIter<T, L, CAP, SHIFT, TAG>
 {
     fn drop(&mut self) {
         if core::mem::needs_drop::<T>() {
@@ -1377,8 +1464,8 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize> Drop
     }
 }
 
-impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize> DoubleEndedIterator
-    for IntoIter<T, BYTES, L, SHIFT, TAG>
+impl<T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize> DoubleEndedIterator
+    for IntoIter<T, L, CAP, SHIFT, TAG>
 {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.start < self.end {
@@ -1391,48 +1478,48 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize> DoubleE
     }
 }
 
-impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize> FusedIterator
-    for IntoIter<T, BYTES, L, SHIFT, TAG>
+impl<T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize> FusedIterator
+    for IntoIter<T, L, CAP, SHIFT, TAG>
 {
 }
 
-impl<T: Eq, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize> Eq
-    for InlineVec<T, BYTES, L, SHIFT, TAG>
+impl<T: Eq, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize> Eq
+    for InlineVec<T, L, CAP, SHIFT, TAG>
 {
 }
 
 macros::trait_impls! {
-    [T, U, L1: NZ, L2: NZ, const BYTES1: usize, const SHIFT1: usize, const TAG1: usize, const BYTES2: usize, const SHIFT2: usize, const TAG2: usize]
+    [T, U, L1: NZ, L2: NZ, const CAP1: usize, const SHIFT1: usize, const TAG1: usize, const CAP2: usize, const SHIFT2: usize, const TAG2: usize]
     where [T: PartialEq<U>]
     {
         PartialEq {
-            InlineVec<T, BYTES1, L1, SHIFT1, TAG1>, InlineVec<U, BYTES2, L2, SHIFT2, TAG2>;
+            InlineVec<T, L1, CAP1, SHIFT1, TAG1>, InlineVec<U, L2, CAP2, SHIFT2, TAG2>;
         }
     }
 
-    [T, U, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize]
+    [T, U, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize]
     where [T: PartialEq<U>]
     {
         PartialEq {
-            InlineVec<T, BYTES, L, SHIFT, TAG>, [U];
-            InlineVec<T, BYTES, L, SHIFT, TAG>, &[U];
-            InlineVec<T, BYTES, L, SHIFT, TAG>, &mut [U];
-            InlineVec<T, BYTES, L, SHIFT, TAG>, Vec<U>;
+            InlineVec<T, L, CAP, SHIFT, TAG>, [U];
+            InlineVec<T, L, CAP, SHIFT, TAG>, &[U];
+            InlineVec<T, L, CAP, SHIFT, TAG>, &mut [U];
+            InlineVec<T, L, CAP, SHIFT, TAG>, Vec<U>;
 
 
-            [T], InlineVec<U, BYTES, L, SHIFT, TAG>;
-            &[T], InlineVec<U, BYTES, L, SHIFT, TAG>;
-            &mut [T], InlineVec<U, BYTES, L, SHIFT, TAG>;
-            Vec<T>, InlineVec<U, BYTES, L, SHIFT, TAG>;
+            [T], InlineVec<U, L, CAP, SHIFT, TAG>;
+            &[T], InlineVec<U, L, CAP, SHIFT, TAG>;
+            &mut [T], InlineVec<U, L, CAP, SHIFT, TAG>;
+            Vec<T>, InlineVec<U, L, CAP, SHIFT, TAG>;
 
         }
     }
 
-    [T, U, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize]
+    [T, U, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize]
     where [T: PartialEq<U>, U: Clone]
     {
         PartialEq {
-            InlineVec<T, BYTES, L, SHIFT, TAG>, alloc::borrow::Cow<'_, [U]>;
+            InlineVec<T, L, CAP, SHIFT, TAG>, alloc::borrow::Cow<'_, [U]>;
         }
     }
 
@@ -1440,22 +1527,22 @@ macros::trait_impls! {
     where [T: PartialEq<U>, T: Clone]
     {
         PartialEq {
-            alloc::borrow::Cow<'_, [T]>, InlineVec<U, CAP, L, SHIFT, TAG>;
+            alloc::borrow::Cow<'_, [T]>, InlineVec<U, L, CAP, SHIFT, TAG>;
         }
     }
 
-    [T, U, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize, const N: usize]
+    [T, U, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize, const N: usize]
     where [T: PartialEq<U>]
     {
         PartialEq {
-            [T; N], InlineVec<U, BYTES, L, SHIFT, TAG>;
-            InlineVec<T, BYTES, L, SHIFT, TAG>, [U; N];
+            [T; N], InlineVec<U, L, CAP, SHIFT, TAG>;
+            InlineVec<T, L, CAP, SHIFT, TAG>, [U; N];
 
-            &[T; N], InlineVec<U, BYTES, L, SHIFT, TAG>;
-            InlineVec<T, BYTES, L, SHIFT, TAG>, &[U; N];
+            &[T; N], InlineVec<U, L, CAP, SHIFT, TAG>;
+            InlineVec<T, L, CAP, SHIFT, TAG>, &[U; N];
 
-            &mut [T; N], InlineVec<U, BYTES, L, SHIFT, TAG>;
-            InlineVec<T, BYTES, L, SHIFT, TAG>, &mut [U; N];
+            &mut [T; N], InlineVec<U, L, CAP, SHIFT, TAG>;
+            InlineVec<T, L, CAP, SHIFT, TAG>, &mut [U; N];
         }
     }
 
@@ -1463,42 +1550,42 @@ macros::trait_impls! {
     where [T: PartialOrd]
     {
         PartialOrd {
-            InlineVec<T, CAP1, L1, SHIFT1, TAG1>, InlineVec<T, CAP2, L2,  SHIFT2, TAG2>;
+            InlineVec<T, L1, CAP1, SHIFT1, TAG1>, InlineVec<T, L2, CAP2, SHIFT2, TAG2>;
         }
     }
 
     [T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize]
     {
         Vector {
-            InlineVec<T, CAP, L, SHIFT, TAG> : T;
+            InlineVec<T, L, CAP, SHIFT, TAG> : T;
         }
         MutVector {
-            InlineVec<T, CAP, L, SHIFT, TAG>;
+            InlineVec<T, L, CAP, SHIFT, TAG>;
         }
     }
 
     [T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize, const N: usize]
     {
         From {
-            [T; N] => InlineVec<T, CAP, L, SHIFT, TAG> = Self::from_array;
+            [T; N] => InlineVec<T, L, CAP, SHIFT, TAG> = Self::from_array;
         }
     }
 
     [T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize]
     {
         FromIterator {
-            T => InlineVec<T, CAP, L, SHIFT, TAG> = Self::from_iter;
+            T => InlineVec<T, L, CAP, SHIFT, TAG> = Self::from_iter;
         }
         From {
-            Box<[T]> => InlineVec<T, CAP, L, SHIFT, TAG> = Self::from_boxed_slice;
-            Vec<T> => InlineVec<T, CAP, L, SHIFT, TAG> = Self::from_mut_vector;
+            Box<[T]> => InlineVec<T, L, CAP, SHIFT, TAG> = Self::from_boxed_slice;
+            Vec<T> => InlineVec<T, L, CAP, SHIFT, TAG> = Self::from_mut_vector;
         }
     }
 
-    [T, P: ConstDefault, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize]
+    [T, P, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize]
     {
         From {
-            crate::vecs::thin::ThinVec<T, P> => InlineVec<T, CAP, L, SHIFT, TAG> = Self::from_mut_vector;
+            crate::vecs::thin::ThinVec<T, P> => InlineVec<T, L, CAP, SHIFT, TAG> = Self::from_mut_vector;
         }
     }
 
@@ -1506,9 +1593,9 @@ macros::trait_impls! {
     where [T: Clone]
     {
         From {
-            &[T] => InlineVec<T, CAP, L, SHIFT, TAG> = Self::from_slice_clone;
-            &mut [T] => InlineVec<T, CAP, L, SHIFT, TAG> = Self::from_slice_clone;
-            Cow<'_, [T]> => InlineVec<T, CAP, L, SHIFT, TAG> = Self::from_cow;
+            &[T] => InlineVec<T, L, CAP, SHIFT, TAG> = Self::from_slice_clone;
+            &mut [T] => InlineVec<T, L, CAP, SHIFT, TAG> = Self::from_slice_clone;
+            Cow<'_, [T]> => InlineVec<T, L, CAP, SHIFT, TAG> = Self::from_cow;
         }
     }
 
@@ -1516,14 +1603,14 @@ macros::trait_impls! {
     where [T: Clone]
     {
         From {
-            &[T; N] => InlineVec<T, CAP, L, SHIFT, TAG> = Self::from_slice_clone;
-            &mut [T; N] => InlineVec<T, CAP, L, SHIFT, TAG> = Self::from_slice_clone;
+            &[T; N] => InlineVec<T, L, CAP, SHIFT, TAG> = Self::from_slice_clone;
+            &mut [T; N] => InlineVec<T, L, CAP, SHIFT, TAG> = Self::from_slice_clone;
         }
     }
 }
 
 impl<T: Ord, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize> Ord
-    for InlineVec<T, CAP, L, SHIFT, TAG>
+    for InlineVec<T, L, CAP, SHIFT, TAG>
 {
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         self.as_slice().cmp(other.as_slice())
@@ -1580,7 +1667,7 @@ impl<T> fmt::Display for InsertError<T> {
 }
 
 /// Creates an inline vector in a syntax similar to array literal expressions.
-/// The inline vector's payload size in bytes is either explicitly specified or
+/// The inline vector's payload size is either explicitly specified or
 /// inferred by the compiler.
 ///
 /// They are multiple forms of this macros:
@@ -1589,7 +1676,7 @@ impl<T> fmt::Display for InsertError<T> {
 ///
 ///   ```
 ///   # use hipstr::inline_vec;
-///   let v1 = inline_vec![7 => 1_u8, 2, 3];
+///   let v1 = inline_vec2![7 => 1_u8, 2, 3];
 ///   assert_eq!(v1, [1, 2, 3]);
 ///   ```
 ///
@@ -1598,7 +1685,7 @@ impl<T> fmt::Display for InsertError<T> {
 ///   ```
 ///   # use hipstr::inline_vec;
 ///   # use hipstr::vecs::InlineVec;
-///   let v2: InlineVec<u8, 7> = inline_vec![1, 2, 3];
+///   let v2: InlineVec<u8, 7> = inline_vec2![1, 2, 3];
 ///   assert_eq!(v2, [1, 2, 3]);
 ///   ```
 ///
@@ -1607,7 +1694,7 @@ impl<T> fmt::Display for InsertError<T> {
 ///
 ///   ```
 ///   # use hipstr::inline_vec;
-///   let v3 = inline_vec![7 => 0; 7];
+///   let v3 = inline_vec2![7 => 0; 7];
 ///   assert_eq!(v3, [0, 0, 0, 0, 0, 0, 0]);
 ///   ```
 ///
@@ -1617,29 +1704,30 @@ impl<T> fmt::Display for InsertError<T> {
 ///   ```
 ///   # use hipstr::inline_vec;
 ///   # use hipstr::vecs::InlineVec;
-///   let v4: InlineVec<u8, 7> = inline_vec![0; 7];
+///   let v4: InlineVec<u8, 7> = inline_vec2![0; 7];
 ///   assert_eq!(v4, [0, 0, 0, 0, 0, 0, 0]);
 ///   ```
-#[macro_export]
-macro_rules! inline_vec {
+macro_rules! inline_vec2 {
     [$cap:expr => $($e:expr),* $(,)?] => {
         {
-            $crate::vecs::inline::InlineVec::<_, { $cap }>::from_array([$($e),*])
+            $crate::vecs::hip::inline::InlineVec::<_, u8, { $cap }>::from_array([$($e),*])
         }
     };
     [$($e:expr),* $(,)?] => {
         {
-            $crate::vecs::inline::InlineVec::from_array([$($e),*])
+            $crate::vecs::hip::inline::InlineVec::from_array([$($e),*])
         }
     };
     [$cap:expr => $e:expr; $n:expr] => {
         {
-            $crate::vecs::inline::InlineVec::<_,  { $cap }>::from_array([$e; $n])
+            $crate::vecs::hip::inline::InlineVec::<_, u8,  { $cap }>::from_array([$e; $n])
         }
     };
     [$e:expr; $n:expr] => {
         {
-            $crate::vecs::InlineVec::from_array([$e; $n])
+            $crate::vecs::hip::inline::InlineVec::from_array([$e; $n])
         }
     };
 }
+
+pub(crate) use inline_vec2;

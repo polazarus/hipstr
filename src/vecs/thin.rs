@@ -14,6 +14,10 @@ use rules_derive::rules_derive;
 
 use super::reprs::ThinRepr;
 use crate::common::drain::Drain;
+use crate::common::methods::{
+    pop_if_impl, pop_impl, remove_unchecked_impl, spare_capacity_mut_impl, swap_remove_impl,
+    truncate_impl,
+};
 use crate::common::{
     check_alloc, guarded_slice_clone, maybe_uninit_write_copy_of_slice, panic_display, traits,
     RangeError,
@@ -89,7 +93,7 @@ macro_rules! thin_vec {
     macros::ConstDefault(Self(ThinRepr::EMPTY)),
     macros::DelegateDebug(Self::as_slice, T: core::fmt::Debug),
     macros::DelegateHash(Self::as_slice, T: core::hash::Hash),
-    macros::AsRef([T], Self::as_slice),
+    macros::AsRef([T], Self::as_slice, Self::as_mut_slice),
     macros::Deref([T], Self::as_slice, Self::as_mut_slice),
 )]
 pub struct ThinVec<T, P: ConstDefault = Reserved>(pub(super) ThinRepr<T, P>);
@@ -430,21 +434,7 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     /// Note that this method has no effect on the allocated capacity of the
     /// vector.
     pub fn truncate(&mut self, len: usize) {
-        if len > self.len() {
-            return;
-        }
-        // get a raw pointer to the elements to drop
-        let ptr = &raw mut self.as_mut_slice()[len..];
-
-        // SAFETY:
-        // * `ptr` is a pointer to the elements to drop
-        // * `len` of the vector is shrunk before calling `drop_in_place`
-        //    so that no value can be dropped twice if the call to
-        //    `drop_in_place` panics
-        unsafe {
-            self.set_len(len);
-            ptr::drop_in_place(ptr);
-        }
+        truncate_impl!(self, len);
     }
 
     /// Removes the last element from the vector and returns it, or `None` if it
@@ -462,16 +452,27 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     /// assert_eq!(vec.pop(), None);
     /// ```
     pub fn pop(&mut self) -> Option<T> {
-        let (header_mut, data_mut) = self.header_and_data_mut()?;
-        if header_mut.len == 0 {
-            return None;
-        }
-        // SAFETY: the length is checked above
-        unsafe {
-            let value = data_mut.add(header_mut.len - 1).read();
-            header_mut.len -= 1;
-            Some(value)
-        }
+        pop_impl!(self)
+    }
+
+    /// Removes and returns the last element from a vector if the predicate
+    /// returns `true`, or [`None`] if the predicate returns `false` or if the
+    /// vector is empty.
+    ///
+    /// The predicate is not called if the vector is empty.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::ThinVec;
+    /// let mut vec = ThinVec::new();
+    /// vec.push(1);
+    /// vec.push(2);
+    /// assert_eq!(vec.pop_if(|x| *x % 2 == 0), Some(2));
+    /// assert_eq!(vec.pop_if(|x| *x % 2 == 0), None);
+    /// ```
+    pub fn pop_if(&mut self, func: impl FnOnce(&mut T) -> bool) -> Option<T> {
+        pop_if_impl!(self, func)
     }
 
     /// Removes and returns the element at position `index` within the vector,
@@ -506,13 +507,17 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
         assert!(index < len, "index out of bounds");
 
         // SAFETY: index is checked above
-        unsafe {
-            let ptr = self.ptr().add(index);
-            let value = ptr.read();
-            ptr.copy_from(ptr.add(1), len - index - 1);
-            self.set_len(len - 1);
-            value
-        }
+        unsafe { self.remove_unchecked(index) }
+    }
+
+    /// Removes and returns the element at position `index` within the vector,
+    /// shifting all elements after it to the left, without doing any bounds checking.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that `index` is less than the current length of the vector.
+    pub unsafe fn remove_unchecked(&mut self, index: usize) -> T {
+        remove_unchecked_impl!(self, index)
     }
 
     /// Removes an element from the vector and returns it.
@@ -542,23 +547,7 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     /// ```
     #[track_caller]
     pub fn swap_remove(&mut self, index: usize) -> T {
-        let len = self.len();
-        assert!(index < len, "index out of bounds");
-
-        // SAFETY: index is checked above
-        unsafe {
-            let last = self.ptr().add(len - 1);
-            let current = self.ptr().add(index);
-
-            // read the value
-            let value = current.read();
-
-            // NOTE replace even if index == len - 1
-            current.copy_from(last, 1);
-            self.set_len(len - 1);
-
-            value
-        }
+        swap_remove_impl!(self, index)
     }
 
     /// Clears the vector, removing all values.
@@ -576,17 +565,7 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     /// ```
     #[inline]
     pub fn clear(&mut self) {
-        let slice: *mut [T] = self.as_mut_slice();
-
-        // SAFETY:
-        // - `slice` is a valid slice
-        // - the slice cannot not accessed after the call to `drop_in_place`
-        //   even if an element's drop panics because the length is set to 0
-        //   before the call to `drop_in_place`
-        unsafe {
-            self.set_len(0);
-            ptr::drop_in_place(slice);
-        }
+        self.truncate(0);
     }
 
     /// Returns the remaining spare capacity of the vector as a slice of
@@ -619,14 +598,7 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     /// assert_eq!(&v, &[0, 1, 2]);
     /// ```
     pub const fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<T>] {
-        let len = self.len();
-        let cap = self.capacity();
-
-        // SAFETY: the slice is within the bounds of the buffer
-        unsafe {
-            let ptr = self.ptr().add(len).cast().as_ptr();
-            slice::from_raw_parts_mut(ptr, cap - len)
-        }
+        spare_capacity_mut_impl!(self)
     }
 
     /// Creates a draining iterator that removes the specified range in the vector
@@ -1485,10 +1457,10 @@ macros::trait_impls! {
             [T; N] => ThinVec<T, P> = ThinVec::from_array;
         }
     }
-    [T, P: ConstDefault, const CAP: usize, const SHIFT: u8, const TAG: u8]
+    [T, P: ConstDefault, L: common::non_zero::NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize]
     {
         From {
-            super::inline::InlineVec<T, CAP, SHIFT, TAG> => ThinVec<T, P> = Self::from_mut_vector;
+            super::inline::InlineVec<T, BYTES, L, SHIFT, TAG> => ThinVec<T, P> = Self::from_mut_vector;
         }
     }
 

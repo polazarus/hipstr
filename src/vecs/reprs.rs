@@ -9,6 +9,7 @@ pub const MIN_ALIGN: usize = 1 << TAG_SIZE; // minimal alignment is 4 bytes
 pub const MASK: usize = (1 << TAG_SIZE) - 1; // 0b11
 pub const THIN: usize = 2; // 0b10
 pub const FAT: usize = 3; // 0b11
+pub const INLINE: usize = 1; // 0b01
 
 #[derive(Clone, Copy, Debug)]
 #[repr(usize)]

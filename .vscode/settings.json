@@ -24,6 +24,7 @@
     "powerset",
     "powi",
     "repr",
+    "reprs",
     "rmatch",
     "rmatches",
     "rsplit",
@@ -37,6 +38,7 @@
     "taiki-e",
     "uninit",
     "uppercased",
+    "vecs",
     "Zmiri"
   ],
   "rust-analyzer.check.features": "all",

@@ -43,7 +43,8 @@ pub(crate) const INLINE_CAPACITY: usize = size_of::<Borrowed>() - 1;
 const WORD_SIZE_M1: usize = size_of::<usize>() - 1;
 
 /// Alias type for `Inline` with set inline capacity
-pub type Inline = InlineVec<u8, INLINE_CAPACITY, TAG_BITS, TAG_INLINE>;
+pub type Inline =
+    InlineVec<u8, INLINE_CAPACITY, u8, { TAG_BITS as usize }, { TAG_INLINE as usize }>;
 
 /// Smart bytes, i.e. cheaply clonable and sliceable byte string.
 ///

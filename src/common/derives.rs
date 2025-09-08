@@ -1,0 +1,301 @@
+macro_rules! ConstDefault {
+    (
+        { $value:expr }
+        $_attr:tt
+        $_vis:vis $_kind:ident $_name:ident
+        (($ty:ty) ($($generics_bindings:tt)*) where ($($generics_where:tt)*))
+        $_body:tt
+  ) => {
+    impl $($generics_bindings)* ::const_default::ConstDefault for $ty where $($generics_where)* {
+        const DEFAULT: Self = $value;
+    }
+    impl $($generics_bindings)* ::core::default::Default for $ty where $($generics_where)* {
+        fn default() -> Self {
+            <Self as ::const_default::ConstDefault>::DEFAULT
+        }
+    }
+  };
+}
+
+macro_rules! DelegateDebug {
+    (
+        { $delegate:path $(, $($bound:tt)+ )? }
+        ($( ($($_attr:tt)*) )*)
+        $_vis:vis $_kind:ident $_name:ident
+        (($ty:ty) ($($generics_bindings:tt)*) where ($($generics_where:tt)*))
+        $_body:tt
+    ) => {
+        impl $($generics_bindings)* ::core::fmt::Debug for $ty where $( $($bound)+ ,)? $($generics_where)* {
+            #[inline]
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                $delegate(self).fmt(f)
+            }
+        }
+    };
+}
+
+macro_rules! DelegateHash {
+    (
+        { $delegate:path $(, $($bound:tt)+ )? }
+        ($( ($($_attr:tt)*) )*)
+        $_vis:vis $_kind:ident $_name:ident
+        (($ty:ty) ($($generics_bindings:tt)*) where ($($generics_where:tt)*))
+        $_body:tt
+    ) => {
+        impl $($generics_bindings)* ::core::hash::Hash for $ty where $( $($bound)+ ,)? $($generics_where)* {
+            #[inline]
+            fn hash<H: ::core::hash::Hasher>(&self, state: &mut H) {
+                $delegate(self).hash(state)
+            }
+        }
+    };
+}
+
+macro_rules! AsRef {
+    (
+        { $as_ty:ty, $delegate:path }
+        ($( ($($_attr:tt)*) )*)
+        $_vis:vis $_kind:ident $_name:ident
+        (($ty:ty) ($($generics_bindings:tt)*) where ($($generics_where:tt)*))
+        $_body:tt
+    ) => {
+        impl $($generics_bindings)* ::core::convert::AsRef<$as_ty> for $ty where $($generics_where)* {
+            #[inline]
+            fn as_ref(&self) -> &$as_ty {
+                $delegate(self)
+            }
+        }
+    };
+    (
+        { $as_ty:ty, $delegate:path, $mut_delegate:path }
+        $($rest:tt)*
+    ) => {
+        $crate::common::derives::AsRef! {
+            { $as_ty, $delegate }
+            $($rest)*
+        }
+        $crate::common::derives::AsMut! {
+            { $as_ty, $mut_delegate }
+            $($rest)*
+        }
+    };
+}
+
+macro_rules! AsMut {
+    (
+        { $as_ty:ty, $delegate:path }
+        ($( ($($_attr:tt)*) )*)
+        $_vis:vis $_kind:ident $_name:ident
+        (($ty:ty) ($($generics_bindings:tt)*) where ($($generics_where:tt)*))
+        $_body:tt
+    ) => {
+        impl $($generics_bindings)* ::core::convert::AsMut<$as_ty> for $ty where $($generics_where)* {
+            #[inline]
+            fn as_mut(&mut self) -> &mut $as_ty {
+                $delegate(self)
+            }
+        }
+    };
+}
+
+macro_rules! Deref {
+    (
+        { $target:ty, $delegate:path }
+        ($( ($($_attr:tt)*) )*)
+        $_vis:vis $_kind:ident $_name:ident
+        (($ty:ty) ($($generics_bindings:tt)*) where ($($generics_where:tt)*))
+        $_body:tt
+    ) => {
+        impl $($generics_bindings)* ::core::ops::Deref for $ty where $($generics_where)* {
+            type Target = $target;
+
+            #[inline]
+            fn deref(&self) -> &Self::Target {
+                $delegate(self)
+            }
+        }
+    };
+    (
+        { $target:ty, $delegate:path, $mut_delegate:path }
+        $($rest:tt)*
+    ) => {
+        $crate::common::derives::Deref! {
+            { $target, $delegate }
+            $($rest)*
+        }
+
+        $crate::common::derives::DerefMut! {
+            { $target, $mut_delegate }
+            $($rest)*
+        }
+    };
+}
+
+macro_rules! DerefMut {
+    (
+        { $target:ty, $delegate:path }
+        ($( ($($_attr:tt)*) )*)
+        $_vis:vis $_kind:ident $_name:ident
+        (($ty:ty) ($($generics_bindings:tt)*) where ($($generics_where:tt)*))
+        $_body:tt
+    ) => {
+        impl $($generics_bindings)* ::core::ops::DerefMut for $ty where $($generics_where)* {
+            #[inline]
+            fn deref_mut(&mut self) -> &mut Self::Target {
+                $delegate(self)
+            }
+        }
+    };
+}
+
+macro_rules! Default {
+    (
+        { $cons:path }
+        $attrs:tt $vis:vis $kind:ident $name:ident
+        (($ty:ty) ($($generics_bindings:tt)*)
+        where ($($generics_where:tt)*))
+        $body:tt
+    ) => {
+        impl $($generics_bindings)* ::core::default::Default for $ty where $($generics_where)* {
+            #[inline]
+            fn default() -> Self {
+                $cons()
+            }
+        }
+    };
+    (
+        $($parameters:tt)*
+    ) => {
+        $crate::common::derives::Default! { { Self::new } $($parameters)* }
+    };
+}
+
+macro_rules! From {
+    (
+        { bindings = ( $($generics_bindings:tt)* ) $( where ( $($generics_where:tt)* ) )?, source = $source:ty, cons = $cons:path }
+        $_attrs:tt $_vis:vis $_kind:ident $_name:ident
+        (
+            ($ty:ty)
+            ( $($_generics_bindings:tt)* )
+            where ( $($_generics_where:tt)* )
+        )
+        $body:tt
+    ) => {
+        impl $($generics_bindings)*
+            ::core::convert::From<$source>
+        for $ty
+        $(where
+            $($generics_where)*
+        )?
+        {
+            #[inline]
+            fn from(other: $source) -> Self {
+                $cons(other)
+            }
+        }
+    };
+
+    (
+        { source = $source:ty, cons = $cons:path }
+        $attrs:tt $vis:vis $kind:ident $name:ident
+        (
+            ( $ty:ty )
+            ( $($generics_bindings:tt)* )
+            where ( $($generics_where:tt)* )
+        )
+        $body:tt
+    ) => {
+        $crate::common::derives::From! {
+            { bindings = ( $($generics_bindings)* ) where ( $($generics_where)* ), source = $source, cons = $cons }
+            $attrs $vis $kind $name
+            (
+                ($ty)
+                ( $($generics_bindings)* )
+                where ( $($generics_where)* )
+            )
+            $body
+        }
+    };
+}
+
+macro_rules! Into {
+    (
+        { bindings = ( $($generics_bindings:tt)* ) $( where ( $($generics_where:tt)* ) )?, target = $target:ty, method = $method:ident }
+        $_attrs:tt $_vis:vis $_kind:ident $_name:ident
+        (
+            ($ty:ty)
+            ( $($_generics_bindings:tt)* )
+            where ( $($_generics_where:tt)* )
+        )
+        $body:tt
+    ) => {
+        impl $($generics_bindings)*
+            ::core::convert::From<$ty>
+        for $target
+        $(where
+            $($generics_where)*
+        )?
+        {
+            #[inline]
+            fn from(other: $ty) -> Self {
+                other.$method()
+            }
+        }
+    };
+
+    (
+        { target = $target:ty, method = $method:ident }
+        $attrs:tt $vis:vis $kind:ident $name:ident
+        (
+            ( $ty:ty )
+            ( $($generics_bindings:tt)* )
+            where ( $($generics_where:tt)* )
+        )
+        $body:tt
+    ) => {
+        $crate::common::derives::Into! {
+            { bindings = ( $($generics_bindings)* ) where ( $($generics_where)* ), target = $target, method = $method }
+            $attrs $vis $kind $name
+            (
+                ($ty)
+                ( $($generics_bindings)* )
+                where ( $($generics_where)* )
+            )
+            $body
+        }
+    };
+}
+
+macro_rules! Vector {
+    (
+        { item = $item:ty }
+        $_attrs:tt $_vis:vis $_kind:ident $_name:ident
+        (($ty:ty) ($($generics_bindings:tt)*)
+        where ($($generics_where:tt)*))
+        $body:tt
+    ) => {
+        impl $($generics_bindings)* $crate::common::traits::sealed::Sealed for $ty where $($generics_where)* {}
+        impl $($generics_bindings)* $crate::common::traits::Vector for $ty where $($generics_where)* {
+            type Item = $item;
+
+            #[inline]
+            fn len(&self) -> usize {
+                self.len()
+            }
+            #[inline]
+            fn capacity(&self) -> usize {
+                self.capacity()
+            }
+            #[inline]
+            fn as_ptr(&self) -> *const Self::Item {
+                self.as_ptr()
+            }
+        }
+    };
+}
+
+#[allow(clippy::redundant_pub_crate)]
+pub(crate) use {
+    AsMut, AsRef, ConstDefault, Default, DelegateDebug, DelegateHash, Deref, DerefMut, From, Into,
+    Vector,
+};
