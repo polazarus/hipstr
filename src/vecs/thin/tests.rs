@@ -768,7 +768,7 @@ fn deref_mut() {
 #[test]
 fn prefix() {
     let v = thin_vec![1, 2, 3];
-    assert_eq!(v.prefix(), Some(&Reserved::Reserved));
+    assert_eq!(v.prefix(), Some(&Reserved::DEFAULT));
 
     let v: GenericThinVec<_, ()> = GenericThinVec::from([1, 2, 3]);
     assert_eq!(v.prefix(), Some(&()));

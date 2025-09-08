@@ -19,8 +19,8 @@ use crate::common::methods::{
     truncate_impl,
 };
 use crate::common::{
-    check_alloc, guarded_slice_clone, maybe_uninit_write_copy_of_slice, panic_display, traits,
-    RangeError,
+    check_alloc, derives, guarded_slice_clone, maybe_uninit_write_copy_of_slice, panic_display,
+    traits, RangeError, ZeroUsize,
 };
 use crate::vecs::reprs::ThinHeader;
 use crate::{common, macros};
@@ -28,12 +28,7 @@ use crate::{common, macros};
 #[cfg(test)]
 mod tests;
 
-#[repr(usize)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[rules_derive(macros::ConstDefault(Self::Reserved))]
-pub enum Reserved {
-    Reserved = 0,
-}
+pub type Reserved = ZeroUsize;
 
 /// A macro to create a [`ThinVec`] with the given elements.
 ///
@@ -90,11 +85,11 @@ macro_rules! thin_vec {
 /// [`Vec`]: alloc::vec::Vec
 #[repr(transparent)]
 #[rules_derive(
-    macros::ConstDefault(Self(ThinRepr::EMPTY)),
-    macros::DelegateDebug(Self::as_slice, T: core::fmt::Debug),
-    macros::DelegateHash(Self::as_slice, T: core::hash::Hash),
-    macros::AsRef([T], Self::as_slice, Self::as_mut_slice),
-    macros::Deref([T], Self::as_slice, Self::as_mut_slice),
+    derives::ConstDefault(Self(ThinRepr::EMPTY)),
+    derives::DelegateDebug(Self::as_slice, T: core::fmt::Debug),
+    derives::DelegateHash(Self::as_slice, T: core::hash::Hash),
+    derives::AsRef([T], Self::as_slice, Self::as_mut_slice),
+    derives::Deref([T], Self::as_slice, Self::as_mut_slice),
 )]
 pub struct ThinVec<T, P: ConstDefault = Reserved>(pub(super) ThinRepr<T, P>);
 

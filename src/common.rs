@@ -8,6 +8,8 @@ use core::ops::{Bound, Deref, DerefMut, Range, RangeBounds};
 use core::ptr::NonNull;
 use core::{error, fmt, ptr};
 
+use rules_derive::rules_derive;
+
 pub mod boo;
 pub(crate) mod derives;
 pub mod drain;
@@ -16,6 +18,14 @@ pub(crate) mod non_zero;
 #[cfg(test)]
 mod tests;
 pub mod traits;
+
+/// A `usize`-sized zero.
+#[repr(usize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[rules_derive(derives::ConstDefault(Self::Zero))]
+pub enum ZeroUsize {
+    Zero = 0,
+}
 
 /// Panics with the provided displayable error message.
 ///

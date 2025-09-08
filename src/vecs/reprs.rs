@@ -4,6 +4,8 @@ use core::marker::PhantomData;
 use core::mem::{self, offset_of, MaybeUninit};
 use core::ptr::{self, NonNull};
 
+use crate::common::ZeroUsize;
+
 pub const TAG_SIZE: usize = 2; // 2 bits
 pub const MIN_ALIGN: usize = 1 << TAG_SIZE; // minimal alignment is 4 bytes
 pub const MASK: usize = (1 << TAG_SIZE) - 1; // 0b11
@@ -11,18 +13,14 @@ pub const THIN: usize = 2; // 0b10
 pub const FAT: usize = 3; // 0b11
 pub const INLINE: usize = 1; // 0b01
 
-#[derive(Clone, Copy, Debug)]
-#[repr(usize)]
-pub(super) enum Null {
-    Null = 0,
-}
+pub(super) type Null = ZeroUsize;
 
 /// A thin vector header with prefix.
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub(super) struct ThinHeader<T, P> {
     pub(super) prefix: P,
-    pub(super) _ptr: Null,
+    pub(super) _ptr: ZeroUsize,
     pub(super) cap: usize,
     pub(super) len: usize,
     pub(super) _phantom: PhantomData<T>,
