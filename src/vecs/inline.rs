@@ -10,8 +10,7 @@ use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::fmt::{self};
-use core::iter::FusedIterator;
-use core::mem::{offset_of, ManuallyDrop, MaybeUninit};
+use core::mem::{offset_of, MaybeUninit};
 use core::ops::{Range, RangeBounds};
 use core::ptr::NonNull;
 use core::{error, slice};
@@ -19,8 +18,12 @@ use core::{error, slice};
 use const_default::ConstDefault;
 use rules_derive::rules_derive;
 
-use crate::common::derives::*;
+use crate::common::derives::{
+    AsRef, ConstDefault, DelegateDebug, DelegateHash, Deref, From, FromIterator, IntoIterator,
+    MutVector,
+};
 use crate::common::drain::Drain;
+use crate::common::into_iter::IntoIter;
 use crate::common::methods::{
     extend_from_array_impl, extend_from_slice_impl, pop_if_impl, pop_impl, push_within_capacity,
     remove_unchecked_impl, resize_with_impl, slice_swap_unchecked, spare_capacity_mut_impl,
@@ -116,6 +119,9 @@ pub const BYTES_DEFAULT: usize = size_of::<*mut ()>() * 3 - 1;
     DelegateHash(Self::as_slice, T: core::hash::Hash),
     AsRef([T], Self::as_slice, Self::as_mut_slice),
     Deref([T], Self::as_slice, Self::as_mut_slice),
+    MutVector(T),
+    FromIterator(T, Self::from_iter),
+    IntoIterator(T, IntoIter<Self>, IntoIter::new)
 )]
 pub struct InlineVec<
     T,
@@ -207,6 +213,7 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     ///
     /// Panics if the specified capacity exceeds the inline vector's capacity.
     #[inline]
+    #[must_use]
     pub const fn with_capacity(cap: usize) -> Self {
         assert!(
             cap <= Self::CAP,
@@ -247,8 +254,9 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
 
     /// Creates a new inline vector from an array by moving the element.
     ///
-    /// The array's length `N` is checked at compile time. It must to be less
-    /// than or equal to the `CAP` generic const parameter.
+    /// # Panics
+    ///
+    /// Panics if the array's length exceeds the capacity of the inline vector.
     ///
     /// # Examples
     ///
@@ -932,13 +940,6 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
         Drain::new(self, range).unwrap_or_else(panic_display)
     }
 
-    const fn data_mut(&mut self) -> &mut [MaybeUninit<T>] {
-        unsafe {
-            let ptr = self.as_mut_ptr().cast();
-            slice::from_raw_parts_mut(ptr, Self::CAP)
-        }
-    }
-
     /// Swaps the elements at the specified indices.
     ///
     /// # Panics
@@ -1316,97 +1317,6 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize> Extend<
     }
 }
 
-impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize> IntoIterator
-    for InlineVec<T, BYTES, L, SHIFT, TAG>
-{
-    type Item = T;
-    type IntoIter = IntoIter<T, BYTES, L, SHIFT, TAG>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        let end = self.len();
-        let vec = ManuallyDrop::new(self);
-        IntoIter { start: 0, end, vec }
-    }
-}
-
-/// An owning iterator for `InlineVec`.
-///
-/// This struct is returned by the [`into_iter`] method and allows consuming
-/// the `InlineVec` while iterating over its elements.
-///
-/// [`into_iter`]: InlineVec::into_iter
-pub struct IntoIter<
-    T,
-    const BYTES: usize,
-    L: NZ = u8,
-    const SHIFT: usize = SHIFT_DEFAULT,
-    const TAG: usize = TAG_DEFAULT,
-> {
-    start: usize,
-    end: usize,
-    vec: ManuallyDrop<InlineVec<T, BYTES, L, SHIFT, TAG>>,
-}
-
-impl<T, const BYTES: usize, L: NZ, const SHIFT: usize, const TAG: usize> Iterator
-    for IntoIter<T, BYTES, L, SHIFT, TAG>
-{
-    type Item = T;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.start < self.end {
-            let value = unsafe { self.vec.data_mut()[self.start].assume_init_read() };
-            self.start += 1;
-            Some(value)
-        } else {
-            None
-        }
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let len = self.end - self.start;
-        (len, Some(len))
-    }
-}
-
-impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize> ExactSizeIterator
-    for IntoIter<T, BYTES, L, SHIFT, TAG>
-{
-    fn len(&self) -> usize {
-        self.end - self.start
-    }
-}
-
-impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize> Drop
-    for IntoIter<T, BYTES, L, SHIFT, TAG>
-{
-    fn drop(&mut self) {
-        if core::mem::needs_drop::<T>() {
-            for i in self.start..self.end {
-                unsafe { self.vec.data_mut()[i].assume_init_drop() };
-            }
-        }
-    }
-}
-
-impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize> DoubleEndedIterator
-    for IntoIter<T, BYTES, L, SHIFT, TAG>
-{
-    fn next_back(&mut self) -> Option<Self::Item> {
-        if self.start < self.end {
-            self.end -= 1;
-            let value = unsafe { self.vec.data_mut()[self.end].assume_init_read() };
-            Some(value)
-        } else {
-            None
-        }
-    }
-}
-
-impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize> FusedIterator
-    for IntoIter<T, BYTES, L, SHIFT, TAG>
-{
-}
-
 impl<T: Eq, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize> Eq
     for InlineVec<T, BYTES, L, SHIFT, TAG>
 {
@@ -1478,16 +1388,6 @@ macros::trait_impls! {
         }
     }
 
-    [T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize]
-    {
-        Vector {
-            InlineVec<T, CAP, L, SHIFT, TAG> : T;
-        }
-        MutVector {
-            InlineVec<T, CAP, L, SHIFT, TAG>;
-        }
-    }
-
     [T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize, const N: usize]
     {
         From {
@@ -1497,9 +1397,6 @@ macros::trait_impls! {
 
     [T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize]
     {
-        FromIterator {
-            T => InlineVec<T, CAP, L, SHIFT, TAG> = Self::from_iter;
-        }
         From {
             Box<[T]> => InlineVec<T, CAP, L, SHIFT, TAG> = Self::from_boxed_slice;
             Vec<T> => InlineVec<T, CAP, L, SHIFT, TAG> = Self::from_mut_vector;

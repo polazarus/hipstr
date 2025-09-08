@@ -338,8 +338,45 @@ macro_rules! MutVector {
     };
 }
 
+macro_rules! FromIterator {
+    (
+        { $item:ty, $cons:path }
+        $_attrs:tt $_vis:vis $_kind:ident $_name:ident
+        (($ty:ty) ($($generics_bindings:tt)*)
+        where ($($generics_where:tt)*))
+        $body:tt
+    ) => {
+        impl $($generics_bindings)* ::core::iter::FromIterator<$item> for $ty where $($generics_where)* {
+            #[inline]
+            fn from_iter<I: ::core::iter::IntoIterator<Item = $item>>(iterable: I) -> Self {
+                $cons(iterable)
+            }
+        }
+    };
+}
+
+macro_rules! IntoIterator {
+    (
+        { $item:ty, $into_iter:path, $cons:path }
+        $_attrs:tt $_vis:vis $_kind:ident $_name:ident
+        (($ty:ty) ($($generics_bindings:tt)*)
+        where ($($generics_where:tt)*))
+        $body:tt
+    ) => {
+        impl $($generics_bindings)* ::core::iter::IntoIterator for $ty where $($generics_where)* {
+            type Item = $item;
+            type IntoIter = $into_iter;
+
+            #[inline]
+            fn into_iter(self) -> Self::IntoIter {
+                $cons(self)
+            }
+        }
+    };
+}
+
 #[allow(clippy::redundant_pub_crate)]
 pub(crate) use {
-    AsMut, AsRef, ConstDefault, Default, DelegateDebug, DelegateHash, Deref, DerefMut, From, Into,
-    MutVector, Vector,
+    AsMut, AsRef, ConstDefault, Default, DelegateDebug, DelegateHash, Deref, DerefMut, From,
+    FromIterator, Into, IntoIterator, MutVector, Vector,
 };

@@ -4,7 +4,7 @@ use alloc::alloc::handle_alloc_error;
 use alloc::vec::Vec;
 use core::alloc::Layout;
 use core::mem::{self, ManuallyDrop, MaybeUninit};
-use core::ops::{Bound, Deref, DerefMut, Range, RangeBounds};
+use core::ops::{Bound, Range, RangeBounds};
 use core::ptr::NonNull;
 use core::{error, fmt, ptr};
 
@@ -13,6 +13,7 @@ use rules_derive::rules_derive;
 pub mod boo;
 pub(crate) mod derives;
 pub mod drain;
+pub mod into_iter;
 pub(crate) mod methods;
 pub(crate) mod non_zero;
 #[cfg(test)]

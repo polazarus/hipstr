@@ -1,9 +1,20 @@
-/// `resize_with` impl, requires `len`, `set_len`, and `as_mut_ptr`
+/// `resize_with` impl, requires `len`, `set_len` and `as_mut_ptr`
 macro_rules! resize_with_impl {
     ($self:ident, $new_len:expr, $f:expr) => {{
         let old_len = $self.len();
         let new_len = $new_len;
-        if new_len < old_len {
+        if old_len < new_len {
+            for i in old_len..new_len {
+                // SAFETY: the length is guaranteed to be less than capacity
+                unsafe {
+                    let ptr = $self.as_mut_ptr().add(i);
+                    ptr.write($f());
+                    $self.set_len(i + 1);
+                }
+            }
+        } else if old_len > new_len {
+            // old_len > new_len
+
             // SAFETY: strict decrease
             unsafe {
                 $self.set_len(new_len);
@@ -12,15 +23,6 @@ macro_rules! resize_with_impl {
             // SAFETY: type invariant
             unsafe {
                 $crate::common::drop_raw_slice($self.as_mut_ptr().add(new_len), old_len - new_len);
-            }
-        } else if new_len > old_len {
-            for i in old_len..new_len {
-                // SAFETY: the length is guaranteed to be less than capacity
-                unsafe {
-                    let ptr = $self.as_mut_ptr().add(i);
-                    ptr.write($f());
-                    $self.set_len(i + 1);
-                }
             }
         }
     }};

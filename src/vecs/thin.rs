@@ -13,14 +13,19 @@ use const_default::ConstDefault;
 use rules_derive::rules_derive;
 
 use super::reprs::ThinRepr;
+use crate::common::derives::{
+    AsRef, ConstDefault, DelegateDebug, DelegateHash, Deref, From, FromIterator, IntoIterator,
+    MutVector,
+};
 use crate::common::drain::Drain;
+use crate::common::into_iter::IntoIter;
 use crate::common::methods::{
     pop_if_impl, pop_impl, remove_unchecked_impl, resize_with_impl, spare_capacity_mut_impl,
     swap_remove_impl, truncate_impl,
 };
 use crate::common::{
-    check_alloc, derives, guarded_slice_clone, maybe_uninit_write_copy_of_slice, panic_display,
-    traits, RangeError, ZeroUsize,
+    check_alloc, guarded_slice_clone, maybe_uninit_write_copy_of_slice, panic_display, traits,
+    RangeError, ZeroUsize,
 };
 use crate::vecs::reprs::ThinHeader;
 use crate::{common, macros};
@@ -85,12 +90,14 @@ macro_rules! thin_vec {
 /// [`Vec`]: alloc::vec::Vec
 #[repr(transparent)]
 #[rules_derive(
-    derives::MutVector(T),
-    derives::ConstDefault(Self(ThinRepr::EMPTY)),
-    derives::DelegateDebug(Self::as_slice, T: core::fmt::Debug),
-    derives::DelegateHash(Self::as_slice, T: core::hash::Hash),
-    derives::AsRef([T], Self::as_slice, Self::as_mut_slice),
-    derives::Deref([T], Self::as_slice, Self::as_mut_slice),
+    MutVector(T),
+    ConstDefault(Self(ThinRepr::EMPTY)),
+    DelegateDebug(Self::as_slice, T: core::fmt::Debug),
+    DelegateHash(Self::as_slice, T: core::hash::Hash),
+    AsRef([T], Self::as_slice, Self::as_mut_slice),
+    Deref([T], Self::as_slice, Self::as_mut_slice),
+    IntoIterator(T, IntoIter<Self>, IntoIter::new),
+    FromIterator(T, Self::from_iter),
 )]
 pub struct ThinVec<T, P: ConstDefault = Reserved>(pub(super) ThinRepr<T, P>);
 
