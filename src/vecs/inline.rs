@@ -23,8 +23,8 @@ use crate::common::derives::*;
 use crate::common::drain::Drain;
 use crate::common::methods::{
     extend_from_array_impl, extend_from_slice_impl, pop_if_impl, pop_impl, push_within_capacity,
-    remove_unchecked_impl, slice_swap_unchecked, spare_capacity_mut_impl, swap_remove_impl,
-    truncate_impl,
+    remove_unchecked_impl, resize_with_impl, slice_swap_unchecked, spare_capacity_mut_impl,
+    swap_remove_impl, truncate_impl,
 };
 use crate::common::non_zero::{self, NZ};
 use crate::common::{drop_raw_slice, panic_display, traits};
@@ -365,7 +365,7 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     /// assert_eq!(inline.capacity(), 7);
     /// ```
     #[inline]
-    #[expect(clippy::unused_self, reason = "Vec-like behavior")]
+    #[allow(clippy::unused_self, reason = "Vec-like behavior")]
     pub const fn capacity(&self) -> usize {
         Self::CAP
     }
@@ -866,18 +866,8 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     where
         F: FnMut() -> T,
     {
-        let len = self.len();
-        if new_len > len {
-            assert!(new_len <= Self::CAP, "new length exceeds capacity");
-            for i in len..new_len {
-                self.data_mut()[i].write(f());
-                unsafe {
-                    self.set_len(i + 1);
-                }
-            }
-        } else {
-            self.truncate(new_len);
-        }
+        assert!(new_len <= Self::CAP, "new length exceeds capacity");
+        resize_with_impl!(self, new_len, f);
     }
 
     /// Appends an array of elements to the inline vector, by moving the
@@ -949,10 +939,31 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
         }
     }
 
+    /// Swaps the elements at the specified indices.
+    ///
+    /// # Panics
+    ///
+    /// Panics if either `a` or `b` are out of bounds.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::inline_vec;
+    /// let mut inline = inline_vec![7 => 1_u8, 2, 3];
+    /// inline.swap(0, 2);
+    /// assert_eq!(inline.as_slice(), &[3, 2, 1]);
+    /// ```
     pub const fn swap(&mut self, a: usize, b: usize) {
         self.as_mut_slice().swap(a, b);
     }
 
+    /// Swaps the elements at the specified indices without doing any bounds
+    /// checking.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that both `a` and `b` are less than the current
+    /// length of the inline vector.
     pub const unsafe fn swap_unchecked(&mut self, a: usize, b: usize) {
         // SAFETY: precondition
         unsafe {

@@ -268,7 +268,7 @@ macro_rules! Into {
 
 macro_rules! Vector {
     (
-        { item = $item:ty }
+        { $item:ty }
         $_attrs:tt $_vis:vis $_kind:ident $_name:ident
         (($ty:ty) ($($generics_bindings:tt)*)
         where ($($generics_where:tt)*))
@@ -277,7 +277,6 @@ macro_rules! Vector {
         impl $($generics_bindings)* $crate::common::traits::sealed::Sealed for $ty where $($generics_where)* {}
         impl $($generics_bindings)* $crate::common::traits::Vector for $ty where $($generics_where)* {
             type Item = $item;
-
             #[inline]
             fn len(&self) -> usize {
                 self.len()
@@ -290,6 +289,51 @@ macro_rules! Vector {
             fn as_ptr(&self) -> *const Self::Item {
                 self.as_ptr()
             }
+            #[inline]
+            fn as_slice(&self) -> &[Self::Item] {
+                self.as_slice()
+            }
+        }
+    };
+}
+
+macro_rules! MutVector {
+    (
+        { $item:ty }
+        $($rest:tt)*
+    ) => {
+        $crate::common::derives::MutVector! {
+            $($rest)*
+        }
+        $crate::common::derives::Vector! {
+            { $item }
+            $($rest)*
+        }
+    };
+    (
+        $_attrs:tt $_vis:vis $_kind:ident $_name:ident
+        (($ty:ty) ($($generics_bindings:tt)*)
+        where ($($generics_where:tt)*))
+        $body:tt
+    ) => {
+        impl $($generics_bindings)* $crate::common::traits::MutVector for $ty where $($generics_where)* {
+            #[inline]
+            unsafe fn set_len(&mut self, len: usize) {
+                // SAFETY: same safety requirements
+                unsafe { self.set_len(len) }
+            }
+            #[inline]
+            fn as_mut_ptr(&mut self) -> *mut Self::Item {
+                self.as_mut_ptr()
+            }
+            #[inline]
+            fn as_mut_slice(&mut self) -> &mut [Self::Item] {
+                self.as_mut_slice()
+            }
+            #[inline]
+            fn as_non_null(&mut self) -> ::core::ptr::NonNull<Self::Item> {
+                self.as_non_null()
+            }
         }
     };
 }
@@ -297,5 +341,5 @@ macro_rules! Vector {
 #[allow(clippy::redundant_pub_crate)]
 pub(crate) use {
     AsMut, AsRef, ConstDefault, Default, DelegateDebug, DelegateHash, Deref, DerefMut, From, Into,
-    Vector,
+    MutVector, Vector,
 };

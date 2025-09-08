@@ -15,8 +15,8 @@ use rules_derive::rules_derive;
 use super::reprs::ThinRepr;
 use crate::common::drain::Drain;
 use crate::common::methods::{
-    pop_if_impl, pop_impl, remove_unchecked_impl, spare_capacity_mut_impl, swap_remove_impl,
-    truncate_impl,
+    pop_if_impl, pop_impl, remove_unchecked_impl, resize_with_impl, spare_capacity_mut_impl,
+    swap_remove_impl, truncate_impl,
 };
 use crate::common::{
     check_alloc, derives, guarded_slice_clone, maybe_uninit_write_copy_of_slice, panic_display,
@@ -85,6 +85,7 @@ macro_rules! thin_vec {
 /// [`Vec`]: alloc::vec::Vec
 #[repr(transparent)]
 #[rules_derive(
+    derives::MutVector(T),
     derives::ConstDefault(Self(ThinRepr::EMPTY)),
     derives::DelegateDebug(Self::as_slice, T: core::fmt::Debug),
     derives::DelegateHash(Self::as_slice, T: core::hash::Hash),
@@ -118,22 +119,6 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
         if let Some(mut header) = self.0.get() {
             // SAFETY: `header` is guaranteed to be valid as long as the vector is valid
             Some(unsafe { header.as_mut() })
-        } else {
-            None
-        }
-    }
-
-    #[inline]
-    #[allow(clippy::needless_pass_by_ref_mut, reason = "morally mutable")]
-    pub(super) const fn header_and_data_mut(
-        &mut self,
-    ) -> Option<(&mut ThinHeader<T, P>, NonNull<T>)> {
-        if let Some(mut header) = self.0.get() {
-            // SAFETY: `header` is guaranteed to be valid as long as the vector is valid
-            let header_mut = unsafe { header.as_mut() };
-            // SAFETY: the data do not overlap with the header
-            let data_mut = unsafe { header.byte_add(Self::DATA_OFFSET).cast() };
-            Some((header_mut, data_mut))
         } else {
             None
         }
@@ -1360,6 +1345,34 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
             self.truncate(new_len);
         }
     }
+
+    /// Resizes the vector to the specified length, filling in new elements
+    /// by calling the provided function.
+    ///
+    /// If `new_len` is less than the current length, the vector is truncated.
+    /// If `new_len` is greater than the current length, the vector is extended
+    /// by calling the provided function repeatedly to generate new elements.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::thin_vec;
+    /// let mut v = thin_vec![1, 2, 3];
+    /// let mut i = 0;
+    /// v.resize_with(6, || { i += 1; i });
+    /// assert_eq!(v.as_slice(), [1, 2, 3, 1, 2, 3]);
+    /// v.resize_with(2, || 0);
+    /// assert_eq!(v.as_slice(), [1, 2]);
+    /// ```
+    pub fn resize_with(&mut self, new_len: usize, mut f: impl FnMut() -> T)
+    where
+        T: Clone,
+    {
+        if let Some(additional) = new_len.checked_sub(self.len()) {
+            self.reserve(additional);
+        }
+        resize_with_impl!(self, new_len, f);
+    }
 }
 
 /// Checks if two prefix types `P` and `Q` are compatible to reuse a thin vec
@@ -1416,12 +1429,6 @@ impl<T: Clone, P: ConstDefault> Clone for ThinVec<T, P> {
 
 macros::trait_impls! {
     [T, P: ConstDefault] {
-        Vector {
-            ThinVec<T, P>: T;
-        }
-        MutVector {
-            ThinVec<T, P>;
-        }
         Extend {
             T => ThinVec<T, P>;
         }

@@ -28,7 +28,7 @@ fn test_union() {
 }
 
 #[cfg(debug_assertions)]
-#[should_panic]
+#[should_panic(expected = "mutable slice of borrowed string")]
 #[test]
 fn test_to_mut_slice_unchecked_panic() {
     let mut r = R::borrowed(b"abc");
