@@ -4,6 +4,7 @@ use alloc::alloc::{alloc, dealloc, realloc, Layout};
 use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
+use core::hint::unreachable_unchecked;
 use core::mem::{offset_of, ManuallyDrop, MaybeUninit};
 use core::ops::{Range, RangeBounds};
 use core::ptr::NonNull;
@@ -84,8 +85,7 @@ macro_rules! thin_vec {
 /// consists in a single pointer to a heap-allocated area containing both the
 /// capacity, the length, and the actual data.
 ///
-/// `PrefixThinVec` contains an arbitrary additional data before the capacity,
-/// `P`.
+/// `ThinVec` contains an arbitrary additional data `P`.
 ///
 /// [`Vec`]: alloc::vec::Vec
 #[repr(transparent)]
@@ -398,6 +398,11 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     /// invariants of the type. Normally changing the length of a vector is done
     /// using one of the safe operations instead.
     ///
+    /// # Panics
+    ///
+    /// When `debug_assertations` is on, panics if `new_len` is greater than the
+    /// vector's capacity.
+    ///
     /// # Safety
     ///
     /// - `new_len` must be less than or equal to the capacity of the vector.
@@ -407,8 +412,9 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
         if let Some(header) = self.header_mut() {
             // SAFETY: `header` is guaranteed to be valid as long as the vector is valid
             header.len = new_len;
-        } else {
-            unreachable!("set_len called on an empty ThinVec");
+        } else if new_len > 0 {
+            // SAFETY: precondition says new_len <= capacity (here 0)
+            unsafe { unreachable_unchecked() }
         }
     }
 
