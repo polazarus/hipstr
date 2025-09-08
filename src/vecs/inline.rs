@@ -147,7 +147,7 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     const fn capacity_offset() -> (usize, usize) {
         let payload = size_of::<[MaybeUninit<u8>; BYTES]>();
 
-        let off = if cfg!(target_endian = "little") {
+        let off = if cfg!(target_endian = "little") && align_of::<T>() > align_of::<L>() {
             align_of::<T>() - offset_of!(Self, data)
         } else {
             0
@@ -395,7 +395,7 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     /// ```
     #[inline]
     pub const fn as_ptr(&self) -> *const T {
-        self.data.as_ptr().cast()
+        unsafe { self.data.as_ptr().add(Self::OFFSET).cast() }
     }
 
     /// Returns a `NonNull` pointer to the inline vector data.
@@ -415,7 +415,7 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     /// would also make any pointers to it invalid.
     #[inline]
     pub const fn as_mut_ptr(&mut self) -> *mut T {
-        self.data.as_mut_ptr().cast()
+        unsafe { self.data.as_mut_ptr().add(Self::OFFSET).cast() }
     }
 
     /// Attempts to push a value into the inline vector.
