@@ -1439,9 +1439,6 @@ macros::trait_impls! {
         Extend {
             T => ThinVec<T, P>;
         }
-        FromIterator {
-            T => ThinVec<T, P> = ThinVec::from_iter;
-        }
         From {
             Box<[T]> => ThinVec<T, P> = Self::from_boxed_slice;
             Vec<T> => ThinVec<T, P> = Self::from_mut_vector;
