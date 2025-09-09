@@ -12,7 +12,7 @@ use alloc::vec::Vec;
 use core::fmt::{self};
 use core::mem::{offset_of, MaybeUninit};
 use core::ops::{Range, RangeBounds};
-use core::ptr::NonNull;
+use core::ptr::{self, NonNull};
 use core::{error, slice};
 
 use const_default::ConstDefault;
@@ -38,7 +38,9 @@ mod tests;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(transparent)]
-struct TaggedLen<T: NZ, const SHIFT: usize, const TAG: usize>(T::NonZero);
+struct TaggedLen<T: NZ, const SHIFT: usize = SHIFT_DEFAULT, const TAG: usize = TAG_DEFAULT>(
+    T::NonZero,
+);
 
 impl<T: NZ, const SHIFT: usize, const TAG: usize> TaggedLen<T, SHIFT, TAG> {
     const fn new(value: usize) -> Option<Self> {
@@ -144,7 +146,7 @@ pub struct InlineVec<
 impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     InlineVec<T, BYTES, L, SHIFT, TAG>
 {
-    const fn capacity_offset() -> (usize, usize) {
+    const fn capacity_offset() -> (usize, Option<usize>) {
         let payload = size_of::<[MaybeUninit<u8>; BYTES]>();
 
         let off = if cfg!(target_endian = "little") && align_of::<T>() > align_of::<L>() {
@@ -154,7 +156,7 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
         };
 
         if off > payload {
-            return (0, 0);
+            return (0, None);
         }
 
         let aligned_payload = payload - off;
@@ -171,11 +173,11 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
                 cap
             }
         };
-        (cap, off)
+        (cap, Some(off))
     }
 
     pub(crate) const CAP: usize = Self::capacity_offset().0;
-    const OFFSET: usize = Self::capacity_offset().1;
+    const OFFSET: Option<usize> = Self::capacity_offset().1;
 
     /// Creates a new inline vector with the specified capacity.
     ///
@@ -273,6 +275,7 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     /// ```
     #[inline]
     #[must_use]
+    #[track_caller]
     pub const fn from_array<const N: usize>(array: [T; N]) -> Self {
         let mut this = Self::new();
         this.extend_from_array(array);
@@ -395,7 +398,11 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     /// ```
     #[inline]
     pub const fn as_ptr(&self) -> *const T {
-        unsafe { self.data.as_ptr().add(Self::OFFSET).cast() }
+        if let Some(off) = Self::OFFSET {
+            unsafe { self.data.as_ptr().add(off).cast() }
+        } else {
+            ptr::dangling()
+        }
     }
 
     /// Returns a `NonNull` pointer to the inline vector data.
@@ -415,7 +422,11 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     /// would also make any pointers to it invalid.
     #[inline]
     pub const fn as_mut_ptr(&mut self) -> *mut T {
-        unsafe { self.data.as_mut_ptr().add(Self::OFFSET).cast() }
+        if let Some(off) = Self::OFFSET {
+            unsafe { self.data.as_mut_ptr().add(off).cast() }
+        } else {
+            ptr::dangling_mut()
+        }
     }
 
     /// Attempts to push a value into the inline vector.
@@ -1067,7 +1078,7 @@ where
         assert!(new_len <= CAP, "new length exceeds capacity");
 
         let data_slice: &mut [MaybeUninit<T>] = unsafe {
-            let ptr = self.data.as_mut_ptr().add(Self::OFFSET).cast();
+            let ptr = self.as_mut_ptr().cast();
             slice::from_raw_parts_mut(ptr, Self::CAP)
         };
 
@@ -1278,7 +1289,7 @@ where
         assert!(new_len <= CAP, "new length exceeds capacity");
 
         let data_slice: &mut [MaybeUninit<T>] = unsafe {
-            let ptr = self.data.as_mut_ptr().add(Self::OFFSET).cast();
+            let ptr = self.as_mut_ptr().cast();
             slice::from_raw_parts_mut(ptr, Self::CAP)
         };
 
