@@ -6,7 +6,7 @@ use alloc::vec::Vec;
 use alloc::{format, vec};
 use core::cmp::Ordering;
 use core::ops::Bound;
-use core::{iter, ptr};
+use core::{array, iter, ptr};
 
 use const_default::ConstDefault;
 
@@ -17,11 +17,18 @@ use crate::vecs::thin::{Reserved, ThinVec as GenericThinVec};
 use crate::vecs::ThinVec;
 
 #[test]
-fn new() {
+fn new_zst() {
     let v = ThinVec::<()>::with_capacity(0);
-    assert_eq!(v.capacity(), usize::MAX);
+    assert_eq!(v.capacity(), 0);
     assert_eq!(v.len(), 0);
 
+    let v = ThinVec::<()>::with_capacity(1);
+    assert_eq!(v.capacity(), usize::MAX);
+    assert_eq!(v.len(), 0);
+}
+
+#[test]
+fn new() {
     let v = ThinVec::<i32>::with_capacity(10);
     assert!(v.capacity() >= 10);
     assert_eq!(v.len(), 0);
@@ -39,9 +46,19 @@ fn set_capacity() {
         assert_eq!(v.capacity(), old);
         v.set_capacity(20);
         assert!(v.capacity() >= 20);
-        let old = v.capacity();
         v.set_capacity(0);
         assert!(v.capacity() <= 2);
+    }
+}
+
+#[cfg(debug_assertions)]
+#[test]
+#[should_panic(expected = "set_capacity loses data")]
+fn set_capacity_panic() {
+    let mut v = ThinVec::<i32>::with_capacity(10);
+    v.push(1);
+    unsafe {
+        v.set_capacity(0);
     }
 }
 
@@ -84,7 +101,7 @@ fn froms() {
     assert_eq!(v.as_slice(), &[1, 2, 3]);
 
     // inline vec
-    let v = ThinVec::from(crate::inline_vec![7 => 1, 2, 3]);
+    let v = ThinVec::from(crate::inline_vec![size_of::<i32>()*4-1 => 1, 2, 3]);
     assert_eq!(v.as_slice(), &[1, 2, 3]);
 
     // array, check move
@@ -120,7 +137,13 @@ fn froms() {
 
 #[test]
 fn from_array() {
-    let array: [_; 10] = core::array::from_fn(|i| Box::new(i));
+    let array: [_; 10] = array::from_fn(|i| i);
+    let _ = ThinVec::from_array(array);
+}
+
+#[test]
+fn from_array_boxes() {
+    let array: [_; 10] = array::from_fn(Box::new);
     let _ = ThinVec::from_array(array);
 }
 
@@ -232,9 +255,7 @@ fn from_slice_clone_panic_non_drop() {
     struct S(bool);
     impl Clone for S {
         fn clone(&self) -> Self {
-            if self.0 {
-                panic!();
-            }
+            assert!(self.0);
             Self(self.0)
         }
     }
@@ -330,7 +351,7 @@ fn drain() {
 fn drain_debug() {
     let mut v = thin_vec![1, 2, 3, 4, 5];
     {
-        let mut d = v.drain(1..4);
+        let d = v.drain(1..4);
         assert_eq!(format!("{d:?}"), "Drain([2, 3, 4])");
     }
 }
@@ -428,7 +449,7 @@ fn split_off() {
 #[should_panic(expected = "index out of bounds")]
 fn split_off_bad_index() {
     let mut v = thin_vec![1, 2, 3];
-    v.split_off(4);
+    let _ = v.split_off(4);
 }
 
 #[test]
@@ -615,7 +636,6 @@ fn shrink_to() {
     // use u64 to avoid the roundup to word alignment
     let mut v = thin_vec![1_u64, 2, 3, 4, 5];
     v.shrink_to(3);
-    let cap = v.capacity();
     assert!(v.capacity() >= 5);
     assert_eq!(v, [1, 2, 3, 4, 5]);
 
@@ -811,7 +831,7 @@ fn debug() {
 
 #[test]
 fn generic_vector() {
-    let mut v = thin_vec![1, 2, 3];
+    let v = thin_vec![1, 2, 3];
     let cap = v.capacity();
     let len = v.len();
     let ptr: *const i32 = v.as_ptr();
@@ -856,25 +876,28 @@ fn clone() {
 }
 
 #[test]
-fn fresh_move() {
+fn fresh_move_distinct_layout() {
     #[repr(u8)]
     enum DistinctLayout {
-        A,
-        B,
+        _A = 0,
+        B = 1,
     }
     impl ConstDefault for DistinctLayout {
-        const DEFAULT: Self = DistinctLayout::B;
+        const DEFAULT: Self = Self::B;
     }
 
     let v: ThinVec<u8> = (1..=10).collect();
     let p = v.as_ptr();
     let v2: GenericThinVec<u8, DistinctLayout> = v.fresh_move();
     assert_ne!(v2.as_ptr(), p);
+}
 
+#[test]
+fn fresh_move_same_layout() {
     #[repr(usize)]
     enum SameLayout {
-        A,
-        B,
+        _A = 0,
+        B = 1,
     }
     impl ConstDefault for SameLayout {
         const DEFAULT: Self = SameLayout::B;

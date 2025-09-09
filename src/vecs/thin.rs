@@ -25,8 +25,8 @@ use crate::common::methods::{
     swap_remove_impl, truncate_impl,
 };
 use crate::common::{
-    check_alloc, guarded_slice_clone, maybe_uninit_write_copy_of_slice, panic_display, traits,
-    RangeError, ZeroUsize,
+    check_alloc, drop_raw_slice, guarded_slice_clone, maybe_uninit_write_copy_of_slice,
+    panic_display, traits, RangeError, ZeroUsize,
 };
 use crate::vecs::reprs::ThinHeader;
 use crate::{common, macros};
@@ -111,7 +111,7 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
         } else if 16 * t <= base {
             base / t
         } else if 4 * t <= base {
-            8 * t
+            8
         } else {
             1
         }
@@ -522,7 +522,6 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     ///
     /// [`len`]: Self::len
     /// [`swap_remove`]: Self::swap_remove
-    #[must_use]
     #[inline]
     #[track_caller]
     pub fn remove(&mut self, index: usize) -> T {
@@ -539,7 +538,6 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     /// # Safety
     ///
     /// The caller must ensure that `index` is less than the current length of the vector.
-    #[must_use]
     pub unsafe fn remove_unchecked(&mut self, index: usize) -> T {
         remove_unchecked_impl!(self, index)
     }
@@ -967,6 +965,32 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
         ThinRepr::new(ptr)
     }
 
+    /// Deallocates the vector's buffer and drops the prefix if needed.
+    ///
+    /// Do nothing for the vector's contents.
+    ///
+    /// # Safety
+    ///
+    /// Actually safe, but will not drop the contents.
+    fn dealloc(&mut self) {
+        if let Some(header) = self.0.get() {
+            let layout = self.current_layout();
+            if mem::needs_drop::<P>() {
+                let prefix = unsafe { &raw mut (*header.as_ptr()).prefix };
+                // SAFETY: the prefix is valid by the type invariant
+                unsafe {
+                    ptr::drop_in_place(prefix);
+                }
+            }
+
+            // SAFETY: header is valid and the layout is correct
+            unsafe {
+                dealloc(header.cast().as_ptr(), layout);
+            }
+        }
+        self.0 = ThinRepr::EMPTY;
+    }
+
     /// Splits the collection into two at the given index.
     ///
     /// Returns a newly allocated vector containing the elements in the range
@@ -1029,30 +1053,36 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     ///
     /// Panics if the new capacity overflows.
     pub(crate) unsafe fn set_capacity(&mut self, new_cap: usize) {
-        debug_assert!(new_cap >= self.len());
+        debug_assert!(new_cap >= self.len(), "set_capacity loses data");
 
+        // allocate new if empty
         let Some(original_ptr) = self.0.get() else {
             self.0 = Self::make_repr(new_cap);
             return;
         };
 
-        let layout = self.current_layout();
-        let (new_layout, _, new_cap) =
-            Self::layout(new_cap).expect("invalid layout: buffer too large");
-
-        // checks if realloc is needed
-        if layout == new_layout {
+        // reset to empty if new_cap is 0
+        if new_cap == 0 {
+            self.dealloc();
             return;
         }
 
-        // SAFETY: pointer and layout are valid by the type invariant
-        let ptr = unsafe { realloc(original_ptr.as_ptr().cast(), layout, new_layout.size()) };
-        let ptr = check_alloc(ptr, new_layout);
-        let mut ptr = ptr.cast();
-        let header: &mut ThinHeader<_, _> = unsafe { ptr.as_mut() };
-        header.cap = new_cap;
+        // computes the layouts
+        let layout = self.current_layout();
+        let (new_layout, _, eff_cap) =
+            Self::layout(new_cap).expect("invalid layout: buffer too large");
 
-        self.0 = ThinRepr::new(ptr);
+        // realloc only if needed
+        if layout != new_layout {
+            // SAFETY: pointer and layout are valid by the type invariant
+            let ptr = unsafe { realloc(original_ptr.as_ptr().cast(), layout, new_layout.size()) };
+            let ptr = check_alloc(ptr, new_layout);
+            let mut ptr = ptr.cast();
+            let header: &mut ThinHeader<_, _> = unsafe { ptr.as_mut() };
+            header.cap = eff_cap;
+
+            self.0 = ThinRepr::new(ptr);
+        }
     }
 
     /// Reserves the minimum capacity for at least `additional` more elements to
@@ -1449,21 +1479,11 @@ const fn can_reuse<T, P, Q>() -> bool {
 
 impl<T, C: ConstDefault> Drop for ThinVec<T, C> {
     fn drop(&mut self) {
-        if let Some(header) = self.0.get() {
-            if mem::needs_drop::<T>() {
-                // SAFETY: the slice is valid by the type invariant
-                unsafe {
-                    ptr::drop_in_place(self.as_mut_slice());
-                }
-            }
-            let layout = self.current_layout();
-            // SAFETY: header is valid and the layout is correct
-            unsafe {
-                dealloc(header.cast().as_ptr(), layout);
-            }
-        } else {
-            // no alloc, no data
+        // SAFETY: type invariant
+        unsafe {
+            drop_raw_slice(self.as_mut_ptr(), self.len());
         }
+        self.dealloc();
     }
 }
 
