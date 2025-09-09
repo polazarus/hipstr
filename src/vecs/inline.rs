@@ -26,7 +26,7 @@ use crate::common::drain::Drain;
 use crate::common::into_iter::IntoIter;
 use crate::common::methods::{
     extend_from_array_impl, extend_from_slice_impl, pop_if_impl, pop_impl, push_within_capacity,
-    remove_unchecked_impl, resize_with_impl, slice_swap_unchecked, spare_capacity_mut_impl,
+    remove_unchecked_impl, resize_impl, slice_swap_unchecked, spare_capacity_mut_impl,
     swap_remove_impl, truncate_impl,
 };
 use crate::common::non_zero::{self, NZ};
@@ -696,6 +696,7 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     /// assert_eq!(inline.swap_remove(1), 2);
     /// assert_eq!(inline.as_slice(), &[1, 3]);
     /// ```
+    #[track_caller]
     pub const fn swap_remove(&mut self, index: usize) -> T {
         swap_remove_impl!(self, index)
     }
@@ -790,6 +791,7 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     /// assert_eq!(inline.as_slice(), &[1, 3]);
     /// ```
     #[track_caller]
+    #[inline]
     pub const fn remove(&mut self, index: usize) -> T {
         let len = self.len();
 
@@ -806,7 +808,6 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     ///
     /// The caller must ensure that `index` is less than the current length of
     /// the inline vector.
-    #[inline]
     pub const unsafe fn remove_unchecked(&mut self, index: usize) -> T {
         remove_unchecked_impl!(self, index)
     }
@@ -875,7 +876,7 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
         F: FnMut() -> T,
     {
         assert!(new_len <= Self::CAP, "new length exceeds capacity");
-        resize_with_impl!(self, new_len, f);
+        resize_impl!(self, new_len, f());
     }
 
     /// Appends an array of elements to the inline vector, by moving the
@@ -954,6 +955,7 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     /// inline.swap(0, 2);
     /// assert_eq!(inline.as_slice(), &[3, 2, 1]);
     /// ```
+    #[inline]
     pub const fn swap(&mut self, a: usize, b: usize) {
         self.as_mut_slice().swap(a, b);
     }
@@ -1102,6 +1104,16 @@ where
     /// ```
     pub fn resize(&mut self, new_len: usize, value: T) {
         self.resize_with(new_len, || value.clone());
+    }
+}
+
+impl<T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize>
+    InlineVec<T, CAP, L, SHIFT, TAG>
+where
+    T: ConstDefault,
+{
+    pub fn resize_default(&mut self, new_len: usize) {
+        resize_impl!(self, new_len, T::DEFAULT);
     }
 }
 

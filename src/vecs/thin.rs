@@ -21,7 +21,7 @@ use crate::common::derives::{
 use crate::common::drain::Drain;
 use crate::common::into_iter::IntoIter;
 use crate::common::methods::{
-    pop_if_impl, pop_impl, remove_unchecked_impl, resize_with_impl, spare_capacity_mut_impl,
+    pop_if_impl, pop_impl, remove_unchecked_impl, resize_impl, spare_capacity_mut_impl,
     swap_remove_impl, truncate_impl,
 };
 use crate::common::{
@@ -102,11 +102,19 @@ macro_rules! thin_vec {
 pub struct ThinVec<T, P: ConstDefault = Reserved>(pub(super) ThinRepr<T, P>);
 
 impl<T, P: ConstDefault> ThinVec<T, P> {
-    const MINIMAL_CAPACITY: usize = match size_of::<T>() {
-        0 => usize::MAX,
-        64.. => 1,
-        32.. => 3,   // 32*3 data + 32 header => 128
-        n => 32 / n, // max 32 data + 32 header => 64
+    const MINIMAL_CAPACITY: usize = {
+        let header = size_of::<ThinHeader<T, P>>();
+        let base = (header + 1).next_power_of_two() - header;
+        let t = size_of::<T>();
+        if t == 0 {
+            usize::MAX
+        } else if 16 * t <= base {
+            base / t
+        } else if 4 * t <= base {
+            8 * t
+        } else {
+            1
+        }
     };
     const DATA_OFFSET: usize = Self::layout(0).unwrap().1;
 
@@ -165,7 +173,13 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     /// ```
     /// use hipstr::vecs::ThinVec;
     /// let vec: ThinVec<i32> = ThinVec::with_capacity(10);
-    /// assert_eq!(vec.capacity(), 10);
+    /// assert!(vec.capacity() >= 10);
+    ///
+    /// let vec: ThinVec<i32> = ThinVec::new();
+    /// assert_eq!(vec.capacity(), 0);
+    ///
+    /// let vec: ThinVec<()> = ThinVec::with_capacity(1);
+    /// assert_eq!(vec.capacity(), usize::MAX);
     /// ```
     #[inline]
     #[must_use]
@@ -214,6 +228,19 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     }
 
     /// Returns the current prefix associated with this thin vector.
+    ///
+    /// If the vector is empty (capacity 0), returns `None`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::ThinVec;
+    /// let vec: ThinVec<i32, u32> = ThinVec::new();
+    /// assert!(vec.prefix().is_none());
+    ///
+    /// let mut vec: ThinVec<i32, u32> = ThinVec::with_capacity(4);
+    /// assert!(vec.prefix().is_some());
+    /// ```
     #[must_use]
     pub const fn prefix(&self) -> Option<&P> {
         if let Some(header) = self.header() {
@@ -495,6 +522,9 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     ///
     /// [`len`]: Self::len
     /// [`swap_remove`]: Self::swap_remove
+    #[must_use]
+    #[inline]
+    #[track_caller]
     pub fn remove(&mut self, index: usize) -> T {
         let len = self.len();
         assert!(index < len, "index out of bounds");
@@ -509,6 +539,7 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     /// # Safety
     ///
     /// The caller must ensure that `index` is less than the current length of the vector.
+    #[must_use]
     pub unsafe fn remove_unchecked(&mut self, index: usize) -> T {
         remove_unchecked_impl!(self, index)
     }
@@ -590,6 +621,7 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     ///
     /// assert_eq!(&v, &[0, 1, 2]);
     /// ```
+    #[must_use]
     pub const fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<T>] {
         spare_capacity_mut_impl!(self)
     }
@@ -1004,7 +1036,6 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
             return;
         };
 
-        // SAFETY: layout checked at creation
         let layout = self.current_layout();
         let (new_layout, _, new_cap) =
             Self::layout(new_cap).expect("invalid layout: buffer too large");
@@ -1014,6 +1045,7 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
             return;
         }
 
+        // SAFETY: pointer and layout are valid by the type invariant
         let ptr = unsafe { realloc(original_ptr.as_ptr().cast(), layout, new_layout.size()) };
         let ptr = check_alloc(ptr, new_layout);
         let mut ptr = ptr.cast();
@@ -1050,7 +1082,8 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     /// in the given `Thin<T, P>`. The collection may reserve more space to
     /// avoid frequent reallocations.
     ///
-    /// Prefer [`reserve_exact`] if the exact amount of elements to be added is known.
+    /// Prefer [`reserve_exact`] if the exact amount of elements to be added is
+    /// known.
     ///
     /// [`reserve_exact`]: Self::reserve_exact
     ///
@@ -1384,7 +1417,7 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
         if let Some(additional) = new_len.checked_sub(self.len()) {
             self.reserve(additional);
         }
-        resize_with_impl!(self, new_len, f);
+        resize_impl!(self, new_len, f());
     }
 }
 

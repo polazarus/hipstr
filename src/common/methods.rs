@@ -1,5 +1,5 @@
 /// `resize_with` impl, requires `len`, `set_len` and `as_mut_ptr`
-macro_rules! resize_with_impl {
+macro_rules! resize_impl {
     ($self:ident, $new_len:expr, $f:expr) => {{
         let old_len = $self.len();
         let new_len = $new_len;
@@ -8,7 +8,7 @@ macro_rules! resize_with_impl {
                 // SAFETY: the length is guaranteed to be less than capacity
                 unsafe {
                     let ptr = $self.as_mut_ptr().add(i);
-                    ptr.write($f());
+                    ptr.write($f);
                     $self.set_len(i + 1);
                 }
             }
@@ -269,6 +269,6 @@ pub const unsafe fn slice_swap_unchecked<T>(slice: &mut [T], a: usize, b: usize)
 
 pub(crate) use {
     extend_from_array_impl, extend_from_boxed_impl, extend_from_raw_move, extend_from_slice_impl,
-    pop_if_impl, pop_impl, push_within_capacity, remove_unchecked_impl, resize_with_impl,
+    pop_if_impl, pop_impl, push_within_capacity, remove_unchecked_impl, resize_impl,
     spare_capacity_mut_impl, swap_remove_impl, truncate_impl,
 };
