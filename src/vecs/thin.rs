@@ -21,12 +21,13 @@ use crate::common::derives::{
 use crate::common::drain::Drain;
 use crate::common::into_iter::IntoIter;
 use crate::common::methods::{
-    pop_if_impl, pop_impl, remove_unchecked_impl, resize_impl, spare_capacity_mut_impl,
-    swap_remove_impl, truncate_impl,
+    append_impl, extend_from_array_impl, extend_from_slice_impl, from_array_impl,
+    from_slice_clone_impl, pop_if_impl, pop_impl, remove_unchecked_impl, resize_impl,
+    spare_capacity_mut_impl, swap_remove_impl, truncate_impl,
 };
 use crate::common::{
-    check_alloc, drop_raw_slice, guarded_slice_clone, maybe_uninit_write_copy_of_slice,
-    panic_display, traits, RangeError, ZeroUsize,
+    check_alloc, drop_raw_slice, maybe_uninit_write_copy_of_slice, panic_display, traits,
+    RangeError, ZeroUsize,
 };
 use crate::vecs::reprs::ThinHeader;
 use crate::{common, macros};
@@ -791,9 +792,13 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
                 }
             }
 
-            let mut new_header: NonNull<ThinHeader<T, Q>> = header.cast();
-            // SAFETY: write the new prefix without dropping the already-drop prefix
-            unsafe { (&raw mut new_header.as_mut().prefix).write(Q::DEFAULT) }
+            let new_header: NonNull<ThinHeader<T, Q>> = header.cast();
+
+            // SAFETY: write the new prefix without dropping the already-drop, maybe invalid, prefix
+            unsafe {
+                let prefix_ptr = &raw mut (*new_header.as_ptr()).prefix;
+                prefix_ptr.write(Q::DEFAULT);
+            }
 
             ThinVec(ThinRepr::new(new_header))
         } else {
@@ -831,16 +836,7 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     where
         T: Clone,
     {
-        let len = slice.len();
-        let mut this = Self::with_capacity(len);
-
-        let written = guarded_slice_clone(this.spare_capacity_mut(), slice);
-        debug_assert_eq!(written, slice.len());
-        unsafe {
-            this.set_len(len);
-        };
-
-        this
+        from_slice_clone_impl!(slice)
     }
 
     /// Creates a new thin vector from a copy-on-write slice of elements,
@@ -859,13 +855,7 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     /// elements.
     #[inline]
     pub(crate) fn from_array<const N: usize>(array: [T; N]) -> Self {
-        let mut this = Self::with_capacity(N);
-        unsafe {
-            let uninit_array: &mut MaybeUninit<[T; N]> = this.ptr().cast().as_mut();
-            uninit_array.write(array);
-            this.set_len(N);
-            this
-        }
+        from_array_impl!(array)
     }
 
     #[inline]
@@ -1220,20 +1210,7 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     /// assert_eq!(w, []);
     /// ```
     pub fn append(&mut self, other: &mut impl traits::MutVector<Item = T>) {
-        unsafe {
-            self.append_raw(other.as_non_null(), other.len());
-            other.set_len(0);
-        }
-    }
-
-    unsafe fn append_raw(&mut self, ptr: NonNull<T>, len: usize) {
-        self.reserve(len);
-        let old_len = self.len();
-        unsafe {
-            let dst = self.ptr().add(old_len);
-            dst.copy_from_nonoverlapping(ptr, len);
-            self.set_len(old_len + len);
-        }
+        append_impl!(self, other);
     }
 
     fn extend_clone(&mut self, n: usize, value: T)
@@ -1287,19 +1264,11 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     ///
     /// [`extend_from_slice_copy`]: Self::extend_from_slice_copy
     #[doc(alias = "push_slice")]
-    #[inline]
     pub fn extend_from_slice(&mut self, slice: &[T])
     where
         T: Clone,
     {
-        let slice_len = slice.len();
-        self.reserve(slice_len);
-
-        unsafe {
-            let written = guarded_slice_clone(self.spare_capacity_mut(), slice);
-            debug_assert_eq!(written, slice_len);
-            self.set_len(self.len() + slice_len);
-        }
+        extend_from_slice_impl!(self, slice);
     }
 
     /// Appends a slice of elements to the thin vector.
@@ -1331,6 +1300,25 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
             maybe_uninit_write_copy_of_slice(&mut self.spare_capacity_mut()[..slice_len], slice);
             self.set_len(self.len() + slice_len);
         }
+    }
+
+    /// Appends an array of elements to the thin vector.
+    ///
+    /// Items for the array are *moved* into the vector.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::ThinVec;
+    /// let mut vec = ThinVec::new();
+    /// vec.extend_from_array([1, 2, 3]);
+    /// assert_eq!(vec.as_slice(), &[1, 2, 3]);
+    /// vec.extend_from_array([4, 5]);
+    /// assert_eq!(vec.as_slice(), &[1, 2, 3, 4, 5]);
+    /// ```
+    #[doc(alias = "push_array")]
+    pub fn extend_from_array<const N: usize>(&mut self, array: [T; N]) {
+        extend_from_array_impl!(self, array);
     }
 
     /// Shrinks the vector's capacity to at least the given capacity.
@@ -1414,12 +1402,7 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     where
         T: Clone,
     {
-        let len = self.len();
-        if new_len > len {
-            self.extend_clone(new_len - len, value);
-        } else {
-            self.truncate(new_len);
-        }
+        resize_impl!(self, new_len, value.clone());
     }
 
     /// Resizes the vector to the specified length, filling in new elements
@@ -1444,9 +1427,6 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     where
         T: Clone,
     {
-        if let Some(additional) = new_len.checked_sub(self.len()) {
-            self.reserve(additional);
-        }
         resize_impl!(self, new_len, f());
     }
 }

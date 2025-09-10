@@ -1,19 +1,29 @@
 /// `resize_with` impl, requires `len`, `set_len` and `as_mut_ptr`
 macro_rules! resize_impl {
     ($self:ident, $new_len:expr, $f:expr) => {{
+        use $crate::common::SliceWriteGuard;
+
         let old_len = $self.len();
         let new_len = $new_len;
         if old_len < new_len {
-            for i in old_len..new_len {
-                // SAFETY: the length is guaranteed to be less than capacity
+            let additional = new_len - old_len;
+            $self.reserve(additional);
+            // grow
+
+            let base = $self.as_mut_ptr();
+
+            let mut guard = SliceWriteGuard::new(unsafe { base.add(old_len) }, additional);
+            for _i in old_len..new_len {
                 unsafe {
-                    let ptr = $self.as_mut_ptr().add(i);
-                    ptr.write($f);
-                    $self.set_len(i + 1);
+                    guard.write($f);
                 }
             }
+            guard.complete();
+            unsafe {
+                $self.set_len(new_len);
+            }
         } else if old_len > new_len {
-            // old_len > new_len
+            // truncate
 
             // SAFETY: strict decrease
             unsafe {
@@ -28,7 +38,7 @@ macro_rules! resize_impl {
     }};
 }
 
-/// `truncate` impl, requires `len`, set_`len, and `as_mut_ptr`
+/// `truncate` impl, requires `len`, `set_len`, and `as_mut_ptr`
 macro_rules! truncate_impl {
     ($self:ident, $new_len:expr) => {{
         let old_len = $self.len();
@@ -143,64 +153,73 @@ macro_rules! extend_from_raw_move {
 macro_rules! extend_from_array_impl {
     ($self:ident, $array:expr) => {{
         let array = $array;
+        let array_len = array.len();
+        $self.reserve(array_len);
+
         let len = $self.len();
-        let new_len = len + array.len();
-        assert!(new_len <= $self.capacity(), "new length exceeds capacity");
+        let new_len = len + array_len;
         // SAFETY: capacity ≥ new length
         unsafe {
             $self.set_len(new_len);
             $self
                 .as_mut_ptr()
                 .add(len)
-                .copy_from_nonoverlapping(array.as_ptr().cast(), array.len());
+                .copy_from_nonoverlapping(array.as_ptr().cast(), array_len);
         }
         core::mem::forget(array);
     }};
 }
 
-/// `extend_from_boxed` impl, requires `len`, `capacity`, `set_len`, and `as_mut_ptr`
-macro_rules! extend_from_boxed_impl {
-    ($self:ident, $boxed:expr) => {{
-        use alloc::boxed::Box;
-        use alloc::vec::Vec;
-        use core::mem::{transmute, MaybeUninit};
+/// `from_array` impl, requires `with_capacity`, `set_len`, and `as_mut_ptr`
+macro_rules! from_array_impl {
+    ($array:expr) => {{
+        let array = $array;
+        let array_len = array.len();
+        let mut this = Self::with_capacity(array_len);
 
-        fn into_maybe_uninit_boxed<T>(boxed: Box<[T]>) -> Box<[MaybeUninit<T>]> {
-            // SAFETY: the boxed slice is valid and uninitialized
-            unsafe { transmute(boxed) }
-        }
-
-        let boxed = $boxed;
-        let len = $self.len();
-        let new_len = len + boxed.len();
-        assert!(new_len <= $self.capacity(), "new length exceeds capacity");
-
-        let boxed = into_maybe_uninit_boxed(boxed);
         // SAFETY: capacity ≥ new length
         unsafe {
-            $self.set_len(new_len);
-            $self
-                .as_mut_ptr()
-                .add(len)
-                .copy_from_nonoverlapping(boxed.as_ptr().cast(), boxed.len());
+            this.as_mut_ptr()
+                .copy_from_nonoverlapping(array.as_ptr().cast(), array_len);
+            this.set_len(array_len);
         }
-        // boxed is dropped, but the content is not dropped due to the
-        // transmutation to MaybeUninit
+
+        core::mem::forget(array);
+        this
     }};
 }
 
-/// `extend_from_slice` impl, requires `len`, `capacity` and `try_push`
+/// `from_slice_clone` impl, requires `with_capacity`, `as_mut_ptr`, `set_len`
+macro_rules! from_slice_clone_impl {
+    ($slice:expr) => {{
+        use $crate::common::guarded_slice_clone;
+        let slice = $slice;
+        let len = slice.len();
+        let mut this = Self::with_capacity(len);
+        unsafe {
+            guarded_slice_clone(this.as_mut_ptr(), slice.as_ptr(), len);
+            this.set_len(len);
+        }
+        this
+    }};
+}
+
+/// `extend_from_slice` impl, requires `len`, `reserve`, `as_mut_ptr`, `set_len`
 macro_rules! extend_from_slice_impl {
     ($self:ident, $slice:expr) => {{
+        use $crate::common::guarded_slice_clone;
+
         let slice = $slice;
-        let len = $self.len();
-        let new_len = len + slice.len();
-        assert!(new_len <= $self.capacity(), "new length exceeds capacity");
-        for e in slice {
-            let e = e.clone();
-            unsafe {
-                $self.try_push(e).unwrap_unchecked();
-            }
+        let slice_len = slice.len();
+        $self.reserve(slice_len);
+
+        unsafe {
+            guarded_slice_clone(
+                $self.as_mut_ptr().add($self.len()),
+                slice.as_ptr(),
+                slice_len,
+            );
+            $self.set_len($self.len() + slice_len);
         }
     }};
 }
@@ -245,6 +264,29 @@ macro_rules! swap_remove_impl {
     }};
 }
 
+/// `append` impl
+///
+/// requirements:
+/// - for `self`, `len`, `reserve`, `set_len`, `as_mut_ptr`, and `reserve`
+/// - for `other`, `len`, `set_len`, and `as_ptr`
+macro_rules! append_impl {
+    ($self:ident, $other:ident) => {{
+        let other_len = $other.len();
+        $self.reserve(other_len);
+
+        let self_len = $self.len();
+        // SAFETY: capacity ≥ new length by `reserve`
+        unsafe {
+            $other.set_len(0);
+            $self
+                .as_mut_ptr()
+                .add(self_len)
+                .copy_from_nonoverlapping($other.as_ptr(), other_len);
+            $self.set_len(self_len + other_len);
+        }
+    }};
+}
+
 /// Swaps two elements in a slice without bounds checking.
 ///
 /// `slice::swap_unchecked` is not stable as of Rust 1.88.0.
@@ -268,7 +310,7 @@ pub const unsafe fn slice_swap_unchecked<T>(slice: &mut [T], a: usize, b: usize)
 }
 
 pub(crate) use {
-    extend_from_array_impl, extend_from_boxed_impl, extend_from_raw_move, extend_from_slice_impl,
-    pop_if_impl, pop_impl, push_within_capacity, remove_unchecked_impl, resize_impl,
-    spare_capacity_mut_impl, swap_remove_impl, truncate_impl,
+    append_impl, extend_from_array_impl, extend_from_raw_move, extend_from_slice_impl,
+    from_array_impl, from_slice_clone_impl, pop_if_impl, pop_impl, push_within_capacity,
+    remove_unchecked_impl, resize_impl, spare_capacity_mut_impl, swap_remove_impl, truncate_impl,
 };

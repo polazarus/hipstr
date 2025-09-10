@@ -6,7 +6,7 @@ use core::alloc::Layout;
 use core::mem::{self, ManuallyDrop, MaybeUninit};
 use core::ops::{Bound, Range, RangeBounds};
 use core::ptr::NonNull;
-use core::{error, fmt, ptr};
+use core::{error, fmt, ptr, slice};
 
 use rules_derive::rules_derive;
 
@@ -164,37 +164,77 @@ pub(crate) const fn manually_drop_as_mut<T>(m: &mut ManuallyDrop<T>) -> &mut T {
 }
 
 /// A guard that drops the initialized elements of a slice.
-struct SliceGuard<'a, T> {
-    slice: &'a mut [MaybeUninit<T>],
+pub(crate) struct SliceWriteGuard<T> {
+    ptr: *mut T,
+    #[cfg(debug_assertions)]
+    len: usize,
     initialized: usize,
 }
 
-impl<T> Drop for SliceGuard<'_, T> {
+impl<T> SliceWriteGuard<T> {
+    /// Creates a new `SliceWriteGuard` from a raw pointer and a length.
+    ///
+    /// The length is only stored in debug builds for assertions.
+    #[inline]
+    pub const fn new(ptr: *mut T, len: usize) -> Self {
+        Self {
+            ptr,
+            #[cfg(debug_assertions)]
+            len,
+            initialized: 0,
+        }
+    }
+
+    /// Writes a value to the slice and increments the initialized count.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the number of writes does not exceed the
+    /// length of the slice.
+    #[inline]
+    pub const unsafe fn write(&mut self, value: T) {
+        debug_assert!(self.initialized < self.len);
+
+        // SAFETY: valid write by precondition
+        unsafe {
+            self.ptr.add(self.initialized).write(value);
+        }
+        self.initialized += 1;
+    }
+
+    #[inline]
+    pub const fn complete(self) {
+        debug_assert!(self.initialized == self.len);
+        mem::forget(self);
+    }
+}
+
+impl<T> Drop for SliceWriteGuard<T> {
     fn drop(&mut self) {
-        if mem::needs_drop::<T>() {
-            unsafe {
-                let slice = &raw mut self.slice[..self.initialized];
-                ptr::drop_in_place(slice as *mut [T]);
-            }
+        unsafe {
+            debug_assert!(self.initialized <= self.len);
+            drop_raw_slice(self.ptr, self.initialized);
         }
     }
 }
 
 #[inline]
-pub(crate) fn guarded_slice_clone<T: Clone>(dst: &mut [MaybeUninit<T>], src: &[T]) -> usize {
-    let mut guard = SliceGuard {
-        slice: dst,
-        initialized: 0,
-    };
+#[track_caller]
+pub(crate) unsafe fn guarded_slice_clone<T: Clone>(dst: *mut T, src: *const T, len: usize) {
+    let mut guard = SliceWriteGuard::new(dst, len);
 
-    for (dst_elem, src_elem) in guard.slice.iter_mut().zip(src.iter()) {
-        dst_elem.write(src_elem.clone());
-        guard.initialized += 1;
+    for i in 0..len {
+        // SAFETY: valid read by precondition
+        let item_src = unsafe { &*src.add(i) };
+        let item = item_src.clone();
+
+        // SAFETY: valid write by precondition
+        unsafe {
+            guard.write(item);
+        }
     }
 
-    let written = guard.initialized;
-    mem::forget(guard);
-    written
+    guard.complete();
 }
 
 #[inline]

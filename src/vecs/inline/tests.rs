@@ -73,19 +73,19 @@ fn const_default() {
 }
 
 #[test]
-#[should_panic(expected = "new length exceeds capacity")]
+#[should_panic(expected = "required capacity exceeds inline capacity")]
 fn from_array_panic_1() {
     let _inline = InlineVec::<u8, 0>::from_array([1, 2, 3]);
 }
 
 #[test]
-#[should_panic(expected = "new length exceeds capacity")]
+#[should_panic(expected = "required capacity exceeds inline capacity")]
 fn from_array_panic_2() {
     let _inline = InlineVec::<u8, 3>::from_array([1, 2, 3, 4]);
 }
 
 #[test]
-#[should_panic(expected = "new length exceeds capacity")]
+#[should_panic(expected = "required capacity exceeds inline capacity")]
 fn from_array_panic_boxes() {
     let _inline = InlineVec::<Box<u8>, 0>::from_array([1, 2].map(Box::new));
 }
@@ -974,7 +974,7 @@ fn from_boxed_slice_panic() {
 }
 
 #[test]
-#[should_panic(expected = "new length exceeds capacity")]
+#[should_panic(expected = "required capacity exceeds inline capacity")]
 fn from_slice_panic() {
     let _ = InlineVec::<u8, 7>::from([1, 2, 3, 4, 5, 6, 7, 8].as_slice());
 }

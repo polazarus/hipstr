@@ -54,6 +54,7 @@ macro_rules! trait_impls {
     (@From $([ $($gen:tt)* ] $( where [ $($wh:tt)* ])? )? { $b:ty => $a:ty = $cons:path; $($rest:tt)* }) => {
         impl $(< $($gen)* >)? From<$b> for $a $($(where $($wh)*)?)? {
             #[inline]
+            #[track_caller]
             fn from(other: $b) -> Self {
                 $cons(other)
             }

@@ -25,9 +25,9 @@ use crate::common::derives::{
 use crate::common::drain::Drain;
 use crate::common::into_iter::IntoIter;
 use crate::common::methods::{
-    extend_from_array_impl, extend_from_slice_impl, pop_if_impl, pop_impl, push_within_capacity,
-    remove_unchecked_impl, resize_impl, slice_swap_unchecked, spare_capacity_mut_impl,
-    swap_remove_impl, truncate_impl,
+    append_impl, extend_from_array_impl, extend_from_slice_impl, from_array_impl,
+    from_slice_clone_impl, pop_if_impl, pop_impl, push_within_capacity, remove_unchecked_impl,
+    resize_impl, slice_swap_unchecked, spare_capacity_mut_impl, swap_remove_impl, truncate_impl,
 };
 use crate::common::non_zero::{self, NZ};
 use crate::common::{drop_raw_slice, panic_display, traits};
@@ -216,12 +216,20 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     /// Panics if the specified capacity exceeds the inline vector's capacity.
     #[inline]
     #[must_use]
+    #[track_caller]
     pub const fn with_capacity(cap: usize) -> Self {
         assert!(
             cap <= Self::CAP,
             "required capacity exceeds inline capacity"
         );
         Self::new()
+    }
+
+    pub(crate) const fn reserve(&self, additional: usize) {
+        assert!(
+            self.len() + additional <= Self::CAP,
+            "new length exceeds capacity"
+        );
     }
 
     /// Creates a new inline vector with the specified length, initialized to
@@ -277,9 +285,7 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     #[must_use]
     #[track_caller]
     pub const fn from_array<const N: usize>(array: [T; N]) -> Self {
-        let mut this = Self::new();
-        this.extend_from_array(array);
-        this
+        from_array_impl!(array)
     }
 
     /// Creates a new inline vector from a boxed slice by moving the elements.
@@ -588,13 +594,7 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     /// assert!(vec.is_empty());
     /// ```
     pub fn append(&mut self, other: &mut impl traits::MutVector<Item = T>) {
-        let len = self.len();
-        let other_len = other.len();
-        assert!(len + other_len <= Self::CAP, "new length exceeds capacity");
-        unsafe {
-            self.append_raw(other.as_non_null(), other_len);
-            other.set_len(0);
-        }
+        append_impl!(self, other);
     }
 
     /// Moves all the elements of `other` into `self`, leaving `other` empty.
@@ -627,22 +627,7 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
         &mut self,
         other: &mut InlineVec<T, BYTE_CAP2, L2, SHIFT2, TAG2>,
     ) {
-        let len = self.len();
-        let other_len = other.len();
-        assert!(len + other_len <= Self::CAP, "new length exceeds capacity");
-        unsafe {
-            self.append_raw(other.as_non_null(), other_len);
-            other.set_len(0);
-        }
-    }
-
-    const unsafe fn append_raw(&mut self, ptr: NonNull<T>, len: usize) {
-        let old_len = self.len();
-        unsafe {
-            let dst = self.as_non_null().add(old_len);
-            dst.copy_from_nonoverlapping(ptr, len);
-            self.set_len(old_len + len);
-        }
+        append_impl!(self, other);
     }
 
     /// Clears the inline vector, removing all elements.
@@ -886,7 +871,6 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
     where
         F: FnMut() -> T,
     {
-        assert!(new_len <= Self::CAP, "new length exceeds capacity");
         resize_impl!(self, new_len, f());
     }
 
@@ -998,10 +982,9 @@ where
     /// Panics if the length of the slice exceeds the capacity of the inline
     /// vector.
     #[inline]
+    #[track_caller]
     pub(crate) fn from_slice_clone(slice: &[T]) -> Self {
-        let mut this = Self::new();
-        this.extend_from_slice(slice);
-        this
+        from_slice_clone_impl!(slice)
     }
 
     pub(crate) fn from_cow(cow: Cow<'_, [T]>) -> Self
@@ -1114,17 +1097,7 @@ where
     /// assert_eq!(inline.as_slice(), &[42]);
     /// ```
     pub fn resize(&mut self, new_len: usize, value: T) {
-        self.resize_with(new_len, || value.clone());
-    }
-}
-
-impl<T, L: NZ, const CAP: usize, const SHIFT: usize, const TAG: usize>
-    InlineVec<T, CAP, L, SHIFT, TAG>
-where
-    T: ConstDefault,
-{
-    pub fn resize_default(&mut self, new_len: usize) {
-        resize_impl!(self, new_len, T::DEFAULT);
+        resize_impl!(self, new_len, value.clone());
     }
 }
 
