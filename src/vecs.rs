@@ -1,5 +1,6 @@
 //! Vector types.
 
+pub mod hip;
 pub mod inline;
 pub(crate) mod reprs;
 pub mod smart_thin;

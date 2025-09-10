@@ -580,13 +580,6 @@ fn extend_iter() {
 }
 
 #[test]
-fn extend_clone() {
-    let mut v = thin_vec![1, 2, 3];
-    v.extend_clone(0, 4);
-    assert_eq!(v.as_slice(), &[1, 2, 3]);
-}
-
-#[test]
 fn extend_from_within() {
     let mut v = thin_vec![1, 2, 3];
     v.extend_from_within(0..3);
@@ -927,16 +920,18 @@ fn fresh_move_drop_prefix() {
     use std::sync::Mutex;
 
     use const_default::ConstDefault;
+
     static WITNESS: Mutex<bool> = Mutex::new(false);
     struct S;
     impl ConstDefault for S {
-        const DEFAULT: Self = S;
+        const DEFAULT: Self = Self;
     }
     impl Drop for S {
         fn drop(&mut self) {
             *WITNESS.lock().unwrap() = true;
         }
     }
+
     *WITNESS.lock().unwrap() = false;
 
     let v: GenericThinVec<u8, S> = (1..=10).collect();

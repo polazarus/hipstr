@@ -276,3 +276,22 @@ pub(crate) fn vec_push_within_capacity<T>(v: &mut Vec<T>, value: T) -> Result<()
         Err(value)
     }
 }
+
+pub(crate) const unsafe fn transmute2<A, B>(value: A) -> B {
+    union U<A, B> {
+        a: ManuallyDrop<A>,
+        b: ManuallyDrop<B>,
+    }
+    const {
+        assert!(mem::size_of::<A>() == mem::size_of::<B>());
+        assert!(mem::align_of::<A>() >= mem::align_of::<B>());
+    }
+    unsafe {
+        ManuallyDrop::into_inner(
+            U {
+                a: ManuallyDrop::new(value),
+            }
+            .b,
+        )
+    }
+}

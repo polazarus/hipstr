@@ -120,6 +120,12 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     const DATA_OFFSET: usize = Self::layout(0).unwrap().1;
 
     #[inline]
+    pub(super) const fn into_repr(self) -> ThinRepr<T, P> {
+        // SAFETY: repr is transparent
+        unsafe { mem::transmute(self) }
+    }
+
+    #[inline]
     pub(super) const fn header(&self) -> Option<&ThinHeader<T, P>> {
         if let Some(header) = self.0.get() {
             // SAFETY: `header` is guaranteed to be valid as long as the vector is valid
@@ -1213,34 +1219,17 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
         append_impl!(self, other);
     }
 
-    fn extend_clone(&mut self, n: usize, value: T)
-    where
-        T: Clone,
-    {
-        let len = self.len();
-        self.reserve(n);
-        unsafe {
-            for i in 1..n {
-                self.ptr().add(len + i).write(value.clone());
-                self.set_len(len + i + 1);
-            }
-            if n > 0 {
-                self.ptr().add(len).write(value);
-                self.set_len(len + n);
-            }
-        }
-    }
-
     fn extend_iter(&mut self, iterable: impl IntoIterator<Item = T>) {
         let iter = iterable.into_iter();
         let len = self.len();
         let min = iter.size_hint().0;
         self.reserve(min);
-        unsafe {
-            for (i, value) in iter.enumerate() {
-                if i >= min {
-                    self.reserve(1);
-                }
+
+        for (i, value) in iter.enumerate() {
+            if i >= min {
+                self.reserve(1);
+            }
+            unsafe {
                 self.ptr().add(len + i).write(value);
                 self.set_len(len + i + 1);
             }

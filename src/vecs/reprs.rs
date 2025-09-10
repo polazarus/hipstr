@@ -2,8 +2,13 @@
 
 use core::marker::PhantomData;
 use core::mem::{self, offset_of, MaybeUninit};
+#[cfg(target_endian = "little")]
+use core::num::NonZeroU8;
 use core::ptr::{self, NonNull};
 
+use rules_derive::rules_derive;
+
+use crate::common::derives::ConstDefault;
 use crate::common::ZeroUsize;
 
 pub const TAG_SIZE: usize = 2; // 2 bits
@@ -216,3 +221,78 @@ pub(super) const fn check_size_align_and_offsets<T, P>() {
     assert!(offset_of!(ThinHeader<T, P>, cap) == offset_of!(FatOrThinView<P>, cap));
     assert!(offset_of!(FatInner<T, P>, cap) == offset_of!(FatOrThinView<P>, cap));
 }
+
+/// Size of word minus a tagged byte.
+const WORD_SIZE_M1: usize = size_of::<usize>() - 1;
+
+#[derive(Clone, Copy)]
+#[repr(C)]
+pub(super) struct Pivot {
+    #[cfg(target_endian = "little")]
+    tag_byte: NonZeroU8,
+    #[cfg(target_endian = "little")]
+    _word_remainder: MaybeUninit<[u8; WORD_SIZE_M1]>,
+    #[cfg(target_endian = "little")]
+    _word1: MaybeUninit<*mut ()>,
+
+    _word2: MaybeUninit<*mut ()>,
+
+    #[cfg(target_endian = "big")]
+    _word1: MaybeUninit<*mut ()>,
+    #[cfg(target_endian = "big")]
+    _word_remainder: MaybeUninit<[u8; WORD_SIZE_M1]>,
+    #[cfg(target_endian = "big")]
+    tag_byte: NonZeroU8,
+}
+
+impl Pivot {
+    #[inline]
+    pub const fn is_inline(&self) -> bool {
+        (self.tag_byte.get() & INLINE as u8) == 0
+    }
+}
+
+pub(super) type Borrowed<'borrow, T> = Sliced<T, BorrowedTag<'borrow>>;
+
+impl<'borrow, T> Borrowed<'borrow, T> {
+    pub const fn new(slice: &'borrow [T]) -> Self {
+        Self {
+            owner: BorrowedTag {
+                _reserved: BorrowedReserved::Value,
+                _marker: PhantomData,
+            },
+            ptr: slice.as_ptr(),
+            len: slice.len(),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct BorrowedTag<'borrow> {
+    _reserved: BorrowedReserved,
+    _marker: PhantomData<&'borrow ()>,
+}
+
+#[derive(Clone, Copy)]
+#[rules_derive(ConstDefault(Self::Value))]
+#[repr(usize)]
+pub(super) enum BorrowedReserved {
+    Value = THIN,
+}
+
+pub(super) type Owned<T, B> = Sliced<T, FatOrThinRepr<T, B>>;
+
+#[derive(Clone, Copy)]
+#[repr(C)]
+pub(super) struct Sliced<T, O> {
+    #[cfg(target_endian = "little")]
+    pub(super) owner: O,
+
+    pub(super) ptr: *const T,
+    pub(super) len: usize,
+
+    #[cfg(target_endian = "big")]
+    pub(super) owner: O,
+}
+
+pub(super) type UnknownSliced<T> = Sliced<T, *mut ()>;
