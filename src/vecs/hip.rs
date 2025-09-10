@@ -1,12 +1,11 @@
 use core::marker::PhantomData;
-use core::mem::{self, ManuallyDrop};
 
 use const_default::ConstDefault;
 use rules_derive::rules_derive;
 
 use crate::common::derives::*;
 use crate::common::transmute2;
-use crate::vecs::reprs::{Borrowed, FatOrThinRepr, Owned, Pivot, Sliced, UnknownSliced, INLINE};
+use crate::vecs::reprs::{Borrowed, FatOrThinRepr, Owned, Pivot, Sliced, UnknownSliced};
 use crate::vecs::{InlineVec, SmartThinVec};
 use crate::Backend;
 
@@ -29,11 +28,47 @@ impl<T, B: Backend> HipVec<T, B> {
     }
 
     #[must_use]
+    #[inline]
+    pub const fn is_owned(&self) -> bool {
+        !self.is_inline() && unsafe { self.as_sliced_unchecked() }.is_owned()
+    }
+
+    #[must_use]
+    #[inline]
+    pub const fn is_borrowed(&self) -> bool {
+        !self.is_inline() && unsafe { self.as_sliced_unchecked() }.is_borrowed()
+    }
+
+    #[must_use]
     pub const fn as_ptr(&self) -> *const T {
         if self.is_inline() {
             unsafe { self.as_inline_unchecked() }.as_ptr()
         } else {
-            unsafe { self.as_sliced_unchecked() }.ptr
+            unsafe { self.as_sliced_unchecked() }.as_ptr()
+        }
+    }
+
+    #[must_use]
+    pub const fn len(&self) -> usize {
+        if self.is_inline() {
+            unsafe { self.as_inline_unchecked() }.len()
+        } else {
+            unsafe { self.as_sliced_unchecked() }.len()
+        }
+    }
+
+    #[must_use]
+    #[inline]
+    pub const fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    #[must_use]
+    pub const fn as_slice(&self) -> &[T] {
+        if self.is_inline() {
+            unsafe { self.as_inline_unchecked() }.as_slice()
+        } else {
+            unsafe { self.as_sliced_unchecked() }.as_slice()
         }
     }
 
@@ -43,10 +78,16 @@ impl<T, B: Backend> HipVec<T, B> {
         unsafe { transmute2::<&Self, &InlineVec<T, INLINE_BYTES>>(self) }
     }
 
-    pub const unsafe fn as_sliced_unchecked(&self) -> &UnknownSliced<T> {
+    pub(super) const unsafe fn as_sliced_unchecked(&self) -> &UnknownSliced<T> {
         debug_assert!(!self.is_inline());
         // SAFETY: precondition
         unsafe { transmute2::<&Self, &UnknownSliced<T>>(self) }
+    }
+
+    pub(super) const unsafe fn as_owned_unchecked(&self) -> &Owned<T, B> {
+        debug_assert!(self.is_owned());
+        // SAFETY: precondition
+        unsafe { transmute2::<&Self, &Owned<T, B>>(self) }
     }
 
     #[must_use]

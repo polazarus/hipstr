@@ -295,4 +295,34 @@ pub(super) struct Sliced<T, O> {
     pub(super) owner: O,
 }
 
-pub(super) type UnknownSliced<T> = Sliced<T, *mut ()>;
+impl<T, O> Sliced<T, O> {
+    pub const fn as_ptr(&self) -> *const T {
+        self.ptr
+    }
+
+    pub const fn len(&self) -> usize {
+        self.len
+    }
+
+    pub const fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    pub const fn as_slice(&self) -> &[T] {
+        unsafe { core::slice::from_raw_parts(self.ptr, self.len) }
+    }
+}
+
+pub(super) type UnknownSliced<T> = Sliced<T, usize>;
+
+impl<T> UnknownSliced<T> {
+    #[inline]
+    pub const fn is_owned(&self) -> bool {
+        self.is_borrowed()
+    }
+
+    #[inline]
+    pub const fn is_borrowed(&self) -> bool {
+        self.owner == BorrowedReserved::Value as usize
+    }
+}

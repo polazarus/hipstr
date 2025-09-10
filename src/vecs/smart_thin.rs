@@ -394,7 +394,7 @@ impl<T, B: Backend> SmartThinVec<T, B> {
         }
     }
 
-    pub(crate) const fn into_repr(self) -> ThinRepr<T, B> {
+    pub(super) const fn into_repr(self) -> ThinRepr<T, B> {
         // SAFETY: everything is transparent
         unsafe { mem::transmute::<Self, ThinRepr<T, B>>(self) }
     }
