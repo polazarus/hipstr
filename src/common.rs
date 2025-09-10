@@ -6,7 +6,7 @@ use core::alloc::Layout;
 use core::mem::{self, ManuallyDrop, MaybeUninit};
 use core::ops::{Bound, Range, RangeBounds};
 use core::ptr::NonNull;
-use core::{error, fmt, ptr, slice};
+use core::{error, fmt};
 
 use rules_derive::rules_derive;
 

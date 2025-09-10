@@ -210,7 +210,7 @@ fn swap_remove() {
     const CAP: usize = 7;
     let mut inline = InlineVec::<u8, CAP>::new();
     for i in 1..=CAP {
-        inline.push(i as u8);
+        inline.push(u8::try_from(i).unwrap());
         assert_eq!(inline.len(), i);
     }
     assert_eq!(inline.len(), CAP);
@@ -225,7 +225,7 @@ fn swap_remove_out_of_bounds() {
     const CAP: usize = 7;
     let mut inline = InlineVec::<u8, CAP>::new();
     for i in 1..=5 {
-        inline.push(i as u8);
+        inline.push(u8::try_from(i).unwrap());
         assert_eq!(inline.len(), i);
     }
     assert_eq!(inline.len(), 5);
@@ -237,7 +237,7 @@ fn remove() {
     const CAP: usize = 7;
     let mut inline = InlineVec::<u8, CAP>::new();
     for i in 1..=CAP {
-        inline.push(i as u8);
+        inline.push(u8::try_from(i).unwrap());
         assert_eq!(inline.len(), i);
     }
     assert_eq!(inline.len(), CAP);
@@ -251,7 +251,7 @@ fn remove_out_of_bounds() {
     const CAP: usize = 7;
     let mut inline = InlineVec::<u8, CAP>::new();
     for i in 1..=5 {
-        inline.push(i as u8);
+        inline.push(u8::try_from(i).unwrap());
         assert_eq!(inline.len(), i);
     }
     assert_eq!(inline.len(), 5);
@@ -301,7 +301,7 @@ fn try_insert() {
     assert_eq!(format!("{err}"), InsertErrorKind::OutOfBounds.message());
 
     for i in 1..=CAP {
-        assert_eq!(inline.try_insert(0, i as u8), Ok(()));
+        assert_eq!(inline.try_insert(0, u8::try_from(i).unwrap()), Ok(()));
         assert_eq!(inline.len(), i);
     }
     let err = inline.try_insert(0, 42).unwrap_err();
@@ -326,7 +326,7 @@ fn insert() {
     let mut inline = InlineVec::<u8, CAP>::new();
 
     for i in 1..=CAP {
-        inline.insert(0, i as u8);
+        inline.insert(0, u8::try_from(i).unwrap());
         assert_eq!(inline.len(), i);
     }
     assert_eq!(inline.len(), CAP);
@@ -351,7 +351,7 @@ fn insert_full() {
     const CAP: usize = 7;
     let mut inline = InlineVec::<u8, CAP>::new();
     for i in 1..=CAP {
-        inline.insert(0, i as u8);
+        inline.insert(0, u8::try_from(i).unwrap());
     }
     assert_eq!(inline.len(), CAP);
     inline.insert(0, 42);
@@ -586,6 +586,7 @@ fn compare_f32() {
     assert_ne!(i_f32, inline_vec![BYTES => f32::NAN]);
     assert_ne!(i_f32, [f32::NAN]);
     assert!(PartialOrd::partial_cmp(&i_f32, &inline_vec![BYTES => f32::NAN]).is_none());
+    assert!(PartialEq::ne(&i_f32, &[f32::NAN]));
 }
 
 #[test]
