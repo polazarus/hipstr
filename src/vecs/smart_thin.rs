@@ -114,6 +114,11 @@ impl<T, C: Backend> Deref for SmartThinVec<T, C> {
 }
 
 impl<T, C: Backend> SmartThinVec<T, C> {
+    const EMPTY: Self = {
+        let tv = ThinVec::new();
+        unsafe { Self::from_thin_vec_unchecked(tv) }
+    };
+
     /// Copies the smart vector without checking or updating the reference count.
     const unsafe fn copy(&self) -> Self {
         Self(ManuallyDrop::new(ThinVec(manually_drop_as_ref(&self.0).0)))
@@ -132,8 +137,7 @@ impl<T, C: Backend> SmartThinVec<T, C> {
     /// ```
     #[must_use]
     pub const fn new() -> Self {
-        let tv = ThinVec::new();
-        unsafe { Self::from_thin_vec_unchecked(tv) }
+        Self::EMPTY
     }
 
     /// Creates a new empty vector with at least the specified capacity.
@@ -303,8 +307,7 @@ impl<T, C: Backend> SmartThinVec<T, C> {
     #[inline]
     #[must_use]
     pub(crate) fn from_boxed_slice(slice: Box<[T]>) -> Self {
-        let thin_vec = ThinVec::from_boxed_slice(slice);
-        unsafe { Self::from_thin_vec_unchecked(thin_vec) }
+        Self::from_mut_vector(slice.into_vec())
     }
 
     #[inline]
@@ -376,8 +379,12 @@ impl<T, C: Backend> SmartThinVec<T, C> {
 }
 
 impl<T, C: Counter> Clone for SmartThinVec<T, BackendImpl<C, PanicOnOverflow>> {
+    #[track_caller]
     fn clone(&self) -> Self {
-        self.try_clone().unwrap_or_else(|| panic!("count overflow"))
+        let Some(clone) = self.try_clone() else {
+            panic!("count overflow");
+        };
+        clone
     }
 }
 

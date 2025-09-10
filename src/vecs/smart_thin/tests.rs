@@ -21,14 +21,24 @@ fn new() {
 }
 
 #[test]
-
-fn clone() {
+fn clone_empty() {
     let v1 = SmartThinVec::<u8, Arc>::new();
     assert_eq!(v1.len(), 0);
     assert!(v1.is_unique());
 
     let v2 = v1.clone();
     assert_eq!(v2.len(), 0);
+    assert!(v2.is_unique());
+}
+
+#[test]
+fn clone() {
+    let v1 = SmartThinVec::<u8, Arc>::from_array([1, 2]);
+    assert_eq!(v1.len(), 2);
+    assert!(v1.is_unique());
+
+    let v2 = v1.clone();
+    assert_eq!(v2.len(), 2);
     assert!(!v2.is_unique());
     assert!(!v1.is_unique());
 }
@@ -49,8 +59,8 @@ fn clone_unique() {
 #[test]
 #[should_panic(expected = "count overflow")]
 fn clone_panic() {
-    let v1 = SmartThinVec::<u8, PanickyUnique>::new();
-    assert_eq!(v1.len(), 0);
+    let v1 = SmartThinVec::<u8, PanickyUnique>::from_array([1, 2]);
+    assert_eq!(v1.len(), 2);
     assert!(v1.is_unique());
 
     let _v2 = v1.clone();
@@ -61,12 +71,16 @@ fn with_capacity() {
     let v = SmartThinVec::<u8, Arc>::with_capacity(10);
     assert_eq!(v.len(), 0);
     assert!(v.capacity() >= 10);
+
+    let v = SmartThinVec::<u8, Rc>::with_capacity(0);
+    assert_eq!(v.len(), 0);
+    assert_eq!(v.capacity(), 0); // strictly zero
 }
 
 #[test]
 fn deref() {
     let v = SmartThinVec::<u8, Arc>::new();
-    let d: &ThinVec<u8, _> = v.deref();
+    let d: &ThinVec<u8, _> = &v;
     let a: &_ = v.as_thin_vec();
     assert!(ptr::eq(d, a));
 }
@@ -75,16 +89,16 @@ fn deref() {
 fn as_ref() {
     let v = SmartThinVec::<u8, Arc>::new();
 
-    let s: &[u8] = &v.as_ref();
+    let s: &[u8] = v.as_ref();
     assert!(ptr::eq(s, v.as_slice()));
 
-    let t: &ThinVec<u8, _> = &v.as_ref();
+    let t: &ThinVec<u8, _> = v.as_ref();
     assert!(ptr::eq(t, v.as_thin_vec()));
 }
 
 #[test]
 fn as_mut() {
-    let mut v = SmartThinVec::<u8, Arc>::new();
+    let mut v = SmartThinVec::<u8, Arc>::from_array([1, 2]);
     assert!(v.is_unique());
     assert!(v.as_mut().is_some());
 
