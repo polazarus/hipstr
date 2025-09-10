@@ -198,7 +198,7 @@ fn from_slice_clone() {
     let v = ThinVec::from_slice_clone(&array);
     assert_eq!(v.as_slice(), array);
 
-    let array: [_; 10] = core::array::from_fn(|i| Box::new(i));
+    let array: [_; 10] = core::array::from_fn(Box::new);
     let v = ThinVec::from_slice_clone(&array);
     assert_eq!(v.as_slice(), array);
 }
@@ -219,9 +219,7 @@ fn from_slice_clone_panic() {
     impl Clone for S {
         fn clone(&self) -> Self {
             *CLONE_COUNT.lock().unwrap() += 1;
-            if self.0 {
-                panic!();
-            }
+            assert!(!self.0);
             Self(self.0)
         }
     }
@@ -255,7 +253,7 @@ fn from_slice_clone_panic_non_drop() {
     struct S(bool);
     impl Clone for S {
         fn clone(&self) -> Self {
-            assert!(self.0);
+            assert!(!self.0, "test panic in clone");
             Self(self.0)
         }
     }
@@ -267,7 +265,7 @@ fn from_slice_clone_panic_non_drop() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "invalid layout: buffer too large")]
 fn with_capacity_overflow() {
     let _ = ThinVec::<u8>::with_capacity(isize::MAX as usize);
 }
@@ -283,10 +281,17 @@ fn reserve() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "invalid layout: buffer too large")]
 fn reserve_overflow() {
     let mut v = ThinVec::<u8>::new();
     v.reserve(isize::MAX as usize);
+}
+
+#[test]
+#[should_panic(expected = "capacity overflow")]
+fn reserve_overflow_2() {
+    let mut v = ThinVec::<u8>::from_array([1, 2, 3]);
+    v.reserve(usize::MAX);
 }
 
 #[test]
@@ -300,10 +305,17 @@ fn reserve_exact() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "invalid layout: buffer too large")]
 fn reserve_exact_overflow() {
     let mut v = ThinVec::<u8>::new();
     v.reserve_exact(isize::MAX as usize);
+}
+
+#[test]
+#[should_panic(expected = "capacity overflow")]
+fn reserve_exact_overflow_2() {
+    let mut v = ThinVec::<u8>::from_array([1, 2, 3]);
+    v.reserve_exact(usize::MAX);
 }
 
 #[test]
@@ -327,7 +339,7 @@ fn insert() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "index out of bounds")]
 fn insert_out_of_bound() {
     let mut v = thin_vec!['a', 'b', 'c'];
     v.insert(4, 'e');
@@ -380,9 +392,9 @@ fn drain_drop() {
     let mut c = 3;
 
     {
-        let mut v = thin_vec![S(&mut a), S(&mut b), S(&mut c)];
-        let mut d = v.drain(..);
-        let _ = d.next();
+        let mut thin_vec = thin_vec![S(&mut a), S(&mut b), S(&mut c)];
+        let mut drain = thin_vec.drain(..);
+        let _ = drain.next();
     }
 
     assert_eq!(a, 2);
@@ -900,7 +912,7 @@ fn fresh_move_same_layout() {
         B = 1,
     }
     impl ConstDefault for SameLayout {
-        const DEFAULT: Self = SameLayout::B;
+        const DEFAULT: Self = Self::B;
     }
 
     let v: GenericThinVec<u8> = (1..=10).collect();
