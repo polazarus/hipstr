@@ -4,6 +4,7 @@ use core::marker::PhantomData;
 use core::mem::{self, offset_of, MaybeUninit};
 #[cfg(target_endian = "little")]
 use core::num::NonZeroU8;
+use core::num::NonZeroUsize;
 use core::ptr::{self, NonNull};
 
 use rules_derive::rules_derive;
@@ -14,7 +15,10 @@ use crate::common::ZeroUsize;
 pub const TAG_SIZE: usize = 2; // 2 bits
 pub const MIN_ALIGN: usize = 1 << TAG_SIZE; // minimal alignment is 4 bytes
 pub const MASK: usize = (1 << TAG_SIZE) - 1; // 0b11
-pub const THIN: usize = 2; // 0b10
+pub const INLINE_MASK: usize = MASK; // could be just 1
+pub const SLICED: usize = 0b10;
+pub const SLICED_PTR_MASK: usize = !MASK;
+pub const THIN: usize = SLICED;
 pub const FAT: usize = 3; // 0b11
 pub const INLINE: usize = 1; // 0b01
 
@@ -73,8 +77,7 @@ impl<T, P> Clone for FatRepr<T, P> {
 /// It can be safely transmuted to either `FatRepr` or `ThinRepr` based on the
 /// the result of `is_fat` or `is_thin`.
 pub(super) struct FatOrThinRepr<T, P> {
-    ptr: NonNull<FatOrThinView<P>>,
-    _phantom: PhantomData<T>,
+    inner: NonNull<FatOrThinView<T, P>>,
 }
 
 impl<T, P> Copy for FatOrThinRepr<T, P> {}
@@ -134,25 +137,25 @@ impl<T, P> FatOrThinRepr<T, P> {
         check_size_align_and_offsets::<T, P>();
 
         Self {
-            ptr: thin.inner.cast(),
-            _phantom: PhantomData,
+            inner: thin.inner.cast(),
         }
     }
     pub(super) const fn from_fat(fat: FatRepr<T, P>) -> Self {
         check_size_align_and_offsets::<T, P>();
 
         Self {
-            ptr: fat.inner.cast(),
-            _phantom: PhantomData,
+            inner: fat.inner.cast(),
         }
     }
 
-    pub(super) fn is_fat(self) -> bool {
-        self.ptr.addr().get() & MASK == FAT
+    #[inline]
+    pub(super) const fn is_fat(self) -> bool {
+        self.as_ref().ptr.is_some()
     }
 
-    pub(super) fn is_thin(self) -> bool {
-        self.ptr.addr().get() & MASK == THIN
+    #[inline]
+    pub(super) const fn is_thin(self) -> bool {
+        self.as_ref().ptr.is_none()
     }
 
     #[allow(clippy::transmute_ptr_to_ptr)]
@@ -181,6 +184,10 @@ impl<T, P> FatOrThinRepr<T, P> {
             Variant::Fat(unsafe { mem::transmute::<Self, FatRepr<T, P>>(self) })
         }
     }
+
+    pub const fn as_ref(&self) -> &FatOrThinView<T, P> {
+        unsafe { self.inner.byte_sub(SLICED).as_ref() }
+    }
 }
 
 pub enum Variant<T, F> {
@@ -190,36 +197,36 @@ pub enum Variant<T, F> {
 
 /// A view of a vector (indirect fat or direct thin).
 #[repr(C)]
-pub(super) struct FatOrThinView<P> {
+pub(super) struct FatOrThinView<T, P> {
     pub(super) prefix: P,
-    pub(super) _ptr: MaybeUninit<*mut ()>,
+    pub(super) ptr: Option<NonNull<T>>,
     pub(super) cap: usize,
     pub(super) len: usize,
 }
 
 pub(super) const fn check_size_align_and_offsets<T, P>() {
     // Ensures that ThinHeader, FatInner and AllocatedView have the same size.
-    assert!(size_of::<ThinHeader<T, P>>() == size_of::<FatOrThinView<P>>());
-    assert!(size_of::<FatInner<T, P>>() == size_of::<FatOrThinView<P>>());
+    assert!(size_of::<ThinHeader<T, P>>() == size_of::<FatOrThinView<T, P>>());
+    assert!(size_of::<FatInner<T, P>>() == size_of::<FatOrThinView<T, P>>());
 
     // Ensures that the alignments of ThinHeader and FatInner are at least the alignment of FatOrThinView.
-    assert!(align_of::<ThinHeader<T, P>>() >= align_of::<FatOrThinView<P>>());
-    assert!(align_of::<FatInner<T, P>>() >= align_of::<FatOrThinView<P>>());
+    assert!(align_of::<ThinHeader<T, P>>() >= align_of::<FatOrThinView<T, P>>());
+    assert!(align_of::<FatInner<T, P>>() >= align_of::<FatOrThinView<T, P>>());
 
     // Ensures that this alignment is sufficient for the tag.
-    assert!(align_of::<FatOrThinView<P>>() >= TAG_SIZE);
+    assert!(align_of::<FatOrThinView<T, P>>() >= TAG_SIZE);
 
     // Ensures that the field prefix is at the same offset in all three structs.
-    assert!(offset_of!(ThinHeader<T, P>, prefix) == offset_of!(FatOrThinView<P>, prefix));
-    assert!(offset_of!(FatInner<T, P>, prefix) == offset_of!(FatOrThinView<P>, prefix));
+    assert!(offset_of!(ThinHeader<T, P>, prefix) == offset_of!(FatOrThinView<T, P>, prefix));
+    assert!(offset_of!(FatInner<T, P>, prefix) == offset_of!(FatOrThinView<T, P>, prefix));
 
     // Ensures that the field len is at the same offset in all three structs
-    assert!(offset_of!(ThinHeader<T, P>, len) == offset_of!(FatOrThinView<P>, len));
-    assert!(offset_of!(FatInner<T, P>, len) == offset_of!(FatOrThinView<P>, len));
+    assert!(offset_of!(ThinHeader<T, P>, len) == offset_of!(FatOrThinView<T, P>, len));
+    assert!(offset_of!(FatInner<T, P>, len) == offset_of!(FatOrThinView<T, P>, len));
 
     // Ensures that the field cap is at the same offset in all three structs
-    assert!(offset_of!(ThinHeader<T, P>, cap) == offset_of!(FatOrThinView<P>, cap));
-    assert!(offset_of!(FatInner<T, P>, cap) == offset_of!(FatOrThinView<P>, cap));
+    assert!(offset_of!(ThinHeader<T, P>, cap) == offset_of!(FatOrThinView<T, P>, cap));
+    assert!(offset_of!(FatInner<T, P>, cap) == offset_of!(FatOrThinView<T, P>, cap));
 }
 
 /// Size of word minus a tagged byte.
@@ -248,7 +255,7 @@ pub(super) struct Pivot {
 impl Pivot {
     #[inline]
     pub const fn is_inline(&self) -> bool {
-        (self.tag_byte.get() & INLINE as u8) == 0
+        (self.tag_byte.get() as usize) & MASK == INLINE
     }
 }
 
@@ -313,16 +320,16 @@ impl<T, O> Sliced<T, O> {
     }
 }
 
-pub(super) type UnknownSliced<T> = Sliced<T, usize>;
+pub(super) type UnknownSliced<T> = Sliced<T, NonZeroUsize>;
 
 impl<T> UnknownSliced<T> {
     #[inline]
     pub const fn is_owned(&self) -> bool {
-        self.is_borrowed()
+        !self.is_borrowed()
     }
 
     #[inline]
     pub const fn is_borrowed(&self) -> bool {
-        self.owner == BorrowedReserved::Value as usize
+        self.owner.get() & SLICED_PTR_MASK == 0
     }
 }

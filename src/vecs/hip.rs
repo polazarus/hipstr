@@ -10,10 +10,10 @@ use crate::vecs::{InlineVec, SmartThinVec};
 use crate::Backend;
 
 #[rules_derive(ConstDefault(Self::EMPTY))]
-pub struct HipVec<T, B: Backend>(Pivot, PhantomData<(B, [T])>);
+pub struct HipVec<'a, T, B: Backend>(Pivot, PhantomData<(B, &'a [T])>);
 pub const INLINE_BYTES: usize = size_of::<Borrowed<()>>() - size_of::<u8>();
 
-impl<T, B: Backend> HipVec<T, B> {
+impl<'a, T, B: Backend> HipVec<'a, T, B> {
     const EMPTY: Self = Self::from_inline(InlineVec::DEFAULT);
 
     #[must_use]
@@ -37,6 +37,29 @@ impl<T, B: Backend> HipVec<T, B> {
     #[inline]
     pub const fn is_borrowed(&self) -> bool {
         !self.is_inline() && unsafe { self.as_sliced_unchecked() }.is_borrowed()
+    }
+
+    #[must_use]
+    #[inline]
+    pub fn is_unique(&self) -> bool {
+        self.is_inline()
+            || (self.is_owned()
+                && unsafe { self.as_owned_unchecked() }
+                    .owner
+                    .as_ref()
+                    .prefix
+                    .is_unique())
+    }
+
+    #[must_use]
+    #[inline]
+    pub const fn is_fat(&self) -> bool {
+        self.is_owned() && unsafe { self.as_owned_unchecked() }.owner.is_fat()
+    }
+
+    #[must_use]
+    pub const fn is_thin(&self) -> bool {
+        self.is_owned() && unsafe { self.as_owned_unchecked() }.owner.is_thin()
     }
 
     #[must_use]
@@ -72,27 +95,28 @@ impl<T, B: Backend> HipVec<T, B> {
         }
     }
 
-    pub const unsafe fn as_inline_unchecked(&self) -> &InlineVec<T, INLINE_BYTES> {
+    const unsafe fn as_inline_unchecked(&self) -> &InlineVec<T, INLINE_BYTES> {
         debug_assert!(self.is_inline());
         // SAFETY: precondition
         unsafe { transmute2::<&Self, &InlineVec<T, INLINE_BYTES>>(self) }
     }
 
-    pub(super) const unsafe fn as_sliced_unchecked(&self) -> &UnknownSliced<T> {
+    const unsafe fn as_sliced_unchecked(&self) -> &UnknownSliced<T> {
         debug_assert!(!self.is_inline());
         // SAFETY: precondition
         unsafe { transmute2::<&Self, &UnknownSliced<T>>(self) }
     }
 
-    pub(super) const unsafe fn as_owned_unchecked(&self) -> &Owned<T, B> {
+    const unsafe fn as_owned_unchecked(&self) -> &Owned<T, B> {
         debug_assert!(self.is_owned());
         // SAFETY: precondition
         unsafe { transmute2::<&Self, &Owned<T, B>>(self) }
     }
 
     #[must_use]
-    pub const fn borrowed(slice: &[T]) -> Self {
-        Self::from_sliced(Borrowed::new(slice))
+    pub const fn borrowed(slice: &'a [T]) -> Self {
+        let borrowed = Borrowed::<'a, T>::new(slice);
+        unsafe { Self::from_sliced(borrowed) }
     }
 
     #[must_use]
@@ -101,7 +125,7 @@ impl<T, B: Backend> HipVec<T, B> {
     }
 
     #[must_use]
-    pub(super) const fn from_sliced<O>(owned: Sliced<T, O>) -> Self {
+    pub(super) const unsafe fn from_sliced<O>(owned: Sliced<T, O>) -> Self {
         const {
             assert!(size_of::<O>() == size_of::<usize>());
         }
@@ -109,13 +133,33 @@ impl<T, B: Backend> HipVec<T, B> {
     }
 
     #[must_use]
+    const fn from_owned(v: Owned<T, B>) -> Self {
+        unsafe { Self::from_sliced(v) }
+    }
+
+    #[must_use]
     pub const fn from_smart_thin(v: SmartThinVec<T, B>) -> Self {
-        let ptr = v.as_ptr();
         let len = v.len();
-        Self::from_sliced(Owned {
-            owner: FatOrThinRepr::from_thin(v.into_repr()),
-            ptr,
-            len,
-        })
+        let ptr = v.as_ptr();
+
+        #[cfg(debug_assertions)]
+        let is_null = v.capacity() == 0;
+
+        let this = unsafe {
+            Self::from_sliced(Sliced {
+                owner: v.into_repr(),
+                ptr,
+                len,
+            })
+        };
+
+        #[cfg(debug_assertions)]
+        if is_null {
+            debug_assert!(this.is_borrowed());
+        } else {
+            debug_assert!(this.is_owned());
+        }
+
+        this
     }
 }
