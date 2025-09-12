@@ -10,7 +10,7 @@ use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::fmt::{self};
-use core::mem::{offset_of, MaybeUninit};
+use core::mem::{self, offset_of, MaybeUninit};
 use core::ops::{Range, RangeBounds};
 use core::ptr::{self, NonNull};
 use core::{error, slice};
@@ -260,6 +260,16 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
             len,
             data: [MaybeUninit::zeroed(); BYTES],
         }
+    }
+
+    /// Drops the contents of the inline vector.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the inline vector is not used after drop.
+    #[inline]
+    pub(super) unsafe fn drop_contents(&mut self) {
+        unsafe { drop_raw_slice(self.as_mut_ptr(), self.len()) };
     }
 
     /// Creates a new inline vector from an array by moving the element.
@@ -1295,7 +1305,7 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize> Drop
 {
     fn drop(&mut self) {
         unsafe {
-            drop_raw_slice(self.as_mut_ptr(), self.len());
+            self.drop_contents();
         }
     }
 }

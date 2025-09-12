@@ -121,8 +121,14 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
 
     #[inline]
     pub(super) const fn into_repr(self) -> ThinRepr<T, P> {
-        // SAFETY: repr is transparent
-        unsafe { mem::transmute(self) }
+        let repr = self.0;
+        let _this = ManuallyDrop::new(self);
+        repr
+    }
+
+    #[inline]
+    pub(super) const fn from_repr(repr: ThinRepr<T, P>) -> Self {
+        Self(repr)
     }
 
     #[inline]

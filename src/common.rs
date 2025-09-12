@@ -295,3 +295,15 @@ pub(crate) const unsafe fn transmute2<A, B>(value: A) -> B {
         )
     }
 }
+
+#[track_caller]
+pub(crate) const unsafe fn transmute_ref<A, B>(r: &A) -> &B {
+    assert!(const { mem::align_of::<A>() == mem::align_of::<B>() });
+    unsafe { transmute2(r) }
+}
+
+#[track_caller]
+pub(crate) const unsafe fn transmute_mut<A, B>(r: &mut A) -> &mut B {
+    assert!(const { mem::align_of::<A>() == mem::align_of::<B>() });
+    unsafe { transmute2(r) }
+}

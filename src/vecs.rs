@@ -3,6 +3,7 @@
 pub mod hip;
 pub mod inline;
 pub(crate) mod reprs;
+pub mod smart_fat;
 pub mod smart_thin;
 pub mod thin;
 

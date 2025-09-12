@@ -128,6 +128,20 @@ impl<T, P> FatRepr<T, P> {
         let ptr = unsafe { self.inner.as_ptr().byte_sub(FAT) };
         NonNull::new(ptr)
     }
+
+    pub(crate) const fn as_ref(&self) -> Option<&FatInner<T, P>> {
+        match self.get() {
+            Some(ptr) => unsafe { Some(ptr.as_ref()) },
+            None => None,
+        }
+    }
+
+    pub(crate) fn as_mut(&mut self) -> Option<&mut FatInner<T, P>> {
+        match self.get() {
+            Some(ptr) => unsafe { Some(&mut *ptr.as_ptr()) },
+            None => None,
+        }
+    }
 }
 
 impl<T, P> FatOrThinRepr<T, P> {
@@ -287,8 +301,6 @@ pub(super) enum BorrowedReserved {
     Value = THIN,
 }
 
-pub(super) type Owned<T, B> = Sliced<T, FatOrThinRepr<T, B>>;
-
 #[derive(Clone, Copy)]
 #[repr(C)]
 pub(super) struct Sliced<T, O> {
@@ -324,7 +336,7 @@ pub(super) type UnknownSliced<T> = Sliced<T, NonZeroUsize>;
 
 impl<T> UnknownSliced<T> {
     #[inline]
-    pub const fn is_owned(&self) -> bool {
+    pub const fn is_allocated(&self) -> bool {
         !self.is_borrowed()
     }
 

@@ -120,6 +120,10 @@ impl<T, B: Backend> SmartThinVec<T, B> {
         unsafe { Self::from_thin_vec_unchecked(tv) }
     };
 
+    pub(crate) const unsafe fn from_repr(repr: ThinRepr<T, B>) -> Self {
+        unsafe { Self::from_thin_vec_unchecked(ThinVec::from_repr(repr)) }
+    }
+
     pub const fn len(&self) -> usize {
         self.as_thin_vec().len()
     }
