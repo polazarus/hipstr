@@ -10,7 +10,7 @@ use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::fmt::{self};
-use core::mem::{self, offset_of, MaybeUninit};
+use core::mem::{offset_of, MaybeUninit};
 use core::ops::{Range, RangeBounds};
 use core::ptr::{self, NonNull};
 use core::{error, slice};

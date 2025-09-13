@@ -38,7 +38,7 @@
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;
-use core::mem::{self, ManuallyDrop};
+use core::mem::ManuallyDrop;
 use core::ops::Deref;
 
 use const_default::ConstDefault;
@@ -48,7 +48,7 @@ use crate::backend::{
     Backend, BackendImpl, CloneOnOverflow, Counter, PanicOnOverflow, UpdateResult,
 };
 use crate::common::traits::MutVector;
-use crate::common::{manually_drop_as_mut, manually_drop_as_ref};
+use crate::common::{transmute_mut, transmute_ref};
 use crate::macros::trait_impls;
 use crate::vecs::reprs::ThinRepr;
 
@@ -104,7 +104,7 @@ macro_rules! smart_thin_vec {
 /// assert_eq!(v.as_ptr(), v2.as_ptr());
 /// ```
 #[repr(transparent)]
-pub struct SmartThinVec<T, C: Backend>(pub(super) ManuallyDrop<ThinVec<T, C>>);
+pub struct SmartThinVec<T, C: Backend>(ThinRepr<T, C>);
 
 impl<T, C: Backend> Deref for SmartThinVec<T, C> {
     type Target = ThinVec<T, C>;
@@ -120,8 +120,13 @@ impl<T, B: Backend> SmartThinVec<T, B> {
         unsafe { Self::from_thin_vec_unchecked(tv) }
     };
 
-    pub(crate) const unsafe fn from_repr(repr: ThinRepr<T, B>) -> Self {
-        unsafe { Self::from_thin_vec_unchecked(ThinVec::from_repr(repr)) }
+    pub(super) const unsafe fn from_repr(repr: ThinRepr<T, B>) -> Self {
+        Self(repr)
+    }
+    pub(super) const unsafe fn into_repr(self) -> ThinRepr<T, B> {
+        let repr = self.0;
+        let _ = ManuallyDrop::new(self);
+        repr
     }
 
     pub const fn len(&self) -> usize {
@@ -142,7 +147,7 @@ impl<T, B: Backend> SmartThinVec<T, B> {
 
     /// Copies the smart vector without checking or updating the reference count.
     const unsafe fn copy(&self) -> Self {
-        Self(ManuallyDrop::new(ThinVec(manually_drop_as_ref(&self.0).0)))
+        Self(self.0)
     }
 
     /// Creates a new empty vector.
@@ -243,7 +248,8 @@ impl<T, B: Backend> SmartThinVec<T, B> {
     /// This function is unsafe because it allows mutable access to the vector even if it is not unique.
     /// The caller must ensure that no other references to the vector exist while this function is used.
     pub const unsafe fn as_mut_unchecked(&mut self) -> &mut ThinVec<T, B> {
-        manually_drop_as_mut(&mut self.0)
+        // SAFETY: SmartThinVec and ThinVec are transparent ThinRepr wrappers
+        unsafe { transmute_mut::<Self, ThinVec<T, B>>(self) }
     }
 
     /// Returns a mutable reference to the vector, possibly cloning the data if
@@ -294,14 +300,16 @@ impl<T, B: Backend> SmartThinVec<T, B> {
     /// This function is unsafe because it assumes the input `ThinVec` has a consistent counter.
     /// Typically, this is the case when the `ThinVec` is created with a default counter.
     pub(crate) const unsafe fn from_thin_vec_unchecked(t: ThinVec<T, B>) -> Self {
-        let thin_vec = ManuallyDrop::new(t);
-        Self(thin_vec)
+        let result = Self(t.0);
+        let _ = ManuallyDrop::new(t);
+        result
     }
 
     #[inline]
     #[must_use]
     pub(crate) const fn as_thin_vec(&self) -> &ThinVec<T, B> {
-        manually_drop_as_ref(&self.0)
+        // SAFETY: SmartThinVec and ThinVec are transparent ThinRepr wrappers
+        unsafe { transmute_ref::<Self, ThinVec<T, B>>(self) }
     }
 
     #[inline]
@@ -390,17 +398,12 @@ impl<T, B: Backend> SmartThinVec<T, B> {
     /// ```
     pub fn into_thin_vec(self) -> Result<ThinVec<T>, Self> {
         if self.is_unique() {
-            let mut this = ManuallyDrop::new(self);
-            let tv = unsafe { ManuallyDrop::take(&mut this.0) };
+            let tv: ThinVec<T, B> = ThinVec(self.0);
+            let _ = ManuallyDrop::new(self);
             Ok(tv.fresh_move())
         } else {
             Err(self)
         }
-    }
-
-    pub(super) const fn into_repr(self) -> ThinRepr<T, B> {
-        // SAFETY: everything is transparent
-        unsafe { mem::transmute::<Self, ThinRepr<T, B>>(self) }
     }
 }
 
@@ -423,15 +426,13 @@ impl<T: Clone, C: Counter> Clone for SmartThinVec<T, BackendImpl<C, CloneOnOverf
     }
 }
 
-impl<T, C: Backend> Drop for SmartThinVec<T, C> {
+impl<T, B: Backend> Drop for SmartThinVec<T, B> {
     fn drop(&mut self) {
         if let Some(count) = self.count() {
             // Decrement the reference count
             if count.decr() == UpdateResult::Overflow {
-                // SAFETY: if the count reaches zero, there is no other reference
-                unsafe {
-                    ManuallyDrop::drop(&mut self.0);
-                }
+                // rewrap the repr into ThinVec to drop it
+                let _: ThinVec<T, B> = ThinVec(self.0);
             }
         }
     }

@@ -9,8 +9,10 @@ pub mod thin;
 
 #[doc(inline)]
 pub use inline::InlineVec;
-
-pub type ThinVec<T> = thin::ThinVec<T, thin::Reserved>;
-
 #[doc(inline)]
 pub use smart_thin::SmartThinVec;
+
+use crate::backend;
+
+pub type ThinVec<T> = thin::ThinVec<T, thin::Reserved>;
+pub type HipVec<'a, T, B = backend::Arc> = hip::HipVec<'a, T, B>;

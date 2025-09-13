@@ -89,10 +89,10 @@ fn deref() {
 fn as_ref() {
     let v = SmartThinVec::<u8, Arc>::new();
 
-    let s: &[u8] = v.as_ref();
+    let s: &[u8] = v.as_thin_vec();
     assert!(ptr::eq(s, v.as_slice()));
 
-    let t: &ThinVec<u8, _> = v.as_ref();
+    let t: &ThinVec<u8, _> = v.as_thin_vec();
     assert!(ptr::eq(t, v.as_thin_vec()));
 }
 

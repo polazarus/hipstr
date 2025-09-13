@@ -3,6 +3,7 @@ use core::mem::needs_drop;
 
 use rules_derive::rules_derive;
 
+use crate::backend::UpdateResult;
 use crate::common::derives::*;
 use crate::common::{transmute2, transmute_mut, transmute_ref};
 use crate::vecs::reprs::{Borrowed, FatOrThinRepr, Pivot, Sliced, UnknownSliced, Variant};
@@ -13,36 +14,113 @@ use crate::Backend;
 #[cfg(test)]
 mod tests;
 
-#[rules_derive(ConstDefault(Self::EMPTY))]
+#[rules_derive(
+    ConstDefault(Self::EMPTY),
+    From(bindings = (<'a, T, B: Backend, const N: usize>), source = [T; N], cons = Self::from_array),
+)]
 pub struct HipVec<'a, T, B: Backend>(Pivot, PhantomData<(B, &'a [T])>);
 pub const INLINE_BYTES: usize = size_of::<Borrowed<()>>() - size_of::<u8>();
 
 impl<'a, T, B: Backend> HipVec<'a, T, B> {
     const EMPTY: Self = Self::borrowed(&[]);
+    pub const INLINE_CAP: usize = InlineVec::<T, INLINE_BYTES>::CAP;
 
+    /// Creates a new empty `HipVec`.
+    ///
+    /// This vector is not *allocated*.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::HipVec;
+    /// let a: HipVec<u8> = HipVec::new();
+    /// assert!(a.is_empty());
+    /// assert!(!a.is_allocated());
+    /// ```
     #[must_use]
     pub const fn new() -> Self {
         Self::EMPTY
     }
 
+    /// Creates a `HipVec` from an array.
+    #[must_use]
+    #[inline]
+    pub(crate) fn from_array<const N: usize>(array: [T; N]) -> Self {
+        if N == 0 {
+            return Self::new();
+        } else if N <= Self::INLINE_CAP {
+            let inline = InlineVec::from_array(array);
+            Self::from_inline(inline)
+        } else {
+            let smart = SmartThinVec::from_array(array);
+            Self::from_smart_thin(smart)
+        }
+    }
+
+    /// Returns `true` if the vector is stored inline.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::HipVec;
+    /// let a: HipVec<u8> = HipVec::from([1,2,3]);
+    /// assert!(a.is_inline());
+    /// ```
     #[must_use]
     #[inline]
     pub const fn is_inline(&self) -> bool {
         self.0.is_inline()
     }
 
+    /// Returns `true` if the vector is allocated on the heap.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::HipVec;
+    /// use hipstr::Arc;
+    /// let a: HipVec<u8, Arc> = HipVec::from([0; 1024]);
+    /// assert!(!a.is_inline());
+    /// assert!(!a.is_borrowed());
+    /// assert!(a.is_allocated());
+    /// assert_eq!(a.len(), 1024);
+    /// ```
     #[must_use]
     #[inline]
     pub const fn is_allocated(&self) -> bool {
         !self.is_inline() && unsafe { self.as_sliced_unchecked() }.is_allocated()
     }
 
+    /// Returns `true` if the vector is borrowed.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::HipVec;
+    /// let slice: &[u8] = &[1,2,3];
+    /// let a: HipVec<u8> = HipVec::borrowed(slice);
+    /// assert!(a.is_borrowed());
+    /// assert!(!a.is_inline());
+    /// assert!(!a.is_allocated());
+    /// assert_eq!(a.len(), 3);
+    /// ```
     #[must_use]
     #[inline]
     pub const fn is_borrowed(&self) -> bool {
         !self.is_inline() && unsafe { self.as_sliced_unchecked() }.is_borrowed()
     }
 
+    /// Returns `true` if the vector is uniquely owned.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::HipVec;
+    /// let a: HipVec<u8> = HipVec::from([b'*'; 42]);
+    /// assert!(a.is_unique());
+    /// let b = a.clone();
+    /// assert!(!a.is_unique());
+    /// ```
     #[must_use]
     #[inline]
     pub fn is_unique(&self) -> bool {
@@ -79,6 +157,19 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         }
     }
 
+    /// Returns `true` if the vector has a length of 0.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::HipVec;
+    /// use hipstr::Arc;
+    /// let a: HipVec<u8,Arc> = HipVec::new();
+    /// assert!(a.is_empty());
+    ///
+    /// let b: HipVec<u8,Arc> = HipVec::from([1,2,3]);
+    /// assert!(!b.is_empty());
+    /// ```
     #[must_use]
     #[inline]
     pub const fn is_empty(&self) -> bool {
@@ -144,6 +235,20 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     }
 
     #[must_use]
+    pub(crate) fn from_slice_clone(slice: &[T]) -> Self
+    where
+        T: Clone,
+    {
+        if slice.len() <= Self::INLINE_CAP {
+            let inline = InlineVec::from_slice_clone(slice);
+            Self::from_inline(inline)
+        } else {
+            let smart = SmartThinVec::from_slice_clone(slice);
+            Self::from_smart_thin(smart)
+        }
+    }
+
+    #[must_use]
     pub const fn from_smart_thin(v: SmartThinVec<T, B>) -> Self {
         let len = v.len();
         let ptr = v.as_ptr();
@@ -172,6 +277,10 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     const unsafe fn owner_mut_unchecked(&mut self) -> &mut Owner<T, B> {
         unsafe { &mut self.as_allocated_mut_unchecked().owner }
     }
+
+    const unsafe fn copy(&self) -> Self {
+        Self(self.0, PhantomData)
+    }
 }
 
 impl<T, B: Backend> Drop for HipVec<'_, T, B> {
@@ -191,6 +300,29 @@ impl<T, B: Backend> Drop for HipVec<'_, T, B> {
             // SAFETY: will no be used after drop
             unsafe {
                 owner.drop();
+            }
+        }
+    }
+}
+
+impl<T: Clone, B: Backend> Clone for HipVec<'_, T, B> {
+    fn clone(&self) -> Self {
+        if self.is_inline() {
+            // SAFETY: repr is checked above
+            let inline = unsafe { self.as_inline_unchecked() };
+            // TODO optimize if T is Copy
+            Self::from_inline(inline.clone())
+        } else if self.is_borrowed() {
+            // SAFETY: repr is checked above, the borrowed slice is copyable
+            unsafe { self.copy() }
+        } else {
+            // SAFETY: repr is checked above
+            let allocated = unsafe { self.as_allocated_unchecked() };
+            if allocated.owner.counter().incr() == UpdateResult::Done {
+                // SAFETY: the reference count was incremented
+                unsafe { self.copy() }
+            } else {
+                Self::from_slice_clone(allocated.as_slice())
             }
         }
     }
@@ -230,5 +362,9 @@ impl<T, B: Backend> Owner<T, B> {
 
     const fn is_thin(&self) -> bool {
         self.0.is_thin()
+    }
+
+    const fn counter(&self) -> &B {
+        &self.0.as_ref().prefix
     }
 }

@@ -1,35 +1,51 @@
 use alloc::boxed::Box;
 use alloc::vec::Vec;
-use core::marker::PhantomData;
 use core::mem::ManuallyDrop;
 use core::ptr::{self, NonNull};
 
+use rules_derive::rules_derive;
+
 use super::reprs::FatRepr;
 use crate::backend::{BackendImpl, CloneOnOverflow, Counter, PanicOnOverflow, UpdateResult};
+use crate::common::derives::*;
 use crate::common::manually_drop_as_mut;
 use crate::vecs::reprs::FatInner;
 use crate::Backend;
 
+/// A smart fat vector with reference counting.
 #[repr(transparent)]
+#[rules_derive(
+    ConstDefault(Self::EMPTY),
+    From(source = Vec<T>, cons = Self::from_vec),
+)]
 pub struct SmartFatVec<T, B: Backend>(FatRepr<T, B>);
 
 impl<T, B: Backend> SmartFatVec<T, B> {
+    const EMPTY: Self = Self(FatRepr::EMPTY);
+
+    #[inline]
+    #[must_use]
+    pub const fn new() -> Self {
+        Self::EMPTY
+    }
+
+    #[inline]
     pub(super) const unsafe fn from_repr(repr: FatRepr<T, B>) -> Self {
         Self(repr)
     }
 
-    fn from_vec(vec: Vec<T>) -> Self {
-        let mut vec = ManuallyDrop::new(vec);
-        let r = manually_drop_as_mut(&mut vec);
-
-        let cap = r.capacity();
+    /// Creates a new `SmartFatVec` from a standard `Vec`.
+    pub(crate) fn from_vec(vec: Vec<T>) -> Self {
+        let cap = vec.capacity();
         let repr = if cap == 0 {
             FatRepr::EMPTY
         } else {
+            let mut vec = ManuallyDrop::new(vec);
+
             // SAFETY: the vector ptr is not null by type invariant
             // as_non_null is not stable yet
-            let ptr = unsafe { NonNull::new_unchecked(r.as_mut_ptr()) };
-            let len = r.len();
+            let ptr = unsafe { NonNull::new_unchecked(vec.as_mut_ptr()) };
+            let len = vec.len();
             let inner = Box::new(FatInner {
                 prefix: B::DEFAULT,
                 ptr,
