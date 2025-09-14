@@ -278,13 +278,19 @@ pub(crate) fn vec_push_within_capacity<T>(v: &mut Vec<T>, value: T) -> Result<()
 }
 
 pub(crate) const unsafe fn transmute2<A, B>(value: A) -> B {
+    const {
+        assert!(mem::align_of::<A>() >= mem::align_of::<B>());
+    }
+    unsafe { transmute_unaligned::<A, B>(value) }
+}
+
+pub(crate) const unsafe fn transmute_unaligned<A, B>(value: A) -> B {
+    const {
+        assert!(mem::size_of::<A>() == mem::size_of::<B>());
+    }
     union U<A, B> {
         a: ManuallyDrop<A>,
         b: ManuallyDrop<B>,
-    }
-    const {
-        assert!(mem::size_of::<A>() == mem::size_of::<B>());
-        assert!(mem::align_of::<A>() >= mem::align_of::<B>());
     }
     unsafe {
         ManuallyDrop::into_inner(
@@ -298,7 +304,7 @@ pub(crate) const unsafe fn transmute2<A, B>(value: A) -> B {
 
 #[track_caller]
 pub(crate) const unsafe fn transmute_ref<A, B>(r: &A) -> &B {
-    assert!(const { mem::align_of::<A>() == mem::align_of::<B>() });
+    assert!(const { mem::align_of::<A>() >= mem::align_of::<B>() });
     unsafe { transmute2(r) }
 }
 

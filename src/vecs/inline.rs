@@ -133,6 +133,7 @@ pub struct InlineVec<
     const TAG: usize = TAG_DEFAULT,
 > {
     _aligned: [T; 0],
+    _word_aligned: [usize; 0],
 
     #[cfg(target_endian = "little")]
     len: TaggedLen<L, SHIFT, TAG>,
@@ -203,6 +204,7 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
             );
             Self {
                 _aligned: [],
+                _word_aligned: [],
                 len: TaggedLen::zero(),
                 data: [MaybeUninit::uninit(); BYTES],
             }
@@ -257,6 +259,7 @@ impl<T, L: NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize>
         };
         Self {
             _aligned: [],
+            _word_aligned: [],
             len,
             data: [MaybeUninit::zeroed(); BYTES],
         }

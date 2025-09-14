@@ -90,8 +90,7 @@ impl<T, P> Clone for FatOrThinRepr<T, P> {
 
 impl<T, P> ThinRepr<T, P> {
     pub(crate) const EMPTY: Self = {
-        // SAFETY: just shifting a null pointer is safe as long as we don't dereference it
-        let ptr = unsafe { ptr::without_provenance_mut::<ThinHeader<_, _>>(THIN) };
+        let ptr = ptr::without_provenance_mut::<ThinHeader<_, _>>(THIN);
         Self {
             inner: NonNull::new(ptr).unwrap(),
         }
@@ -111,8 +110,7 @@ impl<T, P> ThinRepr<T, P> {
 
 impl<T, P> FatRepr<T, P> {
     pub(crate) const EMPTY: Self = {
-        // SAFETY: just shifting a null pointer is safe as long as we don't dereference it
-        let ptr = unsafe { ptr::without_provenance_mut::<FatInner<T, P>>(FAT) };
+        let ptr = ptr::without_provenance_mut::<FatInner<T, P>>(FAT);
         Self {
             inner: NonNull::new(ptr).unwrap(),
         }
@@ -138,7 +136,10 @@ impl<T, P> FatRepr<T, P> {
 
     pub(crate) fn as_mut(&mut self) -> Option<&mut FatInner<T, P>> {
         match self.get() {
-            Some(ptr) => unsafe { Some(&mut *ptr.as_ptr()) },
+            Some(ptr) => {
+                debug_assert!(ptr.addr().get() & MASK == 0, "invalid pointer");
+                unsafe { Some(&mut *ptr.as_ptr()) }
+            }
             None => None,
         }
     }
@@ -190,7 +191,6 @@ impl<T, P> FatOrThinRepr<T, P> {
         }
     }
 
-    #[allow(clippy::transmute_ptr_to_ptr)]
     pub(super) fn into_split(self) -> Variant<ThinRepr<T, P>, FatRepr<T, P>> {
         if self.is_thin() {
             Variant::Thin(unsafe { mem::transmute::<Self, ThinRepr<T, P>>(self) })
@@ -343,5 +343,30 @@ impl<T> UnknownSliced<T> {
     #[inline]
     pub const fn is_borrowed(&self) -> bool {
         self.owner.get() & SLICED_PTR_MASK == 0
+    }
+}
+
+pub(super) struct ExposedNonNull<T> {
+    addr: NonZeroUsize,
+    phantom: PhantomData<NonNull<T>>,
+}
+
+impl<T> ExposedNonNull<T> {
+    pub fn new(ptr: NonNull<T>) -> Self {
+        Self {
+            addr: ptr.addr(),
+            phantom: PhantomData,
+        }
+    }
+    pub const fn addr(&self) -> NonZeroUsize {
+        self.addr
+    }
+
+    pub fn as_ptr(&self) -> *const T {
+        ptr::with_exposed_provenance(self.addr.get())
+    }
+
+    pub fn as_mut_ptr(&self) -> *mut T {
+        ptr::with_exposed_provenance_mut(self.addr.get())
     }
 }
