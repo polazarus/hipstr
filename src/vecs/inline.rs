@@ -11,11 +11,17 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::fmt::{self};
 use core::mem::{offset_of, MaybeUninit};
-use core::ops::{Range, RangeBounds};
+#[cfg(target_endian = "little")]
+use core::num::NonZeroUsize;
+#[cfg(target_pointer_width = "64")]
+use core::ops::BitAnd;
+use core::ops::{Div, Range, RangeBounds, Rem, Shr, Sub};
 use core::ptr::{self, NonNull};
 use core::{error, slice};
 
 use const_default::ConstDefault;
+use generic_array::typenum::{NonZero, PowerOfTwo, Quot, Shright, Sub1, B1, U0, U24, U3, U8};
+use generic_array::{ArrayLength, GenericArray};
 use rules_derive::rules_derive;
 
 use crate::common::derives::{
@@ -35,6 +41,146 @@ use crate::{common, macros};
 
 #[cfg(test)]
 mod tests;
+
+const MAX_ENCODING_SIZE: usize = size_of::<usize>() + 1;
+
+const fn len_size(max: usize) -> usize {
+    let bits = usize::BITS - max.leading_zeros();
+    if bits <= 6 {
+        // suffix 0.1
+        1
+    } else if bits <= 16 - 4 {
+        // suffix 00.1.1
+        2
+    } else if bits <= 24 - 4 {
+        // suffix 01.1.1
+        3
+    } else if bits <= 32 - 4 {
+        // suffix 10.1.1
+        4
+    } else {
+        // suffix 0000.11.1.1
+        MAX_ENCODING_SIZE
+    }
+}
+
+const fn encode_len(value: usize, l: usize, out: &mut [u8]) {
+    assert!(out.len() >= l);
+    match l {
+        1 => {
+            out[0] = (value << 2) as u8 | 0b01;
+        }
+        2 => {
+            out[0] = (value << 4) as u8 | 0b0011;
+            out[1] = (value >> 4) as u8;
+        }
+        3 => {
+            out[0] = (value << 4) as u8 | 0b0111;
+            out[1] = (value >> 4) as u8;
+            out[2] = (value >> 12) as u8;
+        }
+        4 => {
+            out[0] = (value << 4) as u8 | 0b1011;
+            out[1] = (value >> 4) as u8;
+            out[2] = (value >> 12) as u8;
+            out[3] = (value >> 20) as u8;
+        }
+        MAX_ENCODING_SIZE => {
+            out[0] = 0b0000_1111;
+            let l = value.to_le_bytes();
+            let dst = unsafe { out.as_mut_ptr().add(1) };
+            unsafe {
+                dst.copy_from_nonoverlapping(l.as_ptr(), l.len());
+            }
+        }
+        _ => panic!("invalid length size"),
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+type PointerBytes = U8;
+
+#[cfg(target_pointer_width = "32")]
+type PointerBytes = U4;
+
+type PointerAlign = PointerBytes;
+
+type PointerZeroBits = Sub1<PointerAlign>;
+
+pub trait Divisible<U>: Div<U> + Rem<U, Output = U0> {}
+
+impl<T, U> Divisible<U> for T where T: Rem<U, Output = U0> + Div<U> {}
+
+pub trait InlineLength: NonZero + ArrayLength {
+    type Words: ArrayLength;
+    type WordsM1: ArrayLength;
+}
+
+impl<T> InlineLength for T
+where
+    T: NonZero + ArrayLength + Divisible<PointerAlign>,
+    Quot<T, PointerAlign>: ArrayLength + Sub<B1>,
+    Sub1<Quot<T, PointerAlign>>: ArrayLength,
+{
+    type Words = Quot<T, PointerAlign>;
+    type WordsM1 = Sub1<Self::Words>;
+}
+const fn is_inline_length<T: InlineLength>() {}
+
+const _A: () = {
+    is_inline_length::<U8>();
+    is_inline_length::<U24>();
+};
+
+#[repr(C)]
+struct InlineRepr<T, L>
+where
+    L: InlineLength,
+{
+    #[cfg(target_endian = "little")]
+    nz: NonZeroUsize,
+    rest: GenericArray<MaybeUninit<usize>, L::WordsM1>,
+    #[cfg(target_endian = "big")]
+    nz: NonZeroUsize,
+    phantom: core::marker::PhantomData<[T]>,
+}
+
+impl<T, L> InlineRepr<T, L>
+where
+    L: InlineLength,
+{
+    const fn new() -> Self {
+        let nz = const { NonZeroUsize::new(1).unwrap() };
+        Self {
+            #[cfg(target_endian = "little")]
+            nz,
+            rest: GenericArray::uninit(),
+            #[cfg(target_endian = "big")]
+            nz,
+            phantom: core::marker::PhantomData,
+        }
+    }
+}
+
+struct InlineBlob<T, L>
+where
+    L: InlineLength,
+{
+    data: GenericArray<MaybeUninit<u8>, L>,
+    phantom: core::marker::PhantomData<[T]>,
+}
+
+// const fn capacity(words: usize, item_size: usize) {
+//     let bytes = words * size_of::<usize>();
+//     if item_size == 0 {
+//         if words > 0 {
+//             usize::MAX,
+//         } else {
+
+//         }
+//     }
+
+// }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(transparent)]

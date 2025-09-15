@@ -42,7 +42,7 @@ fn from_array_inline() {
 
 #[test]
 fn from_array_thin() {
-    let mut h = HipVec::<u8, Arc>::from([42; 42]);
+    let h = HipVec::<u8, Arc>::from([42; 42]);
     assert_eq!(h.len(), 42);
     // assert!(!h.is_inline());
     // assert!(h.is_allocated());
@@ -50,5 +50,4 @@ fn from_array_thin() {
     assert!(h.is_thin());
     assert!(!h.is_fat());
     assert!(h.is_allocated());
-    assert!(!unsafe { h.owner_mut_unchecked() }.is_fat());
 }
