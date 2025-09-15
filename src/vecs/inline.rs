@@ -64,36 +64,38 @@ const fn len_size(max: usize) -> usize {
     }
 }
 
-const fn encode_len(value: usize, l: usize, out: &mut [u8]) {
+const fn encode_len(value: usize, l: usize, out: *mut u8) {
     assert!(out.len() >= l);
-    match l {
-        1 => {
-            out[0] = (value << 2) as u8 | 0b01;
-        }
-        2 => {
-            out[0] = (value << 4) as u8 | 0b0011;
-            out[1] = (value >> 4) as u8;
-        }
-        3 => {
-            out[0] = (value << 4) as u8 | 0b0111;
-            out[1] = (value >> 4) as u8;
-            out[2] = (value >> 12) as u8;
-        }
-        4 => {
-            out[0] = (value << 4) as u8 | 0b1011;
-            out[1] = (value >> 4) as u8;
-            out[2] = (value >> 12) as u8;
-            out[3] = (value >> 20) as u8;
-        }
-        MAX_ENCODING_SIZE => {
-            out[0] = 0b0000_1111;
-            let l = value.to_le_bytes();
-            let dst = unsafe { out.as_mut_ptr().add(1) };
-            unsafe {
-                dst.copy_from_nonoverlapping(l.as_ptr(), l.len());
+    unsafe {
+        match l {
+            1 => {
+                out.write((value << 2) as u8 | 0b01);
             }
+            2 => {
+                out.write((value << 4) as u8 | 0b0011);
+                out.write((value >> 4) as u8);
+            }
+            3 => {
+                out[0] = (value << 4) as u8 | 0b0111;
+                out[1] = (value >> 4) as u8;
+                out[2] = (value >> 12) as u8;
+            }
+            4 => {
+                out[0] = (value << 4) as u8 | 0b1011;
+                out[1] = (value >> 4) as u8;
+                out[2] = (value >> 12) as u8;
+                out[3] = (value >> 20) as u8;
+            }
+            MAX_ENCODING_SIZE => {
+                out[0] = 0b0000_1111;
+                let l = value.to_le_bytes();
+                let dst = unsafe { out.as_mut_ptr().add(1) };
+                unsafe {
+                    dst.copy_from_nonoverlapping(l.as_ptr(), l.len());
+                }
+            }
+            _ => panic!("invalid length size"),
         }
-        _ => panic!("invalid length size"),
     }
 }
 
@@ -160,6 +162,14 @@ where
             phantom: core::marker::PhantomData,
         }
     }
+
+    const fn blob(&self) -> &InlineBlob<T, L> {
+        unsafe { &*ptr::from_ref(self).cast() }
+    }
+
+    const fn blob_mut(&mut self) -> &mut InlineBlob<T, L> {
+        unsafe { &mut *ptr::from_mut(self).cast() }
+    }
 }
 
 struct InlineBlob<T, L>
@@ -168,6 +178,23 @@ where
 {
     data: GenericArray<MaybeUninit<u8>, L>,
     phantom: core::marker::PhantomData<[T]>,
+}
+
+impl<T, L> InlineBlob<T, L>
+where
+    L: InlineLength,
+{
+    const L: usize = len_size(L::USIZE);
+    const fn set_len(&mut self, len: usize) {
+        encode_len(len, Self::L, self.data());
+    }
+    const fn as_ptr(&self) -> *const T {
+        self.data.as_ptr().cast()
+    }
+
+    const fn as_mut_ptr(&mut self) -> *mut T {
+        self.data.as_mut_ptr().cast()
+    }
 }
 
 // const fn capacity(words: usize, item_size: usize) {
