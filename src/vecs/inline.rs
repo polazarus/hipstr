@@ -10,23 +10,22 @@ use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::fmt::{self};
-use core::mem::{offset_of, MaybeUninit};
-#[cfg(target_endian = "little")]
+use core::mem::MaybeUninit;
 use core::num::NonZeroUsize;
-#[cfg(target_pointer_width = "64")]
-use core::ops::BitAnd;
-use core::ops::{Div, Range, RangeBounds, Rem, Shr, Sub};
+use core::ops::{Range, RangeBounds};
 use core::ptr::{self, NonNull};
 use core::{error, slice};
 
 use const_default::ConstDefault;
-use generic_array::typenum::{NonZero, PowerOfTwo, Quot, Shright, Sub1, B1, U0, U24, U3, U8};
 use generic_array::{ArrayLength, GenericArray};
 use rules_derive::rules_derive;
+use typenum::U8;
 
+pub use self::length::InlineLength;
+use self::length::Seal;
 use crate::common::derives::{
-    AsRef, ConstDefault, DelegateDebug, DelegateHash, Deref, From, FromIterator, IntoIterator,
-    MutVector,
+    AsRef, ConstDefault, Copy, DelegateDebug, DelegateHash, Deref, From, FromIterator,
+    IntoIterator, MutVector,
 };
 use crate::common::drain::Drain;
 use crate::common::into_iter::IntoIter;
@@ -35,49 +34,17 @@ use crate::common::methods::{
     from_slice_clone_impl, pop_if_impl, pop_impl, push_within_capacity, remove_unchecked_impl,
     resize_impl, slice_swap_unchecked, spare_capacity_mut_impl, swap_remove_impl, truncate_impl,
 };
-use crate::common::non_zero::{self, NZ};
 use crate::common::{drop_raw_slice, panic_display, traits};
 use crate::{common, macros};
+
+mod length;
 
 #[cfg(test)]
 mod tests;
 
-const MAX_ENCODING_SIZE: usize = size_of::<usize>() + 1;
-
-#[cfg(target_pointer_width = "64")]
-type PointerBytes = U8;
-
-#[cfg(target_pointer_width = "32")]
-type PointerBytes = U4;
-
-type PointerAlign = PointerBytes;
-
-type PointerZeroBits = Sub1<PointerAlign>;
-
-pub trait Divisible<U>: Div<U> + Rem<U, Output = U0> {}
-
-impl<T, U> Divisible<U> for T where T: Rem<U, Output = U0> + Div<U> {}
-
-pub trait InlineLength: NonZero + ArrayLength {
-    type Words: ArrayLength;
-    type WordsM1: ArrayLength;
+const fn bits(n: usize) -> u32 {
+    (usize::BITS - n.leading_zeros()) as u32
 }
-
-impl<T> InlineLength for T
-where
-    T: NonZero + ArrayLength + Divisible<PointerAlign>,
-    Quot<T, PointerAlign>: ArrayLength + Sub<B1>,
-    Sub1<Quot<T, PointerAlign>>: ArrayLength,
-{
-    type Words = Quot<T, PointerAlign>;
-    type WordsM1 = Sub1<Self::Words>;
-}
-const fn is_inline_length<T: InlineLength>() {}
-
-const _A: () = {
-    is_inline_length::<U8>();
-    is_inline_length::<U24>();
-};
 
 #[repr(C)]
 struct InlineRepr<T, L>
@@ -85,11 +52,26 @@ where
     L: InlineLength,
 {
     #[cfg(target_endian = "little")]
-    nz: NonZeroUsize,
+    init_word: NonZeroUsize,
+
     rest: GenericArray<MaybeUninit<usize>, L::WordsM1>,
+
     #[cfg(target_endian = "big")]
-    nz: NonZeroUsize,
+    init_word: NonZeroUsize,
     phantom: core::marker::PhantomData<[T]>,
+}
+
+impl<T, N: InlineLength> Copy for InlineRepr<T, N> where
+    <<N as Seal>::WordsM1 as ArrayLength>::ArrayType<MaybeUninit<usize>>: Copy
+{
+}
+impl<T, N: InlineLength> Clone for InlineRepr<T, N>
+where
+    <<N as Seal>::WordsM1 as ArrayLength>::ArrayType<MaybeUninit<usize>>: Copy,
+{
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 
 impl<T, L> InlineRepr<T, L>
@@ -97,66 +79,30 @@ where
     L: InlineLength,
 {
     const fn new() -> Self {
-        let nz = const { NonZeroUsize::new(1).unwrap() };
+        let init_word = const { NonZeroUsize::new(1).unwrap() };
         Self {
-            #[cfg(target_endian = "little")]
-            nz,
+            init_word,
             rest: GenericArray::uninit(),
-            #[cfg(target_endian = "big")]
-            nz,
             phantom: core::marker::PhantomData,
         }
     }
     const fn zeroed() -> Self {
+        let init_word = NonZeroUsize::new(1).unwrap();
         Self {
-            #[cfg(target_endian = "little")]
-            nz: NonZeroUsize::new(1).unwrap(),
+            init_word,
             rest: unsafe { MaybeUninit::zeroed().assume_init() },
-            #[cfg(target_endian = "big")]
-            nz: NonZeroUsize::new(1).unwrap(),
             phantom: core::marker::PhantomData,
         }
     }
 
-    const fn blob(&self) -> &InlineBlob<T, L> {
-        unsafe { &*ptr::from_ref(self).cast() }
+    const fn ptr(&self) -> *const u8 {
+        ptr::from_ref(self).cast()
     }
 
-    const fn blob_mut(&mut self) -> &mut InlineBlob<T, L> {
-        unsafe { &mut *ptr::from_mut(self).cast() }
+    const fn mut_ptr(&mut self) -> *mut u8 {
+        ptr::from_mut(self).cast()
     }
-}
-const _ASSERTS: () = {
-    assert!(
-        size_of::<InlineRepr<u8, U8>>() == size_of::<Option<InlineRepr<u8, U8>>>(),
-        "InlineRepr must be the same size as Option<InlineRepr>"
-    );
 
-    assert!(
-        size_of::<InlineBlob<u8, U8>>() == size_of::<InlineRepr<u8, U8>>(),
-        "InlineBlob must be the same size as InlineRepr"
-    );
-
-    assert!(InlineBlob::<u8, U8>::DATA_SIZE == 7)
-};
-
-struct InlineBlob<T, L>
-where
-    L: InlineLength,
-{
-    _aligned: [usize; 0],
-    data: GenericArray<MaybeUninit<u8>, L>,
-    phantom: core::marker::PhantomData<[T]>,
-}
-
-const fn bits(n: usize) -> u32 {
-    (usize::BITS - n.leading_zeros()) as u32
-}
-
-impl<T, L> InlineBlob<T, L>
-where
-    L: InlineLength,
-{
     const fn length_and_data() -> (usize, usize, usize, usize) {
         let blob = L::USIZE;
         let t_align = align_of::<T>();
@@ -170,6 +116,9 @@ where
             let mut len_a = 1;
 
             let data_size = loop {
+                if len_a >= blob_a {
+                    break 0;
+                }
                 let max_data = (blob_a - len_a) / t_size_a;
                 let needed_len_bits = (bits(max_data) + 1) as usize; // 1 bit for the tag
                 let len_bits = 8 * len_a * t_align;
@@ -211,7 +160,7 @@ where
 
     const fn len(&self) -> usize {
         let mut value: usize = 0;
-        let src: *const u8 = unsafe { self.data.as_slice().as_ptr().add(Self::LEN_OFFSET).cast() };
+        let src: *const u8 = unsafe { self.ptr().add(Self::LEN_OFFSET).cast() };
         let dst: *mut u8 = (&raw mut value).cast();
 
         let offset = if cfg!(target_endian = "little") {
@@ -228,13 +177,7 @@ where
 
     const unsafe fn set_len(&mut self, len: usize) {
         assert!(Self::is_len_valid(len));
-        let dst: *mut u8 = unsafe {
-            self.data
-                .as_mut_slice()
-                .as_mut_ptr()
-                .add(Self::LEN_OFFSET)
-                .cast()
-        };
+        let dst: *mut u8 = unsafe { self.mut_ptr().add(Self::LEN_OFFSET).cast() };
 
         let offset = if cfg!(target_endian = "little") {
             0
@@ -254,7 +197,7 @@ where
             return ptr::dangling();
         }
 
-        unsafe { self.data.as_slice().as_ptr().add(Self::DATA_OFFSET).cast() }
+        unsafe { self.ptr().add(Self::DATA_OFFSET).cast() }
     }
 
     const fn as_mut_ptr(&mut self) -> *mut T {
@@ -262,15 +205,18 @@ where
             return ptr::dangling_mut();
         }
 
-        unsafe {
-            self.data
-                .as_mut_slice()
-                .as_mut_ptr()
-                .add(Self::DATA_OFFSET)
-                .cast()
-        }
+        unsafe { self.mut_ptr().add(Self::DATA_OFFSET).cast() }
     }
 }
+
+const _ASSERTS: () = {
+    assert!(
+        size_of::<InlineRepr<u8, U8>>() == size_of::<Option<InlineRepr<u8, U8>>>(),
+        "InlineRepr must be the same size as Option<InlineRepr>"
+    );
+
+    assert!(InlineRepr::<u8, U8>::DATA_SIZE == 7)
+};
 
 /// A vector that can store a small number of elements inline.
 ///
@@ -314,7 +260,7 @@ where
 pub struct InlineVec<T, L: InlineLength>(InlineRepr<T, L>);
 
 impl<T, L: InlineLength> InlineVec<T, L> {
-    pub(crate) const CAP: usize = InlineBlob::<T, L>::DATA_SIZE;
+    pub(crate) const CAP: usize = InlineRepr::<T, L>::DATA_SIZE;
 
     /// Creates a new inline vector with the specified capacity.
     ///
@@ -464,7 +410,7 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     #[inline]
     #[must_use]
     pub const fn len(&self) -> usize {
-        self.0.blob().len()
+        self.0.len()
     }
 
     /// Returns `true` if the inline vector is empty, `false` otherwise.
@@ -531,7 +477,7 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     /// ```
     #[inline]
     pub const fn as_ptr(&self) -> *const T {
-        self.0.blob().as_ptr()
+        self.0.as_ptr()
     }
 
     /// Returns a `NonNull` pointer to the inline vector data.
@@ -551,7 +497,7 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     /// would also make any pointers to it invalid.
     #[inline]
     pub const fn as_mut_ptr(&mut self) -> *mut T {
-        self.0.blob_mut().as_mut_ptr()
+        self.0.as_mut_ptr()
     }
 
     /// Attempts to push a value into the inline vector.
@@ -636,7 +582,7 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     pub const unsafe fn set_len(&mut self, new_len: usize) {
         debug_assert!(new_len <= Self::CAP, "new length exceeds capacity");
         unsafe {
-            self.0.blob_mut().set_len(new_len);
+            self.0.set_len(new_len);
         }
     }
 
@@ -1630,6 +1576,9 @@ impl<T> fmt::Display for InsertError<T> {
 macro_rules! inline_vec {
     [$cap:expr => $($e:expr),* $(,)?] => {
         {
+            const {
+                assert!($cap % size_of::<*const()>() == 0, "capacity must be a multiple of pointer size");
+            }
             $crate::vecs::inline::InlineVec::<_, $crate::typenum::U<{ $cap }>>::from_array([$($e),*])
         }
     };
@@ -1640,6 +1589,9 @@ macro_rules! inline_vec {
     };
     [$cap:expr => $e:expr; $n:expr] => {
         {
+            const {
+                assert!($cap % size_of::<*const()>() == 0, "capacity must be a multiple of pointer size");
+            }
             $crate::vecs::inline::InlineVec::<_,  $crate::typenum::U< { $cap }>>::from_array([$e; $n])
         }
     };

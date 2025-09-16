@@ -1,3 +1,22 @@
+#![allow(unused)]
+
+macro_rules! Copy {
+    (
+        $_attr:tt
+        $_vis:vis $_kind:ident $_name:ident
+        (($ty:ty) ($($generics_bindings:tt)*) where ($($generics_where:tt)*))
+        $_body:tt
+    ) => {
+        impl $($generics_bindings)* ::core::marker::Copy for $ty where $($generics_where)* {}
+        impl $($generics_bindings)* ::core::clone::Clone for $ty where $($generics_where)* {
+            #[inline]
+            fn clone(&self) -> Self {
+                *self
+            }
+        }
+    };
+}
+
 macro_rules! ConstDefault {
     (
         { $value:expr }
@@ -377,6 +396,6 @@ macro_rules! IntoIterator {
 
 #[allow(clippy::redundant_pub_crate)]
 pub(crate) use {
-    AsMut, AsRef, ConstDefault, Default, DelegateDebug, DelegateHash, Deref, DerefMut, From,
+    AsMut, AsRef, ConstDefault, Copy, Default, DelegateDebug, DelegateHash, Deref, DerefMut, From,
     FromIterator, Into, IntoIterator, MutVector, Vector,
 };

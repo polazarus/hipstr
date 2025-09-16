@@ -1,7 +1,6 @@
 use alloc::boxed::Box;
 
 use crate::vecs::hip::HipVec;
-use crate::vecs::SmartThinVec;
 use crate::Arc;
 
 #[test]

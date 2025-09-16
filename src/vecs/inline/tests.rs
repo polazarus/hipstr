@@ -1,24 +1,28 @@
 #![allow(clippy::reversed_empty_ranges)]
 
+use alloc::borrow::Cow;
 use alloc::boxed::Box;
+use alloc::vec::Vec;
 use alloc::{format, vec};
 use core::cell::Cell;
 use core::hash::BuildHasher;
 use core::mem::size_of;
 use core::ptr;
 
-use typenum::{U, U16, U8};
+use const_default::ConstDefault;
+use typenum::{U, U1, U24, U8};
 
-use super::*;
+use super::{InlineVec, InsertError, InsertErrorKind};
 use crate::common::traits::MutVector;
+use crate::vecs::inline::length::PointerSize;
 use crate::{inline_vec, thin_vec};
 
 const SMALL_CAP: usize = 8;
-const SMALL_FULL: InlineVec<u8, U16> = InlineVec::from_array([1, 2, 3, 4, 5, 6, 7]);
+const SMALL_FULL: InlineVec<u8, U8> = InlineVec::from_array([1, 2, 3, 4, 5, 6, 7]);
 
 #[test]
 fn macros() {
-    const BYTES: usize = 7;
+    const BYTES: usize = 8;
 
     let inline = inline_vec![BYTES => 1_u8, 2, 3];
     assert_eq!(inline.len(), 3);
@@ -168,6 +172,8 @@ fn push_fail_null_capacity() {
 #[should_panic(expected = "inline vector is full")]
 fn push_fail() {
     let mut inline = SMALL_FULL;
+    assert_eq!(inline.len(), 7);
+    assert_eq!(inline.capacity(), 7);
     inline.push(42);
 }
 
@@ -207,7 +213,6 @@ fn swap_remove() {
 #[test]
 #[should_panic(expected = "index out of bounds")]
 fn swap_remove_out_of_bounds() {
-    const CAP: usize = 7;
     let mut inline = InlineVec::<u8, U8>::new();
     for i in 1..=5 {
         inline.push(u8::try_from(i).unwrap());
@@ -233,7 +238,6 @@ fn remove() {
 #[test]
 #[should_panic(expected = "index out of bounds")]
 fn remove_out_of_bounds() {
-    const CAP: usize = 7;
     let mut inline = InlineVec::<u8, U8>::new();
     for i in 1..=5 {
         inline.push(u8::try_from(i).unwrap());
@@ -251,7 +255,7 @@ fn remove_drop() {
             self.0.set(self.0.get() + 1);
         }
     }
-    const BYTES: usize = size_of::<S>() * 2 - 1;
+    const BYTES: usize = size_of::<S>() * 2;
 
     let cell = Cell::new(0);
     {
@@ -325,7 +329,6 @@ fn insert() {
 #[test]
 #[should_panic(expected = "index out of bounds")]
 fn insert_out_of_bounds() {
-    const CAP: usize = 7;
     let mut inline = InlineVec::<u8, U8>::new();
     inline.insert(1, 33);
 }
@@ -344,7 +347,6 @@ fn insert_full() {
 
 #[test]
 fn pop() {
-    const CAP: usize = 7;
     let mut inline = InlineVec::<u8, U8>::new();
     assert_eq!(inline.pop(), None);
     inline.push(1);
@@ -381,21 +383,22 @@ fn niche() {
 
 #[test]
 fn zst() {
-    const CAPACITY: usize = InlineBlob::<(), U8>::DATA_SIZE;
+    const CAPACITY: usize = usize::MAX >> 1;
     let mut inline = InlineVec::<(), U8>::new();
     assert_eq!(inline.capacity(), CAPACITY);
-    assert_eq!(size_of_val(&inline), 1);
+    assert_eq!(size_of_val(&inline), 8);
     assert_eq!(inline.len(), 0);
-    for i in 1..=CAPACITY {
-        assert_eq!(inline.try_push(()), Ok(()), "at {i} / {CAPACITY}");
-        assert_eq!(inline.len(), i);
-    }
+
+    unsafe { inline.set_len(CAPACITY - 1) };
+
+    assert_eq!(inline.len(), CAPACITY - 1);
+    assert_eq!(inline.try_push(()), Ok(()));
+    assert_eq!(inline.len(), CAPACITY);
     assert_eq!(inline.try_push(()), Err(()));
 }
 
 #[test]
 fn extend_from_slice() {
-    const CAP: usize = 7;
     let mut inline = InlineVec::<u8, U8>::new();
     let slice = &[1, 2, 3];
     inline.extend_from_slice(slice);
@@ -411,7 +414,6 @@ fn extend_from_slice() {
 #[test]
 #[should_panic(expected = "new length exceeds capacity")]
 fn extend_from_slice_full() {
-    const CAP: usize = 7;
     let mut inline = InlineVec::<u8, U8>::new();
     let slice: &[u8] = &[1, 2, 3, 4, 5, 6, 7];
     inline.extend_from_slice(slice);
@@ -424,7 +426,6 @@ fn extend_from_slice_full() {
 
 #[test]
 fn extend_from_slice_copy() {
-    const CAP: usize = 7;
     let mut inline = InlineVec::<u8, U8>::new();
     let slice = &[1, 2, 3];
     inline.extend_from_slice_copy(slice);
@@ -440,7 +441,6 @@ fn extend_from_slice_copy() {
 #[test]
 #[should_panic(expected = "new length exceeds capacity")]
 fn extend_from_slice_copy_full() {
-    const CAP: usize = 7;
     let mut inline = InlineVec::<u8, U8>::new();
     let slice: &[u8] = &[1, 2, 3, 4, 5, 6, 7];
     inline.extend_from_slice_copy(slice);
@@ -453,7 +453,6 @@ fn extend_from_slice_copy_full() {
 
 #[test]
 fn extend_from_array() {
-    const CAP: usize = 7;
     let mut inline = InlineVec::<u8, U8>::new();
     let array = [1, 2, 3];
     inline.extend_from_array(array);
@@ -477,8 +476,6 @@ fn extend_from_array_full_0() {
 #[test]
 #[should_panic(expected = "new length exceeds capacity")]
 fn extend_from_array_full() {
-    const BYTES: usize = 7;
-
     let mut inline = InlineVec::<u8, U8>::new();
     let array: [u8; 7] = [1, 2, 3, 4, 5, 6, 7];
     inline.extend_from_array(array);
@@ -743,7 +740,7 @@ fn drain_boxes() {
 #[should_panic(expected = "start index 2 is greater than end index 1")]
 fn drain_start_after_end() {
     let mut inline = SMALL_FULL;
-    assert_eq!(inline.len(), SMALL_CAP);
+    assert_eq!(inline.len(), 7);
     let _ = inline.drain(2..1);
 }
 
@@ -751,7 +748,7 @@ fn drain_start_after_end() {
 #[should_panic(expected = "end index 8 is out of bounds for slice of length 7")]
 fn drain_end_out_of_bounds() {
     let mut inline = SMALL_FULL;
-    assert_eq!(inline.len(), SMALL_CAP);
+    assert_eq!(inline.len(), 7);
     let _ = inline.drain(2..8);
 }
 
