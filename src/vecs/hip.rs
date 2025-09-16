@@ -21,11 +21,12 @@ mod tests;
     From(bindings = (<'a, T, B: Backend, const N: usize>), source = [T; N], cons = Self::from_array),
 )]
 pub struct HipVec<'a, T, B: Backend>(Pivot, PhantomData<(B, &'a [T])>);
-pub const INLINE_BYTES: usize = size_of::<Borrowed<()>>() - size_of::<u8>();
+pub const INLINE_BYTES: usize = size_of::<Borrowed<()>>();
+pub type InlineBytes = crate::typenum::U<INLINE_BYTES>;
 
 impl<'a, T, B: Backend> HipVec<'a, T, B> {
     const EMPTY: Self = Self::borrowed(&[]);
-    pub const INLINE_CAP: usize = InlineVec::<T, INLINE_BYTES>::CAP;
+    pub const INLINE_CAP: usize = InlineVec::<T, InlineBytes>::CAP;
 
     /// Creates a new empty `HipVec`.
     ///
@@ -187,16 +188,16 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         }
     }
 
-    const unsafe fn as_inline_unchecked(&self) -> &InlineVec<T, INLINE_BYTES> {
+    const unsafe fn as_inline_unchecked(&self) -> &InlineVec<T, InlineBytes> {
         debug_assert!(self.is_inline());
         // SAFETY: precondition
-        unsafe { transmute_ref::<Self, InlineVec<T, INLINE_BYTES>>(self) }
+        unsafe { transmute_ref::<Self, InlineVec<T, InlineBytes>>(self) }
     }
 
-    const unsafe fn as_inline_mut_unchecked(&mut self) -> &mut InlineVec<T, INLINE_BYTES> {
+    const unsafe fn as_inline_mut_unchecked(&mut self) -> &mut InlineVec<T, InlineBytes> {
         debug_assert!(self.is_inline());
         // SAFETY: precondition
-        unsafe { transmute_mut::<Self, InlineVec<T, INLINE_BYTES>>(self) }
+        unsafe { transmute_mut::<Self, InlineVec<T, InlineBytes>>(self) }
     }
 
     const unsafe fn as_sliced_unchecked(&self) -> &UnknownSliced<T> {
@@ -224,7 +225,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     }
 
     #[must_use]
-    pub const fn from_inline(inline: InlineVec<T, INLINE_BYTES>) -> Self {
+    pub const fn from_inline(inline: InlineVec<T, InlineBytes>) -> Self {
         unsafe { transmute2(inline) }
     }
 

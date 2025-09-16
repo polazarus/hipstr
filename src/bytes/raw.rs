@@ -37,14 +37,13 @@ const TAG_BORROWED: u8 = 2;
 const TAG_ALLOCATED: u8 = 3;
 
 /// Maximal byte capacity of an inline [`HipByt`].
-pub(crate) const INLINE_CAPACITY: usize = size_of::<Borrowed>() - 1;
+pub(crate) const INLINE_CAPACITY: usize = Inline::CAP;
 
 /// Size of word minus a tagged byte.
 const WORD_SIZE_M1: usize = size_of::<usize>() - 1;
 
 /// Alias type for `Inline` with set inline capacity
-pub type Inline =
-    InlineVec<u8, INLINE_CAPACITY, u8, { TAG_BITS as usize }, { TAG_INLINE as usize }>;
+pub type Inline = InlineVec<u8, typenum::U<{ size_of::<Borrowed>() }>>;
 
 /// Smart bytes, i.e. cheaply clonable and sliceable byte string.
 ///

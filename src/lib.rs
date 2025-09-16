@@ -142,3 +142,6 @@ pub type LocalHipOsStr<'borrow> = os_string::HipOsStr<'borrow, Rc>;
 /// Thread-local shared path.
 #[cfg(feature = "std")]
 pub type LocalHipPath<'borrow> = path::HipPath<'borrow, Rc>;
+
+#[doc(hidden)]
+pub use typenum;

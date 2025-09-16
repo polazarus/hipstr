@@ -1497,10 +1497,10 @@ macros::trait_impls! {
             [T; N] => ThinVec<T, P> = ThinVec::from_array;
         }
     }
-    [T, P: ConstDefault, L: common::non_zero::NZ, const BYTES: usize, const SHIFT: usize, const TAG: usize]
+    [T, P: ConstDefault, L: super::inline::InlineLength]
     {
         From {
-            super::inline::InlineVec<T, BYTES, L, SHIFT, TAG> => ThinVec<T, P> = Self::from_mut_vector;
+            super::inline::InlineVec<T, L> => ThinVec<T, P> = Self::from_mut_vector;
         }
     }
 
