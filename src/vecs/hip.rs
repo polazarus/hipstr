@@ -1,11 +1,11 @@
 use core::marker::PhantomData;
-use core::mem::{needs_drop, transmute_copy};
+use core::mem::needs_drop;
 
 use rules_derive::rules_derive;
 
 use crate::backend::UpdateResult;
 use crate::common::derives::*;
-use crate::common::{transmute2, transmute_mut, transmute_ref, transmute_unaligned};
+use crate::common::{transmute2, transmute_mut, transmute_ref};
 use crate::vecs::reprs::{Borrowed, FatOrThinRepr, Pivot, Sliced, UnknownSliced, Variant};
 use crate::vecs::smart_fat::SmartFatVec;
 use crate::vecs::{InlineVec, SmartThinVec};
@@ -352,7 +352,7 @@ impl<T, B: Backend> Owner<T, B> {
     }
 
     fn is_unique(&self) -> bool {
-        self.0.as_ref().prefix.is_unique()
+        self.0.as_ref().unwrap().prefix.is_unique()
     }
 
     const fn is_fat(&self) -> bool {
@@ -364,6 +364,6 @@ impl<T, B: Backend> Owner<T, B> {
     }
 
     const fn counter(&self) -> &B {
-        &self.0.as_ref().prefix
+        &self.0.as_ref().unwrap().prefix
     }
 }
