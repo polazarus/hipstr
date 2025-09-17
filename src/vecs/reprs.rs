@@ -1,7 +1,7 @@
 #![allow(unused)]
 
 use core::marker::PhantomData;
-use core::mem::{self, offset_of, MaybeUninit};
+use core::mem::{self, offset_of, transmute, transmute_copy, MaybeUninit};
 #[cfg(target_endian = "little")]
 use core::num::NonZeroU8;
 use core::num::NonZeroUsize;
@@ -89,22 +89,28 @@ impl<T, P> Clone for FatOrThinRepr<T, P> {
 }
 
 impl<T, P> ThinRepr<T, P> {
-    pub(crate) const EMPTY: Self = {
-        let ptr = ptr::without_provenance_mut::<ThinHeader<_, _>>(THIN);
-        Self {
-            inner: NonNull::new(ptr).unwrap(),
-        }
+    const fn is_not_allocated(self) -> bool {
+        let addr: usize = unsafe { transmute(self.inner) };
+        addr == THIN
+    }
+
+    pub const EMPTY: Self = Self {
+        inner: NonNull::new(ptr::without_provenance_mut(THIN)).unwrap(),
     };
 
-    pub(crate) const fn new(header: NonNull<ThinHeader<T, P>>) -> Self {
+    pub const fn new(header: NonNull<ThinHeader<T, P>>) -> Self {
         Self {
             inner: unsafe { header.byte_add(THIN) },
         }
     }
 
-    pub(crate) const fn get(&self) -> Option<NonNull<ThinHeader<T, P>>> {
-        let ptr = unsafe { self.inner.as_ptr().byte_sub(THIN) };
-        NonNull::new(ptr)
+    pub const fn get(&self) -> Option<NonNull<ThinHeader<T, P>>> {
+        if self.is_not_allocated() {
+            None
+        } else {
+            let ptr = unsafe { self.inner.as_ptr().byte_sub(THIN) };
+            NonNull::new(ptr)
+        }
     }
 }
 

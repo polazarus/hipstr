@@ -50,7 +50,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     #[inline]
     pub(crate) fn from_array<const N: usize>(array: [T; N]) -> Self {
         if N == 0 {
-            return Self::new();
+            Self::new()
         } else if N <= Self::INLINE_CAP {
             let inline = InlineVec::from_array(array);
             Self::from_inline(inline)
