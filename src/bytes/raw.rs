@@ -37,7 +37,7 @@ const TAG_BORROWED: u8 = 2;
 const TAG_ALLOCATED: u8 = 3;
 
 /// Maximal byte capacity of an inline [`HipByt`].
-pub(crate) const INLINE_CAPACITY: usize = Inline::CAP;
+pub(crate) const INLINE_CAPACITY: usize = Inline::CAPACITY;
 
 /// Size of word minus a tagged byte.
 const WORD_SIZE_M1: usize = size_of::<usize>() - 1;

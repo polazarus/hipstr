@@ -26,7 +26,7 @@ pub type InlineBytes = crate::typenum::U<INLINE_BYTES>;
 
 impl<'a, T, B: Backend> HipVec<'a, T, B> {
     const EMPTY: Self = Self::borrowed(&[]);
-    pub const INLINE_CAP: usize = InlineVec::<T, InlineBytes>::CAP;
+    pub const INLINE_CAP: usize = InlineVec::<T, InlineBytes>::CAPACITY;
 
     /// Creates a new empty `HipVec`.
     ///

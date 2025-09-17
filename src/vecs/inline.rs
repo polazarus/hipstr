@@ -5,24 +5,24 @@
 //!
 //! Particularly space efficient, this implementation may in some case be more
 //! efficient than the standard library vectors.
+//!
+//! The actual size of the inline vector is set through a type-level number (see
+//! [`typenum`] and [`generic_array`]). It must be a non-zero multiple of the
+//! platform's pointer size (16, 32, or 64 bits for now).
 
 use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::fmt::{self};
 use core::mem::MaybeUninit;
-use core::num::NonZeroUsize;
 use core::ops::{Range, RangeBounds};
-use core::ptr::{self, NonNull};
+use core::ptr::NonNull;
 use core::{error, slice};
 
 use const_default::ConstDefault;
-use generic_array::{ArrayLength, GenericArray};
 use rules_derive::rules_derive;
-use typenum::U8;
 
-pub use self::length::InlineLength;
-use self::length::Seal;
+use self::repr::InlineRepr;
 use crate::common::derives::{
     AsRef, ConstDefault, Copy, DelegateDebug, DelegateHash, Deref, From, FromIterator,
     IntoIterator, MutVector,
@@ -37,186 +37,14 @@ use crate::common::methods::{
 use crate::common::{drop_raw_slice, panic_display, traits};
 use crate::{common, macros};
 
-mod length;
+pub(crate) mod length;
+pub(crate) mod repr;
 
 #[cfg(test)]
 mod tests;
 
-const fn bits(n: usize) -> u32 {
-    (usize::BITS - n.leading_zeros()) as u32
-}
-
-#[repr(C)]
-struct InlineRepr<T, L>
-where
-    L: InlineLength,
-{
-    #[cfg(target_endian = "little")]
-    init_word: NonZeroUsize,
-
-    rest: GenericArray<MaybeUninit<usize>, L::WordsM1>,
-
-    #[cfg(target_endian = "big")]
-    init_word: NonZeroUsize,
-    phantom: core::marker::PhantomData<[T]>,
-}
-
-impl<T, N: InlineLength> Copy for InlineRepr<T, N> where
-    <<N as Seal>::WordsM1 as ArrayLength>::ArrayType<MaybeUninit<usize>>: Copy
-{
-}
-impl<T, N: InlineLength> Clone for InlineRepr<T, N>
-where
-    <<N as Seal>::WordsM1 as ArrayLength>::ArrayType<MaybeUninit<usize>>: Copy,
-{
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<T, L> InlineRepr<T, L>
-where
-    L: InlineLength,
-{
-    const fn new() -> Self {
-        let init_word = const { NonZeroUsize::new(1).unwrap() };
-        Self {
-            init_word,
-            rest: GenericArray::uninit(),
-            phantom: core::marker::PhantomData,
-        }
-    }
-    const fn zeroed() -> Self {
-        let init_word = NonZeroUsize::new(1).unwrap();
-        Self {
-            init_word,
-            rest: unsafe { MaybeUninit::zeroed().assume_init() },
-            phantom: core::marker::PhantomData,
-        }
-    }
-
-    const fn ptr(&self) -> *const u8 {
-        ptr::from_ref(self).cast()
-    }
-
-    const fn mut_ptr(&mut self) -> *mut u8 {
-        ptr::from_mut(self).cast()
-    }
-
-    const fn length_and_data() -> (usize, usize, usize, usize) {
-        let blob = L::USIZE;
-        let t_align = align_of::<T>();
-        let t_size = size_of::<T>();
-
-        let (len_size, data_size) = if t_size == 0 {
-            (size_of::<usize>(), usize::MAX >> 1)
-        } else {
-            let t_size_a = t_size / t_align;
-            let blob_a = blob / t_align;
-            let mut len_a = 1;
-
-            let data_size = loop {
-                if len_a >= blob_a {
-                    break 0;
-                }
-                let max_data = (blob_a - len_a) / t_size_a;
-                let needed_len_bits = (bits(max_data) + 1) as usize; // 1 bit for the tag
-                let len_bits = 8 * len_a * t_align;
-                if max_data == 0 || needed_len_bits <= len_bits {
-                    break max_data;
-                }
-                len_a += 1;
-            };
-
-            let mut len_size = len_a * t_align;
-            if len_size > size_of::<usize>() {
-                len_size = size_of::<usize>();
-            }
-
-            (len_size, data_size)
-        };
-
-        let len_off;
-        let data_off;
-        if cfg!(target_endian = "little") {
-            len_off = 0;
-            data_off = len_size;
-        } else {
-            data_off = 0;
-            len_off = blob - len_size;
-        }
-        (len_off, len_size, data_off, data_size)
-    }
-
-    const LEN_OFFSET: usize = Self::length_and_data().0;
-    const LEN_SIZE: usize = Self::length_and_data().1;
-    const LEN_BITS: u32 = (Self::LEN_SIZE * 8) as u32;
-    const DATA_OFFSET: usize = Self::length_and_data().2;
-    const DATA_SIZE: usize = Self::length_and_data().3;
-
-    const fn is_len_valid(len: usize) -> bool {
-        bits(len) < Self::LEN_BITS
-    }
-
-    const fn len(&self) -> usize {
-        let mut value: usize = 0;
-        let src: *const u8 = unsafe { self.ptr().add(Self::LEN_OFFSET).cast() };
-        let dst: *mut u8 = (&raw mut value).cast();
-
-        let offset = if cfg!(target_endian = "little") {
-            0
-        } else {
-            size_of::<usize>() - Self::LEN_SIZE
-        };
-        unsafe {
-            dst.add(offset)
-                .copy_from_nonoverlapping(src, Self::LEN_SIZE);
-        }
-        value >> 1
-    }
-
-    const unsafe fn set_len(&mut self, len: usize) {
-        assert!(Self::is_len_valid(len));
-        let dst: *mut u8 = unsafe { self.mut_ptr().add(Self::LEN_OFFSET).cast() };
-
-        let offset = if cfg!(target_endian = "little") {
-            0
-        } else {
-            size_of::<usize>() - Self::LEN_SIZE
-        };
-        let len = (len << 1) | 1;
-        let src: *const u8 = (&raw const len).cast();
-        let src = unsafe { src.add(offset) };
-        unsafe {
-            dst.copy_from_nonoverlapping(src, Self::LEN_SIZE);
-        }
-    }
-
-    const fn as_ptr(&self) -> *const T {
-        if Self::DATA_SIZE == 0 {
-            return ptr::dangling();
-        }
-
-        unsafe { self.ptr().add(Self::DATA_OFFSET).cast() }
-    }
-
-    const fn as_mut_ptr(&mut self) -> *mut T {
-        if Self::DATA_SIZE == 0 {
-            return ptr::dangling_mut();
-        }
-
-        unsafe { self.mut_ptr().add(Self::DATA_OFFSET).cast() }
-    }
-}
-
-const _ASSERTS: () = {
-    assert!(
-        size_of::<InlineRepr<u8, U8>>() == size_of::<Option<InlineRepr<u8, U8>>>(),
-        "InlineRepr must be the same size as Option<InlineRepr>"
-    );
-
-    assert!(InlineRepr::<u8, U8>::DATA_SIZE == 7)
-};
+// Re-exported for documentation.
+pub use self::length::{InlineLength, PointerSize};
 
 /// A vector that can store a small number of elements inline.
 ///
@@ -234,7 +62,8 @@ const _ASSERTS: () = {
 ///
 /// ```
 /// use hipstr::vecs::InlineVec;
-/// let mut inline = InlineVec::<u8, 7>::new();
+/// use typenum::U8;
+/// let mut inline = InlineVec::<u8, U8>::new();
 /// assert_eq!(inline.len(), 0);
 /// assert_eq!(inline.capacity(), 7);
 /// inline.push(1);
@@ -260,7 +89,9 @@ const _ASSERTS: () = {
 pub struct InlineVec<T, L: InlineLength>(InlineRepr<T, L>);
 
 impl<T, L: InlineLength> InlineVec<T, L> {
-    pub(crate) const CAP: usize = InlineRepr::<T, L>::DATA_SIZE;
+    /// The capacity of the inline vector, that is, the maximum number of elements
+    /// it can hold.
+    pub(crate) const CAPACITY: usize = InlineRepr::<T, L>::CAPACITY;
 
     /// Creates a new inline vector with the specified capacity.
     ///
@@ -268,7 +99,8 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     ///
     /// ```
     /// use hipstr::vecs::InlineVec;
-    /// let inline = InlineVec::<u8, 7>::new();
+    /// use typenum::U8;
+    /// let inline = InlineVec::<u8, U8>::new();
     /// assert_eq!(inline.len(), 0);
     /// assert_eq!(inline.capacity(), 7);
     /// ```
@@ -280,23 +112,53 @@ impl<T, L: InlineLength> InlineVec<T, L> {
 
     /// Creates a new inline vector while checking the specified capacity.
     ///
+    /// Provided for consistency with other vector types.
+    ///
     /// # Panics
     ///
     /// Panics if the specified capacity exceeds the inline vector's capacity.
+    ///
+    /// # Examples
+    ///
+    /// ```should_panic
+    /// use hipstr::vecs::InlineVec;
+    /// use typenum::U8;
+    /// let inline = InlineVec::<u8, U8>::with_capacity(8);
+    /// // 8-byte sized vector cannnot hold 8 bytes
+    /// ```
     #[inline]
     #[must_use]
     #[track_caller]
     pub const fn with_capacity(cap: usize) -> Self {
         assert!(
-            cap <= Self::CAP,
+            cap <= Self::CAPACITY,
             "required capacity exceeds inline capacity"
         );
         Self::new()
     }
 
-    pub(crate) const fn reserve(&self, additional: usize) {
+    /// Ensures that the inline vector has enough capacity to hold `additional` more elements.
+    ///
+    /// Provided for consistency with other vector types.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new length exceeds the capacity of the inline vector.
+    ///
+    /// # Examples
+    ///
+    /// ```should_panic
+    /// use hipstr::vecs::InlineVec;
+    /// use typenum::U8;
+    /// let mut inline = InlineVec::<u8, U8>::new();
+    /// inline.reserve(5); // ok
+    /// inline.reserve(8); // panics
+    /// ```
+    #[inline]
+    #[track_caller]
+    pub const fn reserve(&self, additional: usize) {
         assert!(
-            self.len() + additional <= Self::CAP,
+            self.len() + additional <= Self::CAPACITY,
             "new length exceeds capacity"
         );
     }
@@ -317,7 +179,7 @@ impl<T, L: InlineLength> InlineVec<T, L> {
                 "insufficient alignment"
             );
         }
-        assert!(new_len <= Self::CAP, "length exceeds capacity");
+        assert!(new_len <= Self::CAPACITY, "length exceeds capacity");
         let mut new = Self(InlineRepr::<T, L>::zeroed());
         unsafe {
             new.set_len(new_len);
@@ -345,12 +207,13 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     ///
     /// ```
     /// use hipstr::vecs::InlineVec;
+    /// use typenum::{U8, U16};
     /// let array = [1, 2, 3];
-    /// let inline = InlineVec::<u8, 7>::from_array(array);
+    /// let inline = InlineVec::<u8, U8>::from_array(array);
     /// assert_eq!(inline.as_slice(), array);
     ///
     /// let array = [Box::new(42)];
-    /// let inline = InlineVec::<Box<u8>, 1>::from_array(array);
+    /// let inline = InlineVec::<Box<u8>, U16>::from_array(array);
     /// assert_eq!(inline.len(), 1);
     /// assert_eq!(*inline[0], 42);
     /// ```
@@ -384,7 +247,7 @@ impl<T, L: InlineLength> InlineVec<T, L> {
         let iter = iterable.into_iter();
         let min = iter.size_hint().0;
         assert!(
-            min <= Self::CAP,
+            min <= Self::CAPACITY,
             "iterator's minimal length exceeds capacity"
         );
         let mut this = Self::new();
@@ -400,7 +263,8 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     ///
     /// ```
     /// use hipstr::vecs::InlineVec;
-    /// let mut inline = InlineVec::<u8, 7>::new();
+    /// use typenum::U8;
+    /// let mut inline = InlineVec::<u8, U8>::new();
     /// assert_eq!(inline.len(), 0);
     /// inline.push(1);
     /// assert_eq!(inline.len(), 1);
@@ -419,7 +283,8 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     ///
     /// ```
     /// use hipstr::vecs::InlineVec;
-    /// let mut inline = InlineVec::<u8, 7>::new();
+    /// use typenum::U8;
+    /// let mut inline = InlineVec::<u8, U8>::new();
     /// assert!(inline.is_empty());
     /// inline.push(1);
     /// assert!(!inline.is_empty());
@@ -451,13 +316,14 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     ///
     /// ```
     /// use hipstr::vecs::InlineVec;
-    /// let inline = InlineVec::<u8, 7>::new();
+    /// use typenum::U8;
+    /// let inline = InlineVec::<u8, U8>::new();
     /// assert_eq!(inline.capacity(), 7);
     /// ```
     #[inline]
     #[allow(clippy::unused_self, reason = "Vec-like behavior")]
     pub const fn capacity(&self) -> usize {
-        Self::CAP
+        Self::CAPACITY
     }
 
     /// Returns a pointer to the inline vector.
@@ -470,7 +336,8 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     ///
     /// ```
     /// use hipstr::vecs::InlineVec;
-    /// let mut inline = InlineVec::<u8, 7>::new();
+    /// use typenum::U8;
+    /// let mut inline = InlineVec::<u8, U8>::new();
     /// inline.push(1);
     /// assert_eq!(inline.len(), 1);
     /// assert_eq!(unsafe { inline.as_ptr().read() }, 1);
@@ -511,9 +378,10 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     ///
     /// ```
     /// use hipstr::inline_vec;
-    /// let mut inline = inline_vec![3 => 1, 2];
-    /// assert_eq!(inline.try_push(1), Ok(()));
-    /// assert_eq!(inline.try_push(2), Err(2));
+    /// let mut inline = inline_vec![8 => 1_u8, 2, 3, 4, 5, 6];
+    /// assert_eq!(inline.capacity(), 7);
+    /// assert_eq!(inline.try_push(7), Ok(()));
+    /// assert_eq!(inline.try_push(8), Err(8));
     /// ```
     ///
     /// [`len`]: Self::len
@@ -533,7 +401,8 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     ///
     /// ```
     /// use hipstr::vecs::InlineVec;
-    /// let mut inline = InlineVec::<u8, 7>::new();
+    /// use typenum::U8;
+    /// let mut inline = InlineVec::<u8, U8>::new();
     /// inline.push(1);
     /// assert_eq!(inline.len(), 1);
     /// assert_eq!(inline.as_slice(), &[1]);
@@ -570,7 +439,9 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     ///
     /// ```
     /// use hipstr::vecs::InlineVec;
-    /// let mut inline = InlineVec::<u8, 7>::new();
+    /// use typenum::U8;
+    /// let mut inline = InlineVec::<u8, U8>::new();
+    /// assert!(inline.capacity() >= 1);
     /// inline.spare_capacity_mut()[0].write(1);
     /// unsafe {
     ///     inline.set_len(1);
@@ -580,7 +451,7 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     /// [`spare_capacity_mut`]: Self::spare_capacity_mut
     #[inline]
     pub const unsafe fn set_len(&mut self, new_len: usize) {
-        debug_assert!(new_len <= Self::CAP, "new length exceeds capacity");
+        debug_assert!(new_len <= Self::CAPACITY, "new length exceeds capacity");
         unsafe {
             self.0.set_len(new_len);
         }
@@ -592,7 +463,8 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     ///
     /// ```
     /// use hipstr::vecs::InlineVec;
-    /// let mut inline = InlineVec::<u8, 7>::new();
+    /// use typenum::U8;
+    /// let mut inline = InlineVec::<u8, U8>::new();
     /// assert_eq!(inline.spare_capacity_mut().len(), 7);
     /// inline.spare_capacity_mut()[0].write(5);
     /// unsafe {
@@ -611,7 +483,8 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     ///
     /// ```
     /// use hipstr::vecs::InlineVec;
-    /// let mut inline = InlineVec::<u8, 7>::new();
+    /// use typenum::U8;
+    /// let mut inline = InlineVec::<u8, U8>::new();
     /// inline.push(1);
     /// assert_eq!(inline.pop(), Some(1));
     /// assert_eq!(inline.pop(), None);
@@ -630,7 +503,8 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     ///
     /// ```
     /// use hipstr::inline_vec;
-    /// let mut inline = inline_vec![7 => 1_u8, 2, 3, 4];
+    /// use typenum::U8;
+    /// let mut inline = inline_vec![8 => 1_u8, 2, 3, 4];
     /// assert_eq!(inline.pop_if(|x| *x % 2 == 0), Some(4));
     /// assert_eq!(inline.as_slice(), &[1, 2, 3]);
     /// assert_eq!(inline.pop_if(|x| *x % 2 == 0), None);
@@ -649,8 +523,8 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     ///
     /// ```
     /// use hipstr::inline_vec;
-    /// let mut inline1 = inline_vec![7 => 1_u8, 2];
-    /// let mut inline2 = inline_vec![7 => 3_u8, 4];
+    /// let mut inline1 = inline_vec![8 => 1_u8, 2];
+    /// let mut inline2 = inline_vec![8 => 3_u8, 4];
     /// let mut vec = vec![5 , 6];
     /// inline1.append(&mut inline2);
     /// assert_eq!(inline1, [1, 2, 3, 4]);
@@ -678,8 +552,8 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     ///
     /// ```
     /// use hipstr::inline_vec;
-    /// let mut inline1 = inline_vec![7 => 1_u8, 2];
-    /// let mut inline2 = inline_vec![7 => 3_u8, 4];
+    /// let mut inline1 = inline_vec![8 => 1_u8, 2];
+    /// let mut inline2 = inline_vec![8 => 3_u8, 4];
     /// inline1.const_append(&mut inline2);
     /// assert_eq!(inline1, [1, 2, 3, 4]);
     /// assert!(inline2.is_empty());
@@ -694,7 +568,8 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     ///
     /// ```
     /// use hipstr::vecs::InlineVec;
-    /// let mut inline = InlineVec::<u8, 7>::new();
+    /// use typenum::U8;
+    /// let mut inline = InlineVec::<u8, U8>::new();
     /// inline.push(1);
     /// inline.push(2);
     /// assert_eq!(inline.len(), 2);
@@ -716,7 +591,8 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     ///
     /// ```
     /// use hipstr::vecs::InlineVec;
-    /// let mut inline = InlineVec::<u8, 7>::new();
+    /// use typenum::U8;
+    /// let mut inline = InlineVec::<u8, U8>::new();
     /// inline.push(1);
     /// inline.push(2);
     /// assert_eq!(inline.len(), 2);
@@ -743,7 +619,8 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     ///
     /// ```
     /// use hipstr::vecs::InlineVec;
-    /// let mut inline = InlineVec::<u8, 7>::new();
+    /// use typenum::U8;
+    /// let mut inline = InlineVec::<u8, U8>::new();
     /// inline.push(1);
     /// inline.push(2);
     /// inline.push(3);
@@ -768,7 +645,8 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     ///
     /// ```
     /// use hipstr::vecs::InlineVec;
-    /// let mut inline = InlineVec::<u8, 7>::new();
+    /// use typenum::U8;
+    /// let mut inline = InlineVec::<u8, U8>::new();
     /// inline.push(1);
     /// inline.push(3);
     /// inline.insert(1, 2);
@@ -796,12 +674,17 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     ///
     /// ```
     /// use hipstr::vecs::InlineVec;
-    /// let mut inline = InlineVec::<u8, 3>::new();
+    /// use typenum::U8;
+    /// let mut inline = InlineVec::<u8, U8>::new();
     /// inline.try_insert(0, 1).unwrap();
     /// inline.try_insert(1, 2).unwrap();
-    /// inline.try_insert(4, 3).unwrap_err(); // out of bounds
-    /// inline.try_insert(0, 0).unwrap();
-    /// inline.try_insert(3, 4).unwrap_err(); // full
+    /// inline.try_insert(4, 3).expect_err("out of bounds");
+    /// inline.try_insert(2, 3).unwrap();
+    /// inline.try_insert(3, 4).unwrap();
+    /// inline.try_insert(4, 5).unwrap();
+    /// inline.try_insert(5, 6).unwrap();
+    /// inline.try_insert(6, 7).unwrap();
+    /// inline.try_insert(0, 8).expect_err("full");
     /// ```
     ///
     /// [`len`]: Self::len
@@ -809,7 +692,7 @@ impl<T, L: InlineLength> InlineVec<T, L> {
         let len = self.len();
         if index > len {
             return Err(InsertError::new(value, InsertErrorKind::OutOfBounds));
-        } else if len == Self::CAP {
+        } else if len == Self::CAPACITY {
             // inline vector is full
             return Err(InsertError::new(value, InsertErrorKind::Full));
         }
@@ -837,7 +720,8 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     ///
     /// ```
     /// use hipstr::vecs::InlineVec;
-    /// let mut inline = InlineVec::<u8, 7>::new();
+    /// use typenum::U8;
+    /// let mut inline = InlineVec::<u8, U8>::new();
     /// inline.push(1);
     /// inline.push(2);
     /// inline.push(3);
@@ -879,7 +763,8 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     ///
     /// ```
     /// use hipstr::vecs::InlineVec;
-    /// let mut inline = InlineVec::<u8, 7>::new();
+    /// use typenum::U8;
+    /// let mut inline = InlineVec::<u8, U8>::new();
     /// inline.push(1);
     /// inline.push(2);
     /// inline.push(3);
@@ -919,7 +804,8 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     ///
     /// ```
     /// use hipstr::vecs::InlineVec;
-    /// let mut inline = InlineVec::<u8, 7>::new();
+    /// use typenum::U8;
+    /// let mut inline = InlineVec::<u8, U8>::new();
     /// inline.resize_with(3, || 42);
     /// assert_eq!(inline.as_slice(), &[42, 42, 42]);
     /// inline.resize_with(1, || 0);
@@ -946,7 +832,7 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     ///
     /// ```
     /// use hipstr::inline_vec;
-    /// let mut inline = inline_vec![7 => 1, 2];
+    /// let mut inline = inline_vec![8 => 1_u8, 2];
     /// inline.extend_from_array([3, 4]);
     /// assert_eq!(inline.as_slice(), &[1, 2, 3, 4]);
     /// ```
@@ -981,8 +867,9 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     /// ```
     /// # use hipstr::vecs::InlineVec;
     /// # use hipstr::inline_vec;
-    /// let mut v: InlineVec<u8, 7> = inline_vec![1, 2, 3];
-    /// let u: InlineVec<u8, 7> = v.drain(1..).collect();
+    /// # use typenum::U8;
+    /// let mut v: InlineVec<u8, U8> = inline_vec![1, 2, 3];
+    /// let u: InlineVec<u8, U8> = v.drain(1..).collect();
     /// assert_eq!(v, &[1]);
     /// assert_eq!(u, &[2, 3]);
     ///
@@ -1004,7 +891,7 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     ///
     /// ```
     /// use hipstr::inline_vec;
-    /// let mut inline = inline_vec![7 => 1_u8, 2, 3];
+    /// let mut inline = inline_vec![8 => 1_u8, 2, 3];
     /// inline.swap(0, 2);
     /// assert_eq!(inline.as_slice(), &[3, 2, 1]);
     /// ```
@@ -1067,7 +954,7 @@ where
     ///
     /// ```
     /// use hipstr::inline_vec;
-    /// let mut inline = inline_vec![7 => 1, 2];
+    /// let mut inline = inline_vec![8 => 1_u8, 2];
     /// inline.extend_from_slice_copy(&[3, 4]);
     /// assert_eq!(inline.as_slice(), &[1, 2, 3, 4]);
     /// ```
@@ -1091,15 +978,15 @@ where
     ///
     /// ```
     /// use hipstr::inline_vec;
-    /// let mut characters = inline_vec![43 => 'a', 'b', 'c', 'd', 'e'];
+    /// let mut characters = inline_vec![48 => 'a', 'b', 'c', 'd', 'e'];
     /// characters.extend_from_within(2..);
     /// assert_eq!(characters, ['a', 'b', 'c', 'd', 'e', 'c', 'd', 'e']);
     ///
-    /// let mut numbers = inline_vec![7 => 0_u8, 1, 2, 3, 4];
+    /// let mut numbers = inline_vec![8 => 0_u8, 1, 2, 3, 4];
     /// numbers.extend_from_within(..2);
     /// assert_eq!(numbers, [0, 1, 2, 3, 4, 0, 1]);
     ///
-    /// let mut strings = inline_vec![55 => String::from("hello"), String::from("world"), String::from("!")];
+    /// let mut strings = inline_vec![128 => String::from("hello"), String::from("world"), String::from("!")];
     /// strings.extend_from_within(1..=2);
     /// assert_eq!(strings, ["hello", "world", "!", "world", "!"]);
     /// ```
@@ -1115,11 +1002,11 @@ where
         let len = self.len();
         let range_len = range.len();
         let new_len = len + range_len;
-        assert!(new_len <= Self::CAP, "new length exceeds capacity");
+        assert!(new_len <= Self::CAPACITY, "new length exceeds capacity");
 
         let data_slice: &mut [MaybeUninit<T>] = unsafe {
             let ptr = self.as_mut_ptr().cast();
-            slice::from_raw_parts_mut(ptr, Self::CAP)
+            slice::from_raw_parts_mut(ptr, Self::CAPACITY)
         };
 
         let (current, spare) = unsafe { data_slice.split_at_mut_unchecked(len) };
@@ -1149,7 +1036,8 @@ where
     ///
     /// ```
     /// use hipstr::vecs::InlineVec;
-    /// let mut inline = InlineVec::<u8, 7>::new();
+    /// use typenum::U8;
+    /// let mut inline = InlineVec::<u8, U8>::new();
     /// inline.resize(3, 42);
     /// assert_eq!(inline.as_slice(), &[42, 42, 42]);
     /// inline.resize(1, 0);
@@ -1170,8 +1058,9 @@ where
     ///
     /// ```
     /// use hipstr::vecs::InlineVec;
+    /// use typenum::U8;
     /// let array = [1, 2, 3];
-    /// let inline = InlineVec::<u8, 7>::from_slice_copy(&array);
+    /// let inline = InlineVec::<u8, U8>::from_slice_copy(&array);
     /// assert_eq!(inline.as_slice(), array);
     /// ```
     ///
@@ -1191,8 +1080,9 @@ where
     ///
     /// ```
     /// use hipstr::vecs::InlineVec;
+    /// use typenum::U8;
     /// let array = [1, 2, 3];
-    /// let inline = InlineVec::<u8, 7>::from_slice_copy(&array);
+    /// let inline = InlineVec::<u8, U8>::from_slice_copy(&array);
     /// assert_eq!(inline.as_slice(), array);
     /// ```
     ///
@@ -1225,7 +1115,7 @@ where
     ///
     /// ```
     /// use hipstr::inline_vec;
-    /// let mut inline = inline_vec![7 => 1, 2];
+    /// let mut inline = inline_vec![8 => 1_u8, 2];
     /// inline.extend_from_slice_copy(&[3, 4]);
     /// assert_eq!(inline.as_slice(), &[1, 2, 3, 4]);
     /// ```
@@ -1237,7 +1127,7 @@ where
     pub const fn extend_from_slice_copy(&mut self, slice: &[T]) {
         let len = self.len();
         let new_len = len + slice.len();
-        assert!(new_len <= Self::CAP, "new length exceeds capacity");
+        assert!(new_len <= Self::CAPACITY, "new length exceeds capacity");
         unsafe {
             self.extend_from_slice_copy_unchecked(slice);
         }
@@ -1271,7 +1161,8 @@ where
     ///
     /// ```
     /// use hipstr::vecs::InlineVec;
-    /// let inline = InlineVec::<u8, 7>::from_slice_copy(&[1, 2, 3]);
+    /// use typenum::U8;
+    /// let inline = InlineVec::<u8, U8>::from_slice_copy(&[1, 2, 3]);
     /// let copy = inline.copy();
     /// assert_eq!(copy.as_slice(), &[1, 2, 3]);
     /// ```
@@ -1298,11 +1189,11 @@ where
     ///
     /// ```
     /// use hipstr::inline_vec;
-    /// let mut characters = inline_vec![10 => 'a', 'b', 'c', 'd', 'e'];
+    /// let mut characters = inline_vec![40 => 'a', 'b', 'c', 'd', 'e'];
     /// characters.extend_from_within_copy(2..);
     /// assert_eq!(characters, ['a', 'b', 'c', 'd', 'e', 'c', 'd', 'e']);
     ///
-    /// let mut numbers = inline_vec![7 => 0_u8, 1, 2, 3, 4];
+    /// let mut numbers = inline_vec![8 => 0_u8, 1, 2, 3, 4];
     /// numbers.extend_from_within_copy(..2);
     /// assert_eq!(numbers, [0, 1, 2, 3, 4, 0, 1]);
     /// ```
@@ -1317,11 +1208,11 @@ where
     fn extend_from_within_range_copy(&mut self, range: Range<usize>) {
         let len = self.len();
         let new_len = len + range.len();
-        assert!(new_len <= Self::CAP, "new length exceeds capacity");
+        assert!(new_len <= Self::CAPACITY, "new length exceeds capacity");
 
         let data_slice: &mut [MaybeUninit<T>] = unsafe {
             let ptr = self.as_mut_ptr().cast();
-            slice::from_raw_parts_mut(ptr, Self::CAP)
+            slice::from_raw_parts_mut(ptr, Self::CAPACITY)
         };
 
         // SAFETY: the range is valid and the source elements are initialized
@@ -1541,7 +1432,7 @@ impl<T> fmt::Display for InsertError<T> {
 ///
 ///   ```
 ///   # use hipstr::inline_vec;
-///   let v1 = inline_vec![7 => 1_u8, 2, 3];
+///   let v1 = inline_vec![8 => 1_u8, 2, 3];
 ///   assert_eq!(v1, [1, 2, 3]);
 ///   ```
 ///
@@ -1550,7 +1441,8 @@ impl<T> fmt::Display for InsertError<T> {
 ///   ```
 ///   # use hipstr::inline_vec;
 ///   # use hipstr::vecs::InlineVec;
-///   let v2: InlineVec<u8, 7> = inline_vec![1, 2, 3];
+///   # use typenum::U8;
+///   let v2: InlineVec<u8, U8> = inline_vec![1_u8, 2, 3];
 ///   assert_eq!(v2, [1, 2, 3]);
 ///   ```
 ///
@@ -1559,7 +1451,7 @@ impl<T> fmt::Display for InsertError<T> {
 ///
 ///   ```
 ///   # use hipstr::inline_vec;
-///   let v3 = inline_vec![7 => 0; 7];
+///   let v3 = inline_vec![8 => 0_u8; 7];
 ///   assert_eq!(v3, [0, 0, 0, 0, 0, 0, 0]);
 ///   ```
 ///
@@ -1569,7 +1461,8 @@ impl<T> fmt::Display for InsertError<T> {
 ///   ```
 ///   # use hipstr::inline_vec;
 ///   # use hipstr::vecs::InlineVec;
-///   let v4: InlineVec<u8, 7> = inline_vec![0; 7];
+///   # use typenum::U8;
+///   let v4: InlineVec<u8, U8> = inline_vec![0_u8; 7];
 ///   assert_eq!(v4, [0, 0, 0, 0, 0, 0, 0]);
 ///   ```
 #[macro_export]

@@ -10,15 +10,32 @@ use core::mem::size_of;
 use core::ptr;
 
 use const_default::ConstDefault;
-use typenum::{U, U1, U24, U8};
+use typenum::{U, U24, U8};
 
+use super::length::PointerSize;
+use super::repr::InlineRepr;
 use super::{InlineVec, InsertError, InsertErrorKind};
 use crate::common::traits::MutVector;
-use crate::vecs::inline::length::PointerSize;
 use crate::{inline_vec, thin_vec};
 
 const SMALL_CAP: usize = 8;
 const SMALL_FULL: InlineVec<u8, U8> = InlineVec::from_array([1, 2, 3, 4, 5, 6, 7]);
+
+#[test]
+#[allow(clippy::assertions_on_constants)]
+fn inline_repr() {
+    assert!(
+        InlineRepr::<(), PointerSize>::CAPACITY == usize::MAX >> 1,
+        "InlineRepr must have correct capacity for zero-sized types"
+    );
+
+    assert!(
+        size_of::<InlineRepr<u8, U8>>() == size_of::<Option<InlineRepr<u8, U8>>>(),
+        "InlineRepr must be the same size as Option<InlineRepr>"
+    );
+
+    assert!(InlineRepr::<u8, U8>::CAPACITY == 7);
+}
 
 #[test]
 fn macros() {
@@ -66,19 +83,19 @@ fn const_default() {
 #[test]
 #[should_panic(expected = "required capacity exceeds inline capacity")]
 fn from_array_panic_1() {
-    let _inline = InlineVec::<u8, U<8>>::from_array([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    let _inline = InlineVec::<u8, U8>::from_array([1, 2, 3, 4, 5, 6, 7, 8, 9]);
 }
 
 #[test]
 #[should_panic(expected = "required capacity exceeds inline capacity")]
 fn from_array_panic_2() {
-    let _inline = InlineVec::<u128, U<8>>::from_array([1, 2, 3, 4]);
+    let _inline = InlineVec::<u128, U8>::from_array([1, 2, 3, 4]);
 }
 
 #[test]
 #[should_panic(expected = "required capacity exceeds inline capacity")]
 fn from_array_panic_boxes() {
-    let _inline = InlineVec::<Box<u8>, U<8>>::from_array([1, 2].map(Box::new));
+    let _inline = InlineVec::<Box<u8>, U8>::from_array([1, 2].map(Box::new));
 }
 
 #[test]
@@ -519,7 +536,7 @@ fn into_iter_boxes() {
     assert_eq!(iter.next_back(), None); // fused
 
     {
-        let inline = InlineVec::<Box<u8>, U8>::from_array([1, 2, 3].map(Box::new));
+        let inline = InlineVec::<Box<u8>, U<BYTES>>::from_array([1, 2, 3].map(Box::new));
         let mut iter = inline.into_iter();
         assert_eq!(iter.next(), Some(Box::new(1)));
     }
@@ -549,6 +566,11 @@ fn compare() {
     assert!(vec![1, 2, 3] == l);
     assert!(*[1, 2, 3].as_slice() == l);
     assert!([1, 2, 3].as_slice() == l);
+}
+
+#[test]
+fn compare_consistency() {
+    let l = InlineVec::<u8, U8>::from_array([1, 2, 3]);
 
     assert!(l.eq(&inline_vec![16 => 1, 2, 3]));
     assert!(l.partial_cmp(&inline_vec![16 => 1, 2, 3]).unwrap().is_eq());
@@ -987,4 +1009,10 @@ fn vector() {
     assert_eq!(v.as_ptr(), ptr);
     assert_eq!(v.as_mut_ptr().cast_const(), ptr);
     assert_eq!(v.as_non_null().as_ptr().cast_const(), ptr);
+}
+
+#[test]
+fn inline_vec() {
+    let v3 = inline_vec![8 => 0_u8; 7];
+    assert_eq!(v3, [0, 0, 0, 0, 0, 0, 0]);
 }
