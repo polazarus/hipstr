@@ -645,7 +645,10 @@ where
     /// assert_eq!(a.try_slice(0..2), Ok(HipByt::from(b"ab")));
     /// assert!(a.try_slice(0..4).is_err());
     /// ```
-    pub fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, SliceError<B>> {
+    pub fn try_slice(
+        &self,
+        range: impl RangeBounds<usize>,
+    ) -> Result<Self, SliceError<'_, 'borrow, B>> {
         let range = simplify_range(range, self.len())
             .map_err(|(start, end, kind)| SliceError::new(kind, start, end, self))?;
         let slice = unsafe { self.range_unchecked(range) };
@@ -1611,11 +1614,16 @@ where
     }
 }
 
-impl<'a, B> SliceError<'_, 'a, B>
+impl<'a, 'borrow, B> SliceError<'a, 'borrow, B>
 where
     B: Backend,
 {
-    const fn new(kind: SliceErrorKind, start: usize, end: usize, bytes: &'a HipByt<B>) -> Self {
+    const fn new(
+        kind: SliceErrorKind,
+        start: usize,
+        end: usize,
+        bytes: &'a HipByt<'borrow, B>,
+    ) -> Self {
         Self {
             kind,
             start,
@@ -1655,7 +1663,7 @@ where
     /// Returns a reference to the source `HipByt` to slice.
     #[inline]
     #[must_use]
-    pub const fn source(&self) -> &HipByt<B> {
+    pub const fn source(&self) -> &HipByt<'borrow, B> {
         self.bytes
     }
 }

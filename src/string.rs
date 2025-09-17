@@ -538,7 +538,10 @@ where
     /// assert_eq!(a.try_slice(0..4), Ok(HipStr::from("Rust")));
     /// assert!(a.try_slice(5..6).is_err());
     /// ```
-    pub fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, SliceError<B>> {
+    pub fn try_slice(
+        &self,
+        range: impl RangeBounds<usize>,
+    ) -> Result<Self, SliceError<'_, 'borrow, B>> {
         let range = simplify_range(range, self.len())
             .map_err(|(start, end, kind)| SliceError::new(kind, start, end, self))?;
 
@@ -1697,7 +1700,7 @@ where
     ///
     /// See [`str::split_ascii_whitespace`] for examples.
     #[inline]
-    pub fn lines(&self) -> IterWrapper<'_, 'borrow, B, Lines> {
+    pub fn lines(&self) -> IterWrapper<'_, 'borrow, B, Lines<'_>> {
         IterWrapper::new(self, self.as_str().lines())
     }
 
