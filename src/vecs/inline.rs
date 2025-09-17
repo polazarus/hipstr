@@ -34,7 +34,7 @@ use crate::common::methods::{
     from_slice_clone_impl, pop_if_impl, pop_impl, push_within_capacity, remove_unchecked_impl,
     resize_impl, slice_swap_unchecked, spare_capacity_mut_impl, swap_remove_impl, truncate_impl,
 };
-use crate::common::{drop_raw_slice, panic_display, traits};
+use crate::common::{drop_raw_slice, panic_display, traits, SliceWriteGuard};
 use crate::{common, macros};
 
 pub(crate) mod length;
@@ -995,30 +995,37 @@ where
         let range = common::range(range, self.len()).unwrap_or_else(|err| {
             panic!("{err}");
         });
-        self.extend_from_within_range(range);
+        // SAFETY: valid range
+        unsafe {
+            self.extend_from_within_range(range);
+        }
     }
 
-    fn extend_from_within_range(&mut self, range: Range<usize>) {
+    /// # Safety
+    ///
+    /// Valid range.
+    unsafe fn extend_from_within_range(&mut self, range: Range<usize>) {
         let len = self.len();
         let range_len = range.len();
         let new_len = len + range_len;
         assert!(new_len <= Self::CAPACITY, "new length exceeds capacity");
 
-        let data_slice: &mut [MaybeUninit<T>] = unsafe {
-            let ptr = self.as_mut_ptr().cast();
-            slice::from_raw_parts_mut(ptr, Self::CAPACITY)
-        };
+        let ptr = self.as_mut_ptr();
+        let mut slice_guard = SliceWriteGuard::new(unsafe { ptr.add(len) }, range_len);
 
-        let (current, spare) = unsafe { data_slice.split_at_mut_unchecked(len) };
-        let dst = spare[0..range_len].iter_mut();
-        let src = current[range].iter();
-
-        for ((dst_elem, src_elem), l) in dst.zip(src).zip(len + 1..=new_len) {
-            // SAFETY: the source is in the initialized range
-            dst_elem.write(unsafe { src_elem.assume_init_ref() }.clone());
+        for src in range {
+            // SAFETY: valid range
+            let value = unsafe { &*ptr.add(src) };
+            let clone = value.clone();
+            // SAFETY: the source and destination are in the initialized range
             unsafe {
-                self.set_len(l);
+                slice_guard.write(clone);
             }
+        }
+
+        slice_guard.complete();
+        unsafe {
+            self.set_len(new_len);
         }
     }
 

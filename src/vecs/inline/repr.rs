@@ -1,6 +1,6 @@
 //! Internal representation of inline vectors.
 
-use core::mem::MaybeUninit;
+use core::mem::{offset_of, MaybeUninit};
 use core::num::NonZeroUsize;
 use core::ptr;
 
@@ -8,6 +8,7 @@ use generic_array::{ArrayLength, GenericArray};
 
 use super::length::{InlineLength, Seal};
 use crate::common::derives::Copy;
+use crate::common::{transmute2, transmute_mut, transmute_ref, transmute_unaligned};
 
 pub const fn bits(n: usize) -> u32 {
     usize::BITS - n.leading_zeros()
@@ -65,11 +66,13 @@ where
     }
 
     const fn ptr(&self) -> *const u8 {
-        ptr::from_ref(self).cast()
+        let arr: &GenericArray<MaybeUninit<u8>, L> = unsafe { transmute_ref(self) };
+        arr.as_slice().as_ptr().cast()
     }
 
     const fn mut_ptr(&mut self) -> *mut u8 {
-        ptr::from_mut(self).cast()
+        let arr: &mut GenericArray<MaybeUninit<u8>, L> = unsafe { transmute_mut(self) };
+        arr.as_mut_slice().as_mut_ptr().cast()
     }
 
     pub const fn length_and_data() -> (usize, usize, usize, usize) {
