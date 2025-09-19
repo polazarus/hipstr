@@ -1,13 +1,19 @@
+use alloc::vec::Vec;
 use core::marker::PhantomData;
-use core::mem::needs_drop;
+use core::mem::{needs_drop, ManuallyDrop};
 
+use const_default::ConstDefault;
 use rules_derive::rules_derive;
+use typenum::Unsigned;
 
 use crate::backend::UpdateResult;
 use crate::common::derives::*;
+use crate::common::traits::MutVector;
 use crate::common::{transmute2, transmute_mut, transmute_ref};
+use crate::vecs::inline::InlineLength;
 use crate::vecs::reprs::{Borrowed, FatOrThinRepr, Pivot, Sliced, UnknownSliced, Variant};
 use crate::vecs::smart_fat::SmartFatVec;
+use crate::vecs::thin::{can_reuse, ThinVec};
 use crate::vecs::{InlineVec, SmartThinVec};
 use crate::Backend;
 
@@ -19,6 +25,10 @@ mod tests;
     AsRef([T], Self::as_slice),
     Deref([T], Self::as_slice),
     From(bindings = (<'a, T, B: Backend, const N: usize>), source = [T; N], cons = Self::from_array),
+    From(source = Vec<T>, cons = Self::from_mut_vector),
+    From(bindings = (<'a, T, B: Backend, P: ConstDefault>), source = ThinVec<T, P>, cons = Self::from_thin_vec),
+    From(bindings = (<'a, T: Clone, B: Backend>), source = &[T], cons = Self::from_slice_clone),
+    From(bindings = (<'a, T, B: Backend, L: InlineLength>), source = InlineVec<T, L>, cons = Self::from_any_inline),
 )]
 pub struct HipVec<'a, T, B: Backend>(Pivot, PhantomData<(B, &'a [T])>);
 pub const INLINE_BYTES: usize = size_of::<Borrowed<()>>();
@@ -57,6 +67,32 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         } else {
             let smart = SmartThinVec::from_array(array);
             Self::from_smart_thin(smart)
+        }
+    }
+
+    #[must_use]
+    #[inline]
+    pub(crate) fn from_mut_vector(v: impl MutVector<Item = T>) -> Self {
+        if v.len() == 0 {
+            Self::new()
+        } else if v.len() <= Self::INLINE_CAP {
+            let inline = InlineVec::from_mut_vector(v);
+            Self::from_inline(inline)
+        } else {
+            let smart = SmartThinVec::from_mut_vector(v);
+            Self::from_smart_thin(smart)
+        }
+    }
+
+    #[must_use]
+    #[inline]
+    pub(crate) fn from_thin_vec<P: ConstDefault>(v: ThinVec<T, P>) -> Self {
+        if can_reuse::<T, P, B>() {
+            let v: ThinVec<T, B> = v.fresh_move();
+            let s = unsafe { SmartThinVec::from_thin_vec_unchecked(v) };
+            Self::from_smart_thin(s)
+        } else {
+            Self::from_mut_vector(v)
         }
     }
 
@@ -227,6 +263,19 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     #[must_use]
     pub const fn from_inline(inline: InlineVec<T, InlineBytes>) -> Self {
         unsafe { transmute2(inline) }
+    }
+
+    #[must_use]
+    pub const fn from_any_inline<L: InlineLength>(inline: InlineVec<T, L>) -> Self {
+        if InlineBytes::USIZE == L::USIZE {
+            Self::from_inline(unsafe { transmute2(inline) })
+        } else {
+            let mut old = inline;
+            let mut new = InlineVec::new();
+            new.const_append(&mut old);
+            let _ = ManuallyDrop::new(old);
+            Self::from_inline(new)
+        }
     }
 
     #[must_use]

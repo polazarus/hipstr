@@ -39,16 +39,17 @@
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::mem::ManuallyDrop;
-use core::ops::Deref;
+use core::ptr;
 
 use const_default::ConstDefault;
+use rules_derive::rules_derive;
 
 use super::thin::{Reserved, ThinVec};
 use crate::backend::{
     Backend, BackendImpl, CloneOnOverflow, Counter, PanicOnOverflow, UpdateResult,
 };
+use crate::common::derives::{AsRef, Deref};
 use crate::common::traits::MutVector;
-use crate::common::{transmute_mut, transmute_ref};
 use crate::macros::trait_impls;
 use crate::vecs::reprs::ThinRepr;
 
@@ -104,15 +105,9 @@ macro_rules! smart_thin_vec {
 /// assert_eq!(v.as_ptr(), v2.as_ptr());
 /// ```
 #[repr(transparent)]
+#[rules_derive(Deref(ThinVec<T,C>, Self::as_thin_vec))]
+#[rules_derive(AsRef(ThinVec<T,C>, Self::as_thin_vec))]
 pub struct SmartThinVec<T, C: Backend>(ThinRepr<T, C>);
-
-impl<T, C: Backend> Deref for SmartThinVec<T, C> {
-    type Target = ThinVec<T, C>;
-
-    fn deref(&self) -> &Self::Target {
-        self.as_thin_vec()
-    }
-}
 
 impl<T, B: Backend> SmartThinVec<T, B> {
     const EMPTY: Self = {
@@ -123,29 +118,85 @@ impl<T, B: Backend> SmartThinVec<T, B> {
     pub(super) const unsafe fn from_repr(repr: ThinRepr<T, B>) -> Self {
         Self(repr)
     }
+
     pub(super) const unsafe fn into_repr(self) -> ThinRepr<T, B> {
         let repr = self.0;
         let _ = ManuallyDrop::new(self);
         repr
     }
 
+    /// Returns the number of elements in the vector.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::vecs::smart_thin::SmartThinVec;
+    /// # use hipstr::{Arc, smart_thin_vec};
+    /// let v: SmartThinVec<i32, Arc>  = smart_thin_vec![1, 2, 3];
+    /// assert_eq!(v.len(), 3);
+    /// ```
+    #[must_use]
+    #[inline]
     pub const fn len(&self) -> usize {
         self.as_thin_vec().len()
     }
 
+    /// Returns the capacity of the vector.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::vecs::smart_thin::SmartThinVec;
+    /// # use hipstr::vecs::ThinVec;
+    /// # use hipstr::Arc;
+    /// let v: SmartThinVec<i32, Arc> = SmartThinVec::from(ThinVec::with_capacity(100));
+    /// assert!(v.capacity() >= 100);
+    /// ```
+    #[must_use]
+    #[inline]
     pub const fn capacity(&self) -> usize {
         self.as_thin_vec().capacity()
     }
 
+    /// Returns `true` if the vector contains no elements.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::vecs::smart_thin::SmartThinVec;
+    /// # use hipstr::Arc;
+    /// let v: SmartThinVec<i32, Arc> = SmartThinVec::new();
+    /// assert!(v.is_empty());
+    /// let w: SmartThinVec<i32, Arc> = SmartThinVec::from([1, 2, 3]);
+    /// assert!(!w.is_empty());
+    /// ```
+    #[must_use]
+    #[inline]
     pub const fn is_empty(&self) -> bool {
         self.as_thin_vec().is_empty()
     }
 
+    /// Returns a raw pointer to the vector's buffer.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::vecs::smart_thin::SmartThinVec;
+    /// # use hipstr::Arc;
+    /// let v: SmartThinVec<i32, Arc> = SmartThinVec::from([1, 2, 3]);
+    /// let p = v.as_ptr();
+    /// assert!(!p.is_null());
+    /// let w = v.clone();
+    /// assert_eq!(v.as_ptr(), w.as_ptr());
+    /// ```
+    #[must_use]
+    #[inline]
     pub const fn as_ptr(&self) -> *const T {
         self.as_thin_vec().as_ptr()
     }
 
-    /// Copies the smart vector without checking or updating the reference count.
+    /// Copies the smart vector without checking or updating the reference
+    /// count.
     const unsafe fn copy(&self) -> Self {
         Self(self.0)
     }
@@ -245,11 +296,14 @@ impl<T, B: Backend> SmartThinVec<T, B> {
     ///
     /// # Safety
     ///
-    /// This function is unsafe because it allows mutable access to the vector even if it is not unique.
-    /// The caller must ensure that no other references to the vector exist while this function is used.
+    /// This function is unsafe because it allows mutable access to the vector
+    /// even if it is not unique. The caller must ensure that no other
+    /// references to the vector exist while this function is used.
     pub const unsafe fn as_mut_unchecked(&mut self) -> &mut ThinVec<T, B> {
-        // SAFETY: SmartThinVec and ThinVec are transparent ThinRepr wrappers
-        unsafe { transmute_mut::<Self, ThinVec<T, B>>(self) }
+        // SAFETY: cast is legit
+        // - SmartThinVec and ThinVec are both transparent ThinRepr wrappers
+        // - the vector is unique by the above precondition
+        unsafe { &mut *ptr::from_mut(self).cast() }
     }
 
     /// Returns a mutable reference to the vector, possibly cloning the data if
@@ -285,11 +339,31 @@ impl<T, B: Backend> SmartThinVec<T, B> {
         unsafe { self.as_mut_unchecked() }
     }
 
+    pub fn mutate_copy(&mut self) -> &mut ThinVec<T, B>
+    where
+        T: Copy,
+    {
+        if !self.is_unique() {
+            self.detach_copy();
+        }
+        unsafe { self.as_mut_unchecked() }
+    }
+
     fn detach(&mut self)
     where
         T: Clone,
     {
         let thin_vec: ThinVec<_, _> = self.as_thin_vec().fresh_clone();
+        // SAFETY: thin_vec is fresh
+        *self = unsafe { Self::from_thin_vec_unchecked(thin_vec) };
+    }
+
+    fn detach_copy(&mut self)
+    where
+        T: Copy,
+    {
+        let thin_vec: ThinVec<_, _> = self.as_thin_vec().fresh_copy();
+        // SAFETY: thin_vec is fresh
         *self = unsafe { Self::from_thin_vec_unchecked(thin_vec) };
     }
 
@@ -305,17 +379,29 @@ impl<T, B: Backend> SmartThinVec<T, B> {
         result
     }
 
+    /// Returns a reference to the underlying `ThinVec`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::smart_thin_vec;
+    /// # use hipstr::ThinVec;
+    /// let v = smart_thin_vec![1, 2, 3];
+    /// let t: &ThinVec<_, _> = v.as_thin_vec();
+    /// assert_eq!(t.as_slice(), &[1, 2, 3]);
+    /// ```
     #[inline]
     #[must_use]
-    pub(crate) const fn as_thin_vec(&self) -> &ThinVec<T, B> {
+    pub const fn as_thin_vec(&self) -> &ThinVec<T, B> {
         // SAFETY: SmartThinVec and ThinVec are transparent ThinRepr wrappers
-        unsafe { transmute_ref::<Self, ThinVec<T, B>>(self) }
+        unsafe { &*ptr::from_ref(self).cast() }
     }
 
     #[inline]
     #[must_use]
     pub(crate) fn from_thin_vec<P: ConstDefault>(thin_vec: ThinVec<T, P>) -> Self {
         let thin_vec = ThinVec::fresh_move(thin_vec);
+        // SAFETY: thin_vec is fresh
         unsafe { Self::from_thin_vec_unchecked(thin_vec) }
     }
 
@@ -323,6 +409,7 @@ impl<T, B: Backend> SmartThinVec<T, B> {
     #[must_use]
     pub(crate) fn from_mut_vector(vector: impl MutVector<Item = T>) -> Self {
         let thin_vec = ThinVec::from_mut_vector(vector);
+        // SAFETY: thin_vec is fresh
         unsafe { Self::from_thin_vec_unchecked(thin_vec) }
     }
 
@@ -330,6 +417,7 @@ impl<T, B: Backend> SmartThinVec<T, B> {
     #[must_use]
     pub(crate) fn from_array<const N: usize>(array: [T; N]) -> Self {
         let thin_vec = ThinVec::from_array(array);
+        // SAFETY: thin_vec is fresh
         unsafe { Self::from_thin_vec_unchecked(thin_vec) }
     }
 
@@ -449,12 +537,6 @@ impl<T, C: Backend> TryFrom<SmartThinVec<T, C>> for ThinVec<T, Reserved> {
 impl<T, C: Backend> Default for SmartThinVec<T, C> {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl<T, C: Backend> AsRef<ThinVec<T, C>> for SmartThinVec<T, C> {
-    fn as_ref(&self) -> &ThinVec<T, C> {
-        self.as_thin_vec()
     }
 }
 

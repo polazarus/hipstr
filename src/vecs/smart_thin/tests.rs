@@ -13,21 +13,37 @@ use crate::{smart_thin_vec, thin_vec, Arc, Rc, Unique};
 fn new() {
     let v = SmartThinVec::<u8, Arc>::new();
     assert_eq!(v.len(), 0);
+    assert!(v.is_empty());
     assert!(v.is_unique());
 
     let v = SmartThinVec::<u8, Rc>::default();
     assert_eq!(v.len(), 0);
+    assert!(v.is_empty());
     assert!(v.is_unique());
+}
+
+#[test]
+fn refs() {
+    let tv = thin_vec![Box::new(1_i32), Box::new(2)];
+    let stv = SmartThinVec::<Box<i32>, Arc>::from(tv);
+    let p = &raw const stv;
+    let r: &ThinVec<_, _> = stv.as_ref();
+    assert_eq!(ptr::from_ref(r).cast::<()>(), p.cast::<()>());
+
+    let sl: &[Box<i32>] = stv.as_ref();
+    assert_eq!(sl.as_ptr(), stv.as_ptr());
 }
 
 #[test]
 fn clone_empty() {
     let v1 = SmartThinVec::<u8, Arc>::new();
     assert_eq!(v1.len(), 0);
+    assert!(v1.is_empty());
     assert!(v1.is_unique());
 
     let v2 = v1.clone();
     assert_eq!(v2.len(), 0);
+    assert!(v1.is_empty());
     assert!(v2.is_unique());
 }
 
@@ -35,10 +51,17 @@ fn clone_empty() {
 fn clone() {
     let v1 = SmartThinVec::<u8, Arc>::from_array([1, 2]);
     assert_eq!(v1.len(), 2);
+    assert!(!v1.is_empty());
+    assert_eq!(v1.as_slice(), &[1, 2]);
+
     assert!(v1.is_unique());
 
     let v2 = v1.clone();
     assert_eq!(v2.len(), 2);
+    assert!(!v2.is_empty());
+    assert_eq!(v1.as_slice(), v2.as_slice());
+    assert_eq!(v1.as_ptr(), v2.as_ptr());
+
     assert!(!v2.is_unique());
     assert!(!v1.is_unique());
 }
@@ -165,6 +188,32 @@ fn mutate() {
     assert!(!v.is_unique());
     {
         let m = v.mutate();
+        m.push(4);
+        m.push(5);
+    }
+    assert!(v.is_unique());
+    assert_eq!(v.as_slice(), [1, 2, 3, 4, 5]);
+    assert_ne!(v.as_ptr(), p);
+}
+
+#[test]
+fn mutate_copy() {
+    let mut v = SmartThinVec::<u8, Arc>::with_capacity(3);
+    let p = v.as_ptr();
+    assert!(v.is_unique());
+    {
+        let m = v.mutate_copy();
+        m.push(1);
+        m.push(2);
+        m.push(3);
+    }
+    assert_eq!(v.as_slice(), [1, 2, 3]);
+    assert_eq!(v.as_ptr(), p);
+
+    let _v2 = v.clone();
+    assert!(!v.is_unique());
+    {
+        let m = v.mutate_copy();
         m.push(4);
         m.push(5);
     }

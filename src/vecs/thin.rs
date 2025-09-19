@@ -788,6 +788,17 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
         this
     }
 
+    /// Copies with a fresh prefix.
+    pub(crate) fn fresh_copy<Q: ConstDefault>(&self) -> ThinVec<T, Q>
+    where
+        T: Copy,
+    {
+        let len = self.len();
+        let mut this = ThinVec::with_capacity(len);
+        this.extend_from_slice_copy(self.as_slice());
+        this
+    }
+
     /// Moves the items to a new vector with a fresh prefix.
     pub(crate) fn fresh_move<Q: ConstDefault>(mut self) -> ThinVec<T, Q> {
         if can_reuse::<T, P, Q>() {
@@ -1428,7 +1439,7 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
 
 /// Checks if two prefix types `P` and `Q` are compatible to reuse a thin vec
 /// allocation when moving from the first prefix `P` type to the other `Q`.
-const fn can_reuse<T, P, Q>() -> bool {
+pub(crate) const fn can_reuse<T, P, Q>() -> bool {
     const {
         size_of::<P>() == size_of::<Q>()
             && align_of::<P>() >= align_of::<Q>()

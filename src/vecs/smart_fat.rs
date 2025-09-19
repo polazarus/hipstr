@@ -7,7 +7,7 @@ use rules_derive::rules_derive;
 
 use super::reprs::FatRepr;
 use crate::backend::{BackendImpl, CloneOnOverflow, Counter, PanicOnOverflow, UpdateResult};
-use crate::common::derives::*;
+use crate::common::derives::{AsRef, ConstDefault, Deref, From};
 use crate::common::{manually_drop_as_mut, manually_drop_as_ref};
 use crate::vecs::reprs::FatInner;
 use crate::Backend;
@@ -350,7 +350,7 @@ pub struct RefMut<'a, T, B: Backend> {
     origin: &'a mut SmartFatVec<T, B>,
 }
 
-impl<'a, T, B: Backend> RefMut<'a, T, B> {
+impl<T, B: Backend> RefMut<'_, T, B> {
     /// Returns a reference to the underlying vector.
     #[must_use]
     pub const fn as_ref(&self) -> &Vec<T> {
