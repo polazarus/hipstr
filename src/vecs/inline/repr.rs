@@ -55,6 +55,7 @@ where
             phantom: core::marker::PhantomData,
         }
     }
+
     pub const fn zeroed() -> Self {
         let init_word = NonZeroUsize::new(1).unwrap();
         Self {

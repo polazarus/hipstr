@@ -240,6 +240,15 @@ fn swap_remove_out_of_bounds() {
 }
 
 #[test]
+#[should_panic(expected = "new length exceeds capacity")]
+fn set_len_panic() {
+    let mut inline = InlineVec::<u8, U8>::new();
+    assert_eq!(inline.len(), 0);
+    assert_eq!(inline.capacity(), 7);
+    unsafe { inline.set_len(8) };
+}
+
+#[test]
 fn remove() {
     const CAP: usize = 7;
     let mut inline = InlineVec::<u8, U8>::new();
@@ -654,6 +663,17 @@ fn resize_exceeds_capacity() {
 }
 
 #[test]
+fn resize_with() {
+    let mut inline = InlineVec::<Box<u8>, U<64>>::from_array([1, 2, 3].map(Box::new));
+    assert_eq!(inline.len(), 3);
+    inline.resize_with(5, || Box::new(42));
+    assert_eq!(inline.len(), 5);
+    assert_eq!(inline.as_slice(), &[1, 2, 3, 42, 42].map(Box::new));
+    inline.resize_with(2, || unreachable!());
+    assert_eq!(inline.len(), 2);
+}
+
+#[test]
 fn deref() {
     let mut inline = InlineVec::<u8, U8>::from_array([1, 2, 3]);
     let slice: &[u8] = &inline;
@@ -1015,4 +1035,46 @@ fn vector() {
 fn inline_vec() {
     let v3 = inline_vec![8 => 0_u8; 7];
     assert_eq!(v3, [0, 0, 0, 0, 0, 0, 0]);
+}
+
+#[test]
+fn copy() {
+    let v = inline_vec![16 => 1_u8, 2, 3];
+    let v2 = v.copy();
+    assert_eq!(v.as_slice(), [1, 2, 3]);
+    assert_eq!(v2.as_slice(), [1, 2, 3]);
+}
+
+#[test]
+fn zeroed() {
+    let v = unsafe { InlineVec::<u8, U8>::zeroed(7) };
+    assert_eq!(v.as_slice(), &[0; 7]);
+}
+
+#[test]
+fn zeroed_empty() {
+    let v = unsafe { InlineVec::<u8, U8>::zeroed(0) };
+    assert!(v.is_empty());
+}
+
+#[test]
+#[should_panic(expected = "new length exceeds capacity")]
+fn zeroed_too_large() {
+    let _ = unsafe { InlineVec::<u8, U8>::zeroed(8) };
+}
+
+#[test]
+fn from_slice_copy_unchecked() {
+    let slice = &[1, 2, 3];
+    let inline = unsafe { InlineVec::<u8, U8>::from_slice_copy_unchecked(slice) };
+    assert_eq!(inline.len(), slice.len());
+    assert_eq!(inline.as_slice(), slice);
+}
+
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic(expected = "new length exceeds capacity")]
+fn from_slice_copy_unchecked_overflow() {
+    let slice: &[u8] = &[0; 8];
+    let _inline = unsafe { InlineVec::<u8, U8>::from_slice_copy_unchecked(slice) };
 }

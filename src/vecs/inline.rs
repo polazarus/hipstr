@@ -32,7 +32,7 @@ use crate::common::into_iter::IntoIter;
 use crate::common::methods::{
     append_impl, extend_from_array_impl, extend_from_slice_impl, from_array_impl,
     from_slice_clone_impl, pop_if_impl, pop_impl, push_within_capacity, remove_unchecked_impl,
-    resize_impl, slice_swap_unchecked, spare_capacity_mut_impl, swap_remove_impl, truncate_impl,
+    resize_impl, spare_capacity_mut_impl, swap_remove_impl, truncate_impl,
 };
 use crate::common::{drop_raw_slice, panic_display, traits, SliceWriteGuard};
 use crate::{common, macros};
@@ -173,14 +173,9 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     /// - The caller must ensure that the elements are initialized.
     #[inline]
     pub(crate) const unsafe fn zeroed(new_len: usize) -> Self {
-        const {
-            debug_assert!(
-                align_of::<Self>() >= align_of::<T>(),
-                "insufficient alignment"
-            );
-        }
-        assert!(new_len <= Self::CAPACITY, "length exceeds capacity");
+        assert!(new_len <= Self::CAPACITY, "new length exceeds capacity");
         let mut new = Self(InlineRepr::<T, L>::zeroed());
+        // SAFETY: the elements are zeroed by construction
         unsafe {
             new.set_len(new_len);
         }
@@ -880,39 +875,6 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     pub fn drain(&mut self, range: impl RangeBounds<usize>) -> Drain<'_, Self> {
         Drain::new(self, range).unwrap_or_else(panic_display)
     }
-
-    /// Swaps the elements at the specified indices.
-    ///
-    /// # Panics
-    ///
-    /// Panics if either `a` or `b` are out of bounds.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use hipstr::inline_vec;
-    /// let mut inline = inline_vec![8 => 1_u8, 2, 3];
-    /// inline.swap(0, 2);
-    /// assert_eq!(inline.as_slice(), &[3, 2, 1]);
-    /// ```
-    #[inline]
-    pub const fn swap(&mut self, a: usize, b: usize) {
-        self.as_mut_slice().swap(a, b);
-    }
-
-    /// Swaps the elements at the specified indices without doing any bounds
-    /// checking.
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure that both `a` and `b` are less than the current
-    /// length of the inline vector.
-    pub const unsafe fn swap_unchecked(&mut self, a: usize, b: usize) {
-        // SAFETY: precondition
-        unsafe {
-            slice_swap_unchecked(self.as_mut_slice(), a, b);
-        }
-    }
 }
 
 impl<T, L: InlineLength> InlineVec<T, L>
@@ -1076,7 +1038,7 @@ where
     /// Panics if the length of the slice exceeds the capacity of the inline
     /// vector.
     pub const fn from_slice_copy(slice: &[T]) -> Self {
-        let mut this = Self::new();
+        let mut this = Self::with_capacity(slice.len());
         this.extend_from_slice_copy(slice);
         this
     }
@@ -1150,6 +1112,7 @@ where
     pub const unsafe fn extend_from_slice_copy_unchecked(&mut self, slice: &[T]) {
         let len = self.len();
         let new_len = len + slice.len();
+        debug_assert!(new_len <= Self::CAPACITY, "new length exceeds capacity");
         unsafe {
             self.set_len(new_len);
             self.as_mut_ptr()
