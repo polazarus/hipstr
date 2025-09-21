@@ -49,7 +49,7 @@ use super::thin::{Reserved, ThinVec};
 use crate::backend::{
     Backend, BackendImpl, CloneOnOverflow, Counter, PanicOnOverflow, UpdateResult,
 };
-use crate::common::derives::{AsRef, Deref, Vector};
+use crate::common::derives::{AsRef, Borrow, ConstDefault, Deref, Vector};
 use crate::common::traits::{MutVector, Mutate};
 use crate::macros::trait_impls;
 use crate::vecs::reprs::ThinRepr;
@@ -107,8 +107,12 @@ macro_rules! smart_thin_vec {
 /// ```
 #[repr(transparent)]
 #[rules_derive(
-    Deref(ThinVec<T,C>, Self::as_thin_vec),
-    AsRef(ThinVec<T,C>, Self::as_thin_vec),
+    ConstDefault(Self::EMPTY),
+    AsRef(ThinVec<T, C>, Self::as_thin_vec),
+    AsRef([T], Self::as_slice),
+    Deref(ThinVec<T ,C>, Self::as_thin_vec),
+    Borrow(ThinVec<T, C>, Self::as_thin_vec),
+    Borrow([T], Self::as_slice),
     Vector(T),
 )]
 pub struct SmartThinVec<T, C: Backend>(ThinRepr<T, C>);
@@ -197,6 +201,12 @@ impl<T, B: Backend> SmartThinVec<T, B> {
     #[inline]
     pub const fn as_ptr(&self) -> *const T {
         self.as_thin_vec().as_ptr()
+    }
+
+    #[must_use]
+    #[inline]
+    pub const fn as_slice(&self) -> &[T] {
+        self.as_thin_vec().as_slice()
     }
 
     /// Copies the smart vector without checking or updating the reference
@@ -606,18 +616,6 @@ impl<T, C: Backend> TryFrom<SmartThinVec<T, C>> for ThinVec<T, Reserved> {
 
     fn try_from(value: SmartThinVec<T, C>) -> Result<Self, Self::Error> {
         value.into_thin_vec()
-    }
-}
-
-impl<T, C: Backend> Default for SmartThinVec<T, C> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<T, C: Backend> AsRef<[T]> for SmartThinVec<T, C> {
-    fn as_ref(&self) -> &[T] {
-        self.as_thin_vec().as_slice()
     }
 }
 

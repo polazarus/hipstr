@@ -2,6 +2,7 @@
 
 use alloc::vec;
 use alloc::vec::Vec;
+use core::borrow::Borrow;
 use core::cmp::Ordering;
 use core::ptr;
 
@@ -27,11 +28,18 @@ fn refs() {
     let tv = thin_vec![Box::new(1_i32), Box::new(2)];
     let stv = SmartThinVec::<Box<i32>, Arc>::from(tv);
     let p = &raw const stv;
+
     let r: &ThinVec<_, _> = stv.as_ref();
     assert_eq!(ptr::from_ref(r).cast::<()>(), p.cast::<()>());
 
+    let r2: &ThinVec<_, _> = stv.borrow();
+    assert_eq!(ptr::from_ref(r2).cast::<()>(), p.cast::<()>());
+
     let sl: &[Box<i32>] = stv.as_ref();
     assert_eq!(sl.as_ptr(), stv.as_ptr());
+
+    let sl2: &[Box<i32>] = stv.borrow();
+    assert_eq!(sl2.as_ptr(), stv.as_ptr());
 }
 
 #[test]

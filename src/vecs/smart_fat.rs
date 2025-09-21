@@ -7,7 +7,8 @@ use rules_derive::rules_derive;
 
 use super::reprs::FatRepr;
 use crate::backend::{BackendImpl, CloneOnOverflow, Counter, PanicOnOverflow, UpdateResult};
-use crate::common::derives::{AsRef, ConstDefault, Deref, From};
+use crate::common::derives::{AsRef, Borrow, ConstDefault, Deref, From, Vector};
+use crate::common::traits::Mutate;
 use crate::common::{manually_drop_as_mut, manually_drop_as_ref};
 use crate::vecs::reprs::FatInner;
 use crate::Backend;
@@ -18,7 +19,9 @@ use crate::Backend;
     ConstDefault(Self::EMPTY),
     AsRef([T], Self::as_slice),
     Deref([T], Self::as_slice),
+    Borrow([T], Self::as_slice),
     From(source = Vec<T>, cons = Self::from_vec),
+    Vector(T),
 )]
 pub struct SmartFatVec<T, B: Backend>(FatRepr<T, B>);
 
@@ -249,6 +252,42 @@ impl<T, B: Backend> SmartFatVec<T, B> {
         }
     }
 
+    pub fn mutate(&mut self) -> RefMut<'_, T, B>
+    where
+        T: Clone,
+    {
+        self.detach();
+        unsafe { self.as_mut_unchecked() }
+    }
+
+    pub fn mutate_copy(&mut self) -> RefMut<'_, T, B>
+    where
+        T: Clone,
+    {
+        self.detach_copy();
+        unsafe { self.as_mut_unchecked() }
+    }
+
+    pub(crate) fn detach(&mut self)
+    where
+        T: Clone,
+    {
+        if let Some(inner) = self.0.as_ref() {
+            if !inner.prefix.is_unique() {
+                let vec = self.as_slice().to_vec();
+                let new = Self::from_vec(vec);
+                *self = new;
+            }
+        }
+    }
+
+    pub(crate) fn detach_copy(&mut self)
+    where
+        T: Clone,
+    {
+        self.detach(); // slice::to_vec is already specialized
+    }
+
     /// Returns a clone of this [`SmartFatVec<T, B>`] if it is possible without
     /// allocating or cloning.
     ///
@@ -344,6 +383,8 @@ impl<T: Clone, C: Counter> Clone for SmartFatVec<T, BackendImpl<C, CloneOnOverfl
 
 #[rules_derive(
     Deref(Vec<T>, Self::as_ref, Self::as_mut),
+    AsRef(Vec<T>, Self::as_ref, Self::as_mut),
+    Borrow(Vec<T>, Self::as_ref, Self::as_mut),
 )]
 pub struct RefMut<'a, T, B: Backend> {
     vec: ManuallyDrop<Vec<T>>,
@@ -370,5 +411,22 @@ impl<T, B: Backend> Drop for RefMut<'_, T, B> {
         unsafe {
             self.origin.update_inner(ManuallyDrop::take(&mut self.vec));
         }
+    }
+}
+
+impl<T: Clone, B: Backend> Mutate for SmartFatVec<T, B> {
+    type MutVector<'a>
+        = Vec<T>
+    where
+        Self: 'a;
+
+    type RefMut<'a>
+        = RefMut<'a, T, B>
+    where
+        Self: 'a;
+
+    #[inline]
+    fn mutate(&mut self) -> Self::RefMut<'_> {
+        self.mutate()
     }
 }

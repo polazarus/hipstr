@@ -117,6 +117,53 @@ macro_rules! AsMut {
     };
 }
 
+macro_rules! Borrow {
+    (
+        { $as_ty:ty, $delegate:path }
+        ($( ($($_attr:tt)*) )*)
+        $_vis:vis $_kind:ident $_name:ident
+        (($ty:ty) ($($generics_bindings:tt)*) where ($($generics_where:tt)*))
+        $_body:tt
+    ) => {
+        impl $($generics_bindings)* ::core::borrow::Borrow<$as_ty> for $ty where $($generics_where)* {
+            #[inline]
+            fn borrow(&self) -> &$as_ty {
+                $delegate(self)
+            }
+        }
+    };
+    (
+        { $as_ty:ty, $delegate:path, $mut_delegate:path }
+        $($rest:tt)*
+    ) => {
+        $crate::common::derives::Borrow! {
+            { $as_ty, $delegate }
+            $($rest)*
+        }
+        $crate::common::derives::BorrowMut! {
+            { $as_ty, $mut_delegate }
+            $($rest)*
+        }
+    };
+}
+
+macro_rules! BorrowMut {
+    (
+        { $as_ty:ty, $delegate:path }
+        ($( ($($_attr:tt)*) )*)
+        $_vis:vis $_kind:ident $_name:ident
+        (($ty:ty) ($($generics_bindings:tt)*) where ($($generics_where:tt)*))
+        $_body:tt
+    ) => {
+        impl $($generics_bindings)* ::core::borrow::BorrowMut<$as_ty> for $ty where $($generics_where)* {
+            #[inline]
+            fn borrow_mut(&mut self) -> &mut $as_ty {
+                $delegate(self)
+            }
+        }
+    };
+}
+
 macro_rules! Deref {
     (
         { $target:ty, $delegate:path }
@@ -396,6 +443,6 @@ macro_rules! IntoIterator {
 
 #[allow(clippy::redundant_pub_crate)]
 pub(crate) use {
-    AsMut, AsRef, ConstDefault, Copy, Default, DelegateDebug, DelegateHash, Deref, DerefMut, From,
-    FromIterator, Into, IntoIterator, MutVector, Vector,
+    AsMut, AsRef, Borrow, BorrowMut, ConstDefault, Copy, Default, DelegateDebug, DelegateHash,
+    Deref, DerefMut, From, FromIterator, Into, IntoIterator, MutVector, Vector,
 };
