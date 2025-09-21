@@ -49,7 +49,7 @@ use super::thin::{Reserved, ThinVec};
 use crate::backend::{
     Backend, BackendImpl, CloneOnOverflow, Counter, PanicOnOverflow, UpdateResult,
 };
-use crate::common::derives::{AsRef, Borrow, ConstDefault, Deref, Vector};
+use crate::common::derives::{AsRef, Borrow, ConstDefault, Deref, From, Vector};
 use crate::common::traits::{MutVector, Mutate};
 use crate::macros::trait_impls;
 use crate::vecs::reprs::ThinRepr;
@@ -76,15 +76,14 @@ macro_rules! smart_thin_vec {
 
     [ $t:ty : $($rest:tt)* ] => {
         {
-            use $crate::thin_vec;
             $crate::vecs::smart_thin::SmartThinVec::<_, $t>::from(
-                thin_vec![ $( $rest )* ]
+                $crate::thin_vec![ $( $rest )* ]
             )
         }
     };
 
     [ $($rest:tt)* ] => {
-        smart_thin_vec![$crate::Arc : $($rest)*]
+        $crate::smart_thin_vec![$crate::Arc : $($rest)*]
     }
 
 }
@@ -114,6 +113,8 @@ macro_rules! smart_thin_vec {
     Borrow(ThinVec<T, C>, Self::as_thin_vec),
     Borrow([T], Self::as_slice),
     Vector(T),
+    From(source = Vec<T>, cons = Self::from_mut_vector),
+    From(source = Box<[T]>, cons = Self::from_boxed_slice),
 )]
 pub struct SmartThinVec<T, C: Backend>(ThinRepr<T, C>);
 
@@ -620,13 +621,6 @@ impl<T, C: Backend> TryFrom<SmartThinVec<T, C>> for ThinVec<T, Reserved> {
 }
 
 trait_impls! {
-    [T, C] where [C: Backend] {
-        From {
-            Vec<T> => SmartThinVec<T, C> = Self::from_mut_vector;
-            Box<[T]> => SmartThinVec<T, C> = Self::from_boxed_slice;
-        }
-    }
-
     [T, C] where [T: core::fmt::Debug, C: Backend] {
         Debug {
             SmartThinVec<T, C>;
