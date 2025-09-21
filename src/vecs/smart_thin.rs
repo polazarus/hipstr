@@ -38,6 +38,7 @@
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;
+use core::borrow::BorrowMut;
 use core::mem::ManuallyDrop;
 use core::ptr;
 
@@ -48,8 +49,8 @@ use super::thin::{Reserved, ThinVec};
 use crate::backend::{
     Backend, BackendImpl, CloneOnOverflow, Counter, PanicOnOverflow, UpdateResult,
 };
-use crate::common::derives::{AsRef, Deref};
-use crate::common::traits::MutVector;
+use crate::common::derives::{AsRef, Deref, Vector};
+use crate::common::traits::{MutVector, Mutate};
 use crate::macros::trait_impls;
 use crate::vecs::reprs::ThinRepr;
 
@@ -105,8 +106,11 @@ macro_rules! smart_thin_vec {
 /// assert_eq!(v.as_ptr(), v2.as_ptr());
 /// ```
 #[repr(transparent)]
-#[rules_derive(Deref(ThinVec<T,C>, Self::as_thin_vec))]
-#[rules_derive(AsRef(ThinVec<T,C>, Self::as_thin_vec))]
+#[rules_derive(
+    Deref(ThinVec<T,C>, Self::as_thin_vec),
+    AsRef(ThinVec<T,C>, Self::as_thin_vec),
+    Vector(T),
+)]
 pub struct SmartThinVec<T, C: Backend>(ThinRepr<T, C>);
 
 impl<T, B: Backend> SmartThinVec<T, B> {
@@ -493,6 +497,77 @@ impl<T, B: Backend> SmartThinVec<T, B> {
             Err(self)
         }
     }
+
+    pub fn push(&mut self, value: T)
+    where
+        T: Clone,
+    {
+        self.mutate().push(value);
+    }
+
+    pub fn push_copy(&mut self, value: T)
+    where
+        T: Copy,
+    {
+        self.mutate_copy().push(value);
+    }
+
+    pub fn pop(&mut self) -> Option<T>
+    where
+        T: Clone,
+    {
+        self.mutate().pop()
+    }
+
+    pub fn pop_copy(&mut self) -> Option<T>
+    where
+        T: Copy,
+    {
+        self.mutate_copy().pop()
+    }
+
+    pub fn pop_if<F>(&mut self, f: F) -> Option<T>
+    where
+        T: Clone,
+        F: FnMut(&mut T) -> bool,
+    {
+        self.mutate().pop_if(f)
+    }
+
+    pub fn pop_if_copy<F>(&mut self, f: F) -> Option<T>
+    where
+        T: Copy,
+        F: FnMut(&mut T) -> bool,
+    {
+        self.mutate_copy().pop_if(f)
+    }
+
+    pub fn extend_from_slice(&mut self, other: &[T])
+    where
+        T: Clone,
+    {
+        if !other.is_empty() {
+            self.mutate().extend_from_slice(other);
+        }
+    }
+
+    pub fn extend_from_slice_copy(&mut self, other: &[T])
+    where
+        T: Copy,
+    {
+        if !other.is_empty() {
+            self.mutate_copy().extend_from_slice_copy(other);
+        }
+    }
+
+    pub fn append(&mut self, other: &mut impl Mutate<Item = T>)
+    where
+        T: Clone,
+    {
+        if !other.is_empty() {
+            self.mutate().append(other.mutate().borrow_mut());
+        }
+    }
 }
 
 impl<T, C: Counter> Clone for SmartThinVec<T, BackendImpl<C, PanicOnOverflow>> {
@@ -656,5 +731,21 @@ trait_impls! {
             [T; N], SmartThinVec<T, C>;
             SmartThinVec<T, C>, [T; N];
         }
+    }
+}
+
+impl<T: Clone, B: Backend> Mutate for SmartThinVec<T, B> {
+    type MutVector<'a>
+        = ThinVec<T, B>
+    where
+        Self: 'a;
+
+    type RefMut<'a>
+        = &'a mut ThinVec<T, B>
+    where
+        Self: 'a;
+
+    fn mutate(&mut self) -> Self::RefMut<'_> {
+        self.mutate()
     }
 }

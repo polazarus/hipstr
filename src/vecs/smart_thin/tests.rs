@@ -335,3 +335,175 @@ fn cmp() {
     assert_eq!([1, 2].partial_cmp(&v).unwrap(), Ordering::Less);
     assert_eq!([1, 2, 3].partial_cmp(&v).unwrap(), Ordering::Equal);
 }
+
+#[test]
+fn push() {
+    let mut v = SmartThinVec::<u8, Arc>::new();
+    assert!(v.is_unique());
+    v.push(1);
+    let v2 = v.clone();
+    assert!(!v.is_unique());
+    v.push(2);
+    assert!(v.is_unique());
+    assert_eq!(v.as_slice(), &[1, 2]);
+    assert_eq!(v2.as_slice(), &[1]);
+}
+
+#[test]
+fn pop() {
+    let mut v = SmartThinVec::<u8, Arc>::from_array([1, 2]);
+    assert!(v.is_unique());
+    let x = v.pop();
+    assert_eq!(x, Some(2));
+    assert!(v.is_unique());
+    let v2 = v.clone();
+    assert!(!v.is_unique());
+    let x = v.pop();
+    assert_eq!(x, Some(1));
+    assert!(v.is_unique());
+    assert!(v.is_empty());
+    assert_eq!(v2.as_slice(), &[1]);
+    let x = v.pop();
+    assert_eq!(x, None);
+}
+
+#[test]
+fn pop_if() {
+    let mut v = SmartThinVec::<u8, Arc>::from_array([1, 2, 3, 4]);
+    assert!(v.is_unique());
+    assert!(v.pop_if(|x| *x % 2 == 1).is_none());
+    assert_eq!(v.pop_if(|x| *x % 2 == 0), Some(4));
+    assert!(v.is_unique());
+
+    let v2 = v.clone();
+    assert!(!v.is_unique());
+    assert_eq!(v.pop_if(|x| *x % 2 != 0), Some(3));
+    assert!(v.is_unique());
+
+    assert_eq!(v.as_slice(), &[1, 2]);
+    assert_eq!(v2.as_slice(), &[1, 2, 3]);
+
+    assert_eq!(v.pop_if(|_| true), Some(2));
+    assert_eq!(v.pop_if(|_| true), Some(1));
+    assert_eq!(v.pop_if(|_| true), None);
+}
+
+#[test]
+fn pop_copy() {
+    let mut v = SmartThinVec::<u8, Arc>::from_array([1, 2]);
+    assert!(v.is_unique());
+    let x = v.pop_copy();
+    assert_eq!(x, Some(2));
+    assert!(v.is_unique());
+    let v2 = v.clone();
+    assert!(!v.is_unique());
+    let x = v.pop_copy();
+    assert_eq!(x, Some(1));
+    assert!(v.is_unique());
+    assert!(v.is_empty());
+    assert_eq!(v2.as_slice(), &[1]);
+    let x = v.pop_copy();
+    assert_eq!(x, None);
+}
+
+#[test]
+fn pop_if_copy() {
+    let mut v = SmartThinVec::<u8, Arc>::from_array([1, 2, 3, 4]);
+    assert!(v.is_unique());
+    assert!(v.pop_if_copy(|x| *x % 2 == 1).is_none());
+    assert_eq!(v.pop_if_copy(|x| *x % 2 == 0), Some(4));
+    assert!(v.is_unique());
+
+    let v2 = v.clone();
+    assert!(!v.is_unique());
+    assert_eq!(v.pop_if_copy(|x| *x % 2 != 0), Some(3));
+    assert!(v.is_unique());
+
+    assert_eq!(v.as_slice(), &[1, 2]);
+    assert_eq!(v2.as_slice(), &[1, 2, 3]);
+
+    assert_eq!(v.pop_if_copy(|_| true), Some(2));
+    assert_eq!(v.pop_if_copy(|_| true), Some(1));
+    assert_eq!(v.pop_if_copy(|_| true), None);
+}
+
+#[test]
+fn extend_from_slice() {
+    let mut v = SmartThinVec::<u8, Arc>::from_array([1, 2]);
+    assert!(v.is_unique());
+    v.extend_from_slice(&[3, 4]);
+    assert!(v.is_unique());
+    assert_eq!(v.as_slice(), &[1, 2, 3, 4]);
+
+    let v2 = v.clone();
+    assert!(!v.is_unique());
+    v.extend_from_slice(&[]);
+    assert!(!v.is_unique());
+    assert_eq!(v.as_slice(), &[1, 2, 3, 4]);
+
+    v.extend_from_slice(&[5, 6]);
+    assert!(v.is_unique());
+    assert_eq!(v.as_slice(), &[1, 2, 3, 4, 5, 6]);
+    assert_eq!(v2.as_slice(), &[1, 2, 3, 4]);
+}
+
+#[test]
+fn extend_from_slice_copy() {
+    let mut v = SmartThinVec::<u8, Arc>::from_array([1, 2]);
+    assert!(v.is_unique());
+    v.extend_from_slice_copy(&[3, 4]);
+    assert!(v.is_unique());
+    assert_eq!(v.as_slice(), &[1, 2, 3, 4]);
+    let v2 = v.clone();
+    assert!(!v.is_unique());
+    v.extend_from_slice_copy(&[]);
+    assert!(!v.is_unique());
+    assert_eq!(v.as_slice(), &[1, 2, 3, 4]);
+    v.extend_from_slice_copy(&[5, 6]);
+    assert!(v.is_unique());
+    assert_eq!(v.as_slice(), &[1, 2, 3, 4, 5, 6]);
+    assert_eq!(v2.as_slice(), &[1, 2, 3, 4]);
+}
+
+#[test]
+fn append() {
+    let mut v1 = SmartThinVec::<u8, Arc>::from_array([1, 2]);
+    let mut v2 = SmartThinVec::<u8, Arc>::from_array([3, 4]);
+    assert!(v1.is_unique());
+    assert!(v2.is_unique());
+
+    v1.append(&mut v2);
+    assert!(v1.is_unique());
+    assert!(v2.is_empty());
+    assert_eq!(v1.as_slice(), &[1, 2, 3, 4]);
+
+    let mut v3 = v1.clone();
+    assert!(!v1.is_unique());
+    assert!(!v3.is_unique());
+
+    v1.append(&mut v3);
+    assert!(v1.is_unique());
+    assert!(v3.is_empty());
+    assert_eq!(v1.as_slice(), &[1, 2, 3, 4, 1, 2, 3, 4]);
+}
+
+#[test]
+fn append_vec() {
+    let mut v1 = SmartThinVec::<u8, Arc>::from_array([1, 2]);
+    let mut v2 = vec![3, 4];
+    assert!(v1.is_unique());
+
+    v1.append(&mut v2);
+    assert!(v1.is_unique());
+    assert!(v2.is_empty());
+    assert_eq!(v1.as_slice(), &[1, 2, 3, 4]);
+
+    let mut v3 = vec![5, 6];
+    let v1_clone = v1.clone();
+    assert!(!v1.is_unique());
+    v1.append(&mut v3);
+    assert!(v1.is_unique());
+    assert!(v3.is_empty());
+    assert_eq!(v1.as_slice(), &[1, 2, 3, 4, 5, 6]);
+    assert_eq!(v1_clone.as_slice(), &[1, 2, 3, 4]);
+}

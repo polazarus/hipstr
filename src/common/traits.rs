@@ -1,3 +1,4 @@
+use core::borrow::BorrowMut;
 use core::ptr::NonNull;
 
 use sealed::Sealed;
@@ -13,6 +14,9 @@ pub trait Vector: Sealed {
     type Item;
 
     fn len(&self) -> usize;
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
     fn capacity(&self) -> usize;
     fn as_slice(&self) -> &[Self::Item];
     fn as_ptr(&self) -> *const Self::Item;
@@ -26,6 +30,38 @@ pub trait MutVector: Vector {
     fn as_non_null(&mut self) -> NonNull<Self::Item>;
 
     fn as_mut_slice(&mut self) -> &mut [Self::Item];
+}
+
+/// Traits for vectors that can be mutated.
+pub trait Mutate: Vector {
+    /// A mutable vector type
+    type MutVector<'a>: MutVector<Item = Self::Item>
+    where
+        Self: 'a;
+
+    /// A reference type
+    type RefMut<'a>: BorrowMut<Self::MutVector<'a>>
+    where
+        Self: 'a;
+
+    /// Gets a mutable reference to the vector.
+    fn mutate(&mut self) -> Self::RefMut<'_>;
+}
+
+impl<T: MutVector> Mutate for T {
+    type MutVector<'a>
+        = Self
+    where
+        Self: 'a;
+    type RefMut<'a>
+        = &'a mut Self
+    where
+        Self: 'a;
+
+    #[inline]
+    fn mutate(&mut self) -> Self::RefMut<'_> {
+        self
+    }
 }
 
 impl<T> Sealed for alloc::vec::Vec<T> {}
