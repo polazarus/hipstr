@@ -302,6 +302,16 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         unsafe { Self::from_sliced(borrowed) }
     }
 
+    /// Creates an inline `HipVec` from an `InlineVec`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::HipVec;
+    /// use hipstr::{Arc, inline_vec};
+    /// let inline = inline_vec![24 => 1, 2, 3];
+    /// let hip: HipVec<u8> = HipVec::inline(inline);
+    /// assert!(hip.is_inline());
     #[must_use]
     pub const fn inline(inline: InlineVec<T, InlineBytes>) -> Self {
         debug_assert!(Self::MAY_INLINE);
