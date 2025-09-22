@@ -1,6 +1,7 @@
 use alloc::vec::Vec;
 use core::marker::PhantomData;
 use core::mem::{needs_drop, ManuallyDrop};
+use core::ptr;
 
 use const_default::ConstDefault;
 use rules_derive::rules_derive;
@@ -37,6 +38,11 @@ pub type InlineBytes = crate::typenum::U<INLINE_BYTES>;
 impl<'a, T, B: Backend> HipVec<'a, T, B> {
     const EMPTY: Self = Self::borrowed(&[]);
     pub const INLINE_CAP: usize = InlineVec::<T, InlineBytes>::CAPACITY;
+    const MAY_INLINE: bool = align_of::<T>() <= align_of::<Self>() && Self::INLINE_CAP > 0;
+
+    const fn fit_inline(len: usize) -> bool {
+        Self::MAY_INLINE && len <= Self::INLINE_CAP
+    }
 
     /// Creates a new empty `HipVec`.
     ///
@@ -61,9 +67,9 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     pub(crate) fn from_array<const N: usize>(array: [T; N]) -> Self {
         if N == 0 {
             Self::new()
-        } else if N <= Self::INLINE_CAP {
+        } else if const { Self::fit_inline(N) } {
             let inline = InlineVec::from_array(array);
-            Self::from_inline(inline)
+            Self::inline(inline)
         } else {
             let smart = SmartThinVec::from_array(array);
             Self::from_smart_thin(smart)
@@ -75,9 +81,9 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     pub(crate) fn from_mut_vector(v: impl MutVector<Item = T>) -> Self {
         if v.len() == 0 {
             Self::new()
-        } else if v.len() <= Self::INLINE_CAP {
+        } else if Self::fit_inline(v.len()) {
             let inline = InlineVec::from_mut_vector(v);
-            Self::from_inline(inline)
+            Self::inline(inline)
         } else {
             let smart = SmartThinVec::from_mut_vector(v);
             Self::from_smart_thin(smart)
@@ -87,7 +93,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     #[must_use]
     #[inline]
     pub(crate) fn from_thin_vec<P: ConstDefault>(v: ThinVec<T, P>) -> Self {
-        if can_reuse::<T, P, B>() {
+        if v.capacity() > 0 && can_reuse::<T, P, B>() {
             let v: ThinVec<T, B> = v.fresh_move();
             let s = unsafe { SmartThinVec::from_thin_vec_unchecked(v) };
             Self::from_smart_thin(s)
@@ -224,36 +230,72 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         }
     }
 
+    /// Gets the inline representation.
+    ///
+    /// # Safety
+    ///
+    /// The vector must be inline.
     const unsafe fn as_inline_unchecked(&self) -> &InlineVec<T, InlineBytes> {
         debug_assert!(self.is_inline());
         // SAFETY: precondition
-        unsafe { transmute_ref::<Self, InlineVec<T, InlineBytes>>(self) }
+        unsafe { &*ptr::from_ref(self).cast() }
     }
 
+    /// Gets a mutable reference to the underlying inline representation.
+    ///
+    /// # Safety
+    ///
+    /// The vector must be inline.
     const unsafe fn as_inline_mut_unchecked(&mut self) -> &mut InlineVec<T, InlineBytes> {
         debug_assert!(self.is_inline());
         // SAFETY: precondition
-        unsafe { transmute_mut::<Self, InlineVec<T, InlineBytes>>(self) }
+        unsafe { &mut *ptr::from_mut(self).cast() }
     }
 
+    /// Gets a reference to the underlying sliced representation.
+    ///
+    /// # Safety
+    ///
+    /// The vector must not be inline.
     const unsafe fn as_sliced_unchecked(&self) -> &UnknownSliced<T> {
         debug_assert!(!self.is_inline());
         // SAFETY: precondition
-        unsafe { transmute_ref::<Self, UnknownSliced<T>>(self) }
+        unsafe { &*ptr::from_ref(self).cast() }
     }
 
+    /// Gets a reference to the underlying allocated representation.
+    ///
+    /// # Safety
+    ///
+    /// The vector must be allocated.
     const unsafe fn as_allocated_unchecked(&self) -> &Allocated<T, B> {
         debug_assert!(self.is_allocated());
         // SAFETY: precondition
-        unsafe { transmute_ref::<Self, Allocated<T, B>>(self) }
+        unsafe { &*ptr::from_ref(self).cast() }
     }
 
+    /// Gets a mutable reference to the underlying allocated representation.
+    ///
+    /// # Safety
+    ///
+    /// The vector must be allocated and unique.
     const unsafe fn as_allocated_mut_unchecked(&mut self) -> &mut Allocated<T, B> {
         debug_assert!(self.is_allocated());
         // SAFETY: precondition
-        unsafe { transmute_mut::<Self, Allocated<T, B>>(self) }
+        unsafe { &mut *ptr::from_mut(self).cast() }
     }
 
+    /// Creates a borrowed `HipVec` from a slice.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::HipVec;
+    /// use hisptr::Arc;
+    /// let slice: &[u8] = &[1, 2, 3];
+    /// let a: HipVec<u8, Arc> = HipVec::borrowed(slice);
+    /// assert!(a.is_borrowed());
+    /// ```
     #[must_use]
     pub const fn borrowed(slice: &'a [T]) -> Self {
         let borrowed = Borrowed::<'a, T>::new(slice);
@@ -261,20 +303,21 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     }
 
     #[must_use]
-    pub const fn from_inline(inline: InlineVec<T, InlineBytes>) -> Self {
+    pub const fn inline(inline: InlineVec<T, InlineBytes>) -> Self {
+        debug_assert!(Self::MAY_INLINE);
         unsafe { transmute2(inline) }
     }
 
     #[must_use]
     pub const fn from_any_inline<L: InlineLength>(inline: InlineVec<T, L>) -> Self {
         if InlineBytes::USIZE == L::USIZE {
-            Self::from_inline(unsafe { transmute2(inline) })
+            Self::inline(unsafe { transmute2(inline) })
         } else {
             let mut old = inline;
             let mut new = InlineVec::new();
             new.const_append(&mut old);
             let _ = ManuallyDrop::new(old);
-            Self::from_inline(new)
+            Self::inline(new)
         }
     }
 
@@ -293,7 +336,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     {
         if slice.len() <= Self::INLINE_CAP {
             let inline = InlineVec::from_slice_clone(slice);
-            Self::from_inline(inline)
+            Self::inline(inline)
         } else {
             let smart = SmartThinVec::from_slice_clone(slice);
             Self::from_smart_thin(smart)
@@ -359,7 +402,7 @@ impl<T: Clone, B: Backend> Clone for HipVec<'_, T, B> {
             // SAFETY: repr is checked above
             let inline = unsafe { self.as_inline_unchecked() };
             // TODO optimize if T is Copy
-            Self::from_inline(inline.clone())
+            Self::inline(inline.clone())
         } else if self.is_borrowed() {
             // SAFETY: repr is checked above, the borrowed slice is copyable
             unsafe { self.copy() }

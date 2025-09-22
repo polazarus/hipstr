@@ -54,6 +54,7 @@ pub struct MagicPointer<T> {
 impl<T> Copy for MagicPointer<T> {}
 
 impl<T> Clone for MagicPointer<T> {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn clone(&self) -> Self {
         *self
     }
@@ -253,7 +254,6 @@ pub enum BorrowedReserved {
     Value = THIN,
 }
 
-#[derive(Clone, Copy)]
 #[repr(C)]
 pub struct Sliced<T, O> {
     #[cfg(target_endian = "little")]
