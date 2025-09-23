@@ -117,49 +117,10 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
             1
         }
     };
-    const DATA_OFFSET: usize = Self::layout(0).unwrap().1;
-
-    #[inline]
-    pub(super) const fn into_repr(self) -> ThinRepr<T, P> {
-        let repr = self.0;
-        let _this = ManuallyDrop::new(self);
-        repr
-    }
-
-    #[inline]
-    pub(super) const fn from_repr(repr: ThinRepr<T, P>) -> Self {
-        Self(repr)
-    }
-
-    #[inline]
-    pub(super) const fn header(&self) -> Option<&ThinHeader<T, P>> {
-        if let Some(header) = self.0.get() {
-            // SAFETY: `header` is guaranteed to be valid as long as the vector is valid
-            Some(unsafe { header.as_ref() })
-        } else {
-            None
-        }
-    }
-
-    #[inline]
-    #[allow(clippy::needless_pass_by_ref_mut, reason = "morally mutable")]
-    pub(super) const fn header_mut(&mut self) -> Option<&mut ThinHeader<T, P>> {
-        if let Some(mut header) = self.0.get() {
-            // SAFETY: `header` is guaranteed to be valid as long as the vector is valid
-            Some(unsafe { header.as_mut() })
-        } else {
-            None
-        }
-    }
 
     #[inline]
     const fn ptr(&self) -> NonNull<T> {
-        if let Some(header) = self.0.get() {
-            // SAFETY: `header` is guaranteed to be valid as long as the vector is valid
-            unsafe { header.byte_add(Self::DATA_OFFSET).cast() }
-        } else {
-            NonNull::dangling()
-        }
+        self.0.data()
     }
 
     /// Creates a new empty thin vector.
@@ -197,7 +158,7 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     #[inline]
     #[must_use]
     pub const fn capacity(&self) -> usize {
-        if let Some(header) = self.header() {
+        if let Some(header) = self.0.as_ref() {
             header.cap
         } else {
             0
@@ -218,7 +179,7 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     #[inline]
     #[must_use]
     pub const fn len(&self) -> usize {
-        if let Some(header) = self.header() {
+        if let Some(header) = self.0.as_ref() {
             header.len
         } else {
             0
@@ -256,7 +217,7 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     /// ```
     #[must_use]
     pub const fn prefix(&self) -> Option<&P> {
-        if let Some(header) = self.header() {
+        if let Some(header) = self.0.as_ref() {
             Some(&header.prefix)
         } else {
             None
@@ -398,37 +359,11 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
         unsafe { slice::from_raw_parts_mut(self.as_mut_ptr(), self.len()) }
     }
 
-    /// Given a capacity, computes a `ThinVec` layout, the offset (in bytes) of
-    /// the payload, and the rounded up capacity.
-    #[inline]
-    const fn layout(payload: usize) -> Option<(Layout, usize, usize)> {
-        let layout = Layout::new::<ThinHeader<T, P>>();
-        let Ok(arr) = Layout::array::<T>(payload) else {
-            return None;
-        };
-        let Ok((layout, offset)) = layout.extend(arr) else {
-            return None;
-        };
-        let layout = layout.pad_to_align();
-
-        // get the payload possibly rounded up to maximize possible occupancy in
-        // closely in the computed layout
-        let round_up_payload = if size_of::<T>() == 0 {
-            usize::MAX
-        } else {
-            (layout.size() - offset) / mem::size_of::<T>()
-        };
-
-        #[cfg(not(coverage))]
-        debug_assert!(payload <= round_up_payload, "invalid roundup");
-
-        Some((layout, offset, round_up_payload))
-    }
-
     /// Gets the current layout.
     const fn current_layout(&self) -> Layout {
         // SAFETY: layout checked at creation
-        let (layout, _, _) = unsafe { Self::layout(self.capacity()).unwrap_unchecked() };
+        let (layout, _, _) =
+            unsafe { ThinHeader::<T, P>::layout(self.capacity()).unwrap_unchecked() };
         layout
     }
 
@@ -440,7 +375,7 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     ///
     /// # Panics
     ///
-    /// When `debug_assertations` is on, panics if `new_len` is greater than the
+    /// When `debug_assertions` is on, panics if `new_len` is greater than the
     /// vector's capacity.
     ///
     /// # Safety
@@ -448,11 +383,13 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     /// - `new_len` must be less than or equal to the capacity of the vector.
     /// - The elements at `old_len..new_len` must be initialized.
     pub unsafe fn set_len(&mut self, new_len: usize) {
-        debug_assert!(new_len <= self.capacity());
-        if let Some(header) = self.header_mut() {
+        if let Some(header) = self.0.as_mut() {
+            debug_assert!(new_len <= header.cap, "length out of bounds");
+
             // SAFETY: `header` is guaranteed to be valid as long as the vector is valid
             header.len = new_len;
         } else if new_len > 0 {
+            debug_assert!(false, "length out of bounds");
             // SAFETY: precondition says new_len <= capacity (here 0)
             unsafe { unreachable_unchecked() }
         }
@@ -967,7 +904,7 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
 
         let capacity = capacity.max(Self::MINIMAL_CAPACITY);
         let (layout, _offset, capacity) =
-            Self::layout(capacity).expect("invalid layout: buffer too large");
+            ThinHeader::<T, P>::layout(capacity).expect("invalid layout: buffer too large");
         let ptr = unsafe { alloc(layout) };
         let ptr = check_alloc(ptr, layout);
         let mut ptr = ptr.cast();
@@ -1083,7 +1020,7 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
         // computes the layouts
         let layout = self.current_layout();
         let (new_layout, _, eff_cap) =
-            Self::layout(new_cap).expect("invalid layout: buffer too large");
+            ThinHeader::<T, P>::layout(new_cap).expect("invalid layout: buffer too large");
 
         // realloc only if needed
         if layout != new_layout {

@@ -1,21 +1,23 @@
 use alloc::vec::Vec;
 use core::marker::PhantomData;
-use core::mem::{needs_drop, ManuallyDrop};
-use core::ptr;
+use core::mem::{self, needs_drop, ManuallyDrop};
+use core::ops::{Range, RangeBounds};
+use core::ptr::{self, dangling, NonNull};
 
 use const_default::ConstDefault;
 use rules_derive::rules_derive;
 use typenum::Unsigned;
 
+use super::reprs::{ThinHeader, ThinRepr};
 use crate::backend::UpdateResult;
 use crate::common::derives::*;
 use crate::common::traits::MutVector;
-use crate::common::{transmute2, transmute_mut, transmute_ref};
-use crate::vecs::inline::InlineLength;
+use crate::common::{self, drop_raw_slice, transmute2};
+use crate::vecs::inline::{InlineLength, InlineVec};
 use crate::vecs::reprs::{Borrowed, FatOrThinRepr, Pivot, Sliced, UnknownSliced, Variant};
 use crate::vecs::smart_fat::SmartFatVec;
+use crate::vecs::smart_thin::SmartThinVec;
 use crate::vecs::thin::{can_reuse, ThinVec};
-use crate::vecs::{InlineVec, SmartThinVec};
 use crate::Backend;
 
 #[cfg(test)]
@@ -123,8 +125,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     ///
     /// ```
     /// use hipstr::vecs::HipVec;
-    /// use hipstr::Arc;
-    /// let a: HipVec<u8, Arc> = HipVec::from([0; 1024]);
+    /// let a: HipVec<u8> = HipVec::from([0; 1024]);
     /// assert!(!a.is_inline());
     /// //assert!(!a.is_borrowed());
     /// //assert!(a.is_allocated());
@@ -208,11 +209,10 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     ///
     /// ```
     /// use hipstr::vecs::HipVec;
-    /// use hipstr::Arc;
-    /// let a: HipVec<u8,Arc> = HipVec::new();
+    /// let a: HipVec<u8> = HipVec::new();
     /// assert!(a.is_empty());
     ///
-    /// let b: HipVec<u8,Arc> = HipVec::from([1,2,3]);
+    /// let b: HipVec<u8> = HipVec::from([1,2,3]);
     /// assert!(!b.is_empty());
     /// ```
     #[must_use]
@@ -263,6 +263,17 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         unsafe { &*ptr::from_ref(self).cast() }
     }
 
+    /// Gets a mutable reference to the underlying sliced representation.
+    ///
+    /// # Safety
+    ///
+    /// The vector must not be inline.
+    const unsafe fn as_sliced_mut_unchecked(&mut self) -> &mut UnknownSliced<T> {
+        debug_assert!(!self.is_inline());
+        // SAFETY: precondition
+        unsafe { &mut *ptr::from_mut(self).cast() }
+    }
+
     /// Gets a reference to the underlying allocated representation.
     ///
     /// # Safety
@@ -291,9 +302,8 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     ///
     /// ```
     /// use hipstr::vecs::HipVec;
-    /// use hisptr::Arc;
     /// let slice: &[u8] = &[1, 2, 3];
-    /// let a: HipVec<u8, Arc> = HipVec::borrowed(slice);
+    /// let a: HipVec<u8> = HipVec::borrowed(slice);
     /// assert!(a.is_borrowed());
     /// ```
     #[must_use]
@@ -308,7 +318,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     ///
     /// ```
     /// use hipstr::vecs::HipVec;
-    /// use hipstr::{Arc, inline_vec};
+    /// use hipstr::inline_vec;
     /// let inline = inline_vec![24 => 1, 2, 3];
     /// let hip: HipVec<u8> = HipVec::inline(inline);
     /// assert!(hip.is_inline());
@@ -381,6 +391,245 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
 
     const unsafe fn copy(&self) -> Self {
         Self(self.0, PhantomData)
+    }
+
+    /// Shortens the vector, keeping the first `new_len` elements and dropping
+    /// the rest.
+    ///
+    /// If `new_len` is greater than the vector's current length, this has no
+    /// effect.
+    ///
+    /// Note that if the vector is not inline, truncating will not drop the
+    /// elements beyond the new length.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::HipVec;
+    /// let mut hip = HipVec::from([1, 2, 3, 4, 5]);
+    /// assert_eq!(hip.len(), 5);
+    /// hip.truncate(3);
+    /// assert_eq!(hip.len(), 3);
+    /// assert_eq!(hip.as_slice(), &[1, 2, 3]);
+    /// hip.truncate(10); // has no effect
+    /// assert_eq!(hip.len(), 3);
+    /// ```
+    pub fn truncate(&mut self, new_len: usize) {
+        if self.is_inline() {
+            let inline = unsafe { self.as_inline_mut_unchecked() };
+            inline.truncate(new_len);
+        } else {
+            let sliced = unsafe { self.as_sliced_mut_unchecked() };
+            if sliced.len < new_len {
+                sliced.len = new_len;
+            }
+            self.tighten();
+        }
+    }
+
+    /// Returns a slice of the vector.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the range is out of bounds or if the reference count
+    /// overflows.
+    pub fn slice(&self, range: impl RangeBounds<usize>) -> Self
+    where
+        T: Clone,
+    {
+        let range = common::range(range, self.len()).unwrap();
+        self.slice_range(range)
+    }
+
+    fn slice_range(&self, range: Range<usize>) -> Self
+    where
+        T: Clone,
+    {
+        if Self::MAY_INLINE && range.len() < Self::INLINE_CAP {
+            let inline = InlineVec::from_slice_clone(&self.as_slice()[range]);
+            Self::inline(inline)
+        } else {
+            debug_assert!(!self.is_inline());
+
+            if self.is_allocated() {
+                // SAFETY: repr is checked above
+                let owner = unsafe { &self.as_allocated_unchecked().owner };
+                if owner.counter().incr() == UpdateResult::Overflow {
+                    return Self::from_slice_clone(&self.as_slice()[range]);
+                }
+            }
+
+            // SAFETY: counter is incremented if allocated
+            // otherwise, the borrowed slice is copyable
+            let mut copy = unsafe { self.copy() };
+            unsafe {
+                let copy = copy.as_sliced_mut_unchecked();
+                copy.ptr = copy.ptr.add(range.start);
+                copy.len = range.len();
+            }
+            copy
+        }
+    }
+
+    /// Removes the last element from the vector and returns it, or `None` if
+    /// it is empty.
+    ///
+    /// Note that if the vector is not unique, the last element is cloned.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::HipVec;
+    /// let mut hip = HipVec::from([1, 2, 3]);
+    /// assert_eq!(hip.pop(), Some(3));
+    /// assert_eq!(hip.pop(), Some(2));
+    /// assert_eq!(hip.pop(), Some(1));
+    /// assert_eq!(hip.pop(), None);
+    /// ```
+    pub fn pop(&mut self) -> Option<T>
+    where
+        T: Clone,
+    {
+        if self.is_inline() {
+            // SAFETY: repr is checked above
+            let inline = unsafe { self.as_inline_mut_unchecked() };
+            inline.pop()
+        } else if self.is_empty() {
+            None
+        } else {
+            if self.is_allocated() {
+                // SAFETY: repr is checked above
+                let allocated = unsafe { self.as_allocated_mut_unchecked() };
+                let owner = &mut allocated.owner;
+                if owner.is_unique() {
+                    let ptr = owner.data().as_ptr();
+
+                    // SAFETY: the slice is inside the owner's buffer by type
+                    // invariant
+                    unsafe {
+                        let slice_end = allocated.ptr.add(allocated.len);
+                        // compute the actual length
+                        let actual_len = ptr.offset_from_unsigned(slice_end);
+
+                        // compute the remaining part
+                        let rem_ptr = ptr.add(actual_len);
+                        let rem_len = owner.len() - actual_len;
+
+                        // drop the remaining elements
+                        drop_raw_slice(rem_ptr, rem_len);
+                        // move the last element out
+                        let value = ptr.add(actual_len - 1).read();
+                        // update the length
+                        owner.set_len(actual_len - 1);
+                        return Some(value);
+                    }
+                }
+            }
+
+            // not unique => we clone the last value and update the length
+
+            // SAFETY: not inlined
+            let sliced = unsafe { self.as_sliced_mut_unchecked() };
+
+            // SAFETY: not empty
+            let last = unsafe { &*sliced.ptr.add(sliced.len - 1) };
+
+            // clone the value to return
+            let value = last.clone();
+
+            // update the length
+            sliced.len -= 1;
+            Some(value)
+        }
+    }
+
+    /// Clears the vector, removing all values.
+    ///
+    /// Note that if the vector is not inline, clearing will not drop any
+    /// elements.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::HipVec;
+    /// let mut hip = HipVec::from([1, 2, 3]);
+    /// assert_eq!(hip.len(), 3);
+    /// hip.clear();
+    /// assert_eq!(hip.len(), 0);
+    /// ```
+    pub fn clear(&mut self) {
+        self.truncate(0);
+    }
+
+    /// Tightens the allocated vector (without shifting), dropping excess
+    /// elements if the vector is uniquely owned.
+    fn tighten(&mut self) {
+        if self.is_allocated() {
+            // SAFETY: repr is checked above
+            let allocated = unsafe { self.as_allocated_mut_unchecked() };
+            let owner = &mut allocated.owner;
+            if owner.is_unique() {
+                let ptr = owner.data().as_ptr();
+
+                // SAFETY: the slice is inside the owner's buffer by type
+                // invariant
+                unsafe {
+                    let slice_end = allocated.ptr.add(allocated.len);
+                    // compute the actual length
+                    let actual_len = slice_end.offset_from_unsigned(ptr);
+
+                    // compute the remaining part
+                    let rem_ptr = ptr.add(actual_len);
+                    let rem_len = owner.len() - actual_len;
+
+                    // drop the remaining elements
+                    drop_raw_slice(rem_ptr, rem_len);
+
+                    // update the length
+                    owner.set_len(actual_len);
+                }
+            }
+        }
+    }
+
+    fn tighten_and_shift(&mut self) {
+        if self.is_allocated() {
+            // SAFETY: repr is checked above
+            let allocated = unsafe { self.as_allocated_mut_unchecked() };
+            let owner = &mut allocated.owner;
+            if owner.is_unique() {
+                let ptr = owner.data().as_ptr();
+                let shift = unsafe { allocated.ptr.offset_from_unsigned(ptr) };
+
+                // drop the first `shift` elements
+                // SAFETY: the slice is inside the owner's buffer by type invariant
+                unsafe {
+                    drop_raw_slice(ptr, shift);
+                }
+
+                // move the visible elements to the start of the buffer
+                // SAFETY: the slice is inside the owner's buffer by type invariant
+                unsafe {
+                    ptr.copy_from(ptr.add(shift), allocated.len);
+                }
+
+                // drop the excess elements
+                let excess_start = shift + allocated.len;
+                let excess_len = owner.len() - excess_start;
+
+                // SAFETY: the whole slice is inside the owner's buffer by type invariant
+                unsafe {
+                    drop_raw_slice(ptr.add(excess_start), excess_len);
+                }
+
+                // SAFETY: the slice is inside the owner's buffer by type
+                // invariant
+                unsafe {
+                    // update the length
+                    owner.set_len(allocated.len);
+                }
+            }
+        }
     }
 }
 
@@ -467,5 +716,35 @@ impl<T, B: Backend> Owner<T, B> {
 
     const fn counter(&self) -> &B {
         &self.0.as_ref().unwrap().prefix
+    }
+
+    const fn data(&self) -> NonNull<T> {
+        if let Some(r) = self.0.as_ref() {
+            if let Some(p) = r.ptr {
+                p
+            } else {
+                let repr: &ThinRepr<T, B> = unsafe { &*ptr::from_ref(self).cast() };
+                repr.data()
+            }
+        } else {
+            NonNull::dangling()
+        }
+    }
+
+    /// Sets the length of the owner.
+    unsafe fn set_len(&mut self, len: usize) {
+        if let Some(r) = self.0.as_mut() {
+            debug_assert!(len < r.cap);
+            r.len = len;
+        }
+    }
+
+    /// Gets the length of the owner.
+    fn len(&self) -> usize {
+        if let Some(r) = self.0.as_ref() {
+            r.len
+        } else {
+            0
+        }
     }
 }

@@ -1,5 +1,6 @@
 #![allow(unused)]
 
+use core::alloc::Layout;
 use core::marker::PhantomData;
 use core::mem::{self, offset_of, transmute, transmute_copy, MaybeUninit};
 #[cfg(target_endian = "little")]
@@ -34,6 +35,40 @@ pub struct ThinHeader<T, P> {
     pub len: usize,
     pub _phantom: PhantomData<T>,
 }
+impl<T, P> ThinHeader<T, P> {
+    const DATA_OFFSET: usize = Self::layout(0).unwrap().1;
+
+    /// Given a capacity, computes a `ThinVec` layout, the offset (in bytes) of
+    /// the payload, and the rounded up capacity.
+    #[inline]
+    pub const fn layout(payload: usize) -> Option<(Layout, usize, usize)> {
+        let layout = Layout::new::<ThinHeader<T, P>>();
+        let Ok(arr) = Layout::array::<T>(payload) else {
+            return None;
+        };
+        let Ok((layout, offset)) = layout.extend(arr) else {
+            return None;
+        };
+        let layout = layout.pad_to_align();
+
+        // get the payload possibly rounded up to maximize possible occupancy in
+        // closely in the computed layout
+        let round_up_payload = if size_of::<T>() == 0 {
+            usize::MAX
+        } else {
+            (layout.size() - offset) / mem::size_of::<T>()
+        };
+
+        #[cfg(not(coverage))]
+        debug_assert!(payload <= round_up_payload, "invalid roundup");
+
+        Some((layout, offset, round_up_payload))
+    }
+
+    pub const fn data(header: NonNull<Self>) -> NonNull<T> {
+        unsafe { header.byte_add(Self::DATA_OFFSET).cast() }
+    }
+}
 
 /// A fat vector representation with prefix.
 #[repr(C)]
@@ -44,8 +79,6 @@ pub struct FatInner<T, P> {
     pub len: usize,
 }
 
-/// A thin vector representation.
-pub type ThinRepr<T, P> = MagicPointer<ThinHeader<T, P>>;
 #[repr(C)]
 pub struct MagicPointer<T> {
     inner: NonNull<T>,
@@ -57,6 +90,19 @@ impl<T> Clone for MagicPointer<T> {
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn clone(&self) -> Self {
         *self
+    }
+}
+
+/// A thin vector representation.
+pub type ThinRepr<T, P> = MagicPointer<ThinHeader<T, P>>;
+
+impl<T, P> ThinRepr<T, P> {
+    pub const fn data(&self) -> NonNull<T> {
+        if let Some(header) = self.get() {
+            ThinHeader::data(header)
+        } else {
+            NonNull::dangling()
+        }
     }
 }
 
@@ -102,12 +148,9 @@ impl<T> MagicPointer<T> {
     }
 
     #[allow(clippy::needless_pass_by_ref_mut)]
-    pub fn as_mut(&mut self) -> Option<&mut T> {
+    pub const fn as_mut(&mut self) -> Option<&mut T> {
         match self.get() {
-            Some(ptr) => {
-                debug_assert!(ptr.addr().get() & MASK == 0, "invalid pointer");
-                unsafe { Some(&mut *ptr.as_ptr()) }
-            }
+            Some(mut ptr) => unsafe { Some(ptr.as_mut()) },
             None => None,
         }
     }

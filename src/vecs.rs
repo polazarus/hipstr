@@ -7,12 +7,17 @@ pub mod smart_fat;
 pub mod smart_thin;
 pub mod thin;
 
-#[doc(inline)]
-pub use inline::InlineVec;
-#[doc(inline)]
-pub use smart_thin::SmartThinVec;
-
 use crate::backend;
 
-pub type ThinVec<T> = thin::ThinVec<T, thin::Reserved>;
-pub type HipVec<'a, T, B = backend::Arc> = hip::HipVec<'a, T, B>;
+pub type ThinVec<T> = self::thin::ThinVec<T, self::thin::Reserved>;
+
+/// An inline vector that can store up to `L` bytes inline.
+pub type InlineVec<T, L = self::hip::InlineBytes> = self::inline::InlineVec<T, L>;
+
+/// A possibly reference-counted thin vector
+#[cfg(target_has_atomic = "ptr")]
+pub type SmartThinVec<T> = self::smart_thin::SmartThinVec<T, backend::Arc>;
+
+/// A hip vector that uses `Arc` as the backend.
+#[cfg(target_has_atomic = "ptr")]
+pub type HipVec<'a, T> = hip::HipVec<'a, T, backend::Arc>;

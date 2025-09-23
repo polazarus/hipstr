@@ -12,9 +12,10 @@ use const_default::ConstDefault;
 
 use crate::common::traits::tests::test_mut_vector;
 use crate::common::RangeError;
-use crate::thin_vec;
+use crate::vecs::reprs::{ThinHeader, ThinRepr};
 use crate::vecs::thin::{Reserved, ThinVec as GenericThinVec};
 use crate::vecs::ThinVec;
+use crate::{thin_vec, Rc};
 
 #[test]
 fn new_zst() {
@@ -553,6 +554,27 @@ fn space_capacity_set_len() {
 }
 
 #[test]
+#[cfg(debug_assertions)]
+#[should_panic(expected = "length out of bounds")]
+fn set_len_out_of_bounds_empty() {
+    let mut v = ThinVec::<i32>::new();
+    unsafe {
+        v.set_len(1);
+    }
+}
+
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic(expected = "length out of bounds")]
+fn set_len_out_of_bounds_non_empty() {
+    let mut v = thin_vec![1, 2, 3];
+    let c = v.capacity();
+    unsafe {
+        v.set_len(c + 1);
+    }
+}
+
+#[test]
 fn resize() {
     let mut v = thin_vec![1, 2, 3];
     v.resize(5, 0);
@@ -560,6 +582,57 @@ fn resize() {
     v.resize(2, 0);
     assert_eq!(v.as_slice(), &[1, 2]);
     v.resize(0, 0);
+    assert!(v.is_empty());
+}
+
+#[test]
+fn resize_with() {
+    let mut v = thin_vec![1, 2, 3];
+    v.resize_with(5, Default::default);
+    assert_eq!(v.as_slice(), &[1, 2, 3, 0, 0]);
+    v.resize_with(2, Default::default);
+    assert_eq!(v.as_slice(), &[1, 2]);
+    v.resize_with(0, Default::default);
+    assert!(v.is_empty());
+}
+
+#[test]
+fn resize_boxed() {
+    let mut v = thin_vec![Box::new(1), Box::new(2), Box::new(3)];
+    v.resize(5, Box::new(0));
+    assert_eq!(
+        v.as_slice(),
+        &[
+            Box::new(1),
+            Box::new(2),
+            Box::new(3),
+            Box::new(0),
+            Box::new(0)
+        ]
+    );
+    v.resize(2, Box::new(0));
+    assert_eq!(v.as_slice(), &[Box::new(1), Box::new(2)]);
+    v.resize(0, Box::new(0));
+    assert!(v.is_empty());
+}
+
+#[test]
+fn resize_with_boxed() {
+    let mut v = thin_vec![Box::new(1), Box::new(2), Box::new(3)];
+    v.resize_with(5, Default::default);
+    assert_eq!(
+        v.as_slice(),
+        &[
+            Box::new(1),
+            Box::new(2),
+            Box::new(3),
+            Box::new(0),
+            Box::new(0)
+        ]
+    );
+    v.resize_with(2, Default::default);
+    assert_eq!(v.as_slice(), &[Box::new(1), Box::new(2)]);
+    v.resize_with(0, Default::default);
     assert!(v.is_empty());
 }
 
@@ -846,15 +919,15 @@ fn generic_vector() {
 
 #[test]
 fn layout() {
-    let (_, offset, capacity) = ThinVec::<u128>::layout(0).unwrap();
+    let (_, offset, capacity) = ThinHeader::<u128, Rc>::layout(0).unwrap();
     assert_eq!(capacity, 0);
     assert_eq!(offset % align_of::<u128>(), 0);
 
-    let (_, _, capacity) = ThinVec::<u8>::layout(1).unwrap();
+    let (_, _, capacity) = ThinHeader::<u8, Rc>::layout(1).unwrap();
     assert!(capacity > 1, "{capacity} should be rounded up");
 
-    assert!(ThinVec::<u8>::layout(usize::MAX).is_none());
-    assert!(ThinVec::<u128>::layout(usize::MAX / size_of::<u128>()).is_none());
+    assert!(ThinHeader::<u8, Rc>::layout(usize::MAX).is_none());
+    assert!(ThinHeader::<u128, Rc>::layout(usize::MAX / size_of::<u128>()).is_none());
 }
 
 #[test]
