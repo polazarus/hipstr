@@ -174,7 +174,8 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     #[inline]
     pub(crate) const unsafe fn zeroed(new_len: usize) -> Self {
         assert!(new_len <= Self::CAPACITY, "new length exceeds capacity");
-        let mut new = Self(InlineRepr::<T, L>::zeroed());
+        // SAFETY: the caller must ensure that the elements are zeroable
+        let mut new = Self(unsafe { InlineRepr::<T, L>::zeroed() });
         // SAFETY: the elements are zeroed by construction
         unsafe {
             new.set_len(new_len);
@@ -349,7 +350,7 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     /// would also make any pointers to it invalid.
     #[inline]
     pub const fn as_non_null(&mut self) -> NonNull<T> {
-        unsafe { NonNull::new_unchecked(self.as_mut_ptr()) }
+        self.0.as_non_null()
     }
 
     /// Returns a mutable pointer to the inline vector.
