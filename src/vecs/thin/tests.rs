@@ -12,7 +12,7 @@ use const_default::ConstDefault;
 
 use crate::common::traits::tests::test_mut_vector;
 use crate::common::RangeError;
-use crate::vecs::reprs::{ThinHeader, ThinRepr};
+use crate::vecs::reprs::ThinHeader;
 use crate::vecs::thin::{Reserved, ThinVec as GenericThinVec};
 use crate::vecs::ThinVec;
 use crate::{thin_vec, Rc};

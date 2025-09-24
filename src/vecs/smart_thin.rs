@@ -128,12 +128,6 @@ impl<T, B: Backend> SmartThinVec<T, B> {
         Self(repr)
     }
 
-    pub(super) const unsafe fn into_repr(self) -> ThinRepr<T, B> {
-        let repr = self.0;
-        let _ = ManuallyDrop::new(self);
-        repr
-    }
-
     /// Returns the number of elements in the vector.
     ///
     /// # Examples

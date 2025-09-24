@@ -8,6 +8,7 @@ use core::num::NonZeroU8;
 use core::num::NonZeroUsize;
 use core::ptr::{self, NonNull};
 
+use const_default::ConstDefault;
 use rules_derive::rules_derive;
 
 use crate::common::derives::ConstDefault;
@@ -30,11 +31,12 @@ pub type Null = ZeroUsize;
 #[repr(C)]
 pub struct ThinHeader<T, P> {
     pub prefix: P,
-    pub _ptr: ZeroUsize,
+    _ptr: ZeroUsize,
     pub cap: usize,
     pub len: usize,
-    pub _phantom: PhantomData<T>,
+    _phantom: PhantomData<T>,
 }
+
 impl<T, P> ThinHeader<T, P> {
     const DATA_OFFSET: usize = Self::layout(0).unwrap().1;
 
@@ -68,6 +70,19 @@ impl<T, P> ThinHeader<T, P> {
     pub const fn data(header: NonNull<Self>) -> NonNull<T> {
         unsafe { header.byte_add(Self::DATA_OFFSET).cast() }
     }
+}
+
+impl<T, P> ConstDefault for ThinHeader<T, P>
+where
+    P: ConstDefault,
+{
+    const DEFAULT: Self = Self {
+        prefix: P::DEFAULT,
+        _ptr: ZeroUsize::Zero,
+        cap: 0,
+        len: 0,
+        _phantom: PhantomData,
+    };
 }
 
 /// A fat vector representation with prefix.
@@ -237,131 +252,4 @@ pub const fn check_size_align_and_offsets<T, P>() {
     // Ensures that the field cap is at the same offset in all three structs
     assert!(offset_of!(ThinHeader<T, P>, cap) == offset_of!(FatOrThinView<T, P>, cap));
     assert!(offset_of!(FatInner<T, P>, cap) == offset_of!(FatOrThinView<T, P>, cap));
-}
-
-/// Size of word minus a tagged byte.
-const WORD_SIZE_M1: usize = size_of::<usize>() - 1;
-
-#[derive(Clone, Copy)]
-#[repr(C)]
-pub struct Pivot {
-    #[cfg(target_endian = "little")]
-    tag_byte: NonZeroU8,
-    #[cfg(target_endian = "little")]
-    _word_remainder: MaybeUninit<[u8; WORD_SIZE_M1]>,
-    #[cfg(target_endian = "little")]
-    _word1: MaybeUninit<*mut ()>,
-
-    _word2: MaybeUninit<*mut ()>,
-
-    #[cfg(target_endian = "big")]
-    _word1: MaybeUninit<*mut ()>,
-    #[cfg(target_endian = "big")]
-    _word_remainder: MaybeUninit<[u8; WORD_SIZE_M1]>,
-    #[cfg(target_endian = "big")]
-    tag_byte: NonZeroU8,
-}
-
-impl Pivot {
-    #[inline]
-    pub const fn is_inline(&self) -> bool {
-        (self.tag_byte.get() as usize) & INLINE_MASK == INLINE
-    }
-}
-
-pub type Borrowed<'borrow, T> = Sliced<T, BorrowedTag<'borrow>>;
-
-impl<'borrow, T> Borrowed<'borrow, T> {
-    pub const fn new(slice: &'borrow [T]) -> Self {
-        Self {
-            owner: BorrowedTag {
-                _reserved: BorrowedReserved::Value,
-                _marker: PhantomData,
-            },
-            ptr: slice.as_ptr(),
-            len: slice.len(),
-        }
-    }
-}
-
-#[derive(Clone, Copy)]
-pub struct BorrowedTag<'borrow> {
-    _reserved: BorrowedReserved,
-    _marker: PhantomData<&'borrow ()>,
-}
-
-#[derive(Clone, Copy)]
-#[rules_derive(ConstDefault(Self::Value))]
-#[repr(usize)]
-pub enum BorrowedReserved {
-    Value = THIN,
-}
-
-#[repr(C)]
-pub struct Sliced<T, O> {
-    #[cfg(target_endian = "little")]
-    pub owner: O,
-
-    pub ptr: *const T,
-    pub len: usize,
-
-    #[cfg(target_endian = "big")]
-    pub owner: O,
-}
-
-impl<T, O> Sliced<T, O> {
-    pub const fn as_ptr(&self) -> *const T {
-        self.ptr
-    }
-
-    pub const fn len(&self) -> usize {
-        self.len
-    }
-
-    pub const fn is_empty(&self) -> bool {
-        self.len == 0
-    }
-
-    pub const fn as_slice(&self) -> &[T] {
-        unsafe { core::slice::from_raw_parts(self.ptr, self.len) }
-    }
-}
-
-pub type UnknownSliced<T> = Sliced<T, NonZeroUsize>;
-
-impl<T> UnknownSliced<T> {
-    #[inline]
-    pub const fn is_allocated(&self) -> bool {
-        !self.is_borrowed()
-    }
-
-    #[inline]
-    pub const fn is_borrowed(&self) -> bool {
-        self.owner.get() & SLICED_PTR_MASK == 0
-    }
-}
-
-pub struct ExposedNonNull<T> {
-    addr: NonZeroUsize,
-    phantom: PhantomData<NonNull<T>>,
-}
-
-impl<T> ExposedNonNull<T> {
-    pub fn new(ptr: NonNull<T>) -> Self {
-        Self {
-            addr: ptr.addr(),
-            phantom: PhantomData,
-        }
-    }
-    pub const fn addr(&self) -> NonZeroUsize {
-        self.addr
-    }
-
-    pub fn as_ptr(&self) -> *const T {
-        ptr::with_exposed_provenance(self.addr.get())
-    }
-
-    pub fn as_mut_ptr(&self) -> *mut T {
-        ptr::with_exposed_provenance_mut(self.addr.get())
-    }
 }

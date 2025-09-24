@@ -1,5 +1,4 @@
 use alloc::boxed::Box;
-use core::hash;
 
 use crate::vecs::hip::{HipVec, SplitOffError};
 use crate::Arc;
@@ -126,7 +125,9 @@ fn truncate() {
     assert!(h.is_inline());
 
     let mut h = HipVec::<u8, Arc>::from([42; 42]);
+    assert!(h.is_thin());
     let h2 = h.clone();
+    assert!(h.is_thin());
     h.truncate(10);
     assert_eq!(h.len(), 10);
     assert_eq!(h.as_slice(), &[42; 10]);

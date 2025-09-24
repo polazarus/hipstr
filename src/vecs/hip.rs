@@ -1,24 +1,24 @@
 use alloc::vec::Vec;
 use core::marker::PhantomData;
-use core::mem::{self, needs_drop, ManuallyDrop};
+use core::mem::{needs_drop, ManuallyDrop};
 use core::ops::{Range, RangeBounds};
-use core::ptr::{self, dangling, NonNull};
+use core::ptr;
 
 use const_default::ConstDefault;
 use rules_derive::rules_derive;
 use typenum::Unsigned;
 
-use super::reprs::{ThinHeader, ThinRepr};
+use self::repr::{Allocated, Borrowed, Owner, Pivot, Sliced, UnknownSliced};
 use crate::backend::UpdateResult;
 use crate::common::derives::*;
 use crate::common::traits::MutVector;
 use crate::common::{self, drop_raw_slice, transmute2};
 use crate::vecs::inline::{InlineLength, InlineVec};
-use crate::vecs::reprs::{Borrowed, FatOrThinRepr, Pivot, Sliced, UnknownSliced, Variant};
-use crate::vecs::smart_fat::SmartFatVec;
 use crate::vecs::smart_thin::SmartThinVec;
 use crate::vecs::thin::{can_reuse, ThinVec};
 use crate::Backend;
+
+pub(crate) mod repr;
 
 #[cfg(test)]
 mod tests;
@@ -135,7 +135,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     #[must_use]
     #[inline]
     pub const fn is_allocated(&self) -> bool {
-        !self.is_inline() && unsafe { self.as_sliced_unchecked() }.is_allocated()
+        self.0.is_allocated()
     }
 
     /// Returns `true` if the vector is borrowed.
@@ -154,7 +154,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     #[must_use]
     #[inline]
     pub const fn is_borrowed(&self) -> bool {
-        !self.is_inline() && unsafe { self.as_sliced_unchecked() }.is_borrowed()
+        self.0.is_borrowed()
     }
 
     /// Returns `true` if the vector is uniquely owned.
@@ -386,7 +386,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         #[cfg(debug_assertions)]
         let is_null = v.capacity() == 0;
 
-        let owner = unsafe { v.into_repr() };
+        let owner = v;
         let this = unsafe { Self::from_sliced(Sliced { owner, ptr, len }) };
 
         #[cfg(debug_assertions)]
@@ -544,7 +544,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
 
     /// Tightens the allocated vector (without shifting), dropping excess
     /// elements if the vector is uniquely owned.
-    fn tighten(&mut self) {
+    pub fn tighten(&mut self) {
         if self.is_allocated() {
             // SAFETY: repr is checked above
             let allocated = unsafe { self.as_allocated_mut_unchecked() };
@@ -573,7 +573,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         }
     }
 
-    fn tighten_and_shift(&mut self) {
+    pub fn tighten_and_shift(&mut self) {
         if self.is_allocated() {
             // SAFETY: repr is checked above
             let allocated = unsafe { self.as_allocated_mut_unchecked() };
@@ -780,89 +780,16 @@ impl<T: Clone, B: Backend> Clone for HipVec<'_, T, B> {
             let inline = unsafe { self.as_inline_unchecked() };
             // TODO optimize if T is Copy
             Self::inline(inline.clone())
-        } else if self.is_borrowed() {
-            // SAFETY: repr is checked above, the borrowed slice is copyable
+        } else {
+            if self.is_allocated() {
+                // SAFETY: repr is checked above
+                let allocated = unsafe { self.as_allocated_unchecked() };
+                if allocated.owner.counter().incr() == UpdateResult::Overflow {
+                    return Self::from_slice_clone(allocated.as_slice());
+                }
+            }
+            // SAFETY: either ref count increased or borrowed repr => copyable
             unsafe { self.copy() }
-        } else {
-            // SAFETY: repr is checked above
-            let allocated = unsafe { self.as_allocated_unchecked() };
-            if allocated.owner.counter().incr() == UpdateResult::Done {
-                // SAFETY: the reference count was incremented
-                unsafe { self.copy() }
-            } else {
-                Self::from_slice_clone(allocated.as_slice())
-            }
-        }
-    }
-}
-
-type Allocated<T, B> = Sliced<T, Owner<T, B>>;
-
-#[repr(transparent)]
-struct Owner<T, B>(FatOrThinRepr<T, B>);
-
-impl<T, B: Backend> Owner<T, B> {
-    /// Drops the owner now.
-    ///
-    /// # Safety
-    ///
-    /// The owner must not be used after drop.
-    unsafe fn drop(&mut self) {
-        match self.0.into_split() {
-            Variant::Thin(repr) => {
-                // SAFETY: should not be used after drop
-                let _ = unsafe { SmartThinVec::from_repr(repr) };
-            }
-            Variant::Fat(repr) => {
-                // SAFETY: should not be used after drop
-                let _ = unsafe { SmartFatVec::from_repr(repr) };
-            }
-        }
-    }
-
-    fn is_unique(&self) -> bool {
-        self.0.as_ref().unwrap().prefix.is_unique()
-    }
-
-    const fn is_fat(&self) -> bool {
-        self.0.is_fat()
-    }
-
-    const fn is_thin(&self) -> bool {
-        self.0.is_thin()
-    }
-
-    const fn counter(&self) -> &B {
-        &self.0.as_ref().unwrap().prefix
-    }
-
-    const fn data(&self) -> NonNull<T> {
-        if let Some(r) = self.0.as_ref() {
-            if let Some(p) = r.ptr {
-                p
-            } else {
-                let repr: &ThinRepr<T, B> = unsafe { &*ptr::from_ref(self).cast() };
-                repr.data()
-            }
-        } else {
-            NonNull::dangling()
-        }
-    }
-
-    /// Sets the length of the owner.
-    unsafe fn set_len(&mut self, len: usize) {
-        if let Some(r) = self.0.as_mut() {
-            debug_assert!(len < r.cap);
-            r.len = len;
-        }
-    }
-
-    /// Gets the length of the owner.
-    fn len(&self) -> usize {
-        if let Some(r) = self.0.as_ref() {
-            r.len
-        } else {
-            0
         }
     }
 }

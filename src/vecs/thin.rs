@@ -907,11 +907,12 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
             ThinHeader::<T, P>::layout(capacity).expect("invalid layout: buffer too large");
         let ptr = unsafe { alloc(layout) };
         let ptr = check_alloc(ptr, layout);
-        let mut ptr = ptr.cast();
-        let header: &mut ThinHeader<_, _> = unsafe { ptr.as_mut() };
-        header.prefix = P::DEFAULT;
+        let ptr = ptr.cast();
+        let mut header = ThinHeader::DEFAULT;
         header.cap = capacity;
-        header.len = 0;
+        unsafe {
+            ptr.write(header);
+        }
         ThinRepr::new(ptr)
     }
 
