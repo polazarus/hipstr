@@ -10,16 +10,40 @@ use core::mem::size_of;
 use core::ptr;
 
 use const_default::ConstDefault;
-use typenum::{U, U24, U8};
+use typenum::{U, U12, U16, U20, U24, U4, U8};
 
 use super::length::PointerSize;
 use super::repr::InlineRepr;
 use super::{InlineVec, InsertError, InsertErrorKind};
 use crate::common::traits::MutVector;
+use crate::vecs::inline::length::Divisible;
+use crate::vecs::inline::InlineLength;
 use crate::{inline_vec, thin_vec};
 
 const SMALL_CAP: usize = 8;
 const SMALL_FULL: InlineVec<u8, U8> = InlineVec::from_array([1, 2, 3, 4, 5, 6, 7]);
+
+#[test]
+fn repr_clone_is_copy() {
+    let a = InlineRepr::<u8, U8>::new();
+    let b = Clone::clone(&a);
+
+    let a_ptr: *const u8 = (&raw const a).cast();
+    let b_ptr: *const u8 = (&raw const b).cast();
+    let len = size_of::<InlineRepr<u8, U8>>();
+
+    let a_bytes = unsafe { core::slice::from_raw_parts(a_ptr, len) };
+    let b_bytes = unsafe { core::slice::from_raw_parts(b_ptr, len) };
+    assert_eq!(a_bytes, b_bytes);
+}
+
+#[test]
+fn dangling() {
+    let inline = InlineVec::<u64, U8>::new();
+    assert_eq!(inline.capacity(), 0);
+    assert!(!inline.as_ptr().is_null());
+    assert_eq!(inline.as_ptr(), ptr::dangling());
+}
 
 #[test]
 #[allow(clippy::assertions_on_constants)]
@@ -1077,4 +1101,29 @@ fn from_slice_copy_unchecked() {
 fn from_slice_copy_unchecked_overflow() {
     let slice: &[u8] = &[0; 8];
     let _inline = unsafe { InlineVec::<u8, U8>::from_slice_copy_unchecked(slice) };
+}
+
+#[test]
+fn divisible() {
+    const fn is_divisible<T: Divisible<U4>>() {}
+    is_divisible::<U4>();
+    is_divisible::<U8>();
+    is_divisible::<U12>();
+    is_divisible::<U16>();
+    is_divisible::<U20>();
+    is_divisible::<U24>();
+}
+
+#[test]
+fn inline_length() {
+    const fn is_inline_length<T: InlineLength>() {}
+    #[cfg(target_pointer_width = "32")]
+    {
+        is_inline_length::<U4>();
+        is_inline_length::<U12>();
+        is_inline_length::<U20>();
+    }
+    is_inline_length::<U8>();
+    is_inline_length::<U16>();
+    is_inline_length::<U24>();
 }

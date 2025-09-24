@@ -3,29 +3,54 @@
 use core::mem::MaybeUninit;
 use core::num::NonZeroUsize;
 use core::ptr;
+use core::ptr::NonNull;
 
 use generic_array::{ArrayLength, GenericArray};
 
 use super::length::{InlineLength, Seal};
 use crate::common::derives::Copy;
 
+/// Returns the number of bits needed to represent `n`.
 pub const fn bits(n: usize) -> u32 {
     usize::BITS - n.leading_zeros()
 }
 
+/// Inline vector internal representation.
+///
+/// # Safety
+///
+/// `InlineRepr` is copiable but the copy is only valid if the elements are
+/// copiable.
+///
+/// **This is not enforced by the type system**, so it is up to the user of this
+/// type to either:
+/// - ensure that the element type is actually copiable
+/// - or that the source representation is no longer used after the copy.
+///
+/// Also, the represetation does not drop its elements, so the user must
+/// ensure that the elements are properly dropped when the representation is
+/// no longer used.
+///
+/// For theses reasons, `InlineRepr` is not exposed outside this crate.
 #[repr(C)]
 pub struct InlineRepr<T, L>
 where
     L: InlineLength,
 {
+    /// Tagged word that contains the length in its lower bits (so upper bytes)
+    /// and possibly part of the data.
     #[cfg(target_endian = "little")]
     init_word: NonZeroUsize,
 
+    /// The rest of the representation, containing the remainder of the data.
     rest: GenericArray<MaybeUninit<usize>, L::WordsM1>,
 
+    /// Tagged word that contains the length in its lower bits (so lower bytes)
+    /// and possibly part of the data.
     #[cfg(target_endian = "big")]
     init_word: NonZeroUsize,
 
+    /// Marker to make the representation depend on `T`.
     phantom: core::marker::PhantomData<[T]>,
 }
 
@@ -47,6 +72,7 @@ impl<T, L> InlineRepr<T, L>
 where
     L: InlineLength,
 {
+    /// Creates a new, uninitialized inline representation.
     pub const fn new() -> Self {
         let init_word = const { NonZeroUsize::new(1).unwrap() };
         Self {
@@ -56,7 +82,8 @@ where
         }
     }
 
-    pub const fn zeroed() -> Self {
+    /// Creates a new, zeroed inline representation.
+    pub const unsafe fn zeroed() -> Self {
         let init_word = NonZeroUsize::new(1).unwrap();
         Self {
             init_word,
@@ -65,15 +92,8 @@ where
         }
     }
 
-    const fn ptr(&self) -> *const u8 {
-        ptr::from_ref(self).cast()
-    }
-
-    const fn mut_ptr(&mut self) -> *mut u8 {
-        ptr::from_mut(self).cast()
-    }
-
-    pub const fn length_and_data() -> (usize, usize, usize, usize) {
+    /// Variaous constants about the inline representation.
+    const LENGTH_AND_DATA: (usize, usize, usize, usize) = {
         let blob = L::USIZE;
         let t_align = align_of::<T>();
         let t_size = size_of::<T>();
@@ -116,66 +136,100 @@ where
             len_off = blob - len_size;
         }
         (len_off, len_size, data_off, data_size)
-    }
+    };
 
-    const LEN_OFFSET: usize = Self::length_and_data().0;
-    const LEN_SIZE: usize = Self::length_and_data().1;
-    const DATA_OFFSET: usize = Self::length_and_data().2;
+    /// Offset inside the representation where the length is stored.
+    const LEN_OFFSET: usize = Self::LENGTH_AND_DATA.0;
 
-    pub const CAPACITY: usize = Self::length_and_data().3;
+    /// Size in bytes of the length field.
+    const LEN_SIZE: usize = Self::LENGTH_AND_DATA.1;
 
+    /// Offset inside the representation where the data starts.
+    const DATA_OFFSET: usize = Self::LENGTH_AND_DATA.2;
+
+    /// Maximum number of elements that can be stored inline.
+    pub const CAPACITY: usize = Self::LENGTH_AND_DATA.3;
+
+    /// Offset inside a `usize` where the length is stored.
+    const IN_LEN_OFFSET: usize = if cfg!(target_endian = "little") {
+        0
+    } else {
+        size_of::<usize>() - Self::LEN_SIZE
+    };
+
+    /// Checks if the given length can be stored inline.
     pub const fn is_len_valid(len: usize) -> bool {
         // strict comparison to take into account the tag bit
         (bits(len) as usize) < Self::LEN_SIZE * 8
     }
 
+    /// Returns the length of the inline vector.
     pub const fn len(&self) -> usize {
         let mut value: usize = 0;
-        let src: *const u8 = unsafe { self.ptr().add(Self::LEN_OFFSET).cast() };
-        let dst: *mut u8 = (&raw mut value).cast();
+        let src: NonNull<u8> =
+            unsafe { NonNull::from_ref(self).cast::<u8>().add(Self::LEN_OFFSET) };
+        let dst: NonNull<u8> = NonNull::from_mut(&mut value).cast();
 
-        let offset = if cfg!(target_endian = "little") {
-            0
-        } else {
-            size_of::<usize>() - Self::LEN_SIZE
-        };
         unsafe {
-            dst.add(offset)
+            dst.add(Self::IN_LEN_OFFSET)
                 .copy_from_nonoverlapping(src, Self::LEN_SIZE);
         }
         value >> 1
     }
 
+    /// Sets the length of the inline vector.
+    ///
+    /// # Safety
+    ///
+    /// The length must be valid (i.e. `Self::is_len_valid(len)` must be true), and
+    /// must not exceed the current capacity. Setting the length to a value
+    /// greater than the current length is only safe if the new elements are
+    /// properly initialized.
     pub const unsafe fn set_len(&mut self, len: usize) {
-        assert!(Self::is_len_valid(len));
-        let dst: *mut u8 = unsafe { self.mut_ptr().add(Self::LEN_OFFSET).cast() };
+        debug_assert!(Self::is_len_valid(len));
+        let value = (len << 1) | 1;
 
-        let offset = if cfg!(target_endian = "little") {
-            0
-        } else {
-            size_of::<usize>() - Self::LEN_SIZE
-        };
-        let len = (len << 1) | 1;
-        let src: *const u8 = (&raw const len).cast();
-        let src = unsafe { src.add(offset) };
+        let dst: NonNull<u8> =
+            unsafe { NonNull::from_mut(self).cast::<u8>().add(Self::LEN_OFFSET) };
+        let src: NonNull<u8> = NonNull::from_ref(&value).cast();
+
         unsafe {
-            dst.copy_from_nonoverlapping(src, Self::LEN_SIZE);
+            src.add(Self::IN_LEN_OFFSET)
+                .copy_to_nonoverlapping(dst, Self::LEN_SIZE);
         }
     }
 
+    /// Returns a pointer to the inline vector.
     pub const fn as_ptr(&self) -> *const T {
         if Self::CAPACITY == 0 {
             return ptr::dangling();
         }
 
-        unsafe { self.ptr().add(Self::DATA_OFFSET).cast() }
+        unsafe {
+            NonNull::from_ref(self)
+                .cast::<u8>()
+                .add(Self::DATA_OFFSET)
+                .cast()
+                .as_ptr()
+        }
     }
 
+    /// Returns a mutable pointer to the inline vector.
     pub const fn as_mut_ptr(&mut self) -> *mut T {
+        self.as_non_null().as_ptr()
+    }
+
+    /// Returns a non-null pointer to the inline vector.
+    pub const fn as_non_null(&mut self) -> NonNull<T> {
         if Self::CAPACITY == 0 {
-            return ptr::dangling_mut();
+            return NonNull::dangling();
         }
 
-        unsafe { self.mut_ptr().add(Self::DATA_OFFSET).cast() }
+        unsafe {
+            NonNull::from_mut(self)
+                .cast::<u8>()
+                .add(Self::DATA_OFFSET)
+                .cast()
+        }
     }
 }
