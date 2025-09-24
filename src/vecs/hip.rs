@@ -263,6 +263,12 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         unsafe { &*ptr::from_ref(self).cast() }
     }
 
+    const unsafe fn as_sliced_mut_unchecked(&mut self) -> &mut UnknownSliced<T> {
+        debug_assert!(!self.is_inline());
+        // SAFETY: precondition
+        unsafe { &mut *ptr::from_mut(self).cast() }
+    }
+
     /// Gets a reference to the underlying allocated representation.
     ///
     /// # Safety
@@ -354,6 +360,20 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     }
 
     #[must_use]
+    pub(crate) fn from_slice_copy(slice: &[T]) -> Self
+    where
+        T: Copy,
+    {
+        if slice.len() <= Self::INLINE_CAP {
+            let inline = InlineVec::from_slice_copy(slice);
+            Self::inline(inline)
+        } else {
+            let smart = SmartThinVec::from_slice_copy(slice);
+            Self::from_smart_thin(smart)
+        }
+    }
+
+    #[must_use]
     pub const fn from_smart_thin(v: SmartThinVec<T, B>) -> Self {
         let len = v.len();
         let ptr = v.as_ptr();
@@ -381,6 +401,102 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
 
     const unsafe fn copy(&self) -> Self {
         Self(self.0, PhantomData)
+    }
+
+    /// Splits the vector into two at the given index.
+    ///
+    /// The original vector contains elements `[0, at)`, and the returned vector
+    /// contains elements `[at, len)`.
+    ///
+    /// # Errors
+    ///
+    /// - If `at > len`, returns `SplitOffError::OutOfBounds`.
+    /// - If the reference count overflows, returns `SplitOffError::RefCountOverflow`.
+    pub fn try_split_off(&mut self, at: usize) -> Result<Self, SplitOffError> {
+        let len = self.len();
+        if at > self.len() {
+            Err(SplitOffError::OutOfBounds)
+        } else if at == len {
+            Ok(Self::new())
+        } else if self.is_inline() {
+            // inline representation, just split the inline vector
+            // SAFETY: repr is inline
+            let inline = unsafe { self.as_inline_mut_unchecked() };
+            let new_inline = inline.split_off(at);
+            Ok(Self::inline(new_inline))
+        } else {
+            // checks if allocated or borrowed
+            if self.is_allocated() {
+                // increment the owner reference count
+                let owner = unsafe { self.owner_mut_unchecked() };
+                if owner.counter().incr() == UpdateResult::Overflow {
+                    return Err(SplitOffError::RefCountOverflow);
+                }
+            }
+
+            // SAFETY: the reference count was incremented if needed
+            let mut other = unsafe { self.copy() };
+
+            // SAFETY: repr is not inline
+            unsafe {
+                // update the current vector
+                self.as_sliced_mut_unchecked().len = at;
+            }
+
+            // SAFETY: same repr for other
+            unsafe {
+                // set the slice for the other vector
+                let other = other.as_sliced_mut_unchecked();
+                other.ptr = other.ptr.add(at);
+                other.len -= at;
+            };
+            Ok(other)
+        }
+    }
+
+    /// Splits the vector into two at the given index.
+    ///
+    /// The original vector contains elements `[0, at)`, and the returned vector
+    /// contains elements `[at, len)`.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if `at > len`
+    #[must_use]
+    pub fn split_off(&mut self, at: usize) -> Self
+    where
+        T: Clone,
+    {
+        match self.try_split_off(at) {
+            Ok(v) => v,
+            Err(SplitOffError::OutOfBounds) => panic!("split index out of bounds"),
+            Err(SplitOffError::RefCountOverflow) => {
+                let new = Self::from_slice_clone(&self.as_slice()[at..]);
+                self.truncate(at);
+                new
+            }
+        }
+    }
+
+    #[must_use]
+    pub fn split_off_copy(&mut self, at: usize) -> Self
+    where
+        T: Copy,
+    {
+        match self.try_split_off(at) {
+            Ok(v) => v,
+            Err(SplitOffError::OutOfBounds) => panic!("split index out of bounds"),
+            Err(SplitOffError::RefCountOverflow) => {
+                let new = Self::from_slice_copy(&self.as_slice()[at..]);
+                self.truncate(at);
+                new
+            }
+        }
+    }
+
+    /// Truncates the vector to the given length.
+    pub fn truncate(&mut self, len: usize) -> Self {
+        todo!()
     }
 }
 
@@ -468,4 +584,11 @@ impl<T, B: Backend> Owner<T, B> {
     const fn counter(&self) -> &B {
         &self.0.as_ref().unwrap().prefix
     }
+}
+
+pub enum SplitOffError {
+    /// The split index is greater than the length of the vector.
+    OutOfBounds,
+    /// The reference count overflowed.
+    RefCountOverflow,
 }

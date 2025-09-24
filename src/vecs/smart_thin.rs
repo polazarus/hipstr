@@ -452,6 +452,16 @@ impl<T, B: Backend> SmartThinVec<T, B> {
         unsafe { Self::from_thin_vec_unchecked(thin_vec) }
     }
 
+    #[inline]
+    #[must_use]
+    pub(crate) fn from_slice_copy(slice: &[T]) -> Self
+    where
+        T: Copy,
+    {
+        let thin_vec = ThinVec::from_slice_copy(slice);
+        unsafe { Self::from_thin_vec_unchecked(thin_vec) }
+    }
+
     /// Tries to clone the reference without cloning the data.
     ///
     /// If the reference count overflows ([`Unique`] always does), it returns `None`.

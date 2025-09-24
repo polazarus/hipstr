@@ -769,7 +769,7 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     /// assert_eq!(other.as_slice(), &[2, 3]);
     /// ```
     #[must_use = "use .truncate() if you don't need the other part"]
-    pub fn split_off(&mut self, at: usize) -> Self {
+    pub const fn split_off(&mut self, at: usize) -> Self {
         assert!(at <= self.len(), "index out of bounds");
 
         let mut other = Self::new();
