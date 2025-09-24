@@ -10,23 +10,47 @@ use generic_array::{ArrayLength, GenericArray};
 use super::length::{InlineLength, Seal};
 use crate::common::derives::Copy;
 
+/// Returns the number of bits needed to represent `n`.
 pub const fn bits(n: usize) -> u32 {
     usize::BITS - n.leading_zeros()
 }
 
+/// Inline vector internal representation.
+///
+/// # Safety
+///
+/// `InlineRepr` is copiable but the copy is only valid if the elements are
+/// copiable.
+///
+/// **This is not enforced by the type system**, so it is up to the user of this
+/// type to either:
+/// - ensure that the element type is actually copiable
+/// - or that the source representation is no longer used after the copy.
+///
+/// Also, the represetation does not drop its elements, so the user must
+/// ensure that the elements are properly dropped when the representation is
+/// no longer used.
+///
+/// For theses reasons, `InlineRepr` is not exposed outside this crate.
 #[repr(C)]
 pub struct InlineRepr<T, L>
 where
     L: InlineLength,
 {
+    /// Tagged word that contains the length in its lower bits (so upper bytes)
+    /// and possibly part of the data.
     #[cfg(target_endian = "little")]
     init_word: NonZeroUsize,
 
+    /// The rest of the representation, containing the remainder of the data.
     rest: GenericArray<MaybeUninit<usize>, L::WordsM1>,
 
+    /// Tagged word that contains the length in its lower bits (so lower bytes)
+    /// and possibly part of the data.
     #[cfg(target_endian = "big")]
     init_word: NonZeroUsize,
 
+    /// Marker to make the representation depend on `T`.
     phantom: core::marker::PhantomData<[T]>,
 }
 
@@ -68,6 +92,7 @@ where
         }
     }
 
+    /// Variaous constants about the inline representation.
     const LENGTH_AND_DATA: (usize, usize, usize, usize) = {
         let blob = L::USIZE;
         let t_align = align_of::<T>();

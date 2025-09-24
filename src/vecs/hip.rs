@@ -10,7 +10,7 @@ use typenum::Unsigned;
 use crate::backend::UpdateResult;
 use crate::common::derives::*;
 use crate::common::traits::MutVector;
-use crate::common::{transmute2, transmute_mut, transmute_ref};
+use crate::common::transmute2;
 use crate::vecs::inline::InlineLength;
 use crate::vecs::reprs::{Borrowed, FatOrThinRepr, Pivot, Sliced, UnknownSliced, Variant};
 use crate::vecs::smart_fat::SmartFatVec;
