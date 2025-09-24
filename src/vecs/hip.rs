@@ -459,9 +459,12 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     /// The original vector contains elements `[0, at)`, and the returned vector
     /// contains elements `[at, len)`.
     ///
+    /// This function clones the elements to the returned vector if the
+    /// reference count overflows.
+    ///
     /// # Panics
     ///
-    /// This function panics if `at > len`
+    /// This function panics if `at > len`.
     #[must_use]
     pub fn split_off(&mut self, at: usize) -> Self
     where
@@ -478,6 +481,17 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         }
     }
 
+    /// Splits the vector into two at the given index.
+    ///
+    /// The original vector contains elements `[0, at)`, and the returned vector
+    /// contains elements `[at, len)`.
+    ///
+    /// This function copies the elements to the returned vector
+    /// if the reference count overflows.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if `at > len`.
     #[must_use]
     pub fn split_off_copy(&mut self, at: usize) -> Self
     where
@@ -495,8 +509,15 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     }
 
     /// Truncates the vector to the given length.
-    pub fn truncate(&mut self, len: usize) -> Self {
-        todo!()
+    pub fn truncate(&mut self, len: usize) {
+        if self.is_inline() {
+            // SAFETY: repr checked above
+            let inline = unsafe { self.as_inline_mut_unchecked() };
+            inline.truncate(len);
+        } else {
+            let sliced = unsafe { self.as_sliced_mut_unchecked() };
+            sliced.len = len;
+        }
     }
 }
 
@@ -586,6 +607,8 @@ impl<T, B: Backend> Owner<T, B> {
     }
 }
 
+/// Error type for `HipVec::try_split_off`.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum SplitOffError {
     /// The split index is greater than the length of the vector.
     OutOfBounds,
