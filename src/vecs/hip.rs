@@ -30,6 +30,7 @@ mod tests;
     From(bindings = (<'a, T, B: Backend, P: ConstDefault>), source = ThinVec<T, P>, cons = Self::from_thin_vec),
     From(bindings = (<'a, T: Clone, B: Backend>), source = &[T], cons = Self::from_slice_clone),
     From(bindings = (<'a, T, B: Backend, L: InlineLength>), source = InlineVec<T, L>, cons = Self::from_any_inline),
+    DelegateDebug(Self::as_slice, T: core::fmt::Debug),
 )]
 pub struct HipVec<'a, T, B: Backend>(Pivot, PhantomData<(B, &'a [T])>);
 pub const INLINE_BYTES: usize = size_of::<Borrowed<()>>();
