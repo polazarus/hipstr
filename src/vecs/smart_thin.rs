@@ -115,6 +115,8 @@ macro_rules! smart_thin_vec {
     Vector(T),
     From(Vec<T>, Self::from_mut_vector),
     From(Box<[T]>, Self::from_boxed_slice),
+    From(&[T], Self::from_slice_clone where (T: Clone)),
+    From(&mut [T], Self::from_slice_clone where (T: Clone)),
 )]
 pub struct SmartThinVec<T, C: Backend>(ThinRepr<T, C>);
 
@@ -628,13 +630,6 @@ trait_impls! {
     [T, C] where [T: core::fmt::Debug, C: Backend] {
         Debug {
             SmartThinVec<T, C>;
-        }
-    }
-
-    [T, C] where [T: Clone, C: Backend] {
-        From {
-            &[T] => SmartThinVec<T, C> = Self::from_slice_clone;
-            &mut [T] => SmartThinVec<T, C> = Self::from_slice_clone;
         }
     }
 

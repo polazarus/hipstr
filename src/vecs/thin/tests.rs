@@ -897,6 +897,22 @@ fn extend_from_slice_copy() {
 }
 
 #[test]
+fn extend_from_array() {
+    let array: [_; 10] = core::array::from_fn(|i| i);
+    let mut v = ThinVec::new();
+    v.extend_from_array(array);
+    assert_eq!(v.as_slice(), array);
+
+    let array: [_; 10] = core::array::from_fn(Box::new);
+    let mut v = ThinVec::new();
+    let p = &raw const *array[0];
+    let backup = array.clone();
+    v.extend_from_array(array);
+    assert_eq!(v.as_slice(), backup.as_slice());
+    assert_eq!(&raw const *v[0], p);
+}
+
+#[test]
 fn debug() {
     let mut v = thin_vec![1, 2, 3];
     assert_eq!(format!("{v:?}"), "[1, 2, 3]");
@@ -1022,4 +1038,31 @@ fn vector() {
     let cap = v.capacity();
     let len = v.len();
     test_mut_vector(v, cap, len, ptr);
+}
+
+#[test]
+#[cfg(feature = "std")]
+fn drop_prefix() {
+    use std::sync::Mutex;
+
+    use const_default::ConstDefault;
+
+    static WITNESS: Mutex<bool> = Mutex::new(false);
+    struct S;
+    impl ConstDefault for S {
+        const DEFAULT: Self = Self;
+    }
+    impl Drop for S {
+        fn drop(&mut self) {
+            *WITNESS.lock().unwrap() = true;
+        }
+    }
+
+    *WITNESS.lock().unwrap() = false;
+
+    {
+        let _v: GenericThinVec<u8, S> = (1..=10).collect();
+    }
+
+    assert!(*WITNESS.lock().unwrap());
 }

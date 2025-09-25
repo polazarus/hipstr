@@ -890,10 +890,6 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     /// ```
     #[must_use]
     pub fn with_capacity(capacity: usize) -> Self {
-        if capacity == 0 {
-            return Self::new();
-        }
-
         Self(Self::make_repr(capacity))
     }
 

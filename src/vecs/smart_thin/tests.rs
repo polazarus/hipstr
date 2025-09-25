@@ -8,6 +8,7 @@ use core::ptr;
 
 use super::*;
 use crate::backend::PanickyUnique;
+use crate::smart::Smart;
 use crate::{smart_thin_vec, thin_vec, Arc, Rc, Unique};
 
 #[test]
@@ -358,6 +359,19 @@ fn push() {
 }
 
 #[test]
+fn push_copy() {
+    let mut v = SmartThinVec::<u8, Arc>::new();
+    assert!(v.is_unique());
+    v.push_copy(1);
+    let v2 = v.clone();
+    assert!(!v.is_unique());
+    v.push_copy(2);
+    assert!(v.is_unique());
+    assert_eq!(v.as_slice(), &[1, 2]);
+    assert_eq!(v2.as_slice(), &[1]);
+}
+
+#[test]
 fn pop() {
     let mut v = SmartThinVec::<u8, Arc>::from_array([1, 2]);
     assert!(v.is_unique());
@@ -372,6 +386,24 @@ fn pop() {
     assert!(v.is_empty());
     assert_eq!(v2.as_slice(), &[1]);
     let x = v.pop();
+    assert_eq!(x, None);
+}
+
+#[test]
+fn pop_copy() {
+    let mut v = SmartThinVec::<u8, Arc>::from_array([1, 2]);
+    assert!(v.is_unique());
+    let x = v.pop_copy();
+    assert_eq!(x, Some(2));
+    assert!(v.is_unique());
+    let v2 = v.clone();
+    assert!(!v.is_unique());
+    let x = v.pop_copy();
+    assert_eq!(x, Some(1));
+    assert!(v.is_unique());
+    assert!(v.is_empty());
+    assert_eq!(v2.as_slice(), &[1]);
+    let x = v.pop_copy();
     assert_eq!(x, None);
 }
 
@@ -394,24 +426,6 @@ fn pop_if() {
     assert_eq!(v.pop_if(|_| true), Some(2));
     assert_eq!(v.pop_if(|_| true), Some(1));
     assert_eq!(v.pop_if(|_| true), None);
-}
-
-#[test]
-fn pop_copy() {
-    let mut v = SmartThinVec::<u8, Arc>::from_array([1, 2]);
-    assert!(v.is_unique());
-    let x = v.pop_copy();
-    assert_eq!(x, Some(2));
-    assert!(v.is_unique());
-    let v2 = v.clone();
-    assert!(!v.is_unique());
-    let x = v.pop_copy();
-    assert_eq!(x, Some(1));
-    assert!(v.is_unique());
-    assert!(v.is_empty());
-    assert_eq!(v2.as_slice(), &[1]);
-    let x = v.pop_copy();
-    assert_eq!(x, None);
 }
 
 #[test]
@@ -514,4 +528,27 @@ fn append_vec() {
     assert!(v3.is_empty());
     assert_eq!(v1.as_slice(), &[1, 2, 3, 4, 5, 6]);
     assert_eq!(v1_clone.as_slice(), &[1, 2, 3, 4]);
+}
+
+#[test]
+fn from_slice_clone() {
+    let arr = [Box::new(1), Box::new(2)];
+    let p = &raw const *arr[0];
+    let stv = SmartThinVec::<_, Arc>::from(&arr[..]); // calls from_slice_clone
+    assert_ne!(p, &raw const *stv[0]);
+
+    let stv = SmartThinVec::<u8, Rc>::from(&[]);
+    assert!(stv.is_empty());
+    assert_eq!(stv.capacity(), 0);
+}
+
+#[test]
+fn from_slice_copy() {
+    let arr = [1_u8, 2];
+    let stv = SmartThinVec::<_, Arc>::from_slice_copy(&arr[..]);
+    assert_eq!(arr.as_slice(), stv.as_slice());
+
+    let stv = SmartThinVec::<u8, Rc>::from(&[]);
+    assert!(stv.is_empty());
+    assert_eq!(stv.capacity(), 0);
 }
