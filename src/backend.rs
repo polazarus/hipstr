@@ -5,6 +5,8 @@ use core::marker::PhantomData;
 use core::panic::RefUnwindSafe;
 
 use crate::common::traits::sealed::Sealed;
+#[cfg(test)]
+pub mod tests;
 
 #[cfg(target_has_atomic = "ptr")]
 mod atomic;

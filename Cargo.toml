@@ -38,7 +38,7 @@ divan = "0.1.17"
 [dependencies]
 const-default = { version = "1.0.0", default-features = false }
 generic-array = "1.2.0"
-rules_derive = "0.1.0"
+rules_derive = "0.2.0"
 typenum = { version = "1.18", features = ["const-generics"] }
 
 [dependencies.bstr]

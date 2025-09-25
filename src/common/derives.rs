@@ -4,11 +4,13 @@ macro_rules! Copy {
     (
         $_attr:tt
         $_vis:vis $_kind:ident $_name:ident
-        (($ty:ty) ($($generics_bindings:tt)*) where ($($generics_where:tt)*))
+        ( $ty:ty )
+        $(< ($($generics_bindings:tt)*) >)?
+        where ( $($generics_where:tt)* )
         $_body:tt
     ) => {
-        impl $($generics_bindings)* ::core::marker::Copy for $ty where $($generics_where)* {}
-        impl $($generics_bindings)* ::core::clone::Clone for $ty where $($generics_where)* {
+        impl $(<$($generics_bindings)*>)? ::core::marker::Copy for $ty where $($generics_where)* {}
+        impl $(<$($generics_bindings)*>)? ::core::clone::Clone for $ty where $($generics_where)* {
             #[inline]
             fn clone(&self) -> Self {
                 *self
@@ -22,13 +24,15 @@ macro_rules! ConstDefault {
         { $value:expr }
         $_attr:tt
         $_vis:vis $_kind:ident $_name:ident
-        (($ty:ty) ($($generics_bindings:tt)*) where ($($generics_where:tt)*))
+        ( $ty:ty )
+        $(< ($($generics_bindings:tt)*) >)?
+        where ( $($generics_where:tt)* )
         $_body:tt
   ) => {
-    impl $($generics_bindings)* ::const_default::ConstDefault for $ty where $($generics_where)* {
+    impl $(<$($generics_bindings)*>)? ::const_default::ConstDefault for $ty where $($generics_where)* {
         const DEFAULT: Self = $value;
     }
-    impl $($generics_bindings)* ::core::default::Default for $ty where $($generics_where)* {
+    impl $(<$($generics_bindings)*>)? ::core::default::Default for $ty where $($generics_where)* {
         fn default() -> Self {
             <Self as ::const_default::ConstDefault>::DEFAULT
         }
@@ -41,10 +45,12 @@ macro_rules! DelegateDebug {
         { $delegate:path $(, $($bound:tt)+ )? }
         ($( ($($_attr:tt)*) )*)
         $_vis:vis $_kind:ident $_name:ident
-        (($ty:ty) ($($generics_bindings:tt)*) where ($($generics_where:tt)*))
+        ( $ty:ty )
+        $(< ($($generics_bindings:tt)*) >)?
+        where ( $($generics_where:tt)* )
         $_body:tt
     ) => {
-        impl $($generics_bindings)* ::core::fmt::Debug for $ty where $( $($bound)+ ,)? $($generics_where)* {
+        impl $(<$($generics_bindings)*>)? ::core::fmt::Debug for $ty where $( $($bound)+ ,)? $($generics_where)* {
             #[inline]
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 $delegate(self).fmt(f)
@@ -58,10 +64,12 @@ macro_rules! DelegateHash {
         { $delegate:path $(, $($bound:tt)+ )? }
         ($( ($($_attr:tt)*) )*)
         $_vis:vis $_kind:ident $_name:ident
-        (($ty:ty) ($($generics_bindings:tt)*) where ($($generics_where:tt)*))
+        ( $ty:ty )
+        $(< ($($generics_bindings:tt)*) >)?
+        where ( $($generics_where:tt)* )
         $_body:tt
     ) => {
-        impl $($generics_bindings)* ::core::hash::Hash for $ty where $( $($bound)+ ,)? $($generics_where)* {
+        impl $(<$($generics_bindings)*>)? ::core::hash::Hash for $ty where $( $($bound)+ ,)? $($generics_where)* {
             #[inline]
             fn hash<H: ::core::hash::Hasher>(&self, state: &mut H) {
                 $delegate(self).hash(state)
@@ -75,10 +83,12 @@ macro_rules! AsRef {
         { $as_ty:ty, $delegate:path }
         ($( ($($_attr:tt)*) )*)
         $_vis:vis $_kind:ident $_name:ident
-        (($ty:ty) ($($generics_bindings:tt)*) where ($($generics_where:tt)*))
+        ( $ty:ty )
+        $(< ($($generics_bindings:tt)*) >)?
+        where ( $($generics_where:tt)* )
         $_body:tt
     ) => {
-        impl $($generics_bindings)* ::core::convert::AsRef<$as_ty> for $ty where $($generics_where)* {
+        impl $(<$($generics_bindings)*>)? ::core::convert::AsRef<$as_ty> for $ty where $($generics_where)* {
             #[inline]
             fn as_ref(&self) -> &$as_ty {
                 $delegate(self)
@@ -105,10 +115,12 @@ macro_rules! AsMut {
         { $as_ty:ty, $delegate:path }
         ($( ($($_attr:tt)*) )*)
         $_vis:vis $_kind:ident $_name:ident
-        (($ty:ty) ($($generics_bindings:tt)*) where ($($generics_where:tt)*))
+        ( $ty:ty )
+        $(< ($($generics_bindings:tt)*) >)?
+        where ( $($generics_where:tt)* )
         $_body:tt
     ) => {
-        impl $($generics_bindings)* ::core::convert::AsMut<$as_ty> for $ty where $($generics_where)* {
+        impl $(<$($generics_bindings)*>)? ::core::convert::AsMut<$as_ty> for $ty where $($generics_where)* {
             #[inline]
             fn as_mut(&mut self) -> &mut $as_ty {
                 $delegate(self)
@@ -122,10 +134,12 @@ macro_rules! Borrow {
         { $as_ty:ty, $delegate:path }
         ($( ($($_attr:tt)*) )*)
         $_vis:vis $_kind:ident $_name:ident
-        (($ty:ty) ($($generics_bindings:tt)*) where ($($generics_where:tt)*))
+        ( $ty:ty )
+        $(< ($($generics_bindings:tt)*) >)?
+        where ( $($generics_where:tt)* )
         $_body:tt
     ) => {
-        impl $($generics_bindings)* ::core::borrow::Borrow<$as_ty> for $ty where $($generics_where)* {
+        impl $(<$($generics_bindings)*>)? ::core::borrow::Borrow<$as_ty> for $ty where $($generics_where)* {
             #[inline]
             fn borrow(&self) -> &$as_ty {
                 $delegate(self)
@@ -152,10 +166,12 @@ macro_rules! BorrowMut {
         { $as_ty:ty, $delegate:path }
         ($( ($($_attr:tt)*) )*)
         $_vis:vis $_kind:ident $_name:ident
-        (($ty:ty) ($($generics_bindings:tt)*) where ($($generics_where:tt)*))
+        ( $ty:ty )
+        $(< ($($generics_bindings:tt)*) >)?
+        where ( $($generics_where:tt)* )
         $_body:tt
     ) => {
-        impl $($generics_bindings)* ::core::borrow::BorrowMut<$as_ty> for $ty where $($generics_where)* {
+        impl $(<$($generics_bindings)*>)? ::core::borrow::BorrowMut<$as_ty> for $ty where $($generics_where)* {
             #[inline]
             fn borrow_mut(&mut self) -> &mut $as_ty {
                 $delegate(self)
@@ -169,10 +185,12 @@ macro_rules! Deref {
         { $target:ty, $delegate:path }
         ($( ($($_attr:tt)*) )*)
         $_vis:vis $_kind:ident $_name:ident
-        (($ty:ty) ($($generics_bindings:tt)*) where ($($generics_where:tt)*))
+        ( $ty:ty )
+        $(< ($($generics_bindings:tt)*) >)?
+        where ( $($generics_where:tt)* )
         $_body:tt
     ) => {
-        impl $($generics_bindings)* ::core::ops::Deref for $ty where $($generics_where)* {
+        impl $(<$($generics_bindings)*>)? ::core::ops::Deref for $ty where $($generics_where)* {
             type Target = $target;
 
             #[inline]
@@ -202,10 +220,12 @@ macro_rules! DerefMut {
         { $target:ty, $delegate:path }
         ($( ($($_attr:tt)*) )*)
         $_vis:vis $_kind:ident $_name:ident
-        (($ty:ty) ($($generics_bindings:tt)*) where ($($generics_where:tt)*))
+        ( $ty:ty )
+        $(< ($($generics_bindings:tt)*) >)?
+        where ( $($generics_where:tt)* )
         $_body:tt
     ) => {
-        impl $($generics_bindings)* ::core::ops::DerefMut for $ty where $($generics_where)* {
+        impl $(< $($generics_bindings)* >)? ::core::ops::DerefMut for $ty where $($generics_where)* {
             #[inline]
             fn deref_mut(&mut self) -> &mut Self::Target {
                 $delegate(self)
@@ -218,11 +238,12 @@ macro_rules! Default {
     (
         { $cons:path }
         $attrs:tt $vis:vis $kind:ident $name:ident
-        (($ty:ty) ($($generics_bindings:tt)*)
-        where ($($generics_where:tt)*))
+        ( $ty:ty )
+        $(< ($($generics_bindings:tt)*) >)?
+        where ( $($generics_where:tt)* )
         $body:tt
     ) => {
-        impl $($generics_bindings)* ::core::default::Default for $ty where $($generics_where)* {
+        impl $(< $($generics_bindings)* >)? ::core::default::Default for $ty where $($generics_where)* {
             #[inline]
             fn default() -> Self {
                 $cons()
@@ -238,21 +259,28 @@ macro_rules! Default {
 
 macro_rules! From {
     (
-        { bindings = ( $($generics_bindings:tt)* ) $( where ( $($generics_where:tt)* ) )?, source = $source:ty, cons = $cons:path }
+        {
+            $source:ty,
+            $cons:path
+            $(, ( $($additional_bindings:tt)* ) )?
+            $(where ( $($additional_where:tt)* ) )?
+        }
         $_attrs:tt $_vis:vis $_kind:ident $_name:ident
-        (
-            ($ty:ty)
-            ( $($_generics_bindings:tt)* )
-            where ( $($_generics_where:tt)* )
-        )
+        ( $ty:ty )
+        $(< ($($generics_bindings:tt)*) >)?
+        where ( $($generics_where:tt)* )
         $body:tt
     ) => {
-        impl $($generics_bindings)*
+        impl<
+            $($($generics_bindings)*)?
+            $($($additional_bindings)*)?
+        >
             ::core::convert::From<$source>
         for $ty
-        $(where
+        where
             $($generics_where)*
-        )?
+            $($($additional_where)*)?
+
         {
             #[inline]
             fn from(other: $source) -> Self {
@@ -260,42 +288,18 @@ macro_rules! From {
             }
         }
     };
-
-    (
-        { source = $source:ty, cons = $cons:path }
-        $attrs:tt $vis:vis $kind:ident $name:ident
-        (
-            ( $ty:ty )
-            ( $($generics_bindings:tt)* )
-            where ( $($generics_where:tt)* )
-        )
-        $body:tt
-    ) => {
-        $crate::common::derives::From! {
-            { bindings = ( $($generics_bindings)* ) where ( $($generics_where)* ), source = $source, cons = $cons }
-            $attrs $vis $kind $name
-            (
-                ($ty)
-                ( $($generics_bindings)* )
-                where ( $($generics_where)* )
-            )
-            $body
-        }
-    };
 }
 
 macro_rules! Into {
     (
-        { bindings = ( $($generics_bindings:tt)* ) $( where ( $($generics_where:tt)* ) )?, target = $target:ty, method = $method:ident }
+        { bindings = $(< ($($generics_bindings:tt)*) >)? $( where ( $($generics_where:tt)* ) )?, target = $target:ty, method = $method:ident }
         $_attrs:tt $_vis:vis $_kind:ident $_name:ident
-        (
-            ($ty:ty)
-            ( $($_generics_bindings:tt)* )
-            where ( $($_generics_where:tt)* )
-        )
+        ($ty:ty)
+        $(< ( $($_generics_bindings:tt)* ) >)?
+        where ( $($_generics_where:tt)* )
         $body:tt
     ) => {
-        impl $($generics_bindings)*
+        impl $(<$($generics_bindings)*>)?
             ::core::convert::From<$ty>
         for $target
         $(where
@@ -312,19 +316,17 @@ macro_rules! Into {
     (
         { target = $target:ty, method = $method:ident }
         $attrs:tt $vis:vis $kind:ident $name:ident
-        (
-            ( $ty:ty )
-            ( $($generics_bindings:tt)* )
-            where ( $($generics_where:tt)* )
-        )
+        ( $ty:ty )
+        $(< ($($generics_bindings:tt)*) >)?
+        where ( $($generics_where:tt)* )
         $body:tt
     ) => {
         $crate::common::derives::Into! {
-            { bindings = ( $($generics_bindings)* ) where ( $($generics_where)* ), target = $target, method = $method }
+            { bindings = ( $(<$($generics_bindings)*>)? ) where ( $($generics_where)* ), target = $target, method = $method }
             $attrs $vis $kind $name
             (
                 ($ty)
-                ( $($generics_bindings)* )
+                ( $(<$($generics_bindings)*>)? )
                 where ( $($generics_where)* )
             )
             $body
@@ -336,12 +338,13 @@ macro_rules! Vector {
     (
         { $item:ty }
         $_attrs:tt $_vis:vis $_kind:ident $_name:ident
-        (($ty:ty) ($($generics_bindings:tt)*)
-        where ($($generics_where:tt)*))
+        ($ty:ty)
+        $(< ($($generics_bindings:tt)*) >)?
+        where ($($generics_where:tt)*)
         $body:tt
     ) => {
-        impl $($generics_bindings)* $crate::common::traits::sealed::Sealed for $ty where $($generics_where)* {}
-        impl $($generics_bindings)* $crate::common::traits::Vector for $ty where $($generics_where)* {
+        impl $(< $($generics_bindings)* >)? $crate::common::traits::sealed::Sealed for $ty where $($generics_where)* {}
+        impl $(< $($generics_bindings)* >)? $crate::common::traits::Vector for $ty where $($generics_where)* {
             type Item = $item;
             #[inline]
             fn len(&self) -> usize {
@@ -378,11 +381,12 @@ macro_rules! MutVector {
     };
     (
         $_attrs:tt $_vis:vis $_kind:ident $_name:ident
-        (($ty:ty) ($($generics_bindings:tt)*)
-        where ($($generics_where:tt)*))
+        ($ty:ty)
+        $(< ($($generics_bindings:tt)*) >)?
+        where ($($generics_where:tt)*)
         $body:tt
     ) => {
-        impl $($generics_bindings)* $crate::common::traits::MutVector for $ty where $($generics_where)* {
+        impl $(< $($generics_bindings)* >)? $crate::common::traits::MutVector for $ty where $($generics_where)* {
             #[inline]
             unsafe fn set_len(&mut self, len: usize) {
                 // SAFETY: same safety requirements
@@ -408,11 +412,12 @@ macro_rules! FromIterator {
     (
         { $item:ty, $cons:path }
         $_attrs:tt $_vis:vis $_kind:ident $_name:ident
-        (($ty:ty) ($($generics_bindings:tt)*)
-        where ($($generics_where:tt)*))
+        ($ty:ty)
+        $(< ($($generics_bindings:tt)*) >)?
+        where ($($generics_where:tt)*)
         $body:tt
     ) => {
-        impl $($generics_bindings)* ::core::iter::FromIterator<$item> for $ty where $($generics_where)* {
+        impl $(< $($generics_bindings)* >)? ::core::iter::FromIterator<$item> for $ty where $($generics_where)* {
             #[inline]
             fn from_iter<I: ::core::iter::IntoIterator<Item = $item>>(iterable: I) -> Self {
                 $cons(iterable)
@@ -425,11 +430,12 @@ macro_rules! IntoIterator {
     (
         { $item:ty, $into_iter:path, $cons:path }
         $_attrs:tt $_vis:vis $_kind:ident $_name:ident
-        (($ty:ty) ($($generics_bindings:tt)*)
-        where ($($generics_where:tt)*))
+        ($ty:ty)
+        $(< ($($generics_bindings:tt)*) >)?
+        where ($($generics_where:tt)*)
         $body:tt
     ) => {
-        impl $($generics_bindings)* ::core::iter::IntoIterator for $ty where $($generics_where)* {
+        impl $(< $($generics_bindings)* >)? ::core::iter::IntoIterator for $ty where $($generics_where)* {
             type Item = $item;
             type IntoIter = $into_iter;
 

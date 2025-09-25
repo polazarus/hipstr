@@ -20,7 +20,7 @@ use crate::Backend;
     AsRef([T], Self::as_slice),
     Deref([T], Self::as_slice),
     Borrow([T], Self::as_slice),
-    From(source = Vec<T>, cons = Self::from_vec),
+    From(Vec<T>, Self::from_vec),
     Vector(T),
 )]
 pub struct SmartFatVec<T, B: Backend>(FatRepr<T, B>);

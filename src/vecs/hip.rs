@@ -27,11 +27,11 @@ mod tests;
     ConstDefault(Self::EMPTY),
     AsRef([T], Self::as_slice),
     Deref([T], Self::as_slice),
-    From(bindings = (<'a, T, B: Backend, const N: usize>), source = [T; N], cons = Self::from_array),
-    From(source = Vec<T>, cons = Self::from_mut_vector),
-    From(bindings = (<'a, T, B: Backend, P: ConstDefault>), source = ThinVec<T, P>, cons = Self::from_thin_vec),
-    From(bindings = (<'a, T: Clone, B: Backend>), source = &[T], cons = Self::from_slice_clone),
-    From(bindings = (<'a, T, B: Backend, L: InlineLength>), source = InlineVec<T, L>, cons = Self::from_any_inline),
+    From([T; N], Self::from_array, (const N: usize)),
+    From(Vec<T>, Self::from_mut_vector),
+    From(ThinVec<T, P>, Self::from_thin_vec, (P: ConstDefault)),
+    From(&[T], Self::from_slice_clone, () where (T: Clone)),
+    From(InlineVec<T, L>, Self::from_any_inline, (L: InlineLength)),
     DelegateDebug(Self::as_slice, T: core::fmt::Debug),
 )]
 pub struct HipVec<'a, T, B: Backend>(Pivot, PhantomData<(B, &'a [T])>);

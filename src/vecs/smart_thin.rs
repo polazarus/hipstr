@@ -113,8 +113,8 @@ macro_rules! smart_thin_vec {
     Borrow(ThinVec<T, C>, Self::as_thin_vec),
     Borrow([T], Self::as_slice),
     Vector(T),
-    From(source = Vec<T>, cons = Self::from_mut_vector),
-    From(source = Box<[T]>, cons = Self::from_boxed_slice),
+    From(Vec<T>, Self::from_mut_vector),
+    From(Box<[T]>, Self::from_boxed_slice),
 )]
 pub struct SmartThinVec<T, C: Backend>(ThinRepr<T, C>);
 

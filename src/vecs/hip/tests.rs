@@ -1,5 +1,6 @@
 use alloc::boxed::Box;
 
+use crate::backend::tests::BoundedRc;
 use crate::vecs::hip::{HipVec, SplitOffError};
 use crate::Arc;
 
@@ -79,7 +80,11 @@ fn try_split_off() {
     let mut h = HipVec::<u8, Arc>::from([1, 2, 3, 4, 5]);
     assert_eq!(h.try_split_off(6).unwrap_err(), SplitOffError::OutOfBounds);
 
-    // TODO test ref count overflow
+    let mut h = HipVec::<u8, BoundedRc<1>>::from([42; 42]);
+    assert_eq!(
+        h.try_split_off(10).unwrap_err(),
+        SplitOffError::RefCountOverflow
+    );
 }
 
 #[test]

@@ -44,7 +44,7 @@ impl<T, P> ThinHeader<T, P> {
     /// the payload, and the rounded up capacity.
     #[inline]
     pub const fn layout(payload: usize) -> Option<(Layout, usize, usize)> {
-        let layout = Layout::new::<ThinHeader<T, P>>();
+        let layout = Layout::new::<Self>();
         let Ok(arr) = Layout::array::<T>(payload) else {
             return None;
         };
@@ -112,7 +112,7 @@ impl<T> Clone for MagicPointer<T> {
 pub type ThinRepr<T, P> = MagicPointer<ThinHeader<T, P>>;
 
 impl<T, P> ThinRepr<T, P> {
-    pub const fn data(&self) -> NonNull<T> {
+    pub const fn data(self) -> NonNull<T> {
         if let Some(header) = self.get() {
             ThinHeader::data(header)
         } else {
@@ -146,7 +146,7 @@ impl<T> MagicPointer<T> {
         }
     }
 
-    pub const fn get(&self) -> Option<NonNull<T>> {
+    pub const fn get(self) -> Option<NonNull<T>> {
         if self.is_not_allocated() {
             None
         } else {
