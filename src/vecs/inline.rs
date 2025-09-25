@@ -78,8 +78,8 @@ pub use self::length::{InlineLength, PointerSize};
 #[repr(C)]
 #[rules_derive(
     ConstDefault(Self::new()),
-    DelegateDebug(Self::as_slice, T: core::fmt::Debug),
-    DelegateHash(Self::as_slice, T: core::hash::Hash),
+    DelegateDebug(Self::as_slice where T: core::fmt::Debug),
+    DelegateHash(Self::as_slice where T: core::hash::Hash),
     AsRef([T], Self::as_slice, Self::as_mut_slice),
     Deref([T], Self::as_slice, Self::as_mut_slice),
     MutVector(T),

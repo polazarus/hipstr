@@ -10,7 +10,7 @@ use typenum::Unsigned;
 
 use self::repr::{Allocated, Borrowed, Owner, Pivot, Sliced, UnknownSliced};
 use crate::backend::UpdateResult;
-use crate::common::derives::*;
+use crate::common::derives::{AsRef, ConstDefault, Copy, DelegateDebug, DelegateHash, Deref, From};
 use crate::common::traits::MutVector;
 use crate::common::{self, drop_raw_slice, transmute2};
 use crate::vecs::inline::{InlineLength, InlineVec};
@@ -32,7 +32,8 @@ mod tests;
     From(ThinVec<T, P>, Self::from_thin_vec, (P: ConstDefault)),
     From(&[T], Self::from_slice_clone, () where (T: Clone)),
     From(InlineVec<T, L>, Self::from_any_inline, (L: InlineLength)),
-    DelegateDebug(Self::as_slice, T: core::fmt::Debug),
+    DelegateDebug(Self::as_slice where T: core::fmt::Debug),
+    DelegateHash(Self::as_slice where T: core::hash::Hash),
 )]
 pub struct HipVec<'a, T, B: Backend>(Pivot, PhantomData<(B, &'a [T])>);
 pub const INLINE_BYTES: usize = size_of::<Borrowed<()>>();
@@ -414,6 +415,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     ///
     /// Panics if the range is out of bounds or if the reference count
     /// overflows.
+    #[must_use]
     pub fn slice(&self, range: impl RangeBounds<usize>) -> Self
     where
         T: Clone,

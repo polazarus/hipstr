@@ -71,7 +71,7 @@ impl<T, B: Backend> Owner<T, B> {
     }
 
     /// Gets the length of the owner.
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         if let Some(r) = self.0.as_ref() {
             r.len
         } else {
@@ -130,7 +130,7 @@ pub struct BorrowedTag<'borrow> {
     _marker: PhantomData<&'borrow ()>,
 }
 
-impl<'borrow> ConstDefault for BorrowedTag<'borrow> {
+impl ConstDefault for BorrowedTag<'_> {
     const DEFAULT: Self = Self {
         _reserved: BorrowedReserved::Value,
         _marker: PhantomData,

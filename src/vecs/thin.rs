@@ -93,8 +93,8 @@ macro_rules! thin_vec {
 #[rules_derive(
     MutVector(T),
     ConstDefault(Self(ThinRepr::EMPTY)),
-    DelegateDebug(Self::as_slice, T: core::fmt::Debug),
-    DelegateHash(Self::as_slice, T: core::hash::Hash),
+    DelegateDebug(Self::as_slice where T: core::fmt::Debug),
+    DelegateHash(Self::as_slice where T: core::hash::Hash),
     AsRef([T], Self::as_slice, Self::as_mut_slice),
     Deref([T], Self::as_slice, Self::as_mut_slice),
     IntoIterator(T, IntoIter<Self>, IntoIter::new),
