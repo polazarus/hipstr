@@ -13,6 +13,9 @@ use crate::common::{manually_drop_as_mut, manually_drop_as_ref};
 use crate::vecs::reprs::FatInner;
 use crate::Backend;
 
+#[cfg(test)]
+mod tests;
+
 /// A smart fat vector with reference counting.
 #[repr(transparent)]
 #[rules_derive(
@@ -333,9 +336,9 @@ impl<T, B: Backend> SmartFatVec<T, B> {
         } else if cap > 0 {
             let inner = Box::new(FatInner {
                 prefix: B::DEFAULT,
-                len: 0,
-                cap: 0,
-                ptr: NonNull::dangling(),
+                len,
+                cap,
+                ptr,
             });
 
             let inner = Box::into_raw(inner);

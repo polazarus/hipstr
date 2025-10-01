@@ -15,10 +15,10 @@ pub(crate) mod derives;
 pub mod drain;
 pub mod into_iter;
 pub(crate) mod methods;
-pub(crate) mod non_zero;
+pub mod traits;
+
 #[cfg(test)]
 mod tests;
-pub mod traits;
 
 /// A `usize`-sized zero.
 #[repr(usize)]
@@ -259,21 +259,6 @@ pub(crate) unsafe fn drop_raw_slice<T>(ptr: *mut T, len: usize) {
             let slice = core::slice::from_raw_parts_mut(ptr, len);
             core::ptr::drop_in_place(slice);
         }
-    }
-}
-
-/// [`Vec::push_within_capacity`] stable implementation.
-pub(crate) fn vec_push_within_capacity<T>(v: &mut Vec<T>, value: T) -> Result<(), T> {
-    let spare = v.spare_capacity_mut();
-    if let [e, ..] = spare {
-        e.write(value);
-        // SAFETY: we just initialized one more element.
-        unsafe {
-            v.set_len(v.len() + 1);
-        }
-        Ok(())
-    } else {
-        Err(value)
     }
 }
 

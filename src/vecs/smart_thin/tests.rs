@@ -8,7 +8,6 @@ use core::ptr;
 
 use super::*;
 use crate::backend::PanickyUnique;
-use crate::smart::Smart;
 use crate::{smart_thin_vec, thin_vec, Arc, Rc, Unique};
 
 #[test]
