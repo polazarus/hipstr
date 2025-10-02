@@ -409,6 +409,30 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         Self(self.0, PhantomData)
     }
 
+    pub fn detach(&mut self)
+    where
+        T: Clone,
+    {
+        if self.is_unique() {
+            // do nothing
+        } else {
+            let new = Self::from_slice_clone(self.as_slice());
+            *self = new;
+        }
+    }
+
+    pub fn detach_copy(&mut self)
+    where
+        T: Copy,
+    {
+        if self.is_unique() {
+            // do nothing
+        } else {
+            let new = Self::from_slice_copy(self.as_slice());
+            *self = new;
+        }
+    }
+
     /// Returns a slice of the vector.
     ///
     /// # Panics
