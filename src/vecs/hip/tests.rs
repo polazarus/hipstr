@@ -1,7 +1,11 @@
 use alloc::boxed::Box;
 
+use typenum::{U1, U16, U32};
+
+use super::InlineBytes;
 use crate::backend::tests::BoundedRc;
 use crate::vecs::hip::{HipVec, SplitOffError};
+use crate::vecs::inline::{InlineVec, PointerSize};
 use crate::Arc;
 
 #[test]
@@ -50,6 +54,27 @@ fn from_array_thin() {
     assert!(h.is_thin());
     assert!(!h.is_fat());
     assert!(h.is_allocated());
+}
+
+#[test]
+fn from_inline() {
+    let inline = InlineVec::<u8, InlineBytes>::from([1, 2, 3, 4, 5]);
+    let h = HipVec::<u8, Arc>::from_inline(inline);
+    assert_eq!(h.len(), 5);
+    assert!(h.is_inline());
+
+    let inline = InlineVec::<u8, PointerSize>::from([1, 2]);
+    let h = HipVec::<u8, Arc>::from_inline(inline);
+    assert_eq!(h.len(), 2);
+    assert!(h.is_inline());
+}
+
+#[test]
+#[should_panic(expected = "this vector cannot be inlined")]
+fn from_inline_panic() {
+    let inline = InlineVec::<u128, U32>::from([1]);
+    assert!(!HipVec::<u128, Arc>::MAY_INLINE);
+    let _h = HipVec::<u128, Arc>::from_inline(inline);
 }
 
 #[test]

@@ -1,6 +1,6 @@
 //! Internal representation of inline vectors.
 
-use core::mem::MaybeUninit;
+use core::mem::{transmute_copy, ManuallyDrop, MaybeUninit};
 use core::num::NonZeroUsize;
 use core::ptr;
 use core::ptr::NonNull;
@@ -50,21 +50,12 @@ where
     #[cfg(target_endian = "big")]
     init_word: NonZeroUsize,
 
-    /// Marker to make the representation depend on `T`.
-    phantom: core::marker::PhantomData<[T]>,
+    align: ManuallyDrop<[T; 0]>,
 }
 
-impl<T, N: InlineLength> Copy for InlineRepr<T, N> where
-    <<N as Seal>::WordsM1 as ArrayLength>::ArrayType<MaybeUninit<usize>>: Copy
-{
-}
-
-impl<T, N: InlineLength> Clone for InlineRepr<T, N>
-where
-    <<N as Seal>::WordsM1 as ArrayLength>::ArrayType<MaybeUninit<usize>>: Copy,
-{
+impl<T, N: InlineLength> Clone for InlineRepr<T, N> {
     fn clone(&self) -> Self {
-        *self
+        unsafe { transmute_copy::<Self, Self>(&self) }
     }
 }
 
@@ -78,7 +69,7 @@ where
         Self {
             init_word,
             rest: GenericArray::uninit(),
-            phantom: core::marker::PhantomData,
+            align: ManuallyDrop::new([]),
         }
     }
 
@@ -88,64 +79,74 @@ where
         Self {
             init_word,
             rest: unsafe { MaybeUninit::zeroed().assume_init() },
-            phantom: core::marker::PhantomData,
+            align: ManuallyDrop::new([]),
         }
     }
 
-    /// Variaous constants about the inline representation.
+    /// Various constants about the inline representation.
     const LENGTH_AND_DATA: (usize, usize, usize, usize) = {
         let blob = L::USIZE;
         let t_align = align_of::<T>();
         let t_size = size_of::<T>();
 
-        let (len_size, data_size) = if t_size == 0 {
+        let (reserved, data_size) = if t_size == 0 {
             (size_of::<usize>(), usize::MAX >> 1)
         } else {
             let t_size_a = t_size / t_align;
             let blob_a = blob / t_align;
-            let mut len_a = 1;
+            let mut reserved_a = 1;
 
             let data_size = loop {
-                if len_a >= blob_a {
+                if reserved_a >= blob_a {
                     break 0;
                 }
-                let max_data = (blob_a - len_a) / t_size_a;
+                let max_data = (blob_a - reserved_a) / t_size_a;
                 let needed_len_bits = (bits(max_data) + 1) as usize; // 1 bit for the tag
-                let len_bits = 8 * len_a * t_align;
+                let len_bits = 8 * reserved_a * t_align;
                 if max_data == 0 || needed_len_bits <= len_bits {
                     break max_data;
                 }
-                len_a += 1;
+                reserved_a += 1;
             };
 
-            let mut len_size = len_a * t_align;
-            if len_size > size_of::<usize>() {
-                len_size = size_of::<usize>();
-            }
-
-            (len_size, data_size)
+            let reserved = reserved_a * t_align;
+            (reserved, data_size)
         };
 
-        let len_off;
-        let data_off;
-        if cfg!(target_endian = "little") {
-            len_off = 0;
-            data_off = len_size;
+        let len_size = if reserved > size_of::<usize>() {
+            size_of::<usize>()
         } else {
-            data_off = 0;
+            reserved
+        };
+
+        let len_off: usize;
+        let data_off: usize;
+        if cfg!(target_endian = "little") {
+            // left aligned
+            len_off = 0;
+
+            assert!(reserved % t_align == 0);
+
+            data_off = reserved;
+        } else {
+            // beware to be right aligned, so offset from the end with the tight
+            // size (and not the reserved size)
             len_off = blob - len_size;
+
+            data_off = 0;
         }
+
         (len_off, len_size, data_off, data_size)
     };
 
     /// Offset inside the representation where the length is stored.
-    const LEN_OFFSET: usize = Self::LENGTH_AND_DATA.0;
+    pub(super) const LEN_OFFSET: usize = Self::LENGTH_AND_DATA.0;
 
     /// Size in bytes of the length field.
-    const LEN_SIZE: usize = Self::LENGTH_AND_DATA.1;
+    pub(super) const LEN_SIZE: usize = Self::LENGTH_AND_DATA.1;
 
     /// Offset inside the representation where the data starts.
-    const DATA_OFFSET: usize = Self::LENGTH_AND_DATA.2;
+    pub(super) const DATA_OFFSET: usize = Self::LENGTH_AND_DATA.2;
 
     /// Maximum number of elements that can be stored inline.
     pub const CAPACITY: usize = Self::LENGTH_AND_DATA.3;

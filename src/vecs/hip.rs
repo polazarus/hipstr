@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 use core::marker::PhantomData;
-use core::mem::{needs_drop, ManuallyDrop};
+use core::mem::{needs_drop, transmute, ManuallyDrop};
 use core::ops::{Range, RangeBounds};
 use core::ptr;
 
@@ -12,7 +12,7 @@ use self::repr::{Allocated, Borrowed, Owner, Pivot, Sliced, UnknownSliced};
 use crate::backend::UpdateResult;
 use crate::common::derives::{AsRef, ConstDefault, Copy, DelegateDebug, DelegateHash, Deref, From};
 use crate::common::traits::MutVector;
-use crate::common::{self, drop_raw_slice, transmute2};
+use crate::common::{self, drop_raw_slice, force_transmute};
 use crate::vecs::inline::{InlineLength, InlineVec};
 use crate::vecs::smart_thin::SmartThinVec;
 use crate::vecs::thin::{can_reuse, ThinVec};
@@ -31,13 +31,14 @@ mod tests;
     From(Vec<T>, Self::from_mut_vector),
     From(ThinVec<T, P>, Self::from_thin_vec, (P: ConstDefault)),
     From(&[T], Self::from_slice_clone, () where (T: Clone)),
-    From(InlineVec<T, L>, Self::from_any_inline, (L: InlineLength)),
+    From(InlineVec<T, L>, Self::from_inline, (L: InlineLength)),
     DelegateDebug(Self::as_slice where T: core::fmt::Debug),
     DelegateHash(Self::as_slice where T: core::hash::Hash),
 )]
 pub struct HipVec<'a, T, B: Backend>(Pivot, PhantomData<(B, &'a [T])>);
 pub const INLINE_BYTES: usize = size_of::<Borrowed<()>>();
 pub type InlineBytes = crate::typenum::U<INLINE_BYTES>;
+type HipInline<T> = InlineVec<T, InlineBytes>;
 
 impl<'a, T, B: Backend> HipVec<'a, T, B> {
     const EMPTY: Self = Self::borrowed(&[]);
@@ -72,8 +73,8 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         if N == 0 {
             Self::new()
         } else if const { Self::fit_inline(N) } {
-            let inline = InlineVec::from_array(array);
-            Self::inline(inline)
+            let inline = HipInline::from_array(array);
+            Self::from_inline(inline)
         } else {
             let smart = SmartThinVec::from_array(array);
             Self::from_smart_thin(smart)
@@ -86,8 +87,8 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         if v.len() == 0 {
             Self::new()
         } else if Self::fit_inline(v.len()) {
-            let inline = InlineVec::from_mut_vector(v);
-            Self::inline(inline)
+            let inline = HipInline::from_mut_vector(v);
+            Self::from_inline(inline)
         } else {
             let smart = SmartThinVec::from_mut_vector(v);
             Self::from_smart_thin(smart)
@@ -311,10 +312,22 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     #[must_use]
     pub const fn borrowed(slice: &'a [T]) -> Self {
         let borrowed = Borrowed::<'a, T>::new(slice);
-        unsafe { Self::from_sliced(borrowed) }
+        unsafe { transmute(borrowed) }
     }
 
     /// Creates an inline `HipVec` from an `InlineVec`.
+    ///
+    /// In the case where the inline byte size is equal to the inline byte size
+    /// of the `HipVec`, the actual representation is reused. Otherwise, the
+    /// elements are moved to a compatible inline vector.
+    ///
+    /// # Panics.
+    ///
+    /// This function panics if:
+    /// - either the length of the input inline vector exceeds the inline
+    ///   capacity of the `HipVec`,
+    /// - or if the `HipVec` cannot be inlined (that is, the alignment of `T` is
+    ///   greater than the alignment of the `HipVec`).
     ///
     /// # Examples
     ///
@@ -322,43 +335,43 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     /// use hipstr::vecs::HipVec;
     /// use hipstr::inline_vec;
     /// let inline = inline_vec![24 => 1, 2, 3];
-    /// let hip: HipVec<u8> = HipVec::inline(inline);
+    /// let hip: HipVec<u8> = HipVec::from_inline(inline);
     /// assert!(hip.is_inline());
     #[must_use]
-    pub const fn inline(inline: InlineVec<T, InlineBytes>) -> Self {
-        debug_assert!(Self::MAY_INLINE);
-        unsafe { transmute2(inline) }
-    }
+    pub const fn from_inline<L: InlineLength>(inline: InlineVec<T, L>) -> Self {
+        // compile time check transformed to runtime panic
+        assert!(Self::MAY_INLINE, "this vector cannot be inlined");
 
-    #[must_use]
-    pub const fn from_any_inline<L: InlineLength>(inline: InlineVec<T, L>) -> Self {
-        if InlineBytes::USIZE == L::USIZE {
-            Self::inline(unsafe { transmute2(inline) })
+        if const { InlineBytes::USIZE == L::USIZE } {
+            // reuse the inline representation if sizes match
+            debug_assert!(Self::MAY_INLINE);
+
+            // SAFETY: sizes are equal, inline repr
+            unsafe { force_transmute::<InlineVec<T, L>, Self>(inline) }
         } else {
+            // move the elements to a new compatible inline vector
             let mut old = inline;
             let mut new = InlineVec::new();
             new.const_append(&mut old);
+
+            // forget the old inline vector, the drop is not necessary since the
+            // elements were moved out beforehand
             let _ = ManuallyDrop::new(old);
-            Self::inline(new)
+
+            // SAFETY: inline repr
+            unsafe { force_transmute::<InlineVec<T, InlineBytes>, Self>(new) }
         }
     }
 
-    #[must_use]
-    pub(super) const unsafe fn from_sliced<O>(owned: Sliced<T, O>) -> Self {
-        const {
-            assert!(size_of::<O>() == size_of::<usize>());
-        }
-        unsafe { transmute2(owned) }
-    }
-
+    /// Creates a `HipVec` from a slice by cloning the elements.
     #[must_use]
     pub(crate) fn from_slice_clone(slice: &[T]) -> Self
     where
         T: Clone,
     {
         if slice.len() <= Self::INLINE_CAP {
-            let inline = InlineVec::from_slice_clone(slice);
-            Self::inline(inline)
+            let inline = HipInline::from_slice_clone(slice);
+            Self::from_inline(inline)
         } else {
             let smart = SmartThinVec::from_slice_clone(slice);
             Self::from_smart_thin(smart)
@@ -371,8 +384,8 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         T: Copy,
     {
         if slice.len() <= Self::INLINE_CAP {
-            let inline = InlineVec::from_slice_copy(slice);
-            Self::inline(inline)
+            let inline = HipInline::from_slice_copy(slice);
+            Self::from_inline(inline)
         } else {
             let smart = SmartThinVec::from_slice_copy(slice);
             Self::from_smart_thin(smart)
@@ -388,7 +401,8 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         let is_null = v.capacity() == 0;
 
         let owner = v;
-        let this = unsafe { Self::from_sliced(Sliced { owner, ptr, len }) };
+        let this =
+            unsafe { transmute::<Sliced<T, SmartThinVec<T, B>>, Self>(Sliced { owner, ptr, len }) };
 
         #[cfg(debug_assertions)]
         if is_null {
@@ -429,8 +443,8 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         T: Clone,
     {
         if Self::MAY_INLINE && range.len() < Self::INLINE_CAP {
-            let inline = InlineVec::from_slice_clone(&self.as_slice()[range]);
-            Self::inline(inline)
+            let inline = HipInline::from_slice_clone(&self.as_slice()[range]);
+            Self::from_inline(inline)
         } else {
             debug_assert!(!self.is_inline());
 
@@ -635,7 +649,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
             // SAFETY: repr is inline
             let inline = unsafe { self.as_inline_mut_unchecked() };
             let new_inline = inline.split_off(at);
-            Ok(Self::inline(new_inline))
+            Ok(Self::from_inline(new_inline))
         } else {
             // checks if allocated or borrowed
             if self.is_allocated() {
@@ -781,7 +795,7 @@ impl<T: Clone, B: Backend> Clone for HipVec<'_, T, B> {
             // SAFETY: repr is checked above
             let inline = unsafe { self.as_inline_unchecked() };
             // TODO optimize if T is Copy
-            Self::inline(inline.clone())
+            Self::from_inline(inline.clone())
         } else {
             if self.is_allocated() {
                 // SAFETY: repr is checked above

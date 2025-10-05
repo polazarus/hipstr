@@ -10,7 +10,7 @@ use core::mem::size_of;
 use core::ptr;
 
 use const_default::ConstDefault;
-use typenum::{U, U12, U16, U20, U24, U4, U8};
+use typenum::{Unsigned, U, U12, U16, U20, U24, U32, U4, U8};
 
 use super::length::PointerSize;
 use super::repr::InlineRepr;
@@ -22,6 +22,37 @@ use crate::{inline_vec, thin_vec};
 
 const SMALL_CAP: usize = 8;
 const SMALL_FULL: InlineVec<u8, U8> = InlineVec::from_array([1, 2, 3, 4, 5, 6, 7]);
+
+#[test]
+fn with_capacity() {
+    let n = InlineVec::<u8, PointerSize>::with_capacity(0);
+    assert_eq!(n.capacity(), PointerSize::USIZE - 1);
+
+    let m = InlineVec::<u128, PointerSize>::with_capacity(0);
+    assert_eq!(m.capacity(), 0);
+}
+
+#[test]
+fn large_align() {
+    let inline = InlineVec::<u128, U8>::new();
+    assert_eq!(inline.capacity(), 0);
+
+    let inline = InlineVec::<u128, U32>::new();
+    assert_eq!(inline.capacity(), 1);
+    assert_ne!(inline.as_ptr(), ptr::dangling());
+    assert!(inline.as_ptr().is_aligned());
+
+    let inline = InlineVec::<u128, U32>::from_array([1]);
+    assert_eq!(inline.len(), 1);
+    assert_eq!(inline.capacity(), 1);
+    assert_eq!(inline.as_slice(), &[1]);
+}
+
+#[test]
+#[should_panic(expected = "required capacity exceeds inline capacity")]
+fn large_align_panic() {
+    let _inline = InlineVec::<u128, U16>::from([1]); // should panic
+}
 
 #[test]
 fn repr_clone_is_copy() {
