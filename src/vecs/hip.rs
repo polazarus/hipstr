@@ -321,7 +321,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     /// of the `HipVec`, the actual representation is reused. Otherwise, the
     /// elements are moved to a compatible inline vector.
     ///
-    /// # Panics.
+    /// # Panics
     ///
     /// This function panics if:
     /// - either the length of the input inline vector exceeds the inline
