@@ -5,10 +5,9 @@ use core::num::NonZeroUsize;
 use core::ptr;
 use core::ptr::NonNull;
 
-use generic_array::{ArrayLength, GenericArray};
+use generic_array::GenericArray;
 
-use super::length::{InlineLength, Seal};
-use crate::common::derives::Copy;
+use super::length::InlineLength;
 
 /// Returns the number of bits needed to represent `n`.
 pub const fn bits(n: usize) -> u32 {

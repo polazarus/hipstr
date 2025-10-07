@@ -1,6 +1,7 @@
 use alloc::boxed::Box;
+use alloc::vec;
 
-use typenum::{U1, U16, U32};
+use typenum::U32;
 
 use super::InlineBytes;
 use crate::backend::tests::BoundedRc;
@@ -33,6 +34,14 @@ fn new_boxed() {
     let h = HipVec::<Box<u8>, Arc>::new();
     assert_eq!(h.len(), 0);
     assert!(!h.is_allocated());
+}
+
+#[test]
+fn from_array_empty() {
+    let h = HipVec::<u8, Arc>::from([]);
+    assert_eq!(h.len(), 0);
+    assert!(h.is_borrowed()); // for now, the empty hipvec is borrowed
+    assert!(h.as_slice().is_empty());
 }
 
 #[test]
@@ -75,6 +84,19 @@ fn from_inline_panic() {
     let inline = InlineVec::<u128, U32>::from([1]);
     assert!(!HipVec::<u128, Arc>::MAY_INLINE);
     let _h = HipVec::<u128, Arc>::from_inline(inline);
+}
+
+#[test]
+fn from_vec() {
+    let h = HipVec::<u8, Arc>::from(vec![1, 2, 3, 4, 5]);
+    assert_eq!(h.len(), 5);
+    assert!(h.is_inline());
+    assert_eq!(h.as_slice(), &[1, 2, 3, 4, 5]);
+
+    let h = HipVec::<u8, Arc>::from(vec![42; 42]);
+    assert_eq!(h.len(), 42);
+    assert!(h.is_thin());
+    assert_eq!(h.as_slice(), &[42; 42]);
 }
 
 #[test]
