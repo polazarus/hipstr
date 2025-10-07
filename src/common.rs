@@ -1,7 +1,6 @@
 //! Common functions and types.
 
 use alloc::alloc::handle_alloc_error;
-use alloc::vec::Vec;
 use core::alloc::Layout;
 use core::mem::{self, ManuallyDrop, MaybeUninit};
 use core::ops::{Bound, Range, RangeBounds};
