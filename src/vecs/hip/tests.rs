@@ -80,6 +80,7 @@ fn from_inline() {
 
 #[test]
 #[should_panic(expected = "this vector cannot be inlined")]
+#[allow(clippy::assertions_on_constants)]
 fn from_inline_panic() {
     let inline = InlineVec::<u128, U32>::from([1]);
     assert!(!HipVec::<u128, Arc>::MAY_INLINE);
@@ -88,14 +89,18 @@ fn from_inline_panic() {
 
 #[test]
 fn from_vec() {
+    let h = HipVec::<u8, Arc>::from(vec![]);
+    assert_eq!(h.len(), 0);
+    assert!(h.is_borrowed()); // for now, the empty hipvec is borrowed
+
     let h = HipVec::<u8, Arc>::from(vec![1, 2, 3, 4, 5]);
     assert_eq!(h.len(), 5);
-    assert!(h.is_inline());
+    assert!(h.is_fat());
     assert_eq!(h.as_slice(), &[1, 2, 3, 4, 5]);
 
     let h = HipVec::<u8, Arc>::from(vec![42; 42]);
     assert_eq!(h.len(), 42);
-    assert!(h.is_thin());
+    assert!(h.is_fat());
     assert_eq!(h.as_slice(), &[42; 42]);
 }
 

@@ -99,18 +99,14 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     #[must_use]
     #[inline]
     pub fn from_vec(vec: Vec<T>) -> Self {
-        if vec.capacity() == 0 {
-            Self::new()
-        } else {
-            let smart = SmartFatVec::from_vec(vec);
-            let sliced = Sliced {
-                ptr: smart.as_ptr(),
-                len: smart.len(),
-                owner: smart, // the cast is not necessary SmartFatVec is transparent
-            };
-            // SAFETY: repr is correct by construction
-            unsafe { transmute::<Sliced<T, SmartFatVec<T, B>>, Self>(sliced) }
-        }
+        let smart = SmartFatVec::from_vec(vec);
+        let sliced = Sliced {
+            ptr: smart.as_ptr(),
+            len: smart.len(),
+            owner: smart, // the cast is not necessary SmartFatVec is transparent
+        };
+        // SAFETY: repr is correct by construction
+        unsafe { transmute::<Sliced<T, SmartFatVec<T, B>>, Self>(sliced) }
     }
 
     #[must_use]
