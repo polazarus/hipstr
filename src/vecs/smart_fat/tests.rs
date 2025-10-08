@@ -310,8 +310,9 @@ fn try_clone_unique() {
 fn clone_panic() {
     let vec: SmartFatVec<i32, PanickyUnique> = SmartFatVec::from(vec![1, 2, 3]);
     assert!(vec.is_unique());
+
+    #[allow(clippy::redundant_clone)]
     let _other = vec.clone();
-    let _ = vec;
 }
 
 #[test]
