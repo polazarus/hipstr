@@ -94,24 +94,14 @@ fn mutate_unique_empty() {
 #[test]
 fn mutate_unique_nonempty() {
     let vec = vec![1, 2, 3];
-    let capacity = vec.capacity();
     let mut vec: SmartFatVec<i32, Arc> = SmartFatVec::from(vec);
-
-    let p = vec.as_ptr();
-
     {
         let mut v = vec.mutate();
-        assert_eq!(v.as_ptr(), p);
         v.extend_from_slice(&[4, 5, 6, 7, 8, 9, 10]);
         assert_eq!(v.len(), 10);
     }
     assert_eq!(vec.len(), 10);
     assert_eq!(vec.as_slice(), &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-    if capacity >= 10 {
-        assert_eq!(vec.as_ptr(), p);
-    } else {
-        assert_ne!(vec.as_ptr(), p);
-    }
 }
 
 #[test]

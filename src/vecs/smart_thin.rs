@@ -50,7 +50,7 @@ use crate::backend::{
     Backend, BackendImpl, CloneOnOverflow, Counter, PanicOnOverflow, UpdateResult,
 };
 use crate::common::derives::{AsRef, Borrow, ConstDefault, Deref, From, Vector};
-use crate::common::traits::{MutVector, Mutate};
+use crate::common::traits::Mutate;
 use crate::macros::trait_impls;
 use crate::vecs::reprs::ThinRepr;
 
@@ -113,22 +113,18 @@ macro_rules! smart_thin_vec {
     Borrow(ThinVec<T, C>, Self::as_thin_vec),
     Borrow([T], Self::as_slice),
     Vector(T),
-    From(Vec<T>, Self::from_mut_vector),
+    From(Vec<T>, Self::from_vector),
     From(Box<[T]>, Self::from_boxed_slice),
     From(&[T], Self::from_slice_clone where (T: Clone)),
     From(&mut [T], Self::from_slice_clone where (T: Clone)),
 )]
-pub struct SmartThinVec<T, C: Backend>(ThinRepr<T, C>);
+pub struct SmartThinVec<T, C: Backend>(pub(super) ThinRepr<T, C>);
 
 impl<T, B: Backend> SmartThinVec<T, B> {
     const EMPTY: Self = {
         let tv = ThinVec::new();
         unsafe { Self::from_thin_vec_unchecked(tv) }
     };
-
-    pub(super) const unsafe fn from_repr(repr: ThinRepr<T, B>) -> Self {
-        Self(repr)
-    }
 
     /// Returns the number of elements in the vector.
     ///
@@ -418,8 +414,8 @@ impl<T, B: Backend> SmartThinVec<T, B> {
 
     #[inline]
     #[must_use]
-    pub(crate) fn from_mut_vector(vector: impl MutVector<Item = T>) -> Self {
-        let thin_vec = ThinVec::from_mut_vector(vector);
+    pub(crate) fn from_vector(vector: impl Mutate<Item = T>) -> Self {
+        let thin_vec = ThinVec::from_vector(vector);
         // SAFETY: thin_vec is fresh
         unsafe { Self::from_thin_vec_unchecked(thin_vec) }
     }
@@ -435,7 +431,7 @@ impl<T, B: Backend> SmartThinVec<T, B> {
     #[inline]
     #[must_use]
     pub(crate) fn from_boxed_slice(slice: Box<[T]>) -> Self {
-        Self::from_mut_vector(slice.into_vec())
+        Self::from_vector(slice.into_vec())
     }
 
     #[inline]

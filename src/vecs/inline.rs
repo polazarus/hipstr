@@ -13,6 +13,7 @@
 use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
+use core::borrow::BorrowMut;
 use core::fmt::{self};
 use core::mem::MaybeUninit;
 use core::ops::{Range, RangeBounds};
@@ -34,7 +35,8 @@ use crate::common::methods::{
     from_slice_clone_impl, pop_if_impl, pop_impl, push_within_capacity, remove_unchecked_impl,
     resize_impl, spare_capacity_mut_impl, swap_remove_impl, truncate_impl,
 };
-use crate::common::{drop_raw_slice, panic_display, traits, SliceWriteGuard};
+use crate::common::traits::{MutVector, Mutate, Vector};
+use crate::common::{drop_raw_slice, panic_display, SliceWriteGuard};
 use crate::{common, macros};
 
 pub(crate) mod length;
@@ -228,11 +230,11 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     /// vector.
     #[must_use]
     pub(crate) fn from_boxed_slice(boxed: Box<[T]>) -> Self {
-        Self::from_mut_vector(boxed.into_vec())
+        Self::from_vector(boxed.into_vec())
     }
 
     #[must_use]
-    pub(crate) fn from_mut_vector(mut vec: impl traits::MutVector<Item = T>) -> Self {
+    pub(crate) fn from_vector(mut vec: impl Mutate<Item = T>) -> Self {
         let mut this = Self::new();
         this.append(&mut vec);
         this
@@ -529,7 +531,10 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     /// assert_eq!(inline1, [1, 2, 3, 4, 5, 6]);
     /// assert!(vec.is_empty());
     /// ```
-    pub fn append(&mut self, other: &mut impl traits::MutVector<Item = T>) {
+    pub fn append(&mut self, other: &mut impl Mutate<Item = T>) {
+        let mut other = other.mutate();
+        let other = other.borrow_mut();
+
         append_impl!(self, other);
     }
 
@@ -900,7 +905,7 @@ where
     {
         match cow {
             Cow::Borrowed(slice) => Self::from_slice_clone(slice),
-            Cow::Owned(vec) => Self::from_mut_vector(vec),
+            Cow::Owned(vec) => Self::from_vector(vec),
         }
     }
 
@@ -1307,14 +1312,14 @@ macros::trait_impls! {
     {
         From {
             Box<[T]> => InlineVec<T, L> = Self::from_boxed_slice;
-            Vec<T> => InlineVec<T, L> = Self::from_mut_vector;
+            Vec<T> => InlineVec<T, L> = Self::from_vector;
         }
     }
 
     [T, P: ConstDefault, L: InlineLength]
     {
         From {
-            crate::vecs::thin::ThinVec<T, P> => InlineVec<T, L> = Self::from_mut_vector;
+            crate::vecs::thin::ThinVec<T, P> => InlineVec<T, L> = Self::from_vector;
         }
     }
 

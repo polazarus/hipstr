@@ -4,6 +4,7 @@ use alloc::alloc::{alloc, dealloc, realloc, Layout};
 use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
+use core::borrow::BorrowMut;
 use core::hint::unreachable_unchecked;
 use core::mem::{offset_of, ManuallyDrop, MaybeUninit};
 use core::ops::{Range, RangeBounds};
@@ -25,9 +26,10 @@ use crate::common::methods::{
     from_slice_clone_impl, pop_if_impl, pop_impl, remove_unchecked_impl, resize_impl,
     spare_capacity_mut_impl, swap_remove_impl, truncate_impl,
 };
+use crate::common::traits::{MutVector, Mutate, Vector};
 use crate::common::{
-    check_alloc, drop_raw_slice, maybe_uninit_write_copy_of_slice, panic_display, traits,
-    RangeError, ZeroUsize,
+    check_alloc, drop_raw_slice, maybe_uninit_write_copy_of_slice, panic_display, RangeError,
+    ZeroUsize,
 };
 use crate::vecs::reprs::ThinHeader;
 use crate::{common, macros};
@@ -807,7 +809,7 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     {
         match cow {
             Cow::Borrowed(slice) => Self::from_slice_clone(slice),
-            Cow::Owned(vec) => Self::from_mut_vector(vec),
+            Cow::Owned(vec) => Self::from_vector(vec),
         }
     }
 
@@ -845,7 +847,10 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
 
     /// Creates a new thin vector from a vector.
     #[inline]
-    pub(crate) fn from_mut_vector(mut vec: impl traits::MutVector<Item = T>) -> Self {
+    pub(crate) fn from_vector(mut vec: impl Mutate<Item = T>) -> Self {
+        let mut vec = vec.mutate();
+        let vec = vec.borrow_mut();
+
         let len = vec.len();
         let mut this = Self::with_capacity(len);
         unsafe {
@@ -1166,7 +1171,10 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     /// assert_eq!(v, [1, 2, 3, 4, 5, 6]);
     /// assert_eq!(w, []);
     /// ```
-    pub fn append(&mut self, other: &mut impl traits::MutVector<Item = T>) {
+    pub fn append(&mut self, other: &mut impl Mutate<Item = T>) {
+        let mut other = other.mutate();
+        let other = other.borrow_mut();
+
         append_impl!(self, other);
     }
 
@@ -1420,7 +1428,7 @@ macros::trait_impls! {
         }
         From {
             Box<[T]> => ThinVec<T, P> = Self::from_boxed_slice;
-            Vec<T> => ThinVec<T, P> = Self::from_mut_vector;
+            Vec<T> => ThinVec<T, P> = Self::from_vector;
         }
     }
     [T, P] where [T: Clone, P: ConstDefault] {
@@ -1445,7 +1453,7 @@ macros::trait_impls! {
     [T, P: ConstDefault, L: super::inline::InlineLength]
     {
         From {
-            super::inline::InlineVec<T, L> => ThinVec<T, P> = Self::from_mut_vector;
+            super::inline::InlineVec<T, L> => ThinVec<T, P> = Self::from_vector;
         }
     }
 

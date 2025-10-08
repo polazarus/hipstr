@@ -24,11 +24,11 @@ impl<T, B: Backend> Owner<T, B> {
         match self.0.into_split() {
             Variant::Thin(repr) => {
                 // SAFETY: should not be used after drop
-                let _ = unsafe { SmartThinVec::from_repr(repr) };
+                let _ = SmartThinVec(repr);
             }
             Variant::Fat(repr) => {
                 // SAFETY: should not be used after drop
-                let _ = unsafe { SmartFatVec::from_repr(repr) };
+                let _ = SmartFatVec(repr);
             }
         }
     }

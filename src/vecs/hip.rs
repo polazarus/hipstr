@@ -11,9 +11,10 @@ use typenum::Unsigned;
 use self::repr::{Allocated, Borrowed, Owner, Pivot, Sliced, UnknownSliced};
 use crate::backend::UpdateResult;
 use crate::common::derives::{AsRef, ConstDefault, Copy, DelegateDebug, DelegateHash, Deref, From};
-use crate::common::traits::MutVector;
+use crate::common::traits::Mutate;
 use crate::common::{self, drop_raw_slice, force_transmute};
 use crate::vecs::inline::{InlineLength, InlineVec};
+use crate::vecs::smart_fat::SmartFatVec;
 use crate::vecs::smart_thin::SmartThinVec;
 use crate::vecs::thin::{can_reuse, ThinVec};
 use crate::Backend;
@@ -28,7 +29,7 @@ mod tests;
     AsRef([T], Self::as_slice),
     Deref([T], Self::as_slice),
     From([T; N], Self::from_array, (const N: usize)),
-    From(Vec<T>, Self::from_mut_vector),
+    From(Vec<T>, Self::from_vec),
     From(ThinVec<T, P>, Self::from_thin_vec, (P: ConstDefault)),
     From(&[T], Self::from_slice_clone, () where (T: Clone)),
     From(InlineVec<T, L>, Self::from_inline, (L: InlineLength)),
@@ -83,15 +84,32 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
 
     #[must_use]
     #[inline]
-    pub(crate) fn from_mut_vector(v: impl MutVector<Item = T>) -> Self {
+    pub fn from_vector_normalized(v: impl Mutate<Item = T>) -> Self {
         if v.len() == 0 {
             Self::new()
         } else if Self::fit_inline(v.len()) {
-            let inline = HipInline::from_mut_vector(v);
+            let inline = HipInline::from_vector(v);
             Self::from_inline(inline)
         } else {
-            let smart = SmartThinVec::from_mut_vector(v);
+            let smart = SmartThinVec::from_vector(v);
             Self::from_smart_thin(smart)
+        }
+    }
+
+    #[must_use]
+    #[inline]
+    pub fn from_vec(vec: Vec<T>) -> Self {
+        if vec.capacity() == 0 {
+            Self::new()
+        } else {
+            let smart = SmartFatVec::from_vec(vec);
+            let sliced = Sliced {
+                ptr: smart.as_ptr(),
+                len: smart.len(),
+                owner: smart, // the cast is not necessary SmartFatVec is transparent
+            };
+            // SAFETY: repr is correct by construction
+            unsafe { transmute::<Sliced<T, SmartFatVec<T, B>>, Self>(sliced) }
         }
     }
 
@@ -103,7 +121,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
             let s = unsafe { SmartThinVec::from_thin_vec_unchecked(v) };
             Self::from_smart_thin(s)
         } else {
-            Self::from_mut_vector(v)
+            Self::from_vector_normalized(v)
         }
     }
 

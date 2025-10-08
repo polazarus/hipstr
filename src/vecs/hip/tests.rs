@@ -188,3 +188,45 @@ fn truncate() {
     assert!(h2.is_thin());
     assert_eq!(h2.as_ptr(), h.as_ptr());
 }
+
+#[test]
+fn from_vector_normalized() {
+    let h = HipVec::<u8, Arc>::from_vector_normalized(vec![]);
+    assert_eq!(h.len(), 0);
+    assert!(h.is_borrowed()); // for now, the empty hipvec is borrowed
+
+    let h = HipVec::<u8, Arc>::from_vector_normalized(vec![1, 2, 3, 4, 5]);
+    assert_eq!(h.len(), 5);
+    assert!(h.is_inline());
+    assert_eq!(h.as_slice(), &[1, 2, 3, 4, 5]);
+
+    let h = HipVec::<u8, Arc>::from_vector_normalized(vec![42; 42]);
+    assert_eq!(h.len(), 42);
+    assert!(h.is_thin());
+    assert_eq!(h.as_slice(), &[42; 42]);
+}
+
+#[test]
+fn is_unique() {
+    let b = HipVec::<u8, Arc>::borrowed(b"abc");
+    assert!(b.is_borrowed());
+    assert!(!b.is_unique());
+
+    let i = HipVec::<u8, Arc>::from([1, 2, 3]);
+    assert!(i.is_inline());
+    assert!(i.is_unique());
+
+    let t = HipVec::<u8, Arc>::from([42; 42]);
+    assert!(t.is_thin());
+    assert!(t.is_unique());
+    let t2 = t.clone();
+    assert!(!t.is_unique());
+    assert!(!t2.is_unique());
+
+    let f = HipVec::<u8, Arc>::from(vec![1; 100]);
+    assert!(f.is_fat());
+    assert!(f.is_unique());
+    let f2 = f.clone();
+    assert!(!f.is_unique());
+    assert!(!f2.is_unique());
+}

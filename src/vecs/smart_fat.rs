@@ -1,3 +1,5 @@
+//! A smart fat vector with reference counting.
+
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::mem::ManuallyDrop;
@@ -26,7 +28,7 @@ mod tests;
     From(Vec<T>, Self::from_vec),
     Vector(T),
 )]
-pub struct SmartFatVec<T, B: Backend>(FatRepr<T, B>);
+pub struct SmartFatVec<T, B: Backend>(pub(super) FatRepr<T, B>);
 
 impl<T, B: Backend> SmartFatVec<T, B> {
     const EMPTY: Self = Self(FatRepr::EMPTY);
@@ -49,11 +51,6 @@ impl<T, B: Backend> SmartFatVec<T, B> {
     #[must_use]
     pub const fn new() -> Self {
         Self::EMPTY
-    }
-
-    #[inline]
-    pub(super) const unsafe fn from_repr(repr: FatRepr<T, B>) -> Self {
-        Self(repr)
     }
 
     /// Creates a new `SmartFatVec` from a standard `Vec`.
