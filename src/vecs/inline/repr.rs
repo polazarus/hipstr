@@ -8,6 +8,7 @@ use core::ptr::NonNull;
 use generic_array::GenericArray;
 
 use super::length::InlineLength;
+use crate::common::force_copy;
 
 /// Returns the number of bits needed to represent `n`.
 pub const fn bits(n: usize) -> u32 {
@@ -54,7 +55,8 @@ where
 
 impl<T, N: InlineLength> Clone for InlineRepr<T, N> {
     fn clone(&self) -> Self {
-        unsafe { transmute_copy::<Self, Self>(&self) }
+        // SAFETY: see the safety comment on `InlineRepr`.
+        unsafe { force_copy(self) }
     }
 }
 

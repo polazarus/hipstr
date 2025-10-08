@@ -27,6 +27,16 @@ pub enum ZeroUsize {
     Zero = 0,
 }
 
+/// Gets a bitwise copy of a value, even if its type is not [`Copy`].
+///
+/// # Safety
+///
+/// The caller must ensure that `T` is safe to bitwise-copy.
+pub(crate) const unsafe fn force_copy<T>(value: &T) -> T {
+    // SAFETY: see the safety comment on the function.
+    unsafe { core::ptr::read(value) }
+}
+
 /// Panics with the provided displayable error message.
 ///
 /// # Panics
