@@ -4,6 +4,7 @@ use core::{mem, ptr};
 
 use super::SmartFatVec;
 use crate::backend::PanickyUnique;
+use crate::common::traits::Mutate;
 use crate::{Arc, Unique};
 
 #[test]
@@ -154,7 +155,7 @@ fn mutate_swap_nonempty_empty() {
 
     {
         let mut ref_mut = vec.mutate();
-        let _ = mem::replace(&mut *ref_mut, Vec::new());
+        let _ = mem::take(&mut *ref_mut);
     }
 
     assert_eq!(vec.len(), 0);
@@ -168,7 +169,7 @@ fn mutate_swap_empty_empty() {
 
     {
         let mut ref_mut = vec.mutate();
-        let _ = mem::replace(&mut *ref_mut, Vec::new());
+        let _ = mem::take(&mut *ref_mut);
     }
 
     assert_eq!(vec.len(), 0);
@@ -310,6 +311,7 @@ fn clone_panic() {
     let vec: SmartFatVec<i32, PanickyUnique> = SmartFatVec::from(vec![1, 2, 3]);
     assert!(vec.is_unique());
     let _other = vec.clone();
+    let _ = vec;
 }
 
 #[test]
@@ -321,4 +323,32 @@ fn clone_unique() {
     assert!(vec.is_unique());
     assert!(vec2.is_unique());
     assert_ne!(vec.as_ptr(), vec2.as_ptr());
+}
+
+#[test]
+fn mutate_trait() {
+    let mut vec = vec![1, 2, 3];
+    vec.reserve(10); // make the pointer stable
+    let p = vec.as_ptr();
+
+    let mut vec: SmartFatVec<i32, Unique> = SmartFatVec::from(vec);
+    assert!(vec.is_unique());
+
+    {
+        let mut r = Mutate::mutate(&mut vec);
+        r.push(4);
+        assert_eq!(r.as_ptr(), p);
+    }
+
+    assert_eq!(vec.as_slice(), [1, 2, 3, 4]);
+
+    let mut vec2 = vec.clone();
+    {
+        let mut r = Mutate::mutate(&mut vec2);
+        r.push(5);
+        assert_ne!(r.as_ptr(), p);
+    }
+
+    assert_eq!(vec.as_slice(), [1, 2, 3, 4]);
+    assert_eq!(vec2.as_slice(), [1, 2, 3, 4, 5]);
 }
