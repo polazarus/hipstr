@@ -24,6 +24,23 @@ const SMALL_CAP: usize = 8;
 const SMALL_FULL: InlineVec<u8, U8> = InlineVec::from_array([1, 2, 3, 4, 5, 6, 7]);
 
 #[test]
+fn consistent_capacity() {
+    type A = InlineRepr<u8, U16>;
+    type B = InlineRepr<u8, U32>;
+    type C = InlineRepr<u8, U<64>>;
+    type D = InlineRepr<u128, U<64>>;
+    type E = InlineRepr<u128, U8>;
+    type F = InlineRepr<(), U8>;
+
+    assert!(A::is_len_valid(A::CAPACITY));
+    assert!(B::is_len_valid(B::CAPACITY));
+    assert!(C::is_len_valid(C::CAPACITY));
+    assert!(D::is_len_valid(D::CAPACITY));
+    assert!(E::is_len_valid(E::CAPACITY));
+    assert!(F::is_len_valid(F::CAPACITY));
+}
+
+#[test]
 fn with_capacity() {
     let n = InlineVec::<u8, PointerSize>::with_capacity(0);
     assert_eq!(n.capacity(), PointerSize::USIZE - 1);

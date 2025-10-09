@@ -1,6 +1,6 @@
 //! Internal representation of inline vectors.
 
-use core::mem::{transmute_copy, ManuallyDrop, MaybeUninit};
+use core::mem::{ManuallyDrop, MaybeUninit};
 use core::num::NonZeroUsize;
 use core::ptr;
 use core::ptr::NonNull;
@@ -19,17 +19,17 @@ pub const fn bits(n: usize) -> u32 {
 ///
 /// # Safety
 ///
-/// `InlineRepr` is copiable but the copy is only valid if the elements are
-/// copiable.
+/// `InlineRepr` is copyable (with [`Self::clone`]) but the copy is only valid
+/// if the elements are copyable.
 ///
 /// **This is not enforced by the type system**, so it is up to the user of this
 /// type to either:
-/// - ensure that the element type is actually copiable
+/// - ensure that the element type is actually copyable
 /// - or that the source representation is no longer used after the copy.
 ///
-/// Also, the represetation does not drop its elements, so the user must
-/// ensure that the elements are properly dropped when the representation is
-/// no longer used.
+/// Also, the representation does not drop its elements, so the user must ensure
+/// that the elements are properly dropped when the representation is no longer
+/// used.
 ///
 /// For theses reasons, `InlineRepr` is not exposed outside this crate.
 #[repr(C)]
@@ -54,6 +54,9 @@ where
 }
 
 impl<T, N: InlineLength> Clone for InlineRepr<T, N> {
+    /// Actually copies the representation.
+    ///
+    /// See the safety comment on `InlineRepr`.
     fn clone(&self) -> Self {
         // SAFETY: see the safety comment on `InlineRepr`.
         unsafe { force_copy(self) }
@@ -160,17 +163,27 @@ where
     };
 
     /// Checks if the given length can be stored inline.
+    #[cfg(test)]
     pub const fn is_len_valid(len: usize) -> bool {
         // strict comparison to take into account the tag bit
         (bits(len) as usize) < Self::LEN_SIZE * 8
     }
 
+    /// Returns a pointer to the representation.
+    const fn ptr(&self) -> *const u8 {
+        ptr::from_ref(self).cast()
+    }
+
+    /// Returns a mutable non null pointer to the representation.
+    const fn non_null(&mut self) -> NonNull<u8> {
+        NonNull::from_mut(self).cast()
+    }
+
     /// Returns the length of the inline vector.
     pub const fn len(&self) -> usize {
         let mut value: usize = 0;
-        let src: NonNull<u8> =
-            unsafe { NonNull::from_ref(self).cast::<u8>().add(Self::LEN_OFFSET) };
-        let dst: NonNull<u8> = NonNull::from_mut(&mut value).cast();
+        let src = unsafe { self.ptr().add(Self::LEN_OFFSET) };
+        let dst: *mut u8 = ptr::from_mut(&mut value).cast();
 
         unsafe {
             dst.add(Self::IN_LEN_OFFSET)
@@ -188,13 +201,16 @@ where
     /// greater than the current length is only safe if the new elements are
     /// properly initialized.
     pub const unsafe fn set_len(&mut self, len: usize) {
-        debug_assert!(Self::is_len_valid(len));
+        debug_assert!(len <= Self::CAPACITY, "length exceeds inline capacity");
         let value = (len << 1) | 1;
 
-        let dst: NonNull<u8> =
-            unsafe { NonNull::from_mut(self).cast::<u8>().add(Self::LEN_OFFSET) };
+        // SAFETY: valid pointer by construction
+        let dst = unsafe { self.non_null().add(Self::LEN_OFFSET) };
+
         let src: NonNull<u8> = NonNull::from_ref(&value).cast();
 
+        // SAFETY: the destination is large enough by construction and there is
+        // no overlap between function parameter and local variable
         unsafe {
             src.add(Self::IN_LEN_OFFSET)
                 .copy_to_nonoverlapping(dst, Self::LEN_SIZE);
@@ -202,36 +218,34 @@ where
     }
 
     /// Returns a pointer to the inline vector.
+    ///
+    /// If the capacity is zero, returns a dangling pointer. This is to ensure
+    /// that the pointer is never null and property aligned.
     pub const fn as_ptr(&self) -> *const T {
         if Self::CAPACITY == 0 {
             return ptr::dangling();
         }
 
-        unsafe {
-            NonNull::from_ref(self)
-                .cast::<u8>()
-                .add(Self::DATA_OFFSET)
-                .cast()
-                .as_ptr()
-        }
+        unsafe { self.ptr().add(Self::DATA_OFFSET).cast() }
     }
 
     /// Returns a mutable pointer to the inline vector.
+    ///
+    /// If the capacity is zero, returns a dangling pointer. This is to ensure
+    /// that the pointer is never null and property aligned.
     pub const fn as_mut_ptr(&mut self) -> *mut T {
         self.as_non_null().as_ptr()
     }
 
     /// Returns a non-null pointer to the inline vector.
+    ///
+    /// If the capacity is zero, returns a dangling pointer. This is to ensure
+    /// that the pointer is never null and property aligned.
     pub const fn as_non_null(&mut self) -> NonNull<T> {
         if Self::CAPACITY == 0 {
             return NonNull::dangling();
         }
 
-        unsafe {
-            NonNull::from_mut(self)
-                .cast::<u8>()
-                .add(Self::DATA_OFFSET)
-                .cast()
-        }
+        unsafe { self.non_null().add(Self::DATA_OFFSET).cast() }
     }
 }

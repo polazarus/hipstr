@@ -112,7 +112,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     #[must_use]
     #[inline]
     pub(crate) fn from_thin_vec<P: ConstDefault>(v: ThinVec<T, P>) -> Self {
-        if v.capacity() > 0 && can_reuse::<T, P, B>() {
+        if can_reuse::<T, P, B>() {
             let v: ThinVec<T, B> = v.fresh_move();
             let s = unsafe { SmartThinVec::from_thin_vec_unchecked(v) };
             Self::from_smart_thin(s)
@@ -544,7 +544,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
                     unsafe {
                         let slice_end = allocated.ptr.add(allocated.len);
                         // compute the actual length
-                        let actual_len = ptr.offset_from_unsigned(slice_end);
+                        let actual_len = slice_end.offset_from_unsigned(ptr);
 
                         // compute the remaining part
                         let rem_ptr = ptr.add(actual_len);
@@ -552,10 +552,16 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
 
                         // drop the remaining elements
                         drop_raw_slice(rem_ptr, rem_len);
-                        // move the last element out
-                        let value = ptr.add(actual_len - 1).read();
+
                         // update the length
                         owner.set_len(actual_len - 1);
+
+                        // move the last element out
+                        let value = ptr.add(actual_len - 1).read();
+
+                        // reduce the slice
+                        allocated.len -= 1;
+
                         return Some(value);
                     }
                 }
