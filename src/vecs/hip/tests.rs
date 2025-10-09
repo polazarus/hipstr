@@ -1,5 +1,6 @@
 use alloc::boxed::Box;
 use alloc::vec;
+use core::ptr;
 
 use const_default::ConstDefault;
 use typenum::U32;
@@ -9,7 +10,7 @@ use crate::backend::tests::BoundedRc;
 use crate::vecs::hip::{HipVec, SplitOffError};
 use crate::vecs::inline::{InlineVec, PointerSize};
 use crate::vecs::thin::{Reserved, ThinVec};
-use crate::Arc;
+use crate::{Arc, Unique};
 
 #[test]
 fn size_of_hipvec() {
@@ -29,6 +30,7 @@ fn new() {
     let h = HipVec::<u8, Arc>::new();
     assert_eq!(h.len(), 0);
     assert!(!h.is_allocated());
+    assert!(h.is_borrowed()); // for now, the empty hipvec is borrowed
 }
 
 #[test]
@@ -36,6 +38,7 @@ fn new_boxed() {
     let h = HipVec::<Box<u8>, Arc>::new();
     assert_eq!(h.len(), 0);
     assert!(!h.is_allocated());
+    assert!(h.is_borrowed()); // for now, the empty hipvec is borrowed
 }
 
 #[test]
@@ -138,6 +141,40 @@ fn from_thin_vec_incompatible() {
 
     let t = ThinVec::<u8, P>::from_array([42; 42]);
     let h = HipVec::<u8, Arc>::from(t);
+    assert!(h.is_thin());
+    assert_eq!(h.as_slice(), &[42; 42]);
+}
+
+#[test]
+fn from_slice_clone() {
+    let h = HipVec::<u8, Arc>::from([].as_slice());
+    assert_eq!(h.len(), 0);
+    assert!(h.is_borrowed()); // for now, the empty hipvec is borrowed
+
+    let h = HipVec::<u8, Arc>::from([1, 2, 3, 4, 5].as_slice());
+    assert_eq!(h.len(), 5);
+    assert!(h.is_inline());
+    assert_eq!(h.as_slice(), &[1, 2, 3, 4, 5]);
+
+    let h = HipVec::<u8, Arc>::from([42; 42].as_slice());
+    assert_eq!(h.len(), 42);
+    assert!(h.is_thin());
+    assert_eq!(h.as_slice(), &[42; 42]);
+}
+
+#[test]
+fn from_slice_copy() {
+    let h = HipVec::<u8, Arc>::from_slice_copy([].as_slice());
+    assert_eq!(h.len(), 0);
+    assert!(h.is_borrowed()); // for now, the empty hipvec is borrowed
+
+    let h = HipVec::<u8, Arc>::from_slice_copy([1, 2, 3, 4, 5].as_slice());
+    assert_eq!(h.len(), 5);
+    assert!(h.is_inline());
+    assert_eq!(h.as_slice(), &[1, 2, 3, 4, 5]);
+
+    let h = HipVec::<u8, Arc>::from_slice_copy([42; 42].as_slice());
+    assert_eq!(h.len(), 42);
     assert!(h.is_thin());
     assert_eq!(h.as_slice(), &[42; 42]);
 }
@@ -329,4 +366,71 @@ fn pop() {
     assert_eq!(h.len(), 0);
     assert!(h.as_slice().is_empty());
     assert!(h.is_inline());
+}
+
+#[test]
+fn slice_inline() {
+    let h = HipVec::<u8, Arc>::from([1, 2, 3, 4, 5]);
+    assert!(h.is_inline());
+    assert_eq!(h.as_slice(), &[1, 2, 3, 4, 5]);
+
+    let h1 = h.slice(..);
+    assert!(h1.is_inline());
+    assert_eq!(h1.as_slice(), &[1, 2, 3, 4, 5]);
+
+    let h2 = h.slice(1..4);
+    assert!(h2.is_inline());
+    assert_eq!(h2.as_slice(), &[2, 3, 4]);
+}
+
+#[test]
+fn slice_thin() {
+    let h = HipVec::<u8, Arc>::from([42; 42]);
+    assert!(h.is_thin());
+    assert_eq!(h.as_slice(), &[42; 42]);
+
+    let h1 = h.slice(..);
+    assert!(h1.is_thin());
+    assert_eq!(h1.as_slice(), &[42; 42]);
+
+    let h2 = h.slice(1..40);
+    assert!(h2.is_thin());
+    assert_eq!(h2.as_slice(), &[42; 39]);
+}
+
+#[test]
+fn slice_unique() {
+    let h = HipVec::<u8, Unique>::from([42; 42]);
+    assert!(h.is_thin());
+    assert_eq!(h.as_slice(), &[42; 42]);
+    let h2 = h.slice(1..40);
+    assert!(h2.is_thin());
+    assert!(h.is_unique());
+    assert!(h2.is_unique());
+    assert_eq!(h2.as_slice(), &[42; 39]);
+}
+
+#[test]
+fn slice_empty() {
+    let h = HipVec::<u8, Arc>::new();
+    assert!(h.is_empty());
+    assert!(h.as_slice().is_empty());
+
+    let h1 = h.slice(..);
+    assert!(h1.is_empty());
+    assert!(h1.as_slice().is_empty());
+
+    let h = HipVec::<u8, Arc>::from([1, 2, 3]);
+    let h2 = h.slice(1..1);
+    assert!(h2.is_empty());
+    assert!(h2.is_borrowed());
+    assert!(h2.as_slice().is_empty());
+}
+
+#[test]
+fn inline_ptr_is_inline() {
+    let h = HipVec::<u8, Arc>::from([1, 2, 3]);
+    let start: *const u8 = ptr::from_ref(&h).cast();
+    let end: *const u8 = ptr::from_ref(&h).wrapping_add(1).cast();
+    assert!((start..end).contains(&h.as_ptr()));
 }

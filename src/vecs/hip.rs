@@ -383,7 +383,9 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     where
         T: Clone,
     {
-        if slice.len() <= Self::INLINE_CAP {
+        if slice.is_empty() {
+            Self::EMPTY
+        } else if slice.len() <= Self::INLINE_CAP {
             let inline = HipInline::from_slice_clone(slice);
             Self::from_inline(inline)
         } else {
@@ -393,11 +395,13 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     }
 
     #[must_use]
-    pub(crate) fn from_slice_copy(slice: &[T]) -> Self
+    pub fn from_slice_copy(slice: &[T]) -> Self
     where
         T: Copy,
     {
-        if slice.len() <= Self::INLINE_CAP {
+        if slice.is_empty() {
+            Self::EMPTY
+        } else if slice.len() <= Self::INLINE_CAP {
             let inline = HipInline::from_slice_copy(slice);
             Self::from_inline(inline)
         } else {
@@ -480,7 +484,9 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     where
         T: Clone,
     {
-        if Self::MAY_INLINE && range.len() < Self::INLINE_CAP {
+        if range.is_empty() {
+            Self::EMPTY
+        } else if Self::MAY_INLINE && range.len() < Self::INLINE_CAP {
             let inline = HipInline::from_slice_clone(&self.as_slice()[range]);
             Self::from_inline(inline)
         } else {
