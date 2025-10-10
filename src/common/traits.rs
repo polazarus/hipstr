@@ -23,6 +23,12 @@ pub trait Vector: Sealed {
 }
 
 pub trait MutVector: Vector {
+    /// Sets the length of the vector.
+    ///
+    /// # Safety
+    ///
+    /// The length must be valid and must not exceed the current capacity. The
+    /// caller must ensure that the new elements are properly initialized.
     unsafe fn set_len(&mut self, len: usize);
 
     fn as_mut_ptr(&mut self) -> *mut Self::Item;

@@ -123,22 +123,16 @@ where
             reserved
         };
 
-        let len_off: usize;
-        let data_off: usize;
-        if cfg!(target_endian = "little") {
-            // left aligned
-            len_off = 0;
-
+        let (len_off, data_off) = if cfg!(target_endian = "little") {
+            // data offset must be aligned
             assert!(reserved % t_align == 0);
-
-            data_off = reserved;
+            // "left" aligned
+            (0, reserved)
         } else {
             // beware to be right aligned, so offset from the end with the tight
             // size (and not the reserved size)
-            len_off = blob - len_size;
-
-            data_off = 0;
-        }
+            (blob - len_size, 0)
+        };
 
         (len_off, len_size, data_off, data_size)
     };
