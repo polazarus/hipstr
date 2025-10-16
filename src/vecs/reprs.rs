@@ -14,12 +14,18 @@ use rules_derive::rules_derive;
 use crate::common::derives::ConstDefault;
 use crate::common::ZeroUsize;
 
-pub const TAG_SIZE: usize = 2; // 2 bits
-pub const MIN_ALIGN: usize = 1 << TAG_SIZE; // minimal alignment is 4 bytes
+pub const MAX_TAG_SIZE: usize = 2; // 2 bits
+
+/// Minimal alignment to store the tag
+pub const MIN_ALIGN: usize = 1 << MAX_TAG_SIZE; // minimal alignment is 4 bytes
+
+/// Mask to extract the inline tag
 pub const INLINE_MASK: usize = 1;
-pub const MASK: usize = (1 << TAG_SIZE) - 1; // 0b11
+
+/// Tag for sliced representation (borrowed or allocated)
 pub const SLICED: usize = 0b10;
-pub const SLICED_PTR_MASK: usize = !MASK;
+
+/// Tag for inline representation
 pub const INLINE: usize = 1; // 0b01
 
 pub type Null = ZeroUsize;
@@ -237,7 +243,7 @@ pub const fn check_size_align_and_offsets<T, P>() {
     assert!(align_of::<FatInner<T, P>>() >= align_of::<FatOrThinView<T, P>>());
 
     // Ensures that this alignment is sufficient for the tag.
-    assert!(align_of::<FatOrThinView<T, P>>() >= TAG_SIZE);
+    assert!(align_of::<FatOrThinView<T, P>>() >= MAX_TAG_SIZE);
 
     // Ensures that the field prefix is at the same offset in all three structs.
     assert!(offset_of!(ThinHeader<T, P>, prefix) == offset_of!(FatOrThinView<T, P>, prefix));
