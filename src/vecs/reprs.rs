@@ -20,8 +20,6 @@ pub const INLINE_MASK: usize = 1;
 pub const MASK: usize = (1 << TAG_SIZE) - 1; // 0b11
 pub const SLICED: usize = 0b10;
 pub const SLICED_PTR_MASK: usize = !MASK;
-pub const THIN: usize = SLICED;
-pub const FAT: usize = 3; // 0b11
 pub const INLINE: usize = 1; // 0b01
 
 pub type Null = ZeroUsize;
@@ -133,16 +131,16 @@ pub type FatOrThinRepr<T, P> = MagicPointer<FatOrThinView<T, P>>;
 impl<T> MagicPointer<T> {
     const fn is_not_allocated(self) -> bool {
         let addr: usize = unsafe { transmute(self.inner) };
-        addr == THIN
+        addr == SLICED
     }
 
     pub const EMPTY: Self = Self {
-        inner: NonNull::new(ptr::without_provenance_mut(THIN)).unwrap(),
+        inner: NonNull::new(ptr::without_provenance_mut(SLICED)).unwrap(),
     };
 
     pub const fn new(header: NonNull<T>) -> Self {
         Self {
-            inner: unsafe { header.byte_add(THIN) },
+            inner: unsafe { header.byte_add(SLICED) },
         }
     }
 
@@ -150,7 +148,7 @@ impl<T> MagicPointer<T> {
         if self.is_not_allocated() {
             None
         } else {
-            let ptr = unsafe { self.inner.as_ptr().byte_sub(THIN) };
+            let ptr = unsafe { self.inner.as_ptr().byte_sub(SLICED) };
             NonNull::new(ptr)
         }
     }

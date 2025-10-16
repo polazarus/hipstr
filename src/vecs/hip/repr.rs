@@ -1,16 +1,19 @@
+//! Internal representation of hip vectors.
+
 use core::marker::PhantomData;
 use core::mem::{transmute, MaybeUninit};
 use core::ptr::{self, NonNull};
 
 use const_default::ConstDefault;
 
-use crate::vecs::reprs::{FatOrThinRepr, ThinRepr, Variant, INLINE, INLINE_MASK, SLICED, THIN};
+use crate::vecs::reprs::{FatOrThinRepr, ThinRepr, Variant, INLINE, INLINE_MASK, SLICED};
 use crate::vecs::smart_fat::SmartFatVec;
 use crate::vecs::smart_thin::SmartThinVec;
 use crate::Backend;
 
 pub type Allocated<T, B> = Sliced<T, Owner<T, B>>;
 
+/// Owner of a owned hip vector.
 #[repr(transparent)]
 pub struct Owner<T, B>(FatOrThinRepr<T, B>);
 
@@ -80,6 +83,7 @@ impl<T, B: Backend> Owner<T, B> {
     }
 }
 
+/// Pivot representation.
 #[derive(Clone, Copy)]
 #[repr(C)]
 pub struct Pivot {
@@ -93,24 +97,28 @@ pub struct Pivot {
 }
 
 impl Pivot {
+    /// Checks if the hip vector is inline.
     #[inline]
     pub const fn is_inline(&self) -> bool {
         let word = unsafe { transmute::<NonNull<()>, usize>(self.tagged_word) };
         word & INLINE_MASK == INLINE
     }
 
+    /// Checks if the hip vector is borrowed.
     #[inline]
     pub const fn is_borrowed(&self) -> bool {
         let word = unsafe { transmute::<NonNull<()>, usize>(self.tagged_word) };
         word == SLICED
     }
 
+    /// Checks if the hip vector is allocated (fat or thin).
     #[inline]
     pub const fn is_allocated(&self) -> bool {
         !(self.is_inline() || self.is_borrowed())
     }
 }
 
+/// Representation of a borrowed hip vector.
 pub type Borrowed<'borrow, T> = Sliced<T, BorrowedTag<'borrow>>;
 
 impl<'borrow, T> Borrowed<'borrow, T> {
@@ -140,9 +148,10 @@ impl ConstDefault for BorrowedTag<'_> {
 #[derive(Clone, Copy)]
 #[repr(usize)]
 pub enum BorrowedReserved {
-    Value = THIN,
+    Value = SLICED,
 }
 
+/// Representation of a sliced hip vector, that is, a non inline hip vector.
 #[repr(C)]
 pub struct Sliced<T, O> {
     #[cfg(target_endian = "little")]
