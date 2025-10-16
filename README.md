@@ -41,15 +41,15 @@ let chars = user.chars().count(); // "inherits" `&str` methods
 - `borsh`: provides serialization/deserialization support with
   [`borsh`](https://borsh.io)
 - `bstr`: provides compatibility with [BurntSushi's `bstr` crate](https://github.com/BurntSushi/bstr)
-- `unstable`: do nothing, used to reveal unstable implementation details
+- `unstable`: does nothing; used to reveal unstable implementation details
 
 ## ☣️ Safety of `hipstr`
 
 This crate makes extensive use of `unsafe` code blocks. 🤷
 
-It leverages the 2-bit alignment niche present in pointers across most platforms (all platforms currently supported by the Rust compiler?) to discriminate between the three possible representations.
+It leverages the 2-bit alignment niche present in pointers across most platforms (i.e., all platforms currently supported by the Rust compiler) to discriminate between the three possible representations.
 
-To make things safer, Rust is tested thoroughly on multiple platforms, normally and with [Miri] (the MIR interpreter).
+To make things safer, Rust is tested thoroughly on multiple platforms, both normally and with [Miri] (the MIR interpreter).
 
 ## 🧪 Testing and Verification Strategy
 
@@ -87,7 +87,7 @@ In the Github-provided CI, `hipstr` is tested under:
 - Windows
 - MacOS (ARM 64-bit LE)
 
-You can easily run the test on various platforms with [`cross`]:
+You can easily run the tests on various platforms with [`cross`]:
 
 ```bash
 cross test --target s390x-unknown-linux-gnu         # 32-bit BE
@@ -102,7 +102,7 @@ issue they are not working anymore… see
 
 ### 🧵 [Loom]
 
-This crates uses the `loom` crate to check the custom "Arc" implementation. To
+This crate uses the `loom` crate to check the custom "Arc" implementation. To
 run the tests:
 
 ```bash
@@ -164,9 +164,9 @@ In short, `HipStr`, one string type to rule them all 😉
 
 [![How standards proliferate](https://imgs.xkcd.com/comics/standards.png)](https://xkcd.com/927/)
 
-## 🏎️ Performances
+## 🏎️ Performance
 
-While speed is not the main motivator for `hipstr`, it seems to be doing OK on that front.
+While speed is not the main motivator for `hipstr`, it seems to perform well on that front.
 
 See some actual benchmarks on [Rust's String Rosetta].
 
