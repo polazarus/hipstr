@@ -12,7 +12,7 @@ use crate::backend;
 pub type ThinVec<T> = self::thin::ThinVec<T, self::thin::Reserved>;
 
 /// An inline vector that can store up to `L` bytes inline.
-pub type InlineVec<T, L = self::hip::InlineBytes> = self::inline::InlineVec<T, L>;
+pub type InlineVec<T, L = self::hip::Bytes> = self::inline::InlineVec<T, L>;
 
 /// A possibly reference-counted thin vector
 #[cfg(target_has_atomic = "ptr")]

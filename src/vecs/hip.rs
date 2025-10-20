@@ -25,8 +25,18 @@ pub(crate) mod repr;
 #[cfg(test)]
 mod tests;
 
+/// Hip vector, i.e. inline, copy on write shared, or borrowed.
+///
+/// # Examples
+///
+/// ```
+/// use hipstr::vecs::HipVec;
+/// let h: HipVec<Box<i32>> = HipVec::from([1, 2, 3].map(Box::new));
+/// let h2 = h.clone();
+/// assert!(std::ptr::eq(h.as_slice(), h2.as_slice()));
+/// ```
 #[rules_derive(
-    ConstDefault(Self::EMPTY),
+    ConstDefault(Self::borrowed(&[])),
     AsRef([T], Self::as_slice),
     Deref([T], Self::as_slice),
     From([T; N], Self::from_array, (const N: usize)),
@@ -38,17 +48,28 @@ mod tests;
     DelegateHash(Self::as_slice where T: core::hash::Hash),
 )]
 pub struct HipVec<'a, T, B: Backend>(Pivot, PhantomData<(B, &'a [T])>);
-pub const INLINE_BYTES: usize = size_of::<Borrowed<()>>();
-pub type InlineBytes = crate::typenum::U<INLINE_BYTES>;
-type HipInline<T> = InlineVec<T, InlineBytes>;
+
+/// Byte size for `HipVec`.
+pub const BYTES: usize = size_of::<Borrowed<()>>();
+
+/// Byte size for `HipVec` as a type.
+pub type Bytes = crate::typenum::U<BYTES>;
+
+/// Inline vector type for `HipVec`.
+pub type Inline<T> = InlineVec<T, Bytes>;
 
 impl<'a, T, B: Backend> HipVec<'a, T, B> {
-    const EMPTY: Self = Self::borrowed(&[]);
-    pub const INLINE_CAP: usize = InlineVec::<T, InlineBytes>::CAPACITY;
-    const MAY_INLINE: bool = align_of::<T>() <= align_of::<Self>() && Self::INLINE_CAP > 0;
+    /// Inline capacity in number of elements.
+    pub const INLINE_CAP: usize = if align_of::<T>() <= align_of::<Self>() {
+        Inline::<T>::CAPACITY
+    } else {
+        0
+    };
+
+    const MAY_INLINE: bool = Self::INLINE_CAP > 0;
 
     const fn fit_inline(len: usize) -> bool {
-        Self::MAY_INLINE && len <= Self::INLINE_CAP
+        len > 0 && len <= Self::INLINE_CAP
     }
 
     /// Creates a new empty `HipVec`.
@@ -69,7 +90,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         {
             check_fat_and_thin_compatibility::<T, B>();
         }
-        Self::EMPTY
+        Self::DEFAULT
     }
 
     /// Creates a `HipVec` from an array.
@@ -79,7 +100,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         if N == 0 {
             Self::new()
         } else if const { Self::fit_inline(N) } {
-            let inline = HipInline::from_array(array);
+            let inline = Inline::from_array(array);
             Self::from_inline(inline)
         } else {
             let smart = SmartThinVec::from_array(array);
@@ -87,13 +108,31 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         }
     }
 
+    /// Creates a `HipVec` from a vector, normalizing the representation.
+    ///
+    /// A normalized representation is:
+    ///
+    /// - the usual empty vector (same as [`HipVec::DEFAULT`]),
+    /// - inline vector if it fits,
+    /// - allocated thin otherwise.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::HipVec;
+    /// let a: HipVec<u8> = HipVec::from_vector_normalized(vec![1,2,3]);
+    /// assert!(a.is_inline());
+    /// let b: HipVec<u8> = HipVec::from_vector_normalized(vec![0; 1024]);
+    /// assert!(b.is_allocated());
+    /// assert!(b.is_thin());
+    /// ```
     #[must_use]
     #[inline]
     pub fn from_vector_normalized(v: impl Mutate<Item = T>) -> Self {
         if v.len() == 0 {
             Self::new()
         } else if Self::fit_inline(v.len()) {
-            let inline = HipInline::from_vector(v);
+            let inline = Inline::from_vector(v);
             Self::from_inline(inline)
         } else {
             let smart = SmartThinVec::from_vector(v);
@@ -101,9 +140,10 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         }
     }
 
+    /// Creates a `HipVec` from a [`Vec`].
     #[must_use]
     #[inline]
-    pub fn from_vec(vec: Vec<T>) -> Self {
+    pub(crate) fn from_vec(vec: Vec<T>) -> Self {
         let smart = SmartFatVec::from_vec(vec);
         let sliced = Sliced {
             ptr: smart.as_ptr(),
@@ -114,6 +154,8 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         unsafe { transmute::<Sliced<T, SmartFatVec<T, B>>, Self>(sliced) }
     }
 
+    /// Creates a `HipVec` from a [`ThinVec`], reusing the representation if
+    /// possible.
     #[must_use]
     #[inline]
     pub(crate) fn from_thin_vec<P: ConstDefault>(v: ThinVec<T, P>) -> Self {
@@ -149,9 +191,9 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     /// use hipstr::vecs::HipVec;
     /// let a: HipVec<u8> = HipVec::from([0; 1024]);
     /// assert!(!a.is_inline());
-    /// //assert!(!a.is_borrowed());
-    /// //assert!(a.is_allocated());
-    /// //assert_eq!(a.len(), 1024);
+    /// assert!(!a.is_borrowed());
+    /// assert!(a.is_allocated());
+    /// assert_eq!(a.len(), 1024);
     /// ```
     #[must_use]
     #[inline]
@@ -196,17 +238,46 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
             || (self.is_allocated() && unsafe { self.as_allocated_unchecked() }.owner.is_unique())
     }
 
+    /// Returns `true` if the vector is allocated and uses the fat backend.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::HipVec;
+    /// let a: HipVec<u8> = HipVec::from(vec![0; 32]);
+    /// assert!(a.is_allocated());
+    /// assert!(a.is_fat());
+    /// ```
     #[must_use]
     #[inline]
     pub const fn is_fat(&self) -> bool {
         self.is_allocated() && unsafe { self.as_allocated_unchecked() }.owner.is_fat()
     }
 
+    /// Returns `true` if the vector is allocated and uses the thin backend.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::HipVec;
+    /// let a: HipVec<u8> = HipVec::from([0; 1024]);
+    /// assert!(a.is_allocated());
+    /// assert!(a.is_thin());
+    /// ```
     #[must_use]
     pub const fn is_thin(&self) -> bool {
         self.is_allocated() && unsafe { self.as_allocated_unchecked() }.owner.is_thin()
     }
 
+    /// Returns a pointer to the first element of the vector.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::HipVec;
+    /// let a: HipVec<u8> = HipVec::from([1, 2, 3]);
+    /// assert_eq!(unsafe { *a.as_ptr() }, 1);
+    /// ```
     #[must_use]
     pub const fn as_ptr(&self) -> *const T {
         if self.is_inline() {
@@ -216,6 +287,22 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         }
     }
 
+    /// Returns the number of elements in the vector.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::HipVec;
+    ///
+    /// let a: HipVec<u8> = HipVec::from([1, 2, 3]);
+    /// assert_eq!(a.len(), 3);
+    ///
+    /// let b: HipVec<u8> = HipVec::new();
+    /// assert_eq!(b.len(), 0);
+    ///
+    /// let c: HipVec<u8> = HipVec::from([0; 1024]);
+    /// assert_eq!(c.len(), 1024);
+    /// ```
     #[must_use]
     pub const fn len(&self) -> usize {
         if self.is_inline() {
@@ -231,10 +318,11 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     ///
     /// ```
     /// use hipstr::vecs::HipVec;
+    ///
     /// let a: HipVec<u8> = HipVec::new();
     /// assert!(a.is_empty());
     ///
-    /// let b: HipVec<u8> = HipVec::from([1,2,3]);
+    /// let b: HipVec<u8> = HipVec::from([1, 2, 3]);
     /// assert!(!b.is_empty());
     /// ```
     #[must_use]
@@ -243,7 +331,21 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         self.len() == 0
     }
 
+    /// Returns a slice of the vector's contents.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::HipVec;
+    ///
+    /// let a: HipVec<u8> = HipVec::from([1, 2, 3]);
+    /// assert_eq!(a.as_slice(), &[1, 2, 3]);
+    ///
+    /// let b: HipVec<u8> = HipVec::new();
+    /// assert_eq!(b.as_slice(), &[]);
+    /// ```
     #[must_use]
+    #[inline]
     pub const fn as_slice(&self) -> &[T] {
         if self.is_inline() {
             unsafe { self.as_inline_unchecked() }.as_slice()
@@ -257,7 +359,8 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     /// # Safety
     ///
     /// The vector must be inline.
-    const unsafe fn as_inline_unchecked(&self) -> &InlineVec<T, InlineBytes> {
+    #[inline]
+    const unsafe fn as_inline_unchecked(&self) -> &InlineVec<T, Bytes> {
         debug_assert!(self.is_inline());
         // SAFETY: precondition
         unsafe { &*ptr::from_ref(self).cast() }
@@ -268,7 +371,8 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     /// # Safety
     ///
     /// The vector must be inline.
-    const unsafe fn as_inline_mut_unchecked(&mut self) -> &mut InlineVec<T, InlineBytes> {
+    #[inline]
+    const unsafe fn as_inline_mut_unchecked(&mut self) -> &mut InlineVec<T, Bytes> {
         debug_assert!(self.is_inline());
         // SAFETY: precondition
         unsafe { &mut *ptr::from_mut(self).cast() }
@@ -279,6 +383,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     /// # Safety
     ///
     /// The vector must not be inline.
+    #[inline]
     const unsafe fn as_sliced_unchecked(&self) -> &UnknownSliced<T> {
         debug_assert!(!self.is_inline());
         // SAFETY: precondition
@@ -290,6 +395,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     /// # Safety
     ///
     /// The vector must not be inline.
+    #[inline]
     const unsafe fn as_sliced_mut_unchecked(&mut self) -> &mut UnknownSliced<T> {
         debug_assert!(!self.is_inline());
         // SAFETY: precondition
@@ -301,6 +407,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     /// # Safety
     ///
     /// The vector must be allocated.
+    #[inline]
     const unsafe fn as_allocated_unchecked(&self) -> &Allocated<T, B> {
         debug_assert!(self.is_allocated());
         // SAFETY: precondition
@@ -312,6 +419,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     /// # Safety
     ///
     /// The vector must be allocated and unique.
+    #[inline]
     const unsafe fn as_allocated_mut_unchecked(&mut self) -> &mut Allocated<T, B> {
         debug_assert!(self.is_allocated());
         // SAFETY: precondition
@@ -361,7 +469,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         // compile time check transformed to runtime panic
         assert!(Self::MAY_INLINE, "this vector cannot be inlined");
 
-        if const { InlineBytes::USIZE == L::USIZE } {
+        if const { Bytes::USIZE == L::USIZE } {
             // reuse the inline representation if sizes match
             debug_assert!(Self::MAY_INLINE);
 
@@ -378,7 +486,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
             let _ = ManuallyDrop::new(old);
 
             // SAFETY: inline repr
-            unsafe { force_transmute::<InlineVec<T, InlineBytes>, Self>(new) }
+            unsafe { force_transmute::<InlineVec<T, Bytes>, Self>(new) }
         }
     }
 
@@ -389,9 +497,9 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         T: Clone,
     {
         if slice.is_empty() {
-            Self::EMPTY
+            Self::DEFAULT
         } else if slice.len() <= Self::INLINE_CAP {
-            let inline = HipInline::from_slice_clone(slice);
+            let inline = Inline::from_slice_clone(slice);
             Self::from_inline(inline)
         } else {
             let smart = SmartThinVec::from_slice_clone(slice);
@@ -405,9 +513,9 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         T: Copy,
     {
         if slice.is_empty() {
-            Self::EMPTY
+            Self::DEFAULT
         } else if slice.len() <= Self::INLINE_CAP {
-            let inline = HipInline::from_slice_copy(slice);
+            let inline = Inline::from_slice_copy(slice);
             Self::from_inline(inline)
         } else {
             let smart = SmartThinVec::from_slice_copy(slice);
@@ -490,9 +598,9 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         T: Clone,
     {
         if range.is_empty() {
-            Self::EMPTY
+            Self::DEFAULT
         } else if Self::MAY_INLINE && range.len() < Self::INLINE_CAP {
-            let inline = HipInline::from_slice_clone(&self.as_slice()[range]);
+            let inline = Inline::from_slice_clone(&self.as_slice()[range]);
             Self::from_inline(inline)
         } else {
             debug_assert!(!self.is_inline());

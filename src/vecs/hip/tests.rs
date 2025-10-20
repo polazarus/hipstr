@@ -5,7 +5,7 @@ use core::ptr;
 use const_default::ConstDefault;
 use typenum::U32;
 
-use super::InlineBytes;
+use super::Bytes;
 use crate::backend::tests::BoundedRc;
 use crate::vecs::hip::{HipVec, SplitOffError};
 use crate::vecs::inline::{InlineVec, PointerSize};
@@ -72,7 +72,7 @@ fn from_array_thin() {
 
 #[test]
 fn from_inline() {
-    let inline = InlineVec::<u8, InlineBytes>::from([1, 2, 3, 4, 5]);
+    let inline = InlineVec::<u8, Bytes>::from([1, 2, 3, 4, 5]);
     let h = HipVec::<u8, Arc>::from_inline(inline);
     assert_eq!(h.len(), 5);
     assert!(h.is_inline());
