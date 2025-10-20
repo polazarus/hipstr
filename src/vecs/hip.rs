@@ -14,6 +14,7 @@ use crate::common::derives::{AsRef, ConstDefault, Copy, DelegateDebug, DelegateH
 use crate::common::traits::Mutate;
 use crate::common::{self, drop_raw_slice, force_transmute};
 use crate::vecs::inline::{InlineLength, InlineVec};
+use crate::vecs::reprs::check_fat_and_thin_compatibility;
 use crate::vecs::smart_fat::SmartFatVec;
 use crate::vecs::smart_thin::SmartThinVec;
 use crate::vecs::thin::{can_reuse, ThinVec};
@@ -64,6 +65,10 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     /// ```
     #[must_use]
     pub const fn new() -> Self {
+        #[cfg(debug_assertions)]
+        {
+            check_fat_and_thin_compatibility::<T, B>();
+        }
         Self::EMPTY
     }
 

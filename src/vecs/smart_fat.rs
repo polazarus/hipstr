@@ -31,7 +31,7 @@ mod tests;
 pub struct SmartFatVec<T, B: Backend>(pub(super) FatRepr<T, B>);
 
 impl<T, B: Backend> SmartFatVec<T, B> {
-    const EMPTY: Self = Self(FatRepr::EMPTY);
+    const EMPTY: Self = Self(FatRepr::NULL);
 
     /// Creates a new, empty `SmartFatVec`.
     ///
@@ -57,7 +57,7 @@ impl<T, B: Backend> SmartFatVec<T, B> {
     pub(crate) fn from_vec(vec: Vec<T>) -> Self {
         let cap = vec.capacity();
         let repr = if cap == 0 {
-            FatRepr::EMPTY
+            FatRepr::NULL
         } else {
             let mut vec = ManuallyDrop::new(vec);
 

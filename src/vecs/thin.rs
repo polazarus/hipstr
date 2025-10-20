@@ -94,7 +94,7 @@ macro_rules! thin_vec {
 #[repr(transparent)]
 #[rules_derive(
     MutVector(T),
-    ConstDefault(Self(ThinRepr::EMPTY)),
+    ConstDefault(Self(ThinRepr::NULL)),
     DelegateDebug(Self::as_slice where T: core::fmt::Debug),
     DelegateHash(Self::as_slice where T: core::hash::Hash),
     AsRef([T], Self::as_slice, Self::as_mut_slice),
@@ -900,7 +900,7 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
 
     fn make_repr(capacity: usize) -> ThinRepr<T, P> {
         if capacity == 0 {
-            return ThinRepr::EMPTY;
+            return ThinRepr::NULL;
         }
 
         let capacity = capacity.max(Self::MINIMAL_CAPACITY);
@@ -940,7 +940,7 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
                 dealloc(header.cast().as_ptr(), layout);
             }
         }
-        self.0 = ThinRepr::EMPTY;
+        self.0 = ThinRepr::NULL;
     }
 
     /// Splits the collection into two at the given index.

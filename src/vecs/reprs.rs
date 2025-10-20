@@ -1,18 +1,20 @@
-#![allow(unused)]
+//! Definitions of various vector representations: thin, fat, and fat-or-thin.
+//!
+//! This module defines the data structures and associated functions for handling
+//! different vector representations:
+//! - thin: `ThinRepr`, `ThinHeader`
+//! - fat: `FatRepr`, `FatInner`
+//! - fat-or-thin: `FatOrThinRepr`, `FatOrThinView
+
+//#![allow(unused)]
 
 use core::alloc::Layout;
 use core::marker::PhantomData;
-use core::mem::{self, offset_of, transmute, transmute_copy, MaybeUninit};
-#[cfg(target_endian = "little")]
-use core::num::NonZeroU8;
-use core::num::NonZeroUsize;
+use core::mem::{self, offset_of, transmute};
 use core::ptr::{self, NonNull};
 
-use const_default::ConstDefault;
-use rules_derive::rules_derive;
-
-use crate::common::derives::ConstDefault;
 use crate::common::ZeroUsize;
+use const_default::ConstDefault;
 
 pub const MAX_TAG_SIZE: usize = 2; // 2 bits
 
@@ -27,8 +29,6 @@ pub const SLICED: usize = 0b10;
 
 /// Tag for inline representation
 pub const INLINE: usize = 1; // 0b01
-
-pub type Null = ZeroUsize;
 
 /// A thin vector header with prefix.
 #[derive(Clone, Copy, Debug)]
@@ -98,14 +98,15 @@ pub struct FatInner<T, P> {
     pub len: usize,
 }
 
-#[repr(C)]
-pub struct MagicPointer<T> {
+/// A tagged pointer, guaranted to have a niche at zero, but can be null.
+#[repr(transparent)]
+pub struct MagicPointer<T, const TAG: usize = SLICED> {
     inner: NonNull<T>,
 }
 
-impl<T> Copy for MagicPointer<T> {}
+impl<T, const TAG: usize> Copy for MagicPointer<T, TAG> {}
 
-impl<T> Clone for MagicPointer<T> {
+impl<T, const TAG: usize> Clone for MagicPointer<T, TAG> {
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn clone(&self) -> Self {
         *self
@@ -134,24 +135,30 @@ pub type FatRepr<T, P> = MagicPointer<FatInner<T, P>>;
 /// the result of `is_fat` or `is_thin`.
 pub type FatOrThinRepr<T, P> = MagicPointer<FatOrThinView<T, P>>;
 
-impl<T> MagicPointer<T> {
-    const fn is_not_allocated(self) -> bool {
+impl<T, const TAG: usize> MagicPointer<T, TAG> {
+    /// Checks if the pointer is null.
+    ///
+    /// The underlying representation is a tagged null.
+    const fn is_null(self) -> bool {
         let addr: usize = unsafe { transmute(self.inner) };
         addr == SLICED
     }
 
-    pub const EMPTY: Self = Self {
-        inner: NonNull::new(ptr::without_provenance_mut(SLICED)).unwrap(),
+    /// A null magic pointer.
+    pub const NULL: Self = Self {
+        inner: NonNull::new(ptr::without_provenance_mut(TAG)).unwrap(),
     };
 
+    /// Creates a new magic pointer from a non null pointer.
     pub const fn new(header: NonNull<T>) -> Self {
         Self {
-            inner: unsafe { header.byte_add(SLICED) },
+            inner: unsafe { header.byte_add(TAG) },
         }
     }
 
+    /// Gets the underlying pointer, or `None` if null.
     pub const fn get(self) -> Option<NonNull<T>> {
-        if self.is_not_allocated() {
+        if self.is_null() {
             None
         } else {
             let ptr = unsafe { self.inner.as_ptr().byte_sub(SLICED) };
@@ -159,6 +166,7 @@ impl<T> MagicPointer<T> {
         }
     }
 
+    /// Gets a reference to the underlying data, or `None` if null.
     pub const fn as_ref(&self) -> Option<&T> {
         match self.get() {
             Some(ptr) => unsafe { Some(ptr.as_ref()) },
@@ -166,6 +174,7 @@ impl<T> MagicPointer<T> {
         }
     }
 
+    /// Gets a mutable reference to the underlying data, or `None` if null.
     #[allow(clippy::needless_pass_by_ref_mut)]
     pub const fn as_mut(&mut self) -> Option<&mut T> {
         match self.get() {
@@ -176,6 +185,7 @@ impl<T> MagicPointer<T> {
 }
 
 impl<T, P> FatOrThinRepr<T, P> {
+    /// Checks if the representation is fat and not null.
     #[inline]
     pub const fn is_fat(self) -> bool {
         let Some(r) = self.as_ref() else {
@@ -184,6 +194,7 @@ impl<T, P> FatOrThinRepr<T, P> {
         r.ptr.is_some()
     }
 
+    /// Checks if the representation is thin and not null.
     #[inline]
     pub const fn is_thin(self) -> bool {
         let Some(r) = self.as_ref() else {
@@ -192,33 +203,20 @@ impl<T, P> FatOrThinRepr<T, P> {
         r.ptr.is_none()
     }
 
-    #[allow(clippy::transmute_ptr_to_ptr)]
-    pub fn split(&self) -> Variant<&ThinRepr<T, P>, &FatRepr<T, P>> {
-        if self.is_thin() {
-            Variant::Thin(unsafe { mem::transmute::<&Self, &ThinRepr<T, P>>(self) })
-        } else {
-            Variant::Fat(unsafe { mem::transmute::<&Self, &FatRepr<T, P>>(self) })
-        }
-    }
-
-    #[allow(clippy::transmute_ptr_to_ptr)]
-    pub fn split_mut(&mut self) -> Variant<&mut ThinRepr<T, P>, &mut FatRepr<T, P>> {
-        if self.is_thin() {
-            Variant::Thin(unsafe { mem::transmute::<&mut Self, &mut ThinRepr<T, P>>(self) })
-        } else {
-            Variant::Fat(unsafe { mem::transmute::<&mut Self, &mut FatRepr<T, P>>(self) })
-        }
-    }
-
-    pub fn into_split(self) -> Variant<ThinRepr<T, P>, FatRepr<T, P>> {
-        if self.is_thin() {
-            Variant::Thin(unsafe { mem::transmute::<Self, ThinRepr<T, P>>(self) })
-        } else {
+    /// Splits the representation into either a thin or fat variant.
+    pub const fn into_split(self) -> Variant<ThinRepr<T, P>, FatRepr<T, P>> {
+        if self.is_fat() {
             Variant::Fat(unsafe { mem::transmute::<Self, FatRepr<T, P>>(self) })
+        } else {
+            Variant::Thin(unsafe { mem::transmute::<Self, ThinRepr<T, P>>(self) })
+            // NB: if the magic pointer contains null, we consider it as thin too
+            //
+            // because both fat and thin have the same layout when null, the choice does not matter
         }
     }
 }
 
+/// A variant that can be either thin or fat.
 pub enum Variant<T, F> {
     Thin(T),
     Fat(F),
@@ -233,7 +231,10 @@ pub struct FatOrThinView<T, P> {
     pub len: usize,
 }
 
-pub const fn check_size_align_and_offsets<T, P>() {
+/// Checks that the sizes, alignments and offsets of the fields
+/// of the various representations are compatible.
+#[cfg(debug_assertions)]
+pub const fn check_fat_and_thin_compatibility<T, P>() {
     // Ensures that ThinHeader, FatInner and AllocatedView have the same size.
     assert!(size_of::<ThinHeader<T, P>>() == size_of::<FatOrThinView<T, P>>());
     assert!(size_of::<FatInner<T, P>>() == size_of::<FatOrThinView<T, P>>());
@@ -243,7 +244,9 @@ pub const fn check_size_align_and_offsets<T, P>() {
     assert!(align_of::<FatInner<T, P>>() >= align_of::<FatOrThinView<T, P>>());
 
     // Ensures that this alignment is sufficient for the tag.
-    assert!(align_of::<FatOrThinView<T, P>>() >= MAX_TAG_SIZE);
+    assert!(align_of::<FatOrThinView<T, P>>() >= MIN_ALIGN);
+    assert!(align_of::<ThinHeader<T, P>>() >= MIN_ALIGN);
+    assert!(align_of::<FatInner<T, P>>() >= MIN_ALIGN);
 
     // Ensures that the field prefix is at the same offset in all three structs.
     assert!(offset_of!(ThinHeader<T, P>, prefix) == offset_of!(FatOrThinView<T, P>, prefix));
