@@ -13,6 +13,7 @@ use self::repr::{
 };
 use crate::backend::UpdateResult;
 use crate::common::derives::{AsRef, ConstDefault, Copy, DelegateDebug, DelegateHash, Deref, From};
+use crate::common::methods::push_within_capacity;
 use crate::common::traits::Mutate;
 use crate::common::{self, drop_raw_slice, force_transmute};
 use crate::vecs::inline::{InlineLength, InlineVec};
@@ -928,6 +929,18 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
             sliced.len = len;
         }
     }
+
+    pub fn mutate(&mut self) -> RefMut<'_, 'a, T, B>
+    where
+        T: Clone,
+    {
+        // ensures self is owned uniquely
+        self.detach();
+        // ensures self is tightened and starts at index 0
+        self.tighten_and_shift();
+        // SAFETY: self is now unique and starts at index 0
+        unsafe { RefMut::new(self) }
+    }
 }
 
 impl<T, B: Backend> Drop for HipVec<'_, T, B> {
@@ -980,4 +993,137 @@ pub enum SplitOffError {
     OutOfBounds,
     /// The reference count overflowed.
     RefCountOverflow,
+}
+
+pub struct RefMut<'a, 'b, T, B: Backend> {
+    origin: &'a mut HipVec<'b, T, B>,
+}
+
+impl<'a, 'b, T, B: Backend> RefMut<'a, 'b, T, B> {
+    unsafe fn new(origin: &'a mut HipVec<'b, T, B>) -> Self {
+        #[cfg(debug_assertions)]
+        if origin.is_allocated() {
+            let allocated = unsafe { origin.as_allocated_unchecked() };
+            assert_eq!(allocated.owner.data().as_ptr().cast_const(), allocated.ptr);
+            assert_eq!(allocated.owner.len(), allocated.len);
+        } else {
+            assert!(origin.is_inline());
+        }
+
+        Self { origin }
+    }
+
+    pub const fn capacity(&self) -> usize {
+        if self.origin.is_inline() {
+            unsafe { self.origin.as_inline_unchecked() }.capacity()
+        } else if self.origin.is_allocated() {
+            unsafe { self.origin.as_allocated_unchecked() }
+                .owner
+                .capacity()
+        } else {
+            unreachable!();
+        }
+    }
+
+    pub const fn len(&self) -> usize {
+        if self.origin.is_inline() {
+            unsafe { self.origin.as_inline_unchecked() }.len()
+        } else if self.origin.is_allocated() {
+            unsafe { self.origin.as_allocated_unchecked() }.owner.len()
+        } else {
+            unreachable!();
+        }
+    }
+
+    pub const unsafe fn set_len(&mut self, new_len: usize) {
+        if self.origin.is_inline() {
+            let inline = unsafe { self.origin.as_inline_mut_unchecked() };
+            unsafe {
+                inline.set_len(new_len);
+            }
+        } else if self.origin.is_allocated() {
+            let allocated = unsafe { self.origin.as_allocated_mut_unchecked() };
+            unsafe {
+                allocated.owner.set_len(new_len);
+            }
+        } else {
+            unreachable!();
+        }
+    }
+
+    pub const fn as_ptr(&self) -> *const T {
+        if self.origin.is_inline() {
+            unsafe { self.origin.as_inline_unchecked() }.as_ptr()
+        } else if self.origin.is_allocated() {
+            unsafe { self.origin.as_allocated_unchecked() }
+                .owner
+                .data()
+                .as_ptr()
+        } else {
+            unreachable!();
+        }
+    }
+
+    pub const fn as_mut_ptr(&mut self) -> *mut T {
+        if self.origin.is_inline() {
+            unsafe { self.origin.as_inline_mut_unchecked() }.as_mut_ptr()
+        } else if self.origin.is_allocated() {
+            unsafe { self.origin.as_allocated_mut_unchecked() }
+                .owner
+                .data_mut()
+                .as_ptr()
+        } else {
+            unreachable!();
+        }
+    }
+
+    pub const fn as_slice(&self) -> &[T] {
+        unsafe { core::slice::from_raw_parts(self.as_ptr(), self.len()) }
+    }
+
+    pub const fn as_mut_slice(&mut self) -> &mut [T] {
+        unsafe { core::slice::from_raw_parts_mut(self.as_mut_ptr(), self.len()) }
+    }
+
+    pub fn reserve(&mut self, additional: usize) {
+        if self.len() + additional <= self.capacity() {
+            return;
+        }
+        if self.origin.is_inline() || self.origin.is_wide() {
+            todo!("normalize to thin");
+        } else {
+            // SAFETY: repr is checked above
+            let allocated = unsafe { self.origin.as_allocated_mut_unchecked() };
+            // SAFETY: repr is checked above (thin)
+            let ref_mut = unsafe { allocated.owner.as_thin_mut() };
+            ref_mut.reserve(additional);
+        }
+        todo!()
+    }
+
+    pub fn push(&mut self, value: T) {
+        self.reserve(1);
+        let Ok(()) = self.push_within_capacity(value) else {
+            unreachable!();
+        };
+    }
+
+    pub fn push_within_capacity(&mut self, value: T) -> Result<(), T> {
+        push_within_capacity!(self, value)
+    }
+}
+
+impl<'a, 'b, T, B: Backend> Drop for RefMut<'a, 'b, T, B> {
+    fn drop(&mut self) {
+        if self.origin.is_inline() {
+            // nothing to do
+        } else if self.origin.is_allocated() {
+            // SAFETY: repr is checked above
+            let allocated = unsafe { self.origin.as_allocated_mut_unchecked() };
+            allocated.ptr = allocated.owner.data().as_ptr();
+            allocated.len = allocated.owner.len();
+        } else {
+            unreachable!("ref mut cannot be borrowed");
+        }
+    }
 }

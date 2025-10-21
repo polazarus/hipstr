@@ -8,7 +8,7 @@ use const_default::ConstDefault;
 
 use crate::vecs::reprs::{MagicPointer, INLINE, INLINE_MASK, SLICED};
 use crate::vecs::thin::repr::ThinRepr;
-use crate::vecs::thin::SmartThinVec;
+use crate::vecs::thin::{SmartThinVec, ThinVec};
 use crate::vecs::wide::repr::WideRepr;
 use crate::vecs::wide::SmartWideVec;
 use crate::Backend;
@@ -67,8 +67,22 @@ impl<T, B: Backend> Owner<T, B> {
         }
     }
 
+    pub const fn data_mut(&mut self) -> NonNull<T> {
+        if let Some(r) = self.0.as_mut() {
+            if let Some(p) = r.ptr {
+                p
+            } else {
+                let repr: &ThinRepr<T, B> = unsafe { &*ptr::from_mut(self).cast() };
+                repr.data()
+            }
+        } else {
+            NonNull::dangling()
+        }
+    }
+
     /// Sets the length of the owner.
-    pub unsafe fn set_len(&mut self, len: usize) {
+    #[inline]
+    pub const unsafe fn set_len(&mut self, len: usize) {
         if let Some(r) = self.0.as_mut() {
             debug_assert!(len < r.cap);
             r.len = len;
@@ -76,12 +90,30 @@ impl<T, B: Backend> Owner<T, B> {
     }
 
     /// Gets the length of the owner.
+    #[inline]
     pub const fn len(&self) -> usize {
         if let Some(r) = self.0.as_ref() {
             r.len
         } else {
             0
         }
+    }
+
+    /// Gets the capacity of the owner.
+    #[inline]
+    pub const fn capacity(&self) -> usize {
+        if let Some(r) = self.0.as_ref() {
+            r.cap
+        } else {
+            0
+        }
+    }
+
+    pub(crate) unsafe fn as_thin_mut(&mut self) -> &mut ThinVec<T, B> {
+        debug_assert!(self.is_thin());
+        let ptr = ptr::from_mut(self).cast();
+        // SAFETY: the caller ensures that the repr is thin
+        unsafe { &mut *ptr }
     }
 }
 
