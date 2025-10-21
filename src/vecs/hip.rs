@@ -8,16 +8,16 @@ use const_default::ConstDefault;
 use rules_derive::rules_derive;
 use typenum::Unsigned;
 
-use self::repr::{Allocated, Borrowed, Owner, Pivot, Sliced, UnknownSliced};
+use self::repr::{
+    check_fat_and_thin_compatibility, Allocated, Borrowed, Owner, Pivot, Sliced, UnknownSliced,
+};
 use crate::backend::UpdateResult;
 use crate::common::derives::{AsRef, ConstDefault, Copy, DelegateDebug, DelegateHash, Deref, From};
 use crate::common::traits::Mutate;
 use crate::common::{self, drop_raw_slice, force_transmute};
+use crate::vecs::fat::SmartFatVec;
 use crate::vecs::inline::{InlineLength, InlineVec};
-use crate::vecs::reprs::check_fat_and_thin_compatibility;
-use crate::vecs::smart_fat::SmartFatVec;
-use crate::vecs::smart_thin::SmartThinVec;
-use crate::vecs::thin::{can_reuse, ThinVec};
+use crate::vecs::thin::{can_reuse, SmartThinVec, ThinVec};
 use crate::Backend;
 
 pub(crate) mod repr;

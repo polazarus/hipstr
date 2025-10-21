@@ -10,9 +10,9 @@ use core::{array, iter, ptr};
 
 use const_default::ConstDefault;
 
+use super::repr::ThinHeader;
 use crate::common::traits::tests::test_mut_vector;
 use crate::common::RangeError;
-use crate::vecs::reprs::ThinHeader;
 use crate::vecs::thin::{Reserved, ThinVec as GenericThinVec};
 use crate::vecs::ThinVec;
 use crate::{thin_vec, Rc};
@@ -935,12 +935,14 @@ fn generic_vector() {
 
 #[test]
 fn layout() {
-    let (_, offset, capacity) = ThinHeader::<u128, Rc>::layout(0).unwrap();
+    let (_, capacity) = ThinHeader::<u128, Rc>::layout(0).unwrap();
     assert_eq!(capacity, 0);
-    assert_eq!(offset % align_of::<u128>(), 0);
 
-    let (_, _, capacity) = ThinHeader::<u8, Rc>::layout(1).unwrap();
-    assert!(capacity > 1, "{capacity} should be rounded up");
+    let (_, capacity) = ThinHeader::<u8, Rc>::layout(1).unwrap();
+    assert!(
+        capacity > 1,
+        "{capacity} should be rounded up to the pointer alignment"
+    );
 
     assert!(ThinHeader::<u8, Rc>::layout(usize::MAX).is_none());
     assert!(ThinHeader::<u128, Rc>::layout(usize::MAX / size_of::<u128>()).is_none());

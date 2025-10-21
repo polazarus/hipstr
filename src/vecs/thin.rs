@@ -1,5 +1,43 @@
-//! Thin vector implementation.
-
+//! This module provides the thin vector implementations.
+//!
+//! A thin vector is a contiguous growable array type with heap-allocated
+//! metadata (prefix, capacity, length) and contents.
+//!
+//! Whereas `Vec` is three-word wide, this vector is one-word wide. It
+//! consists in a single pointer to a heap-allocated area containing both the
+//! capacity, the length, and the actual data.
+//!
+//! This module provides two main types:
+//!
+//! - [`ThinVec`], which is the thin vector itself.
+//! - [`SmartThinVec`], which is a smart pointer to a [`ThinVec`] that
+//!   automatically deallocates when all the reference to the vector are dropped,
+//!   with a copy-on-write semantics.
+//!
+//! # Examples
+//!
+//! ```
+//! use hipstr::smart_thin_vec;
+//!
+//! let mut v = smart_thin_vec![1, 2, 3];
+//!
+//! // SmartThinVec is thin
+//! assert_eq!(size_of_val(&v), size_of::<*const ()>());
+//!
+//! assert_eq!(v.as_slice(), &[1, 2, 3]);
+//! let w = v.clone();
+//!
+//! assert_eq!(v.as_slice(), w.as_slice());
+//! assert_eq!(v.as_ptr(), w.as_ptr());
+//!
+//! {
+//!    let mut v_mut = v.mutate(); // Copy-on-write
+//!    v_mut.push(4);
+//! }
+//!
+//! assert_eq!(v.as_slice(), &[1, 2, 3, 4]);
+//! assert_eq!(w.as_slice(), &[1, 2, 3]);
+//! ```
 use alloc::alloc::{alloc, dealloc, realloc, Layout};
 use alloc::borrow::Cow;
 use alloc::boxed::Box;
@@ -14,7 +52,8 @@ use core::{cmp, mem, ptr, slice};
 use const_default::ConstDefault;
 use rules_derive::rules_derive;
 
-use super::reprs::ThinRepr;
+use self::repr::{ThinHeader, ThinRepr};
+pub use self::smart::SmartThinVec;
 use crate::common::derives::{
     AsRef, ConstDefault, DelegateDebug, DelegateHash, Deref, From, FromIterator, IntoIterator,
     MutVector,
@@ -31,8 +70,10 @@ use crate::common::{
     check_alloc, drop_raw_slice, maybe_uninit_write_copy_of_slice, panic_display, RangeError,
     ZeroUsize,
 };
-use crate::vecs::reprs::ThinHeader;
 use crate::{common, macros};
+
+pub(crate) mod repr;
+mod smart;
 
 #[cfg(test)]
 mod tests;
@@ -364,8 +405,7 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     /// Gets the current layout.
     const fn current_layout(&self) -> Layout {
         // SAFETY: layout checked at creation
-        let (layout, _, _) =
-            unsafe { ThinHeader::<T, P>::layout(self.capacity()).unwrap_unchecked() };
+        let (layout, _) = unsafe { ThinHeader::<T, P>::layout(self.capacity()).unwrap_unchecked() };
         layout
     }
 
@@ -904,7 +944,7 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
         }
 
         let capacity = capacity.max(Self::MINIMAL_CAPACITY);
-        let (layout, _offset, capacity) =
+        let (layout, capacity) =
             ThinHeader::<T, P>::layout(capacity).expect("invalid layout: buffer too large");
         let ptr = unsafe { alloc(layout) };
         let ptr = check_alloc(ptr, layout);
@@ -1021,7 +1061,7 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
 
         // computes the layouts
         let layout = self.current_layout();
-        let (new_layout, _, eff_cap) =
+        let (new_layout, eff_cap) =
             ThinHeader::<T, P>::layout(new_cap).expect("invalid layout: buffer too large");
 
         // realloc only if needed

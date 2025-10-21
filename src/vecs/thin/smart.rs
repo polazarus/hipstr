@@ -45,14 +45,14 @@ use core::ptr;
 use const_default::ConstDefault;
 use rules_derive::rules_derive;
 
-use super::thin::{Reserved, ThinVec};
+use super::repr::ThinRepr;
+use super::{Reserved, ThinVec};
 use crate::backend::{
     Backend, BackendImpl, CloneOnOverflow, Counter, PanicOnOverflow, UpdateResult,
 };
 use crate::common::derives::{AsRef, Borrow, ConstDefault, Deref, From, Vector};
 use crate::common::traits::Mutate;
 use crate::macros::trait_impls;
-use crate::vecs::reprs::ThinRepr;
 
 #[cfg(test)]
 mod tests;
@@ -76,7 +76,7 @@ macro_rules! smart_thin_vec {
 
     [ $t:ty : $($rest:tt)* ] => {
         {
-            $crate::vecs::smart_thin::SmartThinVec::<_, $t>::from(
+            $crate::vecs::thin::SmartThinVec::<_, $t>::from(
                 $crate::thin_vec![ $( $rest )* ]
             )
         }
@@ -118,7 +118,7 @@ macro_rules! smart_thin_vec {
     From(&[T], Self::from_slice_clone where (T: Clone)),
     From(&mut [T], Self::from_slice_clone where (T: Clone)),
 )]
-pub struct SmartThinVec<T, C: Backend>(pub(super) ThinRepr<T, C>);
+pub struct SmartThinVec<T, C: Backend>(pub(crate) ThinRepr<T, C>);
 
 impl<T, B: Backend> SmartThinVec<T, B> {
     const EMPTY: Self = {

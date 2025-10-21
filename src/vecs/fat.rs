@@ -7,13 +7,14 @@ use core::ptr::{self, NonNull};
 
 use rules_derive::rules_derive;
 
-use super::reprs::FatRepr;
+use self::repr::{FatInner, FatRepr};
 use crate::backend::{BackendImpl, CloneOnOverflow, Counter, PanicOnOverflow, UpdateResult};
 use crate::common::derives::{AsRef, Borrow, ConstDefault, Deref, From, Vector};
 use crate::common::traits::Mutate;
 use crate::common::{manually_drop_as_mut, manually_drop_as_ref};
-use crate::vecs::reprs::FatInner;
 use crate::Backend;
+
+pub(crate) mod repr;
 
 #[cfg(test)]
 mod tests;
