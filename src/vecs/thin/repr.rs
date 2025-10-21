@@ -14,7 +14,7 @@ use crate::vecs::reprs::MagicPointer;
 pub struct ThinHeader<T, P> {
     /// Prefix.
     pub prefix: P,
-    /// A pointer-sized zero used to ensure proper field alignment with `FatInner`
+    /// A pointer-sized zero used to ensure proper field alignment with `WideInner`
     /// and differientate between the two.
     _ptr: ZeroUsize,
     /// Capacity.
@@ -43,7 +43,7 @@ impl<T, P> ThinHeader<T, P> {
         let layout = layout.pad_to_align();
 
         #[cfg(not(coverage))]
-        debug_assert!(offset == size_of::<T>(), "invalid offset");
+        debug_assert!(offset == size_of::<Self>(), "invalid offset");
 
         // get the payload possibly rounded up to maximize possible occupancy in
         // closely in the computed layout

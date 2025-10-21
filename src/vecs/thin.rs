@@ -38,6 +38,7 @@
 //! assert_eq!(v.as_slice(), &[1, 2, 3, 4]);
 //! assert_eq!(w.as_slice(), &[1, 2, 3]);
 //! ```
+
 use alloc::alloc::{alloc, dealloc, realloc, Layout};
 use alloc::borrow::Cow;
 use alloc::boxed::Box;
@@ -73,7 +74,7 @@ use crate::common::{
 use crate::{common, macros};
 
 pub(crate) mod repr;
-mod smart;
+pub mod smart;
 
 #[cfg(test)]
 mod tests;
@@ -104,7 +105,7 @@ macro_rules! thin_vec {
         vec
     }};
     [ $($e:expr),+ $(,)? ] => {{
-        let mut vec = $crate::vecs::ThinVec::with_capacity(thin_vec!(@count $( ($e) )+));
+        let mut vec = $crate::vecs::ThinVec::with_capacity($crate::thin_vec!(@count $( ($e) )+));
         $(
             vec.push($e);
         )+
@@ -115,10 +116,10 @@ macro_rules! thin_vec {
         0
     };
     (@count $( $a:tt $b:tt )*) => {
-        thin_vec!(@count $( $a )* ) << 1
+        $crate::thin_vec!(@count $( $a )* ) << 1
     };
     (@count $_odd:tt $( $a:tt $_b:tt )*) => {
-        (thin_vec!(@count $( $a )* ) << 1) | 1
+        ($crate::thin_vec!(@count $( $a )* ) << 1) | 1
     };
 }
 
@@ -251,7 +252,7 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     /// # Examples
     ///
     /// ```
-    /// use hipstr::vecs::ThinVec;
+    /// use hipstr::vecs::thin::ThinVec;
     /// let vec: ThinVec<i32, u32> = ThinVec::new();
     /// assert!(vec.prefix().is_none());
     ///

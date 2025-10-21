@@ -6,18 +6,18 @@ use core::ptr::{self, NonNull};
 
 use const_default::ConstDefault;
 
-use crate::vecs::fat::repr::FatRepr;
-use crate::vecs::fat::SmartFatVec;
 use crate::vecs::reprs::{MagicPointer, INLINE, INLINE_MASK, SLICED};
 use crate::vecs::thin::repr::ThinRepr;
 use crate::vecs::thin::SmartThinVec;
+use crate::vecs::wide::repr::WideRepr;
+use crate::vecs::wide::SmartWideVec;
 use crate::Backend;
 
 pub type Allocated<T, B> = Sliced<T, Owner<T, B>>;
 
 /// Owner of a owned hip vector.
 #[repr(transparent)]
-pub struct Owner<T, B>(FatOrThinRepr<T, B>);
+pub struct Owner<T, B>(WideOrThinRepr<T, B>);
 
 impl<T, B: Backend> Owner<T, B> {
     /// Drops the owner now.
@@ -31,9 +31,9 @@ impl<T, B: Backend> Owner<T, B> {
                 // SAFETY: should not be used after drop
                 let _ = SmartThinVec(repr);
             }
-            Variant::Fat(repr) => {
+            Variant::Wide(repr) => {
                 // SAFETY: should not be used after drop
-                let _ = SmartFatVec(repr);
+                let _ = SmartWideVec(repr);
             }
         }
     }
@@ -42,8 +42,8 @@ impl<T, B: Backend> Owner<T, B> {
         self.0.as_ref().unwrap().prefix.is_unique()
     }
 
-    pub const fn is_fat(&self) -> bool {
-        self.0.is_fat()
+    pub const fn is_wide(&self) -> bool {
+        self.0.is_wide()
     }
 
     pub const fn is_thin(&self) -> bool {
@@ -113,7 +113,7 @@ impl Pivot {
         word == SLICED
     }
 
-    /// Checks if the hip vector is allocated (fat or thin).
+    /// Checks if the hip vector is allocated (wide or thin).
     #[inline]
     pub const fn is_allocated(&self) -> bool {
         !(self.is_inline() || self.is_borrowed())
@@ -182,16 +182,16 @@ impl<T, O> Sliced<T, O> {
 
 pub type UnknownSliced<T> = Sliced<T, NonNull<()>>;
 
-/// A representation that can be either fat or thin.
+/// A representation that can be either wide or thin.
 ///
-/// It can be safely transmuted to either `FatRepr` or `ThinRepr` based on the
-/// the result of `is_fat` or `is_thin`.
-pub type FatOrThinRepr<T, P> = MagicPointer<FatOrThinView<T, P>>;
+/// It can be safely transmuted to either `WideRepr` or `ThinRepr` based on the
+/// the result of `is_wide` or `is_thin`.
+pub type WideOrThinRepr<T, P> = MagicPointer<WideOrThinView<T, P>>;
 
-impl<T, P> FatOrThinRepr<T, P> {
-    /// Checks if the representation is fat and not null.
+impl<T, P> WideOrThinRepr<T, P> {
+    /// Checks if the representation is wide and not null.
     #[inline]
-    pub const fn is_fat(self) -> bool {
+    pub const fn is_wide(self) -> bool {
         let Some(r) = self.as_ref() else {
             return true;
         };
@@ -207,28 +207,28 @@ impl<T, P> FatOrThinRepr<T, P> {
         r.ptr.is_none()
     }
 
-    /// Splits the representation into either a thin or fat variant.
-    pub const fn into_split(self) -> Variant<ThinRepr<T, P>, FatRepr<T, P>> {
-        if self.is_fat() {
-            Variant::Fat(unsafe { transmute::<Self, FatRepr<T, P>>(self) })
+    /// Splits the representation into either a thin or wide variant.
+    pub const fn into_split(self) -> Variant<ThinRepr<T, P>, WideRepr<T, P>> {
+        if self.is_wide() {
+            Variant::Wide(unsafe { transmute::<Self, WideRepr<T, P>>(self) })
         } else {
             Variant::Thin(unsafe { transmute::<Self, ThinRepr<T, P>>(self) })
             // NB: if the magic pointer contains null, we consider it as thin too
             //
-            // because both fat and thin have the same layout when null, the choice does not matter
+            // because both wide and thin have the same layout when null, the choice does not matter
         }
     }
 }
 
-/// A variant that can be either thin or fat.
+/// A variant that can be either thin or wide.
 pub enum Variant<T, F> {
     Thin(T),
-    Fat(F),
+    Wide(F),
 }
 
-/// A view of a vector (indirect fat or direct thin).
+/// A view of a vector (indirect wide or direct thin).
 #[repr(C)]
-pub struct FatOrThinView<T, P> {
+pub struct WideOrThinView<T, P> {
     pub prefix: P,
     pub ptr: Option<NonNull<T>>,
     pub cap: usize,
@@ -238,34 +238,34 @@ pub struct FatOrThinView<T, P> {
 /// Checks that the sizes, alignments and offsets of the fields
 /// of the various representations are compatible.
 #[cfg(debug_assertions)]
-pub const fn check_fat_and_thin_compatibility<T, P>() {
-    // Ensures that ThinHeader, FatInner and AllocatedView have the same size.
+pub const fn check_wide_and_thin_compatibility<T, P>() {
+    // Ensures that ThinHeader, WideInner and WideOrThinView have the same size.
 
-    use crate::vecs::fat::repr::FatInner;
     use crate::vecs::reprs::MIN_ALIGN;
     use crate::vecs::thin::repr::ThinHeader;
+    use crate::vecs::wide::repr::WideInner;
 
-    assert!(size_of::<ThinHeader<T, P>>() == size_of::<FatOrThinView<T, P>>());
-    assert!(size_of::<FatInner<T, P>>() == size_of::<FatOrThinView<T, P>>());
+    assert!(size_of::<ThinHeader<T, P>>() == size_of::<WideOrThinView<T, P>>());
+    assert!(size_of::<WideInner<T, P>>() == size_of::<WideOrThinView<T, P>>());
 
-    // Ensures that the alignments of ThinHeader and FatInner are at least the alignment of FatOrThinView.
-    assert!(align_of::<ThinHeader<T, P>>() >= align_of::<FatOrThinView<T, P>>());
-    assert!(align_of::<FatInner<T, P>>() >= align_of::<FatOrThinView<T, P>>());
+    // Ensures that the alignments of ThinHeader and WideInner are at least the alignment of FatOrThinView.
+    assert!(align_of::<ThinHeader<T, P>>() >= align_of::<WideOrThinView<T, P>>());
+    assert!(align_of::<WideInner<T, P>>() >= align_of::<WideOrThinView<T, P>>());
 
     // Ensures that this alignment is sufficient for the tag.
-    assert!(align_of::<FatOrThinView<T, P>>() >= MIN_ALIGN);
+    assert!(align_of::<WideOrThinView<T, P>>() >= MIN_ALIGN);
     assert!(align_of::<ThinHeader<T, P>>() >= MIN_ALIGN);
-    assert!(align_of::<FatInner<T, P>>() >= MIN_ALIGN);
+    assert!(align_of::<WideInner<T, P>>() >= MIN_ALIGN);
 
     // Ensures that the field prefix is at the same offset in all three structs.
-    assert!(offset_of!(ThinHeader<T, P>, prefix) == offset_of!(FatOrThinView<T, P>, prefix));
-    assert!(offset_of!(FatInner<T, P>, prefix) == offset_of!(FatOrThinView<T, P>, prefix));
+    assert!(offset_of!(ThinHeader<T, P>, prefix) == offset_of!(WideOrThinView<T, P>, prefix));
+    assert!(offset_of!(WideInner<T, P>, prefix) == offset_of!(WideOrThinView<T, P>, prefix));
 
     // Ensures that the field len is at the same offset in all three structs
-    assert!(offset_of!(ThinHeader<T, P>, len) == offset_of!(FatOrThinView<T, P>, len));
-    assert!(offset_of!(FatInner<T, P>, len) == offset_of!(FatOrThinView<T, P>, len));
+    assert!(offset_of!(ThinHeader<T, P>, len) == offset_of!(WideOrThinView<T, P>, len));
+    assert!(offset_of!(WideInner<T, P>, len) == offset_of!(WideOrThinView<T, P>, len));
 
     // Ensures that the field cap is at the same offset in all three structs
-    assert!(offset_of!(ThinHeader<T, P>, cap) == offset_of!(FatOrThinView<T, P>, cap));
-    assert!(offset_of!(FatInner<T, P>, cap) == offset_of!(FatOrThinView<T, P>, cap));
+    assert!(offset_of!(ThinHeader<T, P>, cap) == offset_of!(WideOrThinView<T, P>, cap));
+    assert!(offset_of!(WideInner<T, P>, cap) == offset_of!(WideOrThinView<T, P>, cap));
 }

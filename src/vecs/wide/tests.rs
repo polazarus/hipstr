@@ -2,14 +2,14 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::{mem, ptr};
 
-use super::SmartFatVec;
+use super::SmartWideVec;
 use crate::backend::PanickyUnique;
 use crate::common::traits::Mutate;
 use crate::{Arc, Unique};
 
 #[test]
 fn new_vec() {
-    let vec: SmartFatVec<i32, Arc> = SmartFatVec::new();
+    let vec: SmartWideVec<i32, Arc> = SmartWideVec::new();
     assert_eq!(vec.len(), 0);
     assert!(vec.is_empty());
     assert_ne!(vec.as_ptr(), ptr::null());
@@ -18,7 +18,7 @@ fn new_vec() {
 
 #[test]
 fn clone() {
-    let vec: SmartFatVec<i32, Arc> = SmartFatVec::from(vec![1, 2, 3]);
+    let vec: SmartWideVec<i32, Arc> = SmartWideVec::from(vec![1, 2, 3]);
     let p = vec.as_ptr();
     assert!(vec.is_unique());
 
@@ -34,7 +34,7 @@ fn clone() {
 
 #[test]
 fn as_mut() {
-    let mut vec: SmartFatVec<i32, Arc> = SmartFatVec::from(vec![1, 2, 3]);
+    let mut vec: SmartWideVec<i32, Arc> = SmartWideVec::from(vec![1, 2, 3]);
     assert!(vec.is_unique());
     assert!(vec.as_mut().is_some());
 
@@ -57,7 +57,7 @@ fn from_vec() {
     let vec = vec![1, 2, 3];
     let p = vec.as_ptr();
 
-    let smart_vec: SmartFatVec<i32, Arc> = SmartFatVec::from(vec);
+    let smart_vec: SmartWideVec<i32, Arc> = SmartWideVec::from(vec);
     assert_eq!(smart_vec.len(), 3);
     assert_eq!(smart_vec[0], 1);
     assert_eq!(smart_vec[1], 2);
@@ -70,7 +70,7 @@ fn from_vec() {
 fn from_vec_empty() {
     let vec: Vec<i32> = Vec::new();
 
-    let smart_vec: SmartFatVec<i32, Arc> = SmartFatVec::from(vec);
+    let smart_vec: SmartWideVec<i32, Arc> = SmartWideVec::from(vec);
     assert_eq!(smart_vec.len(), 0);
     assert!(smart_vec.is_empty());
     assert_eq!(smart_vec.as_ptr(), ptr::dangling());
@@ -79,7 +79,7 @@ fn from_vec_empty() {
 
 #[test]
 fn mutate_unique_empty() {
-    let mut vec: SmartFatVec<i32, Arc> = SmartFatVec::new();
+    let mut vec: SmartWideVec<i32, Arc> = SmartWideVec::new();
     {
         let mut v = vec.mutate();
         v.push(10);
@@ -94,7 +94,7 @@ fn mutate_unique_empty() {
 #[test]
 fn mutate_unique_nonempty() {
     let vec = vec![1, 2, 3];
-    let mut vec: SmartFatVec<i32, Arc> = SmartFatVec::from(vec);
+    let mut vec: SmartWideVec<i32, Arc> = SmartWideVec::from(vec);
     {
         let mut v = vec.mutate();
         v.extend_from_slice(&[4, 5, 6, 7, 8, 9, 10]);
@@ -106,7 +106,7 @@ fn mutate_unique_nonempty() {
 
 #[test]
 fn mutate_nonunique_nonempty() {
-    let mut vec: SmartFatVec<i32, Arc> = SmartFatVec::from(vec![1, 2, 3]);
+    let mut vec: SmartWideVec<i32, Arc> = SmartWideVec::from(vec![1, 2, 3]);
     let p = vec.as_ptr();
 
     {
@@ -125,7 +125,7 @@ fn mutate_nonunique_nonempty() {
 
 #[test]
 fn mutate_nonunique_empty() {
-    let mut vec: SmartFatVec<i32, Arc> = SmartFatVec::new();
+    let mut vec: SmartWideVec<i32, Arc> = SmartWideVec::new();
     let _vec2 = vec.clone();
 
     {
@@ -141,7 +141,7 @@ fn mutate_nonunique_empty() {
 
 #[test]
 fn mutate_swap_nonempty_empty() {
-    let mut vec: SmartFatVec<i32, Arc> = SmartFatVec::from(vec![1, 2, 3]);
+    let mut vec: SmartWideVec<i32, Arc> = SmartWideVec::from(vec![1, 2, 3]);
 
     {
         let mut ref_mut = vec.mutate();
@@ -155,7 +155,7 @@ fn mutate_swap_nonempty_empty() {
 
 #[test]
 fn mutate_swap_empty_empty() {
-    let mut vec: SmartFatVec<i32, Arc> = SmartFatVec::new();
+    let mut vec: SmartWideVec<i32, Arc> = SmartWideVec::new();
 
     {
         let mut ref_mut = vec.mutate();
@@ -169,7 +169,7 @@ fn mutate_swap_empty_empty() {
 
 #[test]
 fn mutate_swap_empty_nonempty() {
-    let mut vec: SmartFatVec<i32, Arc> = SmartFatVec::new();
+    let mut vec: SmartWideVec<i32, Arc> = SmartWideVec::new();
 
     {
         let mut ref_mut = vec.mutate();
@@ -182,7 +182,7 @@ fn mutate_swap_empty_nonempty() {
 
 #[test]
 fn mutate_swap_nonempty_nonempty() {
-    let mut vec: SmartFatVec<i32, Arc> = SmartFatVec::from(vec![1, 2, 3]);
+    let mut vec: SmartWideVec<i32, Arc> = SmartWideVec::from(vec![1, 2, 3]);
 
     {
         let mut ref_mut = vec.mutate();
@@ -195,7 +195,7 @@ fn mutate_swap_nonempty_nonempty() {
 
 #[test]
 fn mutate_copy_unique_empty() {
-    let mut vec: SmartFatVec<i32, Arc> = SmartFatVec::new();
+    let mut vec: SmartWideVec<i32, Arc> = SmartWideVec::new();
     {
         let mut v = vec.mutate_copy();
         v.push(10);
@@ -212,7 +212,7 @@ fn mutate_copy_unique_nonempty() {
     let mut vec = vec![1, 2, 3];
     vec.reserve(1); // make the pointer stable
 
-    let mut vec: SmartFatVec<i32, Arc> = SmartFatVec::from(vec);
+    let mut vec: SmartWideVec<i32, Arc> = SmartWideVec::from(vec);
     let p = vec.as_ptr();
 
     {
@@ -231,7 +231,7 @@ fn mutate_copy_nonunique_nonempty() {
     let mut vec = vec![1, 2, 3];
     vec.reserve(1); // make the pointer stable
 
-    let mut vec: SmartFatVec<i32, Arc> = SmartFatVec::from(vec);
+    let mut vec: SmartWideVec<i32, Arc> = SmartWideVec::from(vec);
     let p = vec.as_ptr();
 
     {
@@ -250,7 +250,7 @@ fn mutate_copy_nonunique_nonempty() {
 
 #[test]
 fn mutate_copy_nonunique_empty() {
-    let mut vec: SmartFatVec<i32, Arc> = SmartFatVec::new();
+    let mut vec: SmartWideVec<i32, Arc> = SmartWideVec::new();
     let _vec2 = vec.clone();
 
     {
@@ -266,7 +266,7 @@ fn mutate_copy_nonunique_empty() {
 
 #[test]
 fn deref() {
-    let vec: SmartFatVec<i32, Arc> = SmartFatVec::from(vec![1, 2, 3]);
+    let vec: SmartWideVec<i32, Arc> = SmartWideVec::from(vec![1, 2, 3]);
     let slice: &[i32] = &vec;
     assert_eq!(slice.len(), 3);
     assert_eq!(slice, [1, 2, 3]);
@@ -274,7 +274,7 @@ fn deref() {
 
 #[test]
 fn try_clone_arc() {
-    let vec: SmartFatVec<i32, Arc> = SmartFatVec::from(vec![1, 2, 3]);
+    let vec: SmartWideVec<i32, Arc> = SmartWideVec::from(vec![1, 2, 3]);
     let p = vec.as_ptr();
     assert!(vec.is_unique());
 
@@ -290,7 +290,7 @@ fn try_clone_arc() {
 
 #[test]
 fn try_clone_unique() {
-    let vec: SmartFatVec<i32, Unique> = SmartFatVec::from(vec![1, 2, 3]);
+    let vec: SmartWideVec<i32, Unique> = SmartWideVec::from(vec![1, 2, 3]);
     assert!(vec.is_unique());
     assert!(vec.try_clone().is_none());
 }
@@ -298,7 +298,7 @@ fn try_clone_unique() {
 #[test]
 #[should_panic(expected = "count overflow")]
 fn clone_panic() {
-    let vec: SmartFatVec<i32, PanickyUnique> = SmartFatVec::from(vec![1, 2, 3]);
+    let vec: SmartWideVec<i32, PanickyUnique> = SmartWideVec::from(vec![1, 2, 3]);
     assert!(vec.is_unique());
 
     #[allow(clippy::redundant_clone)]
@@ -307,7 +307,7 @@ fn clone_panic() {
 
 #[test]
 fn clone_unique() {
-    let vec: SmartFatVec<i32, Unique> = SmartFatVec::from(vec![1, 2, 3]);
+    let vec: SmartWideVec<i32, Unique> = SmartWideVec::from(vec![1, 2, 3]);
     assert!(vec.is_unique());
     let vec2 = vec.clone();
     assert_eq!(vec2.as_slice(), &[1, 2, 3]);
@@ -322,7 +322,7 @@ fn mutate_trait() {
     vec.reserve(10); // make the pointer stable
     let p = vec.as_ptr();
 
-    let mut vec: SmartFatVec<i32, Unique> = SmartFatVec::from(vec);
+    let mut vec: SmartWideVec<i32, Unique> = SmartWideVec::from(vec);
     assert!(vec.is_unique());
 
     {

@@ -1,5 +1,25 @@
-//! A smart fat vector with reference counting.
-
+//! [`Vec`]-compatible vectors.
+//!
+//! This module contains the implementation of smart wide vectors with
+//! reference counting. The main type is [`SmartWideVec<T, B>`], which
+//! represents a vector of elements of type `T` with a backend `B`
+//! that manages the reference counting.
+//!
+//! The vectors in this module are designed to be compatible with
+//! the standard library's [`Vec`] type, providing similar functionality
+//! while adding reference counting capabilities. This allows for efficient
+//! sharing of vector data across multiple owners without unnecessary
+//! copying.
+//!
+//! # Examples
+//!
+//! ```
+//! # use hipstr::vecs::wide::SmartWideVec;
+//! # use hipstr::Arc;
+//! let vec: SmartWideVec<i32, Arc> = SmartWideVec::from(vec![1, 2, 3]);
+//! let vec2 = vec.clone();
+//! assert_eq!(vec.as_slice(), vec2.as_slice());
+//! ```
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::mem::ManuallyDrop;
@@ -7,7 +27,7 @@ use core::ptr::{self, NonNull};
 
 use rules_derive::rules_derive;
 
-use self::repr::{FatInner, FatRepr};
+use self::repr::{WideInner, WideRepr};
 use crate::backend::{BackendImpl, CloneOnOverflow, Counter, PanicOnOverflow, UpdateResult};
 use crate::common::derives::{AsRef, Borrow, ConstDefault, Deref, From, Vector};
 use crate::common::traits::Mutate;
@@ -19,7 +39,7 @@ pub(crate) mod repr;
 #[cfg(test)]
 mod tests;
 
-/// A smart fat vector with reference counting.
+/// A smart wide vector with reference counting.
 #[repr(transparent)]
 #[rules_derive(
     ConstDefault(Self::EMPTY),
@@ -29,20 +49,20 @@ mod tests;
     From(Vec<T>, Self::from_vec),
     Vector(T),
 )]
-pub struct SmartFatVec<T, B: Backend>(pub(super) FatRepr<T, B>);
+pub struct SmartWideVec<T, B: Backend>(pub(super) WideRepr<T, B>);
 
-impl<T, B: Backend> SmartFatVec<T, B> {
-    const EMPTY: Self = Self(FatRepr::NULL);
+impl<T, B: Backend> SmartWideVec<T, B> {
+    const EMPTY: Self = Self(WideRepr::NULL);
 
-    /// Creates a new, empty `SmartFatVec`.
+    /// Creates a new, empty `SmartWideVec`.
     ///
-    /// This is equivalent to `SmartFatVec::default()`.
+    /// This is equivalent to `SmartWideVec::default()`.
     ///
     /// # Examples
     ///
     /// ```
-    /// # use hipstr::vec::smart_fat::SmartFatVec;
-    /// let vec: SmartFatVec<i32> = SmartFatVec::new();
+    /// # use hipstr::vecs::SmartWideVec;
+    /// let vec: SmartWideVec<i32> = SmartWideVec::new();
     /// assert!(vec.is_empty());
     /// assert_eq!(vec.len(), 0);
     /// assert_eq!(vec.capacity(), 0);
@@ -54,11 +74,11 @@ impl<T, B: Backend> SmartFatVec<T, B> {
         Self::EMPTY
     }
 
-    /// Creates a new `SmartFatVec` from a standard `Vec`.
+    /// Creates a new `SmartWideVec` from a standard `Vec`.
     pub(crate) fn from_vec(vec: Vec<T>) -> Self {
         let cap = vec.capacity();
         let repr = if cap == 0 {
-            FatRepr::NULL
+            WideRepr::NULL
         } else {
             let mut vec = ManuallyDrop::new(vec);
 
@@ -66,7 +86,7 @@ impl<T, B: Backend> SmartFatVec<T, B> {
             // as_non_null is not stable yet
             let ptr = unsafe { NonNull::new_unchecked(vec.as_mut_ptr()) };
             let len = vec.len();
-            let inner = Box::new(FatInner {
+            let inner = Box::new(WideInner {
                 prefix: B::DEFAULT,
                 ptr,
                 cap,
@@ -75,7 +95,7 @@ impl<T, B: Backend> SmartFatVec<T, B> {
             let inner = Box::into_raw(inner);
             // SAFETY: Box pointer is not null
             let inner = unsafe { NonNull::new_unchecked(inner) };
-            FatRepr::new(inner)
+            WideRepr::new(inner)
         };
         Self(repr)
     }
@@ -89,9 +109,9 @@ impl<T, B: Backend> SmartFatVec<T, B> {
     ///
     /// ```
     /// # use std::vec;
-    /// use hipstr::vecs::smart_fat::SmartFatVec;
+    /// use hipstr::vecs::wide::SmartWideVec;
     /// use hipstr::Arc;
-    /// let vec: SmartFatVec<i32, Arc> = SmartFatVec::from(vec![1, 2, 3]);
+    /// let vec: SmartWideVec<i32, Arc> = SmartWideVec::from(vec![1, 2, 3]);
     /// let ptr = vec.as_ptr();
     /// assert_eq!(unsafe { *ptr }, 1);
     /// assert!(std::ptr::eq(ptr, &vec[0]));
@@ -107,16 +127,16 @@ impl<T, B: Backend> SmartFatVec<T, B> {
     /// Returns the number of elements the vector can hold without reallocating.
     ///
     /// If the vector is not yet allocated (typically, constructed with
-    /// [`SmartFatVec::new`]), the capacity is `0`.
+    /// [`SmartWideVec::new`]), the capacity is `0`.
     ///
     /// # Examples
     ///
     /// ```
-    /// # use hipstr::vecs::smart_fat::SmartFatVec;
+    /// # use hipstr::vecs::wide::SmartWideVec;
     /// # use hipstr::Arc;
-    /// let vec: SmartFatVec<i32, Arc> = SmartFatVec::new();
+    /// let vec: SmartWideVec<i32, Arc> = SmartWideVec::new();
     /// assert_eq!(vec.capacity(), 0);
-    /// let vec = SmartFatVec::<_, Arc>::from(vec![1, 2, 3]);
+    /// let vec = SmartWideVec::<_, Arc>::from(vec![1, 2, 3]);
     /// assert!(vec.capacity() >= 3);
     /// ```
     #[must_use]
@@ -133,11 +153,11 @@ impl<T, B: Backend> SmartFatVec<T, B> {
     /// # Examples
     ///
     /// ```
-    /// # use hipstr::vecs::smart_fat::SmartFatVec;
+    /// # use hipstr::vecs::wide::SmartWideVec;
     /// # use hipstr::Arc;
-    /// let vec: SmartFatVec<i32, Arc> = SmartFatVec::new();
+    /// let vec: SmartWideVec<i32, Arc> = SmartWideVec::new();
     /// assert_eq!(vec.len(), 0);
-    /// let vec = SmartFatVec::<_, Arc>::from(vec![1, 2, 3]);
+    /// let vec = SmartWideVec::<_, Arc>::from(vec![1, 2, 3]);
     /// assert_eq!(vec.len(), 3);
     /// ```
     #[must_use]
@@ -152,11 +172,11 @@ impl<T, B: Backend> SmartFatVec<T, B> {
     ///
     /// # Examples
     /// ```
-    /// # use hipstr::vecs::smart_fat::SmartFatVec;
+    /// # use hipstr::vecs::wide::SmartWideVec;
     /// # use hipstr::Arc;
-    /// let vec: SmartFatVec<i32, Arc> = SmartFatVec::new();
+    /// let vec: SmartWideVec<i32, Arc> = SmartWideVec::new();
     /// assert!(vec.is_empty());
-    /// let vec = SmartFatVec::<_, Arc>::from(vec![1, 2, 3]);
+    /// let vec = SmartWideVec::<_, Arc>::from(vec![1, 2, 3]);
     /// assert!(!vec.is_empty());
     /// ```
     #[must_use]
@@ -171,9 +191,9 @@ impl<T, B: Backend> SmartFatVec<T, B> {
     ///
     /// # Examples
     /// ```
-    /// # use hipstr::vecs::smart_fat::SmartFatVec;
+    /// # use hipstr::vecs::wide::SmartWideVec;
     /// # use hipstr::Arc;
-    /// let vec: SmartFatVec<i32, Arc> = SmartFatVec::from(vec![1, 2, 3]);
+    /// let vec: SmartWideVec<i32, Arc> = SmartWideVec::from(vec![1, 2, 3]);
     /// assert_eq!(vec.as_slice(), &[1, 2, 3]);
     /// ```
     #[must_use]
@@ -191,9 +211,9 @@ impl<T, B: Backend> SmartFatVec<T, B> {
     /// # Examples
     ///
     /// ```
-    /// # use hipstr::vecs::smart_fat::SmartFatVec;
+    /// # use hipstr::vecs::wide::SmartWideVec;
     /// # use hipstr::Arc;
-    /// let mut vec: SmartFatVec<i32, Arc> = SmartFatVec::from(vec![1, 2, 3]);
+    /// let mut vec: SmartWideVec<i32, Arc> = SmartWideVec::from(vec![1, 2, 3]);
     /// assert!(vec.is_unique());
     /// let vec2 = vec.clone();
     /// assert!(!vec.is_unique());
@@ -210,15 +230,15 @@ impl<T, B: Backend> SmartFatVec<T, B> {
     /// Otherwise, returns `None`.
     ///
     /// If the vector is not yet allocated (typically, constructed with
-    /// [`SmartFatVec::new`]), it is considered uniquely owned and a mutable
+    /// [`SmartWideVec::new`]), it is considered uniquely owned and a mutable
     /// reference to an empty vector is returned.
     ///
     /// # Examples
     ///
     /// ```
-    /// # use hipstr::vecs::smart_fat::SmartFatVec;
+    /// # use hipstr::vecs::wide::SmartWideVec;
     /// # use hipstr::Arc;
-    /// let mut vec: SmartFatVec<i32, Arc> = SmartFatVec::from(vec![1, 2, 3]);
+    /// let mut vec: SmartWideVec<i32, Arc> = SmartWideVec::from(vec![1, 2, 3]);
     /// {
     ///     let mut r = vec.as_mut().unwrap();
     ///     r.push(4);
@@ -289,7 +309,7 @@ impl<T, B: Backend> SmartFatVec<T, B> {
         self.detach(); // slice::to_vec is already specialized
     }
 
-    /// Returns a clone of this [`SmartFatVec<T, B>`] if it is possible without
+    /// Returns a clone of this [`SmartWideVec<T, B>`] if it is possible without
     /// allocating or cloning.
     ///
     /// If the reference count overflows, returns `None`.
@@ -297,9 +317,9 @@ impl<T, B: Backend> SmartFatVec<T, B> {
     /// # Examples
     ///
     /// ```
-    /// # use hipstr::vecs::smart_fat::SmartFatVec;
+    /// # use hipstr::vecs::wide::SmartWideVec;
     /// # use hipstr::Arc;
-    /// let vec: SmartFatVec<i32, Arc> = SmartFatVec::from(vec![1, 2, 3]);
+    /// let vec: SmartWideVec<i32, Arc> = SmartWideVec::from(vec![1, 2, 3]);
     /// let vec2 = vec.try_clone().unwrap();
     /// assert_eq!(vec.as_slice(), vec2.as_slice());
     /// ```
@@ -332,7 +352,7 @@ impl<T, B: Backend> SmartFatVec<T, B> {
             inner.cap = cap;
             inner.ptr = ptr;
         } else if cap > 0 {
-            let inner = Box::new(FatInner {
+            let inner = Box::new(WideInner {
                 prefix: B::DEFAULT,
                 len,
                 cap,
@@ -345,12 +365,12 @@ impl<T, B: Backend> SmartFatVec<T, B> {
 
             // transfer the ownership of the vector to the inner
             let _ = ManuallyDrop::new(vec);
-            self.0 = FatRepr::new(inner);
+            self.0 = WideRepr::new(inner);
         }
     }
 }
 
-impl<T, B: Backend> Drop for SmartFatVec<T, B> {
+impl<T, B: Backend> Drop for SmartWideVec<T, B> {
     fn drop(&mut self) {
         if let Some(inner) = self.0.as_mut() {
             if inner.prefix.decr() == UpdateResult::Overflow {
@@ -365,7 +385,7 @@ impl<T, B: Backend> Drop for SmartFatVec<T, B> {
     }
 }
 
-impl<T, C: Counter> Clone for SmartFatVec<T, BackendImpl<C, PanicOnOverflow>> {
+impl<T, C: Counter> Clone for SmartWideVec<T, BackendImpl<C, PanicOnOverflow>> {
     #[track_caller]
     fn clone(&self) -> Self {
         let Some(clone) = self.try_clone() else {
@@ -375,7 +395,7 @@ impl<T, C: Counter> Clone for SmartFatVec<T, BackendImpl<C, PanicOnOverflow>> {
     }
 }
 
-impl<T: Clone, C: Counter> Clone for SmartFatVec<T, BackendImpl<C, CloneOnOverflow>> {
+impl<T: Clone, C: Counter> Clone for SmartWideVec<T, BackendImpl<C, CloneOnOverflow>> {
     fn clone(&self) -> Self {
         self.try_clone()
             .unwrap_or_else(|| Self::from_vec(self.as_slice().to_vec()))
@@ -389,7 +409,7 @@ impl<T: Clone, C: Counter> Clone for SmartFatVec<T, BackendImpl<C, CloneOnOverfl
 )]
 pub struct RefMut<'a, T, B: Backend> {
     vec: ManuallyDrop<Vec<T>>,
-    origin: &'a mut SmartFatVec<T, B>,
+    origin: &'a mut SmartWideVec<T, B>,
 }
 
 impl<T, B: Backend> RefMut<'_, T, B> {
@@ -415,7 +435,7 @@ impl<T, B: Backend> Drop for RefMut<'_, T, B> {
     }
 }
 
-impl<T: Clone, B: Backend> Mutate for SmartFatVec<T, B> {
+impl<T: Clone, B: Backend> Mutate for SmartWideVec<T, B> {
     type MutVector<'a>
         = Vec<T>
     where

@@ -1,10 +1,10 @@
 //! Vector types.
 
-pub mod fat;
 pub mod hip;
 pub mod inline;
 pub(crate) mod reprs;
 pub mod thin;
+pub mod wide;
 
 use crate::backend;
 
@@ -16,6 +16,9 @@ pub type InlineVec<T, L = self::hip::Bytes> = self::inline::InlineVec<T, L>;
 /// A possibly reference-counted thin vector
 #[cfg(target_has_atomic = "ptr")]
 pub type SmartThinVec<T> = self::thin::SmartThinVec<T, backend::Arc>;
+
+#[cfg(target_has_atomic = "ptr")]
+pub type SmartWideVec<T> = self::wide::SmartWideVec<T, backend::Arc>;
 
 /// A hip vector that uses `Arc` as the backend.
 #[cfg(target_has_atomic = "ptr")]

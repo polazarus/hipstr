@@ -131,7 +131,7 @@ impl<T, B: Backend> SmartThinVec<T, B> {
     /// # Examples
     ///
     /// ```
-    /// # use hipstr::vecs::smart_thin::SmartThinVec;
+    /// # use hipstr::vecs::thin::SmartThinVec;
     /// # use hipstr::{Arc, smart_thin_vec};
     /// let v: SmartThinVec<i32, Arc>  = smart_thin_vec![1, 2, 3];
     /// assert_eq!(v.len(), 3);
@@ -147,7 +147,7 @@ impl<T, B: Backend> SmartThinVec<T, B> {
     /// # Examples
     ///
     /// ```
-    /// # use hipstr::vecs::smart_thin::SmartThinVec;
+    /// # use hipstr::vecs::thin::SmartThinVec;
     /// # use hipstr::vecs::ThinVec;
     /// # use hipstr::Arc;
     /// let v: SmartThinVec<i32, Arc> = SmartThinVec::from(ThinVec::with_capacity(100));
@@ -164,7 +164,7 @@ impl<T, B: Backend> SmartThinVec<T, B> {
     /// # Examples
     ///
     /// ```
-    /// # use hipstr::vecs::smart_thin::SmartThinVec;
+    /// # use hipstr::vecs::thin::SmartThinVec;
     /// # use hipstr::Arc;
     /// let v: SmartThinVec<i32, Arc> = SmartThinVec::new();
     /// assert!(v.is_empty());
@@ -182,7 +182,7 @@ impl<T, B: Backend> SmartThinVec<T, B> {
     /// # Examples
     ///
     /// ```
-    /// # use hipstr::vecs::smart_thin::SmartThinVec;
+    /// # use hipstr::vecs::thin::SmartThinVec;
     /// # use hipstr::Arc;
     /// let v: SmartThinVec<i32, Arc> = SmartThinVec::from([1, 2, 3]);
     /// let p = v.as_ptr();
@@ -213,9 +213,8 @@ impl<T, B: Backend> SmartThinVec<T, B> {
     /// # Examples
     ///
     /// ```
-    /// # use hipstr::vecs::SmartThinVec;;
-    /// # use hipstr::Arc;
-    /// let v = SmartThinVec::<u8, Arc>::new();
+    /// # use hipstr::vecs::SmartThinVec;
+    /// let v = SmartThinVec::<u8>::new();
     /// assert_eq!(v.len(), 0);
     /// assert!(v.is_unique());
     /// ```
@@ -229,7 +228,7 @@ impl<T, B: Backend> SmartThinVec<T, B> {
     /// # Examples
     ///
     /// ```
-    /// # use hipstr::vecs::SmartThinVec;
+    /// # use hipstr::vecs::thin::SmartThinVec;
     /// # use hipstr::Arc;
     /// let v = SmartThinVec::<u8, Arc>::with_capacity(10);
     /// assert_eq!(v.len(), 0);
@@ -391,8 +390,8 @@ impl<T, B: Backend> SmartThinVec<T, B> {
     /// # Examples
     ///
     /// ```
-    /// # use hipstr::smart_thin_vec;
-    /// # use hipstr::ThinVec;
+    /// # use hipstr::{smart_thin_vec, thin_vec};
+    /// # use hipstr::vecs::thin::ThinVec;
     /// let v = smart_thin_vec![1, 2, 3];
     /// let t: &ThinVec<_, _> = v.as_thin_vec();
     /// assert_eq!(t.as_slice(), &[1, 2, 3]);

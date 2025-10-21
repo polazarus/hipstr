@@ -66,7 +66,7 @@ fn from_array_thin() {
     // assert!(h.is_allocated());
     assert_eq!(h.as_slice(), &[42; 42]);
     assert!(h.is_thin());
-    assert!(!h.is_fat());
+    assert!(!h.is_wide());
     assert!(h.is_allocated());
 }
 
@@ -100,12 +100,12 @@ fn from_vec() {
 
     let h = HipVec::<u8, Arc>::from(vec![1, 2, 3, 4, 5]);
     assert_eq!(h.len(), 5);
-    assert!(h.is_fat());
+    assert!(h.is_wide());
     assert_eq!(h.as_slice(), &[1, 2, 3, 4, 5]);
 
     let h = HipVec::<u8, Arc>::from(vec![42; 42]);
     assert_eq!(h.len(), 42);
-    assert!(h.is_fat());
+    assert!(h.is_wide());
     assert_eq!(h.as_slice(), &[42; 42]);
 }
 
@@ -304,7 +304,7 @@ fn is_unique() {
     assert!(!t2.is_unique());
 
     let f = HipVec::<u8, Arc>::from(vec![1; 100]);
-    assert!(f.is_fat());
+    assert!(f.is_wide());
     assert!(f.is_unique());
     let f2 = f.clone();
     assert!(!f.is_unique());
@@ -340,23 +340,23 @@ fn pop() {
     assert!(h.is_thin());
 
     let mut h = HipVec::<u8, Arc>::from(vec![42; 42]);
-    assert!(h.is_fat());
+    assert!(h.is_wide());
     {
         let h2 = h.clone();
-        assert!(h.is_fat());
+        assert!(h.is_wide());
         assert_eq!(h.pop(), Some(42));
         assert_eq!(h.len(), 41);
         assert_eq!(h.as_slice(), &[42; 41]);
-        assert!(h.is_fat());
+        assert!(h.is_wide());
         assert_eq!(h2.as_slice(), &[42; 42]);
-        assert!(h2.is_fat());
+        assert!(h2.is_wide());
         assert_eq!(h2.as_ptr(), h.as_ptr());
     }
     assert_eq!(h.len(), 41);
     assert_eq!(h.pop(), Some(42));
     assert_eq!(h.len(), 40);
     assert_eq!(h.as_slice(), &[42; 40]);
-    assert!(h.is_fat());
+    assert!(h.is_wide());
 
     let mut h = HipVec::<u8, Arc>::from([1, 2, 3]);
     assert_eq!(h.pop(), Some(3));

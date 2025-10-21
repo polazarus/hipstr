@@ -9,15 +9,15 @@ use rules_derive::rules_derive;
 use typenum::Unsigned;
 
 use self::repr::{
-    check_fat_and_thin_compatibility, Allocated, Borrowed, Owner, Pivot, Sliced, UnknownSliced,
+    check_wide_and_thin_compatibility, Allocated, Borrowed, Owner, Pivot, Sliced, UnknownSliced,
 };
 use crate::backend::UpdateResult;
 use crate::common::derives::{AsRef, ConstDefault, Copy, DelegateDebug, DelegateHash, Deref, From};
 use crate::common::traits::Mutate;
 use crate::common::{self, drop_raw_slice, force_transmute};
-use crate::vecs::fat::SmartFatVec;
 use crate::vecs::inline::{InlineLength, InlineVec};
 use crate::vecs::thin::{can_reuse, SmartThinVec, ThinVec};
+use crate::vecs::wide::SmartWideVec;
 use crate::Backend;
 
 pub(crate) mod repr;
@@ -88,7 +88,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     pub const fn new() -> Self {
         #[cfg(debug_assertions)]
         {
-            check_fat_and_thin_compatibility::<T, B>();
+            check_wide_and_thin_compatibility::<T, B>();
         }
         Self::DEFAULT
     }
@@ -144,14 +144,14 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     #[must_use]
     #[inline]
     pub(crate) fn from_vec(vec: Vec<T>) -> Self {
-        let smart = SmartFatVec::from_vec(vec);
+        let smart = SmartWideVec::from_vec(vec);
         let sliced = Sliced {
             ptr: smart.as_ptr(),
             len: smart.len(),
-            owner: smart, // the cast is not necessary SmartFatVec is transparent
+            owner: smart, // the cast is not necessary SmartWideVec is transparent
         };
         // SAFETY: repr is correct by construction
-        unsafe { transmute::<Sliced<T, SmartFatVec<T, B>>, Self>(sliced) }
+        unsafe { transmute::<Sliced<T, SmartWideVec<T, B>>, Self>(sliced) }
     }
 
     /// Creates a `HipVec` from a [`ThinVec`], reusing the representation if
@@ -238,7 +238,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
             || (self.is_allocated() && unsafe { self.as_allocated_unchecked() }.owner.is_unique())
     }
 
-    /// Returns `true` if the vector is allocated and uses the fat backend.
+    /// Returns `true` if the vector is allocated and uses the wide backend.
     ///
     /// # Examples
     ///
@@ -246,12 +246,12 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     /// use hipstr::vecs::HipVec;
     /// let a: HipVec<u8> = HipVec::from(vec![0; 32]);
     /// assert!(a.is_allocated());
-    /// assert!(a.is_fat());
+    /// assert!(a.is_wide());
     /// ```
     #[must_use]
     #[inline]
-    pub const fn is_fat(&self) -> bool {
-        self.is_allocated() && unsafe { self.as_allocated_unchecked() }.owner.is_fat()
+    pub const fn is_wide(&self) -> bool {
+        self.is_allocated() && unsafe { self.as_allocated_unchecked() }.owner.is_wide()
     }
 
     /// Returns `true` if the vector is allocated and uses the thin backend.

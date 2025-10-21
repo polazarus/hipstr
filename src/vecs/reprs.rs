@@ -1,10 +1,10 @@
-//! Definitions of various vector representations: thin, fat, and fat-or-thin.
+//! Definitions of various vector representations: thin, wide, and wide-or-thin.
 //!
 //! This module defines the data structures and associated functions for handling
 //! different vector representations:
 //! - thin: `ThinRepr`, `ThinHeader`
-//! - fat: `FatRepr`, `FatInner`
-//! - fat-or-thin: `FatOrThinRepr`, `FatOrThinView
+//! - wide: `WideRepr`, `WideInner`
+//! - wide-or-thin: `WideOrThinRepr`, `WideOrThinView`
 
 use core::mem::transmute;
 use core::ptr::{self, NonNull};
