@@ -203,13 +203,16 @@ fn try_push() {
     let mut inline = InlineVec::<u8, U<SIZE>>::new();
 
     for i in 1..=BYTES {
-        assert_eq!(inline.try_push(u8::try_from(i).unwrap()), Ok(()));
+        assert_eq!(
+            inline.push_within_capacity(u8::try_from(i).unwrap()),
+            Ok(())
+        );
         assert_eq!(inline.len(), i);
         assert_eq!(inline.as_slice(), &array[..i]);
     }
 
     let n = u8::try_from(BYTES).unwrap() + 1;
-    assert_eq!(inline.try_push(n), Err(n));
+    assert_eq!(inline.push_within_capacity(n), Err(n));
 }
 
 #[test]
@@ -490,9 +493,9 @@ fn zst() {
     unsafe { inline.set_len(CAPACITY - 1) };
 
     assert_eq!(inline.len(), CAPACITY - 1);
-    assert_eq!(inline.try_push(()), Ok(()));
+    assert_eq!(inline.push_within_capacity(()), Ok(()));
     assert_eq!(inline.len(), CAPACITY);
-    assert_eq!(inline.try_push(()), Err(()));
+    assert_eq!(inline.push_within_capacity(()), Err(()));
 }
 
 #[test]

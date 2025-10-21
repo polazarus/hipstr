@@ -132,19 +132,24 @@ macro_rules! push_within_capacity {
     }};
 }
 
-///
-macro_rules! extend_from_raw_move {
-    ($self:ident, $ptr:expr, $len:expr) => {{
+/// `insert` impl, requires `len`, `reserve`, `set_len`, and `as_mut_ptr`
+macro_rules! insert_impl {
+    ($self:ident, $index:expr, $value:expr) => {{
+        let index = $index;
+        let value = $value;
         let len = $self.len();
-        let new_len = len + $len;
-        assert!(new_len <= $self.capacity(), "new length exceeds capacity");
-        // SAFETY: capacity ≥ new length
+        assert!(index <= len, "index out of bounds");
+
+        $self.reserve(1);
+
+        // SAFETY: index is checked above
         unsafe {
-            $self.set_len(new_len);
-            $self
-                .as_mut_ptr()
-                .add(len)
-                .copy_from_nonoverlapping($ptr.cast(), $len);
+            let ptr = $self.as_mut_ptr().add(index);
+            if index < len {
+                ptr.add(1).copy_from(ptr, len - index);
+            }
+            ptr.write(value);
+            $self.set_len(len + 1);
         }
     }};
 }
@@ -287,30 +292,31 @@ macro_rules! append_impl {
     }};
 }
 
-/// Swaps two elements in a slice without bounds checking.
-///
-/// `slice::swap_unchecked` is not stable as of Rust 1.88.0.
-///
-/// # Panics
-///
-/// In debug only, it panics if the indices are out of bounds.
-///
-/// # Safety
-///
-/// The indices must be valid indices for the slice.
-pub const unsafe fn slice_swap_unchecked<T>(slice: &mut [T], a: usize, b: usize) {
-    debug_assert!(
-        a < slice.len() && b < slice.len(),
-        "unchecked swap is out of bounds"
-    );
-    unsafe {
-        let ptr = slice.as_mut_ptr();
-        ptr.add(a).swap(ptr.add(b));
-    }
+/// `split_off` impl, requires `len`, `set_len`, and `as_ptr`, `as_mut_ptr` and `with_capacity`
+macro_rules! split_off_impl {
+    ($self:expr, $at:expr) => {{
+        let at = $at;
+        let len = $self.len();
+        assert!(at <= len, "index out of bounds");
+
+        let remainder = len - at;
+        let mut other = Self::with_capacity(remainder);
+
+        // SAFETY: `at` is checked above, and `other` has enough capacity
+        unsafe {
+            let ptr = $self.as_ptr().add(at);
+            other.as_mut_ptr().copy_from_nonoverlapping(ptr, remainder);
+            $self.set_len(at);
+            other.set_len(remainder);
+        }
+
+        other
+    }};
 }
 
 pub(crate) use {
-    append_impl, extend_from_array_impl, extend_from_raw_move, extend_from_slice_impl,
-    from_array_impl, from_slice_clone_impl, pop_if_impl, pop_impl, push_within_capacity,
-    remove_unchecked_impl, resize_impl, spare_capacity_mut_impl, swap_remove_impl, truncate_impl,
+    append_impl, extend_from_array_impl, extend_from_slice_impl, from_array_impl,
+    from_slice_clone_impl, insert_impl, pop_if_impl, pop_impl, push_within_capacity,
+    remove_unchecked_impl, resize_impl, spare_capacity_mut_impl, split_off_impl, swap_remove_impl,
+    truncate_impl,
 };

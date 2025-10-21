@@ -33,7 +33,7 @@ use crate::common::into_iter::IntoIter;
 use crate::common::methods::{
     append_impl, extend_from_array_impl, extend_from_slice_impl, from_array_impl,
     from_slice_clone_impl, pop_if_impl, pop_impl, push_within_capacity, remove_unchecked_impl,
-    resize_impl, spare_capacity_mut_impl, swap_remove_impl, truncate_impl,
+    resize_impl, spare_capacity_mut_impl, split_off_impl, swap_remove_impl, truncate_impl,
 };
 use crate::common::traits::{MutVector, Mutate, Vector};
 use crate::common::{drop_raw_slice, panic_display, SliceWriteGuard};
@@ -365,12 +365,13 @@ impl<T, L: InlineLength> InlineVec<T, L> {
         self.0.as_mut_ptr()
     }
 
-    /// Attempts to push a value into the inline vector.
+    /// Appends a value to the back of the inline vector if the vector is not
+    /// full.
     ///
     /// # Errors
     ///
     /// Returns `Err(value)` if the inline vector is full, that is, the current
-    /// [`len`] is greater than the `CAP`.
+    /// [`len`] is equal to the vector's capacity.
     ///
     /// # Examples
     ///
@@ -378,13 +379,14 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     /// use hipstr::inline_vec;
     /// let mut inline = inline_vec![8 => 1_u8, 2, 3, 4, 5, 6];
     /// assert_eq!(inline.capacity(), 7);
-    /// assert_eq!(inline.try_push(7), Ok(()));
-    /// assert_eq!(inline.try_push(8), Err(8));
+    /// assert_eq!(inline.push_within_capacity(7), Ok(()));
+    /// assert_eq!(inline.push_within_capacity(8), Err(8));
     /// ```
     ///
     /// [`len`]: Self::len
     #[inline]
-    pub const fn try_push(&mut self, value: T) -> Result<(), T> {
+    #[doc(alias = "try_push")]
+    pub const fn push_within_capacity(&mut self, value: T) -> Result<(), T> {
         push_within_capacity!(self, value)
     }
 
@@ -393,7 +395,7 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     /// # Panics
     ///
     /// Panics if the inline vector is full, that is, the current [`len`] is
-    /// greater than `CAP`.
+    /// equal to the vector's capacity.
     ///
     /// # Examples
     ///
@@ -410,7 +412,10 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     #[inline]
     #[track_caller]
     pub fn push(&mut self, value: T) {
-        assert!(self.try_push(value).is_ok(), "inline vector is full");
+        assert!(
+            self.push_within_capacity(value).is_ok(),
+            "inline vector is full"
+        );
     }
 
     /// Forces the length of the inline vector to `new_len`.
@@ -540,7 +545,7 @@ impl<T, L: InlineLength> InlineVec<T, L> {
 
     /// Moves all the elements of `other` into `self`, leaving `other` empty.
     ///
-    /// This function is similar to [`append`] but is designed to be used in
+    /// This function is similar to [`append`] but is designed to be usable in
     /// constant contexts.
     ///
     /// [`append`]: Self::append
@@ -639,8 +644,10 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     /// # Panics
     ///
     /// Panics if either:
-    /// - `index` is out of bounds, i.e., strictly greater than [`len`]
-    /// - the inline vector is full, i.e., [`len`] is already equal to `CAP`.
+    ///
+    /// - `index` is out of bounds, i.e., strictly greater than [`len`],
+    /// - the inline vector is full, i.e., [`len`] is already equal to the
+    ///   vector capacity.
     ///
     /// # Examples
     ///
@@ -775,19 +782,7 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     /// ```
     #[must_use = "use .truncate() if you don't need the other part"]
     pub const fn split_off(&mut self, at: usize) -> Self {
-        assert!(at <= self.len(), "index out of bounds");
-
-        let mut other = Self::new();
-        let len = self.len();
-
-        let remainder = len - at;
-        unsafe {
-            self.set_len(at);
-            let ptr = self.as_ptr().add(at);
-            other.as_mut_ptr().copy_from_nonoverlapping(ptr, remainder);
-            other.set_len(remainder);
-        }
-        other
+        split_off_impl!(self, at)
     }
 
     /// Resizes the inline vector to the specified length using a closure to

@@ -19,13 +19,18 @@ pub mod traits;
 #[cfg(test)]
 mod tests;
 
-/// A `usize`-sized zero.
 #[repr(usize)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[rules_derive(derives::ConstDefault(Self::Zero))]
-pub enum ZeroUsize {
+enum ZeroUsizeInner {
     Zero = 0,
 }
+
+/// A pointer-sized zero.
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[rules_derive(derives::ConstDefault(Self(ZeroUsizeInner::Zero)))]
+pub struct ZeroUsize(ZeroUsizeInner);
 
 /// Gets a bitwise copy of a value, even if its type is not [`Copy`].
 ///

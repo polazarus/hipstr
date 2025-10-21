@@ -1,8 +1,18 @@
 #![allow(clippy::reversed_empty_ranges)]
 
 use alloc::format;
+use core::mem::transmute;
 
 use super::*;
+
+#[test]
+fn zero_usize() {
+    assert_eq!(size_of::<ZeroUsize>(), size_of::<usize>());
+
+    let z = ZeroUsize::default();
+    let t: usize = unsafe { transmute(z) };
+    assert_eq!(t, 0);
+}
 
 #[test]
 fn ranges() {

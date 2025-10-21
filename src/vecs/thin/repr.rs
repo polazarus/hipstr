@@ -72,7 +72,7 @@ where
 {
     const DEFAULT: Self = Self {
         prefix: P::DEFAULT,
-        _ptr: ZeroUsize::Zero,
+        _ptr: ZeroUsize::DEFAULT,
         cap: 0,
         len: 0,
         data: [],

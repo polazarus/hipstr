@@ -63,8 +63,9 @@ use crate::common::drain::Drain;
 use crate::common::into_iter::IntoIter;
 use crate::common::methods::{
     append_impl, extend_from_array_impl, extend_from_slice_impl, from_array_impl,
-    from_slice_clone_impl, pop_if_impl, pop_impl, remove_unchecked_impl, resize_impl,
-    spare_capacity_mut_impl, swap_remove_impl, truncate_impl,
+    from_slice_clone_impl, insert_impl, pop_if_impl, pop_impl, push_within_capacity,
+    remove_unchecked_impl, resize_impl, spare_capacity_mut_impl, split_off_impl, swap_remove_impl,
+    truncate_impl,
 };
 use crate::common::traits::{MutVector, Mutate, Vector};
 use crate::common::{
@@ -74,11 +75,13 @@ use crate::common::{
 use crate::{common, macros};
 
 pub(crate) mod repr;
-pub mod smart;
+mod smart;
 
 #[cfg(test)]
 mod tests;
 
+/// A reserved prefix type for thin vectors that do not need a prefix but can be
+/// easily converted to shared thin vectors.
 pub type Reserved = ZeroUsize;
 
 /// A macro to create a [`ThinVec`] with the given elements.
@@ -1014,22 +1017,7 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     /// [`drain`]: Self::drain
     #[must_use = "use .truncate() if you don't need the returned vector"]
     pub fn split_off(&mut self, at: usize) -> Self {
-        let len = self.len();
-        assert!(at <= len, "index out of bounds");
-
-        let other_len = len - at;
-        let mut other = Self::with_capacity(other_len);
-
-        // SAFETY: `at` is checked above
-        unsafe {
-            let src = self.ptr().add(at);
-            let dst = other.ptr();
-            dst.copy_from_nonoverlapping(src, other_len);
-            self.set_len(at);
-            other.set_len(other_len);
-        }
-
-        other
+        split_off_impl!(self, at)
     }
 
     /// Sets the capacity of the vector to `new_cap`.
@@ -1142,6 +1130,7 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     /// vec.push(3);
     /// assert_eq!(vec.as_slice(), [1, 2, 3]);
     /// ```
+    #[track_caller]
     pub fn push(&mut self, value: T) {
         let len = self.len();
         self.reserve(1);
@@ -1151,6 +1140,27 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
             self.ptr().add(len).write(value);
             self.set_len(len + 1);
         }
+    }
+
+    /// Appends an element to the back of the vector if there is enough capacity.
+    ///
+    /// # Errors
+    ///
+    /// Returns the element back if there is not enough capacity.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::ThinVec;
+    /// let mut vec = ThinVec::with_capacity(2);
+    /// let cap = vec.capacity(); // actual capacity may be larger
+    /// for i in 0..cap {
+    ///     vec.push_within_capacity(1).unwrap();
+    /// }
+    /// assert!(vec.push_within_capacity(cap).is_err());
+    /// ```
+    pub fn push_within_capacity(&mut self, value: T) -> Result<(), T> {
+        push_within_capacity!(self, value)
     }
 
     /// Inserts an element at position `index` within the vector, shifting all
@@ -1179,21 +1189,8 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     ///
     /// [`len`]: Self::len
     #[track_caller]
-    pub fn insert(&mut self, index: usize, element: T) {
-        let len = self.len();
-        assert!(index <= len, "index out of bounds");
-
-        self.reserve(1);
-
-        // SAFETY: index is checked above
-        unsafe {
-            let ptr = self.ptr().add(index);
-            if index < len {
-                ptr.add(1).copy_from(ptr, len - index);
-            }
-            ptr.write(element);
-            self.set_len(len + 1);
-        }
+    pub fn insert(&mut self, index: usize, value: T) {
+        insert_impl!(self, index, value);
     }
 
     /// Moves all the elements of `other` into `self`, leaving `other` empty.
