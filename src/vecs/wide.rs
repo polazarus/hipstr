@@ -30,7 +30,7 @@ use rules_derive::rules_derive;
 use self::repr::{WideInner, WideRepr};
 use crate::backend::{BackendImpl, CloneOnOverflow, Counter, PanicOnOverflow, UpdateResult};
 use crate::common::derives::{AsRef, Borrow, ConstDefault, Deref, From, Vector};
-use crate::common::traits::Mutate;
+use crate::common::traits::{Mutate, Vector};
 use crate::common::{manually_drop_as_mut, manually_drop_as_ref};
 use crate::Backend;
 
@@ -98,6 +98,21 @@ impl<T, B: Backend> SmartWideVec<T, B> {
             WideRepr::new(inner)
         };
         Self(repr)
+    }
+
+    pub(crate) unsafe fn into_vec_unchecked(self) -> Vec<T> {
+        debug_assert!(self.is_unique() || self.is_empty());
+
+        if let Some(inner) = self.0.as_ref() {
+            let ptr = inner.ptr.as_ptr();
+            let len = inner.len;
+            let cap = inner.cap;
+            // SAFETY: we are taking ownership of the vector, so the pointer is valid
+            // and was allocated by the global allocator
+            unsafe { Vec::from_raw_parts(ptr, len, cap) }
+        } else {
+            Vec::new()
+        }
     }
 
     /// Returns a raw pointer to the vector's buffer.

@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 use core::marker::PhantomData;
-use core::mem::{needs_drop, transmute, ManuallyDrop};
+use core::mem::{self, needs_drop, transmute, ManuallyDrop};
 use core::ops::{Range, RangeBounds};
 use core::ptr;
 
@@ -17,7 +17,7 @@ use crate::common::methods::push_within_capacity;
 use crate::common::traits::Mutate;
 use crate::common::{self, drop_raw_slice, force_transmute};
 use crate::vecs::inline::{InlineLength, InlineVec};
-use crate::vecs::thin::{can_reuse, SmartThinVec, ThinVec};
+use crate::vecs::thin::{can_reuse, Reserved, SmartThinVec, ThinVec};
 use crate::vecs::wide::SmartWideVec;
 use crate::Backend;
 
@@ -425,6 +425,13 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         debug_assert!(self.is_allocated());
         // SAFETY: precondition
         unsafe { &mut *ptr::from_mut(self).cast() }
+    }
+
+    #[inline]
+    const unsafe fn into_allocated_unchecked(self) -> Allocated<T, B> {
+        debug_assert!(self.is_allocated());
+        // SAFETY: precondition
+        unsafe { transmute::<Self, Allocated<T, B>>(self) }
     }
 
     /// Creates a borrowed `HipVec` from a slice.
@@ -995,9 +1002,7 @@ pub enum SplitOffError {
     RefCountOverflow,
 }
 
-pub struct RefMut<'a, 'b, T, B: Backend> {
-    origin: &'a mut HipVec<'b, T, B>,
-}
+pub struct RefMut<'a, 'b, T, B: Backend>(&'a mut HipVec<'b, T, B>);
 
 impl<'a, 'b, T, B: Backend> RefMut<'a, 'b, T, B> {
     unsafe fn new(origin: &'a mut HipVec<'b, T, B>) -> Self {
@@ -1010,39 +1015,41 @@ impl<'a, 'b, T, B: Backend> RefMut<'a, 'b, T, B> {
             assert!(origin.is_inline());
         }
 
-        Self { origin }
+        Self(origin)
     }
 
     pub const fn capacity(&self) -> usize {
-        if self.origin.is_inline() {
-            unsafe { self.origin.as_inline_unchecked() }.capacity()
-        } else if self.origin.is_allocated() {
-            unsafe { self.origin.as_allocated_unchecked() }
-                .owner
-                .capacity()
+        if self.0.is_inline() {
+            unsafe { self.0.as_inline_unchecked() }.capacity()
+        } else if self.0.is_allocated() {
+            unsafe { self.0.as_allocated_unchecked() }.owner.capacity()
         } else {
             unreachable!();
         }
     }
 
     pub const fn len(&self) -> usize {
-        if self.origin.is_inline() {
-            unsafe { self.origin.as_inline_unchecked() }.len()
-        } else if self.origin.is_allocated() {
-            unsafe { self.origin.as_allocated_unchecked() }.owner.len()
+        if self.0.is_inline() {
+            unsafe { self.0.as_inline_unchecked() }.len()
+        } else if self.0.is_allocated() {
+            unsafe { self.0.as_allocated_unchecked() }.owner.len()
         } else {
             unreachable!();
         }
     }
 
+    pub const fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub const unsafe fn set_len(&mut self, new_len: usize) {
-        if self.origin.is_inline() {
-            let inline = unsafe { self.origin.as_inline_mut_unchecked() };
+        if self.0.is_inline() {
+            let inline = unsafe { self.0.as_inline_mut_unchecked() };
             unsafe {
                 inline.set_len(new_len);
             }
-        } else if self.origin.is_allocated() {
-            let allocated = unsafe { self.origin.as_allocated_mut_unchecked() };
+        } else if self.0.is_allocated() {
+            let allocated = unsafe { self.0.as_allocated_mut_unchecked() };
             unsafe {
                 allocated.owner.set_len(new_len);
             }
@@ -1052,10 +1059,10 @@ impl<'a, 'b, T, B: Backend> RefMut<'a, 'b, T, B> {
     }
 
     pub const fn as_ptr(&self) -> *const T {
-        if self.origin.is_inline() {
-            unsafe { self.origin.as_inline_unchecked() }.as_ptr()
-        } else if self.origin.is_allocated() {
-            unsafe { self.origin.as_allocated_unchecked() }
+        if self.0.is_inline() {
+            unsafe { self.0.as_inline_unchecked() }.as_ptr()
+        } else if self.0.is_allocated() {
+            unsafe { self.0.as_allocated_unchecked() }
                 .owner
                 .data()
                 .as_ptr()
@@ -1065,10 +1072,10 @@ impl<'a, 'b, T, B: Backend> RefMut<'a, 'b, T, B> {
     }
 
     pub const fn as_mut_ptr(&mut self) -> *mut T {
-        if self.origin.is_inline() {
-            unsafe { self.origin.as_inline_mut_unchecked() }.as_mut_ptr()
-        } else if self.origin.is_allocated() {
-            unsafe { self.origin.as_allocated_mut_unchecked() }
+        if self.0.is_inline() {
+            unsafe { self.0.as_inline_mut_unchecked() }.as_mut_ptr()
+        } else if self.0.is_allocated() {
+            unsafe { self.0.as_allocated_mut_unchecked() }
                 .owner
                 .data_mut()
                 .as_ptr()
@@ -1085,20 +1092,120 @@ impl<'a, 'b, T, B: Backend> RefMut<'a, 'b, T, B> {
         unsafe { core::slice::from_raw_parts_mut(self.as_mut_ptr(), self.len()) }
     }
 
+    /// Reserves capacity for at least `additional` more elements to be inserted
+    /// in the given vector.
+    ///
+    /// The collection may reserve more space to avoid frequent reallocations.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if the new capacity overflows.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::HipVec;
+    /// let mut hip = HipVec::new();
+    /// hip.mutate().reserve(10);
+    /// assert!(hip.mutate().capacity() >= 10);
+    /// ```
     pub fn reserve(&mut self, additional: usize) {
-        if self.len() + additional <= self.capacity() {
+        let len = self.len();
+        let cap = self.capacity();
+        if additional >= cap - len {
+            let required = self
+                .len()
+                .checked_add(additional)
+                .expect("capacity overflow");
+            let new_cap = required.max(cap * 2);
+            unsafe {
+                self.set_capacity(new_cap);
+            }
+        }
+    }
+
+    /// Sets the capacity of the vector.
+    ///
+    /// # Safety
+    ///
+    /// The new capacity must be greater than or equal to the current length.
+    pub unsafe fn set_capacity(&mut self, new_cap: usize) {
+        debug_assert!(self.0.is_unique(), "unique by type invariant");
+        let len = self.len();
+        let cap = self.capacity();
+
+        debug_assert!(new_cap >= len);
+
+        if cap == new_cap {
             return;
         }
-        if self.origin.is_inline() || self.origin.is_wide() {
-            todo!("normalize to thin");
+
+        if self.0.is_inline() {
+            // SAFETY: repr is checked above
+            let owner = unsafe { self.0.as_inline_mut_unchecked() };
+            let mut thin = ThinVec::<T, B>::with_capacity(new_cap);
+
+            // SAFETY: capacity ≥ new length by `reserve`
+            unsafe {
+                owner.set_len(0);
+                thin.as_mut_ptr()
+                    .copy_from_nonoverlapping(owner.as_ptr(), len.min(new_cap));
+                thin.set_len(len);
+            }
+
+            // SAFETY: thin vec with the default prefix
+            let smart_thin: SmartThinVec<T, B> =
+                unsafe { SmartThinVec::from_thin_vec_unchecked(thin) };
+
+            // update the whole origin
+            let old = mem::replace(self.0, HipVec::from_smart_thin(smart_thin));
+
+            debug_assert!(self.0.is_thin());
+
+            mem::forget(old); // old is inline and now empty, it can be forgotten
+        } else if self.0.is_wide() {
+            let old = mem::replace(self.0, HipVec::DEFAULT);
+            // SAFETY: repr is checked above
+            let allocated = unsafe { old.into_allocated_unchecked() };
+            debug_assert!(allocated.owner.is_wide());
+            debug_assert!(allocated.owner.is_unique());
+
+            let mut thin: ThinVec<T, B> = ThinVec::with_capacity(new_cap);
+            {
+                // SAFETY: repr is checked above (wide)
+                let smart_wide = unsafe { allocated.owner.into_smart_wide_unchecked() };
+                debug_assert!(smart_wide.is_unique());
+
+                // SAFETY: unique by type invariant
+                let mut vec = unsafe { smart_wide.into_vec_unchecked() };
+                debug_assert!(vec.len() <= new_cap);
+
+                // SAFETY: capacity ≥ new length by `reserve`
+                unsafe {
+                    vec.set_len(0);
+                    thin.as_mut_ptr()
+                        .copy_from_nonoverlapping(vec.as_ptr(), len.min(new_cap));
+                    thin.set_len(len);
+                }
+            }
+            // SAFETY: thin vec with the default prefix
+            let shared = unsafe { SmartThinVec::from_thin_vec_unchecked(thin) };
+
+            let new = HipVec::from_smart_thin(shared);
+            let old = mem::replace(self.0, new);
+            mem::forget(old); // old is empty, it can be forgotten
         } else {
             // SAFETY: repr is checked above
-            let allocated = unsafe { self.origin.as_allocated_mut_unchecked() };
-            // SAFETY: repr is checked above (thin)
+            let allocated = unsafe { self.0.as_allocated_mut_unchecked() };
+
+            // SAFETY: repr is checked above (thin) and unique
             let ref_mut = unsafe { allocated.owner.as_thin_mut() };
-            ref_mut.reserve(additional);
+
+            // SAFETY: new capacity >= len by precondition
+            unsafe {
+                ref_mut.set_capacity(new_cap);
+            }
         }
-        todo!()
     }
 
     pub fn push(&mut self, value: T) {
@@ -1115,11 +1222,11 @@ impl<'a, 'b, T, B: Backend> RefMut<'a, 'b, T, B> {
 
 impl<'a, 'b, T, B: Backend> Drop for RefMut<'a, 'b, T, B> {
     fn drop(&mut self) {
-        if self.origin.is_inline() {
+        if self.0.is_inline() {
             // nothing to do
-        } else if self.origin.is_allocated() {
+        } else if self.0.is_allocated() {
             // SAFETY: repr is checked above
-            let allocated = unsafe { self.origin.as_allocated_mut_unchecked() };
+            let allocated = unsafe { self.0.as_allocated_mut_unchecked() };
             allocated.ptr = allocated.owner.data().as_ptr();
             allocated.len = allocated.owner.len();
         } else {

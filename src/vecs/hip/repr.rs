@@ -84,7 +84,7 @@ impl<T, B: Backend> Owner<T, B> {
     #[inline]
     pub const unsafe fn set_len(&mut self, len: usize) {
         if let Some(r) = self.0.as_mut() {
-            debug_assert!(len < r.cap);
+            debug_assert!(len <= r.cap);
             r.len = len;
         }
     }
@@ -111,9 +111,51 @@ impl<T, B: Backend> Owner<T, B> {
 
     pub(crate) unsafe fn as_thin_mut(&mut self) -> &mut ThinVec<T, B> {
         debug_assert!(self.is_thin());
+        debug_assert!(self.is_unique());
+
         let ptr = ptr::from_mut(self).cast();
-        // SAFETY: the caller ensures that the repr is thin
+        // SAFETY: the caller ensures that the repr is thin and unique
         unsafe { &mut *ptr }
+    }
+
+    pub unsafe fn as_smart_wide_mut(&mut self) -> &mut SmartWideVec<T, B> {
+        debug_assert!(self.is_wide());
+        debug_assert!(self.is_unique());
+        let ptr = ptr::from_mut(self).cast();
+        // SAFETY: the caller ensures that the repr is wide and unique
+        unsafe { &mut *ptr }
+    }
+
+    pub unsafe fn copy(&self) -> Self {
+        Self(self.0)
+    }
+
+    /// Converts the owner into a smart thin vector without checking.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the representation is thin.
+    pub unsafe fn into_smart_thin_unchecked(self) -> SmartThinVec<T, B> {
+        debug_assert!(self.is_thin());
+        // SAFETY: the caller ensures that the repr is thin
+        unsafe { transmute(self) }
+    }
+
+    /// Converts the owner into a smart wide vector without checking.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the representation is wide.
+    pub unsafe fn into_smart_wide_unchecked(&self) -> SmartWideVec<T, B> {
+        debug_assert!(self.is_wide());
+        // SAFETY: the caller ensures that the repr is wide
+        unsafe { transmute(self) }
+    }
+}
+
+impl<T, B: Backend> From<SmartThinVec<T, B>> for Owner<T, B> {
+    fn from(smart: SmartThinVec<T, B>) -> Self {
+        unsafe { transmute(smart) }
     }
 }
 

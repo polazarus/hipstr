@@ -434,3 +434,33 @@ fn inline_ptr_is_inline() {
     let end: *const u8 = ptr::from_ref(&h).wrapping_add(1).cast();
     assert!((start..end).contains(&h.as_ptr()));
 }
+
+#[test]
+fn mutate_reserve() {
+    let mut h = HipVec::<u8, Arc>::from([1, 2, 3, 4, 5]);
+    {
+        let mut h_mut = h.mutate();
+        assert!(h_mut.0.is_inline());
+        h_mut.reserve(100);
+        assert!(h_mut.0.is_thin());
+    }
+    assert!(h.is_thin());
+
+    let mut h = HipVec::<u8, Arc>::from(vec![42; 42]);
+    {
+        let mut h_mut = h.mutate();
+        assert!(h_mut.0.is_wide());
+        h_mut.reserve(100);
+        assert!(h_mut.0.is_thin());
+    }
+    assert!(h.is_thin());
+
+    // let mut h = HipVec::<u8, Arc>::new();
+    // assert!(h.is_borrowed());
+    // {
+    //     let mut h_mut = h.mutate();
+    //     assert!(h_mut.0.is_borrowed());
+    //     h_mut.reserve(10);
+    //     assert!(h_mut.0.is_inline());
+    // }
+}
