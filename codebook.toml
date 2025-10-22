@@ -1,0 +1,9 @@
+words = [
+    "borsh",
+    "bstr",
+    "hipstr",
+]
+
+ignore_patterns = [
+    '''Hip(Byt|OsStr|Path|Str)'''
+]

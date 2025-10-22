@@ -22,7 +22,7 @@
 //! ```
 use alloc::boxed::Box;
 use alloc::vec::Vec;
-use core::mem::ManuallyDrop;
+use core::mem::{self, ManuallyDrop};
 use core::ptr::{self, NonNull};
 
 use rules_derive::rules_derive;
@@ -103,13 +103,13 @@ impl<T, B: Backend> SmartWideVec<T, B> {
     pub(crate) unsafe fn into_vec_unchecked(self) -> Vec<T> {
         debug_assert!(self.is_unique() || self.is_empty());
 
-        if let Some(inner) = self.0.as_ref() {
-            let ptr = inner.ptr.as_ptr();
-            let len = inner.len;
-            let cap = inner.cap;
+        let this = ManuallyDrop::new(self);
+        if let Some(inner) = this.0.get() {
+            let WideInner { ptr, cap, len, .. } = unsafe { inner.read() };
+            let _ = unsafe { Box::from_raw(inner.as_ptr()) };
             // SAFETY: we are taking ownership of the vector, so the pointer is valid
             // and was allocated by the global allocator
-            unsafe { Vec::from_raw_parts(ptr, len, cap) }
+            unsafe { Vec::from_raw_parts(ptr.as_ptr(), len, cap) }
         } else {
             Vec::new()
         }
@@ -387,14 +387,14 @@ impl<T, B: Backend> SmartWideVec<T, B> {
 
 impl<T, B: Backend> Drop for SmartWideVec<T, B> {
     fn drop(&mut self) {
-        if let Some(inner) = self.0.as_mut() {
-            if inner.prefix.decr() == UpdateResult::Overflow {
-                let ptr = inner.ptr.as_ptr();
-                let len = inner.len;
-                let cap = inner.cap;
+        if let Some(mut inner) = self.0.get() {
+            let prefix = unsafe { &mut inner.as_mut().prefix };
+            if prefix.decr() == UpdateResult::Overflow {
+                let WideInner { ptr, cap, len, .. } = unsafe { inner.read() };
+                let _ = unsafe { Box::from_raw(inner.as_ptr()) };
                 // SAFETY: we are taking ownership of the vector, so the pointer is valid
                 // and was allocated by the global allocator
-                let _ = unsafe { Vec::from_raw_parts(ptr, len, cap) };
+                let _ = unsafe { Vec::from_raw_parts(ptr.as_ptr(), len, cap) };
             }
         }
     }

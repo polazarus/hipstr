@@ -130,23 +130,12 @@ impl<T, B: Backend> Owner<T, B> {
         Self(self.0)
     }
 
-    /// Converts the owner into a smart thin vector without checking.
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure that the representation is thin.
-    pub unsafe fn into_smart_thin_unchecked(self) -> SmartThinVec<T, B> {
-        debug_assert!(self.is_thin());
-        // SAFETY: the caller ensures that the repr is thin
-        unsafe { transmute(self) }
-    }
-
     /// Converts the owner into a smart wide vector without checking.
     ///
     /// # Safety
     ///
     /// The caller must ensure that the representation is wide.
-    pub unsafe fn into_smart_wide_unchecked(&self) -> SmartWideVec<T, B> {
+    pub unsafe fn into_smart_wide_unchecked(self) -> SmartWideVec<T, B> {
         debug_assert!(self.is_wide());
         // SAFETY: the caller ensures that the repr is wide
         unsafe { transmute(self) }
