@@ -17,7 +17,7 @@ use crate::common::methods::push_within_capacity;
 use crate::common::traits::Mutate;
 use crate::common::{self, drop_raw_slice, force_transmute};
 use crate::vecs::inline::{InlineLength, InlineVec};
-use crate::vecs::thin::{can_reuse, Reserved, SmartThinVec, ThinVec};
+use crate::vecs::thin::{can_reuse, SmartThinVec, ThinVec};
 use crate::vecs::wide::SmartWideVec;
 use crate::Backend;
 

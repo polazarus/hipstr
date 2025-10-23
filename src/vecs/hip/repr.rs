@@ -19,6 +19,14 @@ pub type Allocated<T, B> = Sliced<T, Owner<T, B>>;
 #[repr(transparent)]
 pub struct Owner<T, B>(WideOrThinRepr<T, B>);
 
+impl<T, B: Backend> Clone for Owner<T, B> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<T, B: Backend> Copy for Owner<T, B> {}
+
 impl<T, B: Backend> Owner<T, B> {
     /// Drops the owner now.
     ///
@@ -116,18 +124,6 @@ impl<T, B: Backend> Owner<T, B> {
         let ptr = ptr::from_mut(self).cast();
         // SAFETY: the caller ensures that the repr is thin and unique
         unsafe { &mut *ptr }
-    }
-
-    pub unsafe fn as_smart_wide_mut(&mut self) -> &mut SmartWideVec<T, B> {
-        debug_assert!(self.is_wide());
-        debug_assert!(self.is_unique());
-        let ptr = ptr::from_mut(self).cast();
-        // SAFETY: the caller ensures that the repr is wide and unique
-        unsafe { &mut *ptr }
-    }
-
-    pub unsafe fn copy(&self) -> Self {
-        Self(self.0)
     }
 
     /// Converts the owner into a smart wide vector without checking.

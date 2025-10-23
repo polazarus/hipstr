@@ -25,12 +25,13 @@ use alloc::vec::Vec;
 use core::mem::{self, ManuallyDrop};
 use core::ptr::{self, NonNull};
 
+use const_default::ConstDefault;
 use rules_derive::rules_derive;
 
 use self::repr::{WideInner, WideRepr};
 use crate::backend::{BackendImpl, CloneOnOverflow, Counter, PanicOnOverflow, UpdateResult};
 use crate::common::derives::{AsRef, Borrow, ConstDefault, Deref, From, Vector};
-use crate::common::traits::{Mutate, Vector};
+use crate::common::traits::Mutate;
 use crate::common::{manually_drop_as_mut, manually_drop_as_ref};
 use crate::Backend;
 
@@ -39,10 +40,100 @@ pub(crate) mod repr;
 #[cfg(test)]
 mod tests;
 
-/// A smart wide vector with reference counting.
+#[repr(transparent)]
+#[rules_derive(ConstDefault(Self(WideRepr::NULL)))]
+pub struct WideVec<T, P>(WideRepr<T, P>);
+
+impl<T, P> WideVec<T, P> {
+    fn from_vec(vec: Vec<T>, prefix: P) -> Self {
+        let cap = vec.capacity();
+        let repr = if cap == 0 {
+            WideRepr::NULL
+        } else {
+            let mut vec = ManuallyDrop::new(vec);
+
+            // SAFETY: the vector ptr is not null by type invariant
+            // as_non_null is not stable yet
+            let ptr = unsafe { NonNull::new_unchecked(vec.as_mut_ptr()) };
+            let len = vec.len();
+            let inner = Box::new(WideInner {
+                prefix,
+                ptr,
+                cap,
+                len,
+            });
+            let inner = Box::into_raw(inner);
+            // SAFETY: Box pointer is not null
+            let inner = unsafe { NonNull::new_unchecked(inner) };
+            WideRepr::new(inner)
+        };
+        Self(repr)
+    }
+
+    pub const fn as_ptr(&self) -> *const T {
+        match self.0.as_ref() {
+            Some(inner) => inner.ptr.as_ptr(),
+            None => ptr::dangling(),
+        }
+    }
+
+    pub const fn len(&self) -> usize {
+        match self.0.as_ref() {
+            Some(inner) => inner.len,
+            None => 0,
+        }
+    }
+
+    pub const fn as_slice(&self) -> &[T] {
+        unsafe { core::slice::from_raw_parts(self.as_ptr(), self.len()) }
+    }
+
+    pub const fn as_mut_slice(&mut self) -> &mut [T] {
+        match self.0.as_mut() {
+            Some(inner) => unsafe {
+                core::slice::from_raw_parts_mut(inner.ptr.as_ptr(), inner.len)
+            },
+            None => &mut [],
+        }
+    }
+
+    pub const fn set_len(&mut self, new_len: usize) {
+        if let Some(inner) = self.0.as_mut() {
+            inner.len = new_len;
+        }
+    }
+
+    fn take_vec(&mut self) -> Option<(Vec<T>, P)> {
+        let old = ManuallyDrop::new(mem::replace(self, Self::DEFAULT));
+        if let Some(inner) = old.0.get() {
+            // SAFETY: type invariant
+            let boxed = unsafe { Box::from_raw(inner.as_ptr()) };
+            let WideInner {
+                ptr,
+                cap,
+                len,
+                prefix,
+            } = *boxed;
+            let vec = unsafe { Vec::from_raw_parts(ptr.as_ptr(), len, cap) };
+            Some((vec, prefix))
+        } else {
+            None
+        }
+    }
+
+    // pub const fn set_capacity(&mut self, new_cap: usize) {
+    //     if let Some((vec, prefix)) = self.take_vec() {
+    //         vec.set_capacity(new_cap);
+    //         let _ = mem::replace(Self::from_vec(vec, prefix), vec);
+    //     } else {
+    //     }
+    // }
+}
+
+/// A shared vector backed by a standard wide vector, [`Vec`].
 #[repr(transparent)]
 #[rules_derive(
-    ConstDefault(Self::EMPTY),
+    ConstDefault(Self(WideRepr::NULL)),
     AsRef([T], Self::as_slice),
     Deref([T], Self::as_slice),
     Borrow([T], Self::as_slice),
@@ -52,8 +143,6 @@ mod tests;
 pub struct SmartWideVec<T, B: Backend>(pub(super) WideRepr<T, B>);
 
 impl<T, B: Backend> SmartWideVec<T, B> {
-    const EMPTY: Self = Self(WideRepr::NULL);
-
     /// Creates a new, empty `SmartWideVec`.
     ///
     /// This is equivalent to `SmartWideVec::default()`.
@@ -71,7 +160,7 @@ impl<T, B: Backend> SmartWideVec<T, B> {
     #[inline]
     #[must_use]
     pub const fn new() -> Self {
-        Self::EMPTY
+        Self::DEFAULT
     }
 
     /// Creates a new `SmartWideVec` from a standard `Vec`.
