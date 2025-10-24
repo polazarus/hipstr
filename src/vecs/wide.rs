@@ -22,7 +22,7 @@
 //! ```
 use alloc::boxed::Box;
 use alloc::vec::Vec;
-use core::mem::{self, ManuallyDrop};
+use core::mem::{self, transmute, ManuallyDrop};
 use core::ptr::{self, NonNull};
 
 use const_default::ConstDefault;
@@ -45,6 +45,10 @@ mod tests;
 pub struct WideVec<T, P>(WideRepr<T, P>);
 
 impl<T, P> WideVec<T, P> {
+    pub const fn new() -> Self {
+        Self(WideRepr::NULL)
+    }
+
     fn from_vec(vec: Vec<T>, prefix: P) -> Self {
         let cap = vec.capacity();
         let repr = if cap == 0 {
@@ -104,7 +108,11 @@ impl<T, P> WideVec<T, P> {
     }
 
     fn take_vec(&mut self) -> Option<(Vec<T>, P)> {
-        let old = ManuallyDrop::new(mem::replace(self, Self::DEFAULT));
+        mem::replace(self, Self::DEFAULT).into_vec()
+    }
+
+    fn into_vec(self) -> Option<(Vec<T>, P)> {
+        let old = ManuallyDrop::new(self);
         if let Some(inner) = old.0.get() {
             // SAFETY: type invariant
             let boxed = unsafe { Box::from_raw(inner.as_ptr()) };
@@ -120,20 +128,33 @@ impl<T, P> WideVec<T, P> {
             None
         }
     }
+}
 
-    // pub const fn set_capacity(&mut self, new_cap: usize) {
-    //     if let Some((vec, prefix)) = self.take_vec() {
-    //         vec.set_capacity(new_cap);
-    //         let _ = mem::replace(Self::from_vec(vec, prefix), vec);
-    //     } else {
-    //     }
-    // }
+impl<T, B> Drop for WideVec<T, B> {
+    fn drop(&mut self) {
+        if let Some(inner) = self.0.get() {
+            drop_inner(inner);
+        }
+    }
+}
+
+/// Drops the inner wide vector, including the prefix and the vector.
+fn drop_inner<T, P>(inner: NonNull<WideInner<T, P>>) {
+    // retrieve the raw vec
+    let &WideInner { ptr, cap, len, .. } = unsafe { inner.as_ref() };
+
+    // drop the inner box, will drop the prefix too
+    let _ = unsafe { Box::from_raw(inner.as_ptr()) };
+
+    // SAFETY: we are taking ownership of the vector, so the pointer is valid
+    // and was allocated by the global allocator
+    let _ = unsafe { Vec::from_raw_parts(ptr.as_ptr(), len, cap) };
 }
 
 /// A shared vector backed by a standard wide vector, [`Vec`].
 #[repr(transparent)]
 #[rules_derive(
-    ConstDefault(Self(WideRepr::NULL)),
+    ConstDefault(Self::new()),
     AsRef([T], Self::as_slice),
     Deref([T], Self::as_slice),
     Borrow([T], Self::as_slice),
@@ -160,48 +181,31 @@ impl<T, B: Backend> SmartWideVec<T, B> {
     #[inline]
     #[must_use]
     pub const fn new() -> Self {
-        Self::DEFAULT
+        unsafe { Self::from_wide_vec_unchecked(WideVec::new()) }
+    }
+
+    pub(crate) const unsafe fn from_wide_vec_unchecked(wide_vec: WideVec<T, B>) -> Self {
+        unsafe { transmute(wide_vec) }
+    }
+
+    /// Returns a reference to the underlying `WideVec`.
+    pub(crate) const fn as_wide_vec(&self) -> &WideVec<T, B> {
+        // SAFETY: type invariant
+        unsafe { &*(&raw const *self).cast() }
     }
 
     /// Creates a new `SmartWideVec` from a standard `Vec`.
     pub(crate) fn from_vec(vec: Vec<T>) -> Self {
-        let cap = vec.capacity();
-        let repr = if cap == 0 {
-            WideRepr::NULL
-        } else {
-            let mut vec = ManuallyDrop::new(vec);
-
-            // SAFETY: the vector ptr is not null by type invariant
-            // as_non_null is not stable yet
-            let ptr = unsafe { NonNull::new_unchecked(vec.as_mut_ptr()) };
-            let len = vec.len();
-            let inner = Box::new(WideInner {
-                prefix: B::DEFAULT,
-                ptr,
-                cap,
-                len,
-            });
-            let inner = Box::into_raw(inner);
-            // SAFETY: Box pointer is not null
-            let inner = unsafe { NonNull::new_unchecked(inner) };
-            WideRepr::new(inner)
-        };
-        Self(repr)
+        let wide_vec = WideVec::from_vec(vec, B::DEFAULT);
+        unsafe { Self::from_wide_vec_unchecked(wide_vec) }
     }
 
+    /// Converts the `SmartWideVec` into a standard `Vec` without checking
+    /// for uniqueness.
     pub(crate) unsafe fn into_vec_unchecked(self) -> Vec<T> {
         debug_assert!(self.is_unique() || self.is_empty());
-
-        let this = ManuallyDrop::new(self);
-        if let Some(inner) = this.0.get() {
-            let WideInner { ptr, cap, len, .. } = unsafe { inner.read() };
-            let _ = unsafe { Box::from_raw(inner.as_ptr()) };
-            // SAFETY: we are taking ownership of the vector, so the pointer is valid
-            // and was allocated by the global allocator
-            unsafe { Vec::from_raw_parts(ptr.as_ptr(), len, cap) }
-        } else {
-            Vec::new()
-        }
+        let wide_vec: WideVec<T, B> = unsafe { transmute(self) };
+        wide_vec.into_vec().map_or_else(Vec::new, |(vec, _)| vec)
     }
 
     /// Returns a raw pointer to the vector's buffer.
@@ -479,11 +483,7 @@ impl<T, B: Backend> Drop for SmartWideVec<T, B> {
         if let Some(mut inner) = self.0.get() {
             let prefix = unsafe { &mut inner.as_mut().prefix };
             if prefix.decr() == UpdateResult::Overflow {
-                let WideInner { ptr, cap, len, .. } = unsafe { inner.read() };
-                let _ = unsafe { Box::from_raw(inner.as_ptr()) };
-                // SAFETY: we are taking ownership of the vector, so the pointer is valid
-                // and was allocated by the global allocator
-                let _ = unsafe { Vec::from_raw_parts(ptr.as_ptr(), len, cap) };
+                drop_inner(inner);
             }
         }
     }
