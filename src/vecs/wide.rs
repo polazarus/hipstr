@@ -133,17 +133,26 @@ impl<T, P> WideVec<T, P> {
 impl<T, B> Drop for WideVec<T, B> {
     fn drop(&mut self) {
         if let Some(inner) = self.0.get() {
-            drop_inner(inner);
+            // SAFETY: inner is valid by the type invariant
+            unsafe {
+                drop_inner(inner);
+            }
         }
     }
 }
 
 /// Drops the inner wide vector, including the prefix and the vector.
-fn drop_inner<T, P>(inner: NonNull<WideInner<T, P>>) {
+///
+/// # Safety
+///
+/// The caller must ensure that `inner` is a valid pointer to a `WideInner<T, P>`
+/// that was allocated with `Box::new`.
+unsafe fn drop_inner<T, P>(inner: NonNull<WideInner<T, P>>) {
     // retrieve the raw vec
     let &WideInner { ptr, cap, len, .. } = unsafe { inner.as_ref() };
 
     // drop the inner box, will drop the prefix too
+    // SAFETY: precondition
     let _ = unsafe { Box::from_raw(inner.as_ptr()) };
 
     // SAFETY: we are taking ownership of the vector, so the pointer is valid
@@ -483,7 +492,10 @@ impl<T, B: Backend> Drop for SmartWideVec<T, B> {
         if let Some(mut inner) = self.0.get() {
             let prefix = unsafe { &mut inner.as_mut().prefix };
             if prefix.decr() == UpdateResult::Overflow {
-                drop_inner(inner);
+                // SAFETY: inner is valid by the type invariant
+                unsafe {
+                    drop_inner(inner);
+                }
             }
         }
     }
