@@ -1005,6 +1005,7 @@ pub enum SplitOffError {
 pub struct RefMut<'a, 'b, T, B: Backend>(&'a mut HipVec<'b, T, B>);
 
 impl<'a, 'b, T, B: Backend> RefMut<'a, 'b, T, B> {
+    #[must_use]
     unsafe fn new(origin: &'a mut HipVec<'b, T, B>) -> Self {
         #[cfg(debug_assertions)]
         if origin.is_allocated() {
@@ -1018,6 +1019,7 @@ impl<'a, 'b, T, B: Backend> RefMut<'a, 'b, T, B> {
         Self(origin)
     }
 
+    #[must_use]
     pub const fn capacity(&self) -> usize {
         if self.0.is_inline() {
             unsafe { self.0.as_inline_unchecked() }.capacity()
@@ -1028,6 +1030,7 @@ impl<'a, 'b, T, B: Backend> RefMut<'a, 'b, T, B> {
         }
     }
 
+    #[must_use]
     pub const fn len(&self) -> usize {
         if self.0.is_inline() {
             unsafe { self.0.as_inline_unchecked() }.len()
@@ -1038,6 +1041,8 @@ impl<'a, 'b, T, B: Backend> RefMut<'a, 'b, T, B> {
         }
     }
 
+    #[must_use]
+    #[inline]
     pub const fn is_empty(&self) -> bool {
         self.len() == 0
     }
@@ -1058,6 +1063,7 @@ impl<'a, 'b, T, B: Backend> RefMut<'a, 'b, T, B> {
         }
     }
 
+    #[must_use]
     pub const fn as_ptr(&self) -> *const T {
         if self.0.is_inline() {
             unsafe { self.0.as_inline_unchecked() }.as_ptr()
@@ -1071,6 +1077,7 @@ impl<'a, 'b, T, B: Backend> RefMut<'a, 'b, T, B> {
         }
     }
 
+    #[must_use]
     pub const fn as_mut_ptr(&mut self) -> *mut T {
         if self.0.is_inline() {
             unsafe { self.0.as_inline_mut_unchecked() }.as_mut_ptr()
@@ -1084,10 +1091,14 @@ impl<'a, 'b, T, B: Backend> RefMut<'a, 'b, T, B> {
         }
     }
 
+    #[must_use]
+    #[inline]
     pub const fn as_slice(&self) -> &[T] {
         unsafe { core::slice::from_raw_parts(self.as_ptr(), self.len()) }
     }
 
+    #[must_use]
+    #[inline]
     pub const fn as_mut_slice(&mut self) -> &mut [T] {
         unsafe { core::slice::from_raw_parts_mut(self.as_mut_ptr(), self.len()) }
     }
@@ -1215,12 +1226,31 @@ impl<'a, 'b, T, B: Backend> RefMut<'a, 'b, T, B> {
         };
     }
 
-    pub fn push_within_capacity(&mut self, value: T) -> Result<(), T> {
+    /// Pushes a value to the end of the vector, assuming there is enough
+    /// capacity.
+    ///
+    /// # Errors
+    ///
+    /// If there is not enough capacity, returns `Err(value)`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::HipVec;
+    /// let mut hip = HipVec::with_capacity(2);
+    /// {
+    ///     let mut m = hip.mutate();
+    ///     let n = (0..).find(|i| r.push_with_capacity(i).is_err()).unwrap();
+    ///     assert!(n >= 2);
+    /// }
+    /// assert!(hip.len() >= 2);
+    /// ```
+    pub const fn push_within_capacity(&mut self, value: T) -> Result<(), T> {
         push_within_capacity!(self, value)
     }
 }
 
-impl<'a, 'b, T, B: Backend> Drop for RefMut<'a, 'b, T, B> {
+impl<T, B: Backend> Drop for RefMut<'_, '_, T, B> {
     fn drop(&mut self) {
         if self.0.is_inline() {
             // nothing to do

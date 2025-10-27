@@ -43,7 +43,7 @@ impl<T, const TAG: usize> MagicPointer<T, TAG> {
     /// Checks if the pointer is null.
     ///
     /// The underlying representation is a tagged null.
-    const fn is_null(self) -> bool {
+    pub(crate) const fn is_null(self) -> bool {
         let addr: usize = unsafe { transmute(self.inner) };
         addr == SLICED
     }

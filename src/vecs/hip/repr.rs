@@ -46,15 +46,15 @@ impl<T, B: Backend> Owner<T, B> {
         }
     }
 
-    pub fn is_unique(&self) -> bool {
+    pub fn is_unique(self) -> bool {
         self.0.as_ref().unwrap().prefix.is_unique()
     }
 
-    pub const fn is_wide(&self) -> bool {
+    pub const fn is_wide(self) -> bool {
         self.0.is_wide()
     }
 
-    pub const fn is_thin(&self) -> bool {
+    pub const fn is_thin(self) -> bool {
         self.0.is_thin()
     }
 
@@ -99,7 +99,7 @@ impl<T, B: Backend> Owner<T, B> {
 
     /// Gets the length of the owner.
     #[inline]
-    pub const fn len(&self) -> usize {
+    pub const fn len(self) -> usize {
         if let Some(r) = self.0.as_ref() {
             r.len
         } else {
@@ -109,7 +109,7 @@ impl<T, B: Backend> Owner<T, B> {
 
     /// Gets the capacity of the owner.
     #[inline]
-    pub const fn capacity(&self) -> usize {
+    pub const fn capacity(self) -> usize {
         if let Some(r) = self.0.as_ref() {
             r.cap
         } else {

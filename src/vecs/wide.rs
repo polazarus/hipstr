@@ -1,4 +1,4 @@
-//! [`Vec`]-compatible vectors.
+//! Thin handles to wide vectors (i.e., [`Vec`]).
 //!
 //! This module contains the implementation of smart wide vectors with
 //! reference counting. The main type is [`SmartWideVec<T, B>`], which
@@ -22,7 +22,7 @@
 //! ```
 use alloc::boxed::Box;
 use alloc::vec::Vec;
-use core::mem::{self, transmute, ManuallyDrop};
+use core::mem::{self, ManuallyDrop};
 use core::ptr::{self, NonNull};
 
 use const_default::ConstDefault;
@@ -32,24 +32,40 @@ use self::repr::{WideInner, WideRepr};
 use crate::backend::{BackendImpl, CloneOnOverflow, Counter, PanicOnOverflow, UpdateResult};
 use crate::common::derives::{AsRef, Borrow, ConstDefault, Deref, From, Vector};
 use crate::common::traits::Mutate;
-use crate::common::{manually_drop_as_mut, manually_drop_as_ref};
 use crate::Backend;
 
 pub(crate) mod repr;
 
 #[cfg(test)]
-mod tests;
+mod shared_tests;
 
+#[cfg(test)]
+mod unique_tests;
+
+/// A thin handle to a wide vector, i.e., a standard [`Vec`].
+///
+/// This type stores an additional prefix of type `P` alongside the vector data,
+/// allowing for extra metadata or reference counting information to be associated
+/// with the vector.
 #[repr(transparent)]
-#[rules_derive(ConstDefault(Self(WideRepr::NULL)))]
-pub struct WideVec<T, P>(WideRepr<T, P>);
+#[rules_derive(ConstDefault(Self::new()),
+    AsRef([T], Self::as_slice),
+    Deref([T], Self::as_slice),
+    Borrow([T], Self::as_slice),
+    From(Vec<T>, Self::from_vec),
+    Vector(T),
+)]
+pub struct WideVec<T, P: ConstDefault>(WideRepr<T, P>);
 
-impl<T, P> WideVec<T, P> {
+impl<T, P: ConstDefault> WideVec<T, P> {
+    #[must_use]
+    #[inline]
     pub const fn new() -> Self {
         Self(WideRepr::NULL)
     }
 
-    fn from_vec(vec: Vec<T>, prefix: P) -> Self {
+    #[must_use]
+    fn from_vec(vec: Vec<T>) -> Self {
         let cap = vec.capacity();
         let repr = if cap == 0 {
             WideRepr::NULL
@@ -61,7 +77,7 @@ impl<T, P> WideVec<T, P> {
             let ptr = unsafe { NonNull::new_unchecked(vec.as_mut_ptr()) };
             let len = vec.len();
             let inner = Box::new(WideInner {
-                prefix,
+                prefix: P::DEFAULT,
                 ptr,
                 cap,
                 len,
@@ -74,6 +90,8 @@ impl<T, P> WideVec<T, P> {
         Self(repr)
     }
 
+    #[must_use]
+    #[inline]
     pub const fn as_ptr(&self) -> *const T {
         match self.0.as_ref() {
             Some(inner) => inner.ptr.as_ptr(),
@@ -81,6 +99,17 @@ impl<T, P> WideVec<T, P> {
         }
     }
 
+    #[must_use]
+    #[inline]
+    pub const fn as_mut_ptr(&mut self) -> *mut T {
+        match self.0.as_mut() {
+            Some(inner) => inner.ptr.as_ptr(),
+            None => ptr::dangling_mut(),
+        }
+    }
+
+    #[must_use]
+    #[inline]
     pub const fn len(&self) -> usize {
         match self.0.as_ref() {
             Some(inner) => inner.len,
@@ -88,17 +117,31 @@ impl<T, P> WideVec<T, P> {
         }
     }
 
+    #[must_use]
+    #[inline]
+    pub const fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    #[must_use]
+    #[inline]
+    pub const fn capacity(&self) -> usize {
+        match self.0.as_ref() {
+            Some(inner) => inner.cap,
+            None => 0,
+        }
+    }
+
+    #[must_use]
+    #[inline]
     pub const fn as_slice(&self) -> &[T] {
         unsafe { core::slice::from_raw_parts(self.as_ptr(), self.len()) }
     }
 
+    #[must_use]
+    #[inline]
     pub const fn as_mut_slice(&mut self) -> &mut [T] {
-        match self.0.as_mut() {
-            Some(inner) => unsafe {
-                core::slice::from_raw_parts_mut(inner.ptr.as_ptr(), inner.len)
-            },
-            None => &mut [],
-        }
+        unsafe { core::slice::from_raw_parts_mut(self.as_mut_ptr(), self.len()) }
     }
 
     pub const fn set_len(&mut self, new_len: usize) {
@@ -107,11 +150,8 @@ impl<T, P> WideVec<T, P> {
         }
     }
 
-    fn take_vec(&mut self) -> Option<(Vec<T>, P)> {
-        mem::replace(self, Self::DEFAULT).into_vec()
-    }
-
-    fn into_vec(self) -> Option<(Vec<T>, P)> {
+    #[must_use]
+    pub fn into_vec(self) -> Option<(Vec<T>, P)> {
         let old = ManuallyDrop::new(self);
         if let Some(inner) = old.0.get() {
             // SAFETY: type invariant
@@ -128,9 +168,28 @@ impl<T, P> WideVec<T, P> {
             None
         }
     }
+
+    /// Gets a mutable reference to the underlying vector.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::vecs::wide::WideVec;
+    /// let mut wide_vec: WideVec<i32, ()> = WideVec::from(vec![1, 2, 3]);
+    /// {
+    ///    let mut r = wide_vec.mutate();
+    ///     r.push(4);
+    ///  }
+    /// assert_eq!(wide_vec.len(), 4);
+    /// ```
+    #[must_use]
+    #[inline]
+    pub fn mutate(&mut self) -> RefMut<'_, T, P> {
+        RefMut::new(self)
+    }
 }
 
-impl<T, B> Drop for WideVec<T, B> {
+impl<T, B: ConstDefault> Drop for WideVec<T, B> {
     fn drop(&mut self) {
         if let Some(inner) = self.0.get() {
             // SAFETY: inner is valid by the type invariant
@@ -193,27 +252,50 @@ impl<T, B: Backend> SmartWideVec<T, B> {
         unsafe { Self::from_wide_vec_unchecked(WideVec::new()) }
     }
 
+    /// Creates a new `SmartWideVec` from a `WideVec` without checking the prefix.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the counter has a consistant valid value.
+    #[must_use]
+    #[inline]
     pub(crate) const unsafe fn from_wide_vec_unchecked(wide_vec: WideVec<T, B>) -> Self {
-        unsafe { transmute(wide_vec) }
+        unsafe { mem::transmute(wide_vec) }
     }
 
     /// Returns a reference to the underlying `WideVec`.
+    #[must_use]
+    #[inline]
     pub(crate) const fn as_wide_vec(&self) -> &WideVec<T, B> {
         // SAFETY: type invariant
-        unsafe { &*(&raw const *self).cast() }
+        unsafe { &*ptr::from_ref(self).cast() }
+    }
+
+    /// Returns a mutable reference to the underlying `WideVec`.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the vector is uniquely owned, i.e. no other
+    /// references (clones) to the same data exist. Failing to do so may
+    /// result in undefined behavior.
+    #[must_use]
+    #[inline]
+    pub(crate) const unsafe fn as_mut_wide_vec_unchecked(&mut self) -> &mut WideVec<T, B> {
+        // SAFETY: type invariant, uniqueness must be ensured by the caller
+        unsafe { &mut *ptr::from_mut(self).cast() }
     }
 
     /// Creates a new `SmartWideVec` from a standard `Vec`.
     pub(crate) fn from_vec(vec: Vec<T>) -> Self {
-        let wide_vec = WideVec::from_vec(vec, B::DEFAULT);
+        let wide_vec = WideVec::from_vec(vec);
         unsafe { Self::from_wide_vec_unchecked(wide_vec) }
     }
 
     /// Converts the `SmartWideVec` into a standard `Vec` without checking
     /// for uniqueness.
     pub(crate) unsafe fn into_vec_unchecked(self) -> Vec<T> {
-        debug_assert!(self.is_unique() || self.is_empty());
-        let wide_vec: WideVec<T, B> = unsafe { transmute(self) };
+        debug_assert!(self.is_unique());
+        let wide_vec: WideVec<T, B> = unsafe { mem::transmute(self) };
         wide_vec.into_vec().map_or_else(Vec::new, |(vec, _)| vec)
     }
 
@@ -235,10 +317,7 @@ impl<T, B: Backend> SmartWideVec<T, B> {
     /// ```
     #[must_use]
     pub const fn as_ptr(&self) -> *const T {
-        match self.0.as_ref() {
-            Some(inner) => inner.ptr.as_ptr(),
-            None => ptr::dangling(),
-        }
+        self.as_wide_vec().as_ptr()
     }
 
     /// Returns the number of elements the vector can hold without reallocating.
@@ -259,10 +338,7 @@ impl<T, B: Backend> SmartWideVec<T, B> {
     #[must_use]
     #[inline]
     pub const fn capacity(&self) -> usize {
-        match self.0.as_ref() {
-            Some(inner) => inner.cap,
-            None => 0,
-        }
+        self.as_wide_vec().capacity()
     }
 
     /// Returns the number of elements in the vector, also referred to as its 'length'.
@@ -279,10 +355,7 @@ impl<T, B: Backend> SmartWideVec<T, B> {
     /// ```
     #[must_use]
     pub const fn len(&self) -> usize {
-        match self.0.as_ref() {
-            Some(inner) => inner.len,
-            None => 0,
-        }
+        self.as_wide_vec().len()
     }
 
     /// Returns `true` if the vector contains no elements.
@@ -299,7 +372,7 @@ impl<T, B: Backend> SmartWideVec<T, B> {
     #[must_use]
     #[inline]
     pub const fn is_empty(&self) -> bool {
-        self.len() == 0
+        self.as_wide_vec().is_empty()
     }
 
     /// Returns a slice containing all elements of the vector.
@@ -316,7 +389,7 @@ impl<T, B: Backend> SmartWideVec<T, B> {
     #[must_use]
     #[inline]
     pub const fn as_slice(&self) -> &[T] {
-        unsafe { core::slice::from_raw_parts(self.as_ptr(), self.len()) }
+        self.as_wide_vec().as_slice()
     }
 
     /// Returns `true` if the vector is uniquely owned (i.e. no other references
@@ -381,13 +454,8 @@ impl<T, B: Backend> SmartWideVec<T, B> {
     /// result in undefined behavior.
     #[must_use]
     pub unsafe fn as_mut_unchecked(&mut self) -> RefMut<'_, T, B> {
-        let vec = self.0.as_mut().map_or_else(Vec::new, |inner| unsafe {
-            Vec::from_raw_parts(inner.ptr.as_ptr(), inner.len, inner.cap)
-        });
-        RefMut {
-            vec: ManuallyDrop::new(vec),
-            origin: self,
-        }
+        debug_assert!(self.is_unique());
+        RefMut::new(unsafe { self.as_mut_wide_vec_unchecked() })
     }
 
     pub fn mutate(&mut self) -> RefMut<'_, T, B>
@@ -456,35 +524,6 @@ impl<T, B: Backend> SmartWideVec<T, B> {
     const unsafe fn copy(&self) -> Self {
         Self(self.0)
     }
-
-    unsafe fn update_inner(&mut self, mut vec: Vec<T>) {
-        let cap = vec.capacity();
-        let len = vec.len();
-        let ptr = unsafe { NonNull::new_unchecked(vec.as_mut_ptr()) };
-
-        if let Some(inner) = self.0.as_mut() {
-            let _ = ManuallyDrop::new(vec);
-
-            inner.len = len;
-            inner.cap = cap;
-            inner.ptr = ptr;
-        } else if cap > 0 {
-            let inner = Box::new(WideInner {
-                prefix: B::DEFAULT,
-                len,
-                cap,
-                ptr,
-            });
-
-            let inner = Box::into_raw(inner);
-            // SAFETY: Box pointer is not null
-            let inner = unsafe { NonNull::new_unchecked(inner) };
-
-            // transfer the ownership of the vector to the inner
-            let _ = ManuallyDrop::new(vec);
-            self.0 = WideRepr::new(inner);
-        }
-    }
 }
 
 impl<T, B: Backend> Drop for SmartWideVec<T, B> {
@@ -523,47 +562,79 @@ impl<T: Clone, C: Counter> Clone for SmartWideVec<T, BackendImpl<C, CloneOnOverf
     AsRef(Vec<T>, Self::as_ref, Self::as_mut),
     Borrow(Vec<T>, Self::as_ref, Self::as_mut),
 )]
-pub struct RefMut<'a, T, B: Backend> {
-    vec: ManuallyDrop<Vec<T>>,
-    origin: &'a mut SmartWideVec<T, B>,
+pub struct RefMut<'a, T, P: ConstDefault> {
+    vec: Vec<T>,
+    origin: &'a mut WideVec<T, P>,
 }
 
-impl<T, B: Backend> RefMut<'_, T, B> {
+impl<'a, T, P: ConstDefault> RefMut<'a, T, P> {
+    #[must_use]
+    fn new(wide_vec: &'a mut WideVec<T, P>) -> Self {
+        let vec = mem::take(wide_vec)
+            .into_vec()
+            .map(|(v, _prefix)| v)
+            .unwrap_or_default();
+        Self {
+            vec,
+            origin: wide_vec,
+        }
+    }
+
     /// Returns a reference to the underlying vector.
     #[must_use]
+    #[inline]
     pub const fn as_ref(&self) -> &Vec<T> {
-        manually_drop_as_ref(&self.vec)
+        &self.vec
     }
 
     /// Returns a mutable reference to the underlying vector.
     #[must_use]
+    #[inline]
     pub const fn as_mut(&mut self) -> &mut Vec<T> {
-        manually_drop_as_mut(&mut self.vec)
+        &mut self.vec
     }
 }
 
-impl<T, B: Backend> Drop for RefMut<'_, T, B> {
+impl<T, P: ConstDefault> Drop for RefMut<'_, T, P> {
     #[inline]
     fn drop(&mut self) {
-        unsafe {
-            self.origin.update_inner(ManuallyDrop::take(&mut self.vec));
-        }
+        let vec = mem::take(&mut self.vec);
+        let old = mem::replace(self.origin, WideVec::from_vec(vec));
+        debug_assert!(old.0.is_null());
+        mem::forget(old);
     }
 }
 
-impl<T: Clone, B: Backend> Mutate for SmartWideVec<T, B> {
+impl<T: Clone, P: Backend> Mutate for SmartWideVec<T, P> {
     type MutVector<'a>
         = Vec<T>
     where
         Self: 'a;
 
     type RefMut<'a>
-        = RefMut<'a, T, B>
+        = RefMut<'a, T, P>
     where
         Self: 'a;
 
     #[inline]
     fn mutate(&mut self) -> Self::RefMut<'_> {
         self.mutate()
+    }
+}
+
+impl<T, P: ConstDefault> Mutate for WideVec<T, P> {
+    type MutVector<'a>
+        = Vec<T>
+    where
+        Self: 'a;
+
+    type RefMut<'a>
+        = RefMut<'a, T, P>
+    where
+        Self: 'a;
+
+    #[inline]
+    fn mutate(&mut self) -> Self::RefMut<'_> {
+        RefMut::new(self)
     }
 }
