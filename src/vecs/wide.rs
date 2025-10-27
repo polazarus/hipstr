@@ -182,7 +182,6 @@ impl<T, P: ConstDefault> WideVec<T, P> {
     ///  }
     /// assert_eq!(wide_vec.len(), 4);
     /// ```
-    #[must_use]
     #[inline]
     pub fn mutate(&mut self) -> RefMut<'_, T, P> {
         RefMut::new(self)
@@ -269,6 +268,18 @@ impl<T, B: Backend> SmartWideVec<T, B> {
     pub(crate) const fn as_wide_vec(&self) -> &WideVec<T, B> {
         // SAFETY: type invariant
         unsafe { &*ptr::from_ref(self).cast() }
+    }
+
+    /// Returns a mutable reference to the underlying `WideVec` if it is
+    /// uniquely owned. Otherwise, returns `None`.
+    #[must_use]
+    #[inline]
+    pub fn as_mut_wide_vec(&mut self) -> Option<&mut WideVec<T, B>> {
+        if self.is_unique() {
+            Some(unsafe { self.as_mut_wide_vec_unchecked() })
+        } else {
+            None
+        }
     }
 
     /// Returns a mutable reference to the underlying `WideVec`.
@@ -392,6 +403,27 @@ impl<T, B: Backend> SmartWideVec<T, B> {
         self.as_wide_vec().as_slice()
     }
 
+    /// Returns a mutable slice containing all elements of the vector
+    /// if the vector is uniquely owned. Otherwise, returns `None`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::vecs::wide::SmartWideVec;
+    /// # use hipstr::Arc;
+    /// let mut vec: SmartWideVec<i32, Arc> = SmartWideVec::from(vec![1, 2, 3]);
+    /// {
+    ///     let slice = vec.as_mut_slice().unwrap();
+    ///     slice[0] = 10;
+    /// }
+    /// assert_eq!(vec.as_slice(), &[10, 2, 3]);
+    /// ```
+    #[must_use]
+    #[inline]
+    pub fn as_mut_slice(&mut self) -> Option<&mut [T]> {
+        self.as_mut_wide_vec().map(WideVec::as_mut_slice)
+    }
+
     /// Returns `true` if the vector is uniquely owned (i.e. no other references
     /// to the same data exist).
     ///
@@ -458,6 +490,26 @@ impl<T, B: Backend> SmartWideVec<T, B> {
         RefMut::new(unsafe { self.as_mut_wide_vec_unchecked() })
     }
 
+    /// Gets a mutable reference to the underlying vector, cloning the data
+    /// if necessary to ensure unique ownership.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::vecs::wide::SmartWideVec;
+    /// # use hipstr::Arc;
+    /// let mut vec: SmartWideVec<i32, Arc> = SmartWideVec::from(vec![1, 2, 3]);
+    /// let vec2 = vec.clone();
+    /// assert!(!vec.is_unique());
+    /// {
+    ///     let mut r = vec.mutate();
+    ///     r.push(4);
+    /// }
+    /// assert!(vec.is_unique());
+    /// assert_eq!(vec.as_slice(), &[1, 2, 3, 4]);
+    /// ```
+    #[inline]
+    #[must_use = "prefer `detach` if you don't actually need to mutate the vector"]
     pub fn mutate(&mut self) -> RefMut<'_, T, B>
     where
         T: Clone,
@@ -466,6 +518,32 @@ impl<T, B: Backend> SmartWideVec<T, B> {
         unsafe { self.as_mut_unchecked() }
     }
 
+    /// Gets a mutable reference to the underlying vector, copying the data
+    /// if necessary to ensure unique ownership.
+    ///
+    /// Equivalent to [`mutate`], this function is provided only for consistency
+    /// with other vector types. Indeed, [`mutate`] exploits the built-in
+    /// specialization of [`Vec`]'s methods in the standard library.
+    ///
+    /// [`mutate`]: Self::mutate
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::vecs::wide::SmartWideVec;
+    /// # use hipstr::Arc;
+    /// let mut vec: SmartWideVec<i32, Arc> = SmartWideVec::from(vec![1, 2, 3]);
+    /// let vec2 = vec.clone();
+    /// assert!(!vec.is_unique());
+    /// {
+    ///     let mut r = vec.mutate_copy();
+    ///     r.push(4);
+    /// }
+    /// assert!(vec.is_unique());
+    /// assert_eq!(vec.as_slice(), &[1, 2, 3, 4]);
+    /// ```
+    #[inline]
+    #[must_use = "prefer `detach_copy` if you don't actually need to mutate the vector"]
     pub fn mutate_copy(&mut self) -> RefMut<'_, T, B>
     where
         T: Clone,
@@ -474,7 +552,26 @@ impl<T, B: Backend> SmartWideVec<T, B> {
         unsafe { self.as_mut_unchecked() }
     }
 
-    pub(crate) fn detach(&mut self)
+    /// Ensures that this `SmartWideVec` is uniquely owned by cloning the
+    /// underlying data if necessary.
+    ///
+    /// After calling this method, it is guaranteed that `is_unique()` returns `true`.
+    ///
+    /// If the vector is already uniquely owned, this method does nothing.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::vecs::wide::SmartWideVec;
+    /// # use hipstr::Arc;
+    /// let mut vec: SmartWideVec<i32, Arc> = SmartWideVec::from(vec![1, 2, 3]);
+    /// let vec2 = vec.clone();
+    /// assert!(!vec.is_unique());
+    /// vec.detach();
+    /// assert!(vec.is_unique());
+    /// assert_eq!(vec.as_slice(), &[1, 2, 3]);
+    /// ```
+    pub fn detach(&mut self)
     where
         T: Clone,
     {
@@ -487,6 +584,32 @@ impl<T, B: Backend> SmartWideVec<T, B> {
         }
     }
 
+    /// Ensures that this `SmartWideVec` is uniquely owned by copying the
+    /// underlying data if necessary.
+    ///
+    /// After calling this method, it is guaranteed that `is_unique()` returns
+    /// `true`.
+    ///
+    /// If the vector is already uniquely owned, this method does nothing.
+    ///
+    /// Equivalent to [`detach`], this function is provided only for consistency
+    /// with other vector types. Indeed, [`detatch`] exploits the built-in
+    /// specialization of [`Vec`]'s methods in the standard library.
+    ///
+    /// [`detach`]: Self::detach
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::vecs::wide::SmartWideVec;
+    /// # use hipstr::Arc;
+    /// let mut vec: SmartWideVec<i32, Arc> = SmartWideVec::from(vec![1, 2, 3]);
+    /// let vec2 = vec.clone();
+    /// assert!(!vec.is_unique());
+    /// vec.detach();
+    /// assert!(vec.is_unique());
+    /// assert_eq!(vec.as_slice(), &[1, 2, 3]);
+    /// ```
     pub(crate) fn detach_copy(&mut self)
     where
         T: Clone,
@@ -557,40 +680,63 @@ impl<T: Clone, C: Counter> Clone for SmartWideVec<T, BackendImpl<C, CloneOnOverf
     }
 }
 
+/// A mutable reference to the underlying vector of a wide vector.
+///
+/// This type allows for mutable access to the [`Vec`] while ensuring
+/// that the original wide vector handle is updated upon dropping the reference.
+///
+/// # Examples
+///
+/// ```
+/// use hipstr::vecs::wide::SmartWideVec;
+/// use hipstr::Arc;
+///
+/// let mut v: SmartWideVec<i32, Arc> = SmartWideVec::from(vec![1, 2, 3]);
+/// {
+///    let mut r = v.mutate();
+///     r.push(4);
+///  }
+/// assert_eq!(v.len(), 4);
+/// assert_eq!(v.as_slice(), [1, 2, 3, 4]);
+/// ```
 #[rules_derive(
-    Deref(Vec<T>, Self::as_ref, Self::as_mut),
-    AsRef(Vec<T>, Self::as_ref, Self::as_mut),
-    Borrow(Vec<T>, Self::as_ref, Self::as_mut),
+    Deref(Vec<T>, Self::as_vec, Self::as_mut_vec),
+    AsRef(Vec<T>, Self::as_vec, Self::as_mut_vec),
+    Borrow(Vec<T>, Self::as_vec, Self::as_mut_vec),
 )]
+#[must_use]
 pub struct RefMut<'a, T, P: ConstDefault> {
+    /// The vector being mutated.
     vec: Vec<T>,
+    /// A mutable reference to the original wide vector handle.
+    ///
+    /// Always empty while the RefMut exists.
     origin: &'a mut WideVec<T, P>,
 }
 
 impl<'a, T, P: ConstDefault> RefMut<'a, T, P> {
+    /// Creates a new `RefMut` from a mutable reference to a `WideVec`.
     #[must_use]
-    fn new(wide_vec: &'a mut WideVec<T, P>) -> Self {
-        let vec = mem::take(wide_vec)
+    fn new(origin: &'a mut WideVec<T, P>) -> Self {
+        // take the vector out of the wide vector handle
+        let vec = mem::take(origin)
             .into_vec()
             .map(|(v, _prefix)| v)
             .unwrap_or_default();
-        Self {
-            vec,
-            origin: wide_vec,
-        }
+        Self { vec, origin }
     }
 
     /// Returns a reference to the underlying vector.
     #[must_use]
     #[inline]
-    pub const fn as_ref(&self) -> &Vec<T> {
+    pub const fn as_vec(&self) -> &Vec<T> {
         &self.vec
     }
 
     /// Returns a mutable reference to the underlying vector.
     #[must_use]
     #[inline]
-    pub const fn as_mut(&mut self) -> &mut Vec<T> {
+    pub const fn as_mut_vec(&mut self) -> &mut Vec<T> {
         &mut self.vec
     }
 }

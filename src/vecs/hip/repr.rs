@@ -117,7 +117,7 @@ impl<T, B: Backend> Owner<T, B> {
         }
     }
 
-    pub(crate) unsafe fn as_thin_mut(&mut self) -> &mut ThinVec<T, B> {
+    pub(crate) unsafe fn as_mut_thin_vec(&mut self) -> &mut ThinVec<T, B> {
         debug_assert!(self.is_thin());
         debug_assert!(self.is_unique());
 

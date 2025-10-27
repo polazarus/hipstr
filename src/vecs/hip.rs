@@ -373,7 +373,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     ///
     /// The vector must be inline.
     #[inline]
-    const unsafe fn as_inline_mut_unchecked(&mut self) -> &mut InlineVec<T, Bytes> {
+    const unsafe fn as_mut_inline_unchecked(&mut self) -> &mut InlineVec<T, Bytes> {
         debug_assert!(self.is_inline());
         // SAFETY: precondition
         unsafe { &mut *ptr::from_mut(self).cast() }
@@ -397,7 +397,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     ///
     /// The vector must not be inline.
     #[inline]
-    const unsafe fn as_sliced_mut_unchecked(&mut self) -> &mut UnknownSliced<T> {
+    const unsafe fn as_mut_sliced_unchecked(&mut self) -> &mut UnknownSliced<T> {
         debug_assert!(!self.is_inline());
         // SAFETY: precondition
         unsafe { &mut *ptr::from_mut(self).cast() }
@@ -421,7 +421,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     ///
     /// The vector must be allocated and unique.
     #[inline]
-    const unsafe fn as_allocated_mut_unchecked(&mut self) -> &mut Allocated<T, B> {
+    const unsafe fn as_mut_allocated_unchecked(&mut self) -> &mut Allocated<T, B> {
         debug_assert!(self.is_allocated());
         // SAFETY: precondition
         unsafe { &mut *ptr::from_mut(self).cast() }
@@ -555,7 +555,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
 
     const unsafe fn owner_mut_unchecked(&mut self) -> &mut Owner<T, B> {
         debug_assert!(self.is_allocated());
-        unsafe { &mut self.as_allocated_mut_unchecked().owner }
+        unsafe { &mut self.as_mut_allocated_unchecked().owner }
     }
 
     const unsafe fn copy(&self) -> Self {
@@ -625,7 +625,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
             // otherwise, the borrowed slice is copyable
             let mut copy = unsafe { self.copy() };
             unsafe {
-                let copy = copy.as_sliced_mut_unchecked();
+                let copy = copy.as_mut_sliced_unchecked();
                 copy.ptr = copy.ptr.add(range.start);
                 copy.len = range.len();
             }
@@ -654,14 +654,14 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     {
         if self.is_inline() {
             // SAFETY: repr is checked above
-            let inline = unsafe { self.as_inline_mut_unchecked() };
+            let inline = unsafe { self.as_mut_inline_unchecked() };
             inline.pop()
         } else if self.is_empty() {
             None
         } else {
             if self.is_allocated() {
                 // SAFETY: repr is checked above
-                let allocated = unsafe { self.as_allocated_mut_unchecked() };
+                let allocated = unsafe { self.as_mut_allocated_unchecked() };
                 let owner = &mut allocated.owner;
                 if owner.is_unique() {
                     let ptr = owner.data().as_ptr();
@@ -697,7 +697,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
             // not unique => we clone the last value and update the length
 
             // SAFETY: not inlined
-            let sliced = unsafe { self.as_sliced_mut_unchecked() };
+            let sliced = unsafe { self.as_mut_sliced_unchecked() };
 
             // SAFETY: not empty
             let last = unsafe { &*sliced.ptr.add(sliced.len - 1) };
@@ -734,7 +734,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     pub fn tighten(&mut self) {
         if self.is_allocated() {
             // SAFETY: repr is checked above
-            let allocated = unsafe { self.as_allocated_mut_unchecked() };
+            let allocated = unsafe { self.as_mut_allocated_unchecked() };
             let owner = &mut allocated.owner;
             if owner.is_unique() {
                 let ptr = owner.data().as_ptr();
@@ -763,7 +763,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     pub fn tighten_and_shift(&mut self) {
         if self.is_allocated() {
             // SAFETY: repr is checked above
-            let allocated = unsafe { self.as_allocated_mut_unchecked() };
+            let allocated = unsafe { self.as_mut_allocated_unchecked() };
             let owner = &mut allocated.owner;
             if owner.is_unique() {
                 let ptr = owner.data().as_ptr();
@@ -818,7 +818,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         } else if self.is_inline() {
             // inline representation, just split the inline vector
             // SAFETY: repr is inline
-            let inline = unsafe { self.as_inline_mut_unchecked() };
+            let inline = unsafe { self.as_mut_inline_unchecked() };
             let new_inline = inline.split_off(at);
             Ok(Self::from_inline(new_inline))
         } else {
@@ -837,13 +837,13 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
             // SAFETY: repr is not inline
             unsafe {
                 // update the current vector
-                self.as_sliced_mut_unchecked().len = at;
+                self.as_mut_sliced_unchecked().len = at;
             }
 
             // SAFETY: same repr for other
             unsafe {
                 // set the slice for the other vector
-                let other = other.as_sliced_mut_unchecked();
+                let other = other.as_mut_sliced_unchecked();
                 other.ptr = other.ptr.add(at);
                 other.len -= at;
             };
@@ -929,10 +929,10 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     pub fn truncate(&mut self, len: usize) {
         if self.is_inline() {
             // SAFETY: repr checked above
-            let inline = unsafe { self.as_inline_mut_unchecked() };
+            let inline = unsafe { self.as_mut_inline_unchecked() };
             inline.truncate(len);
         } else {
-            let sliced = unsafe { self.as_sliced_mut_unchecked() };
+            let sliced = unsafe { self.as_mut_sliced_unchecked() };
             sliced.len = len;
         }
     }
@@ -955,7 +955,7 @@ impl<T, B: Backend> Drop for HipVec<'_, T, B> {
         if self.is_inline() {
             if needs_drop::<T>() {
                 // SAFETY: repr checked above
-                let inline = unsafe { self.as_inline_mut_unchecked() };
+                let inline = unsafe { self.as_mut_inline_unchecked() };
                 // SAFETY: will no be used after drop
                 unsafe {
                     inline.drop_contents();
@@ -1002,6 +1002,7 @@ pub enum SplitOffError {
     RefCountOverflow,
 }
 
+/// A mutable reference to a `HipVec`.
 pub struct RefMut<'a, 'b, T, B: Backend>(&'a mut HipVec<'b, T, B>);
 
 impl<'a, 'b, T, B: Backend> RefMut<'a, 'b, T, B> {
@@ -1049,12 +1050,12 @@ impl<'a, 'b, T, B: Backend> RefMut<'a, 'b, T, B> {
 
     pub const unsafe fn set_len(&mut self, new_len: usize) {
         if self.0.is_inline() {
-            let inline = unsafe { self.0.as_inline_mut_unchecked() };
+            let inline = unsafe { self.0.as_mut_inline_unchecked() };
             unsafe {
                 inline.set_len(new_len);
             }
         } else if self.0.is_allocated() {
-            let allocated = unsafe { self.0.as_allocated_mut_unchecked() };
+            let allocated = unsafe { self.0.as_mut_allocated_unchecked() };
             unsafe {
                 allocated.owner.set_len(new_len);
             }
@@ -1080,9 +1081,9 @@ impl<'a, 'b, T, B: Backend> RefMut<'a, 'b, T, B> {
     #[must_use]
     pub const fn as_mut_ptr(&mut self) -> *mut T {
         if self.0.is_inline() {
-            unsafe { self.0.as_inline_mut_unchecked() }.as_mut_ptr()
+            unsafe { self.0.as_mut_inline_unchecked() }.as_mut_ptr()
         } else if self.0.is_allocated() {
-            unsafe { self.0.as_allocated_mut_unchecked() }
+            unsafe { self.0.as_mut_allocated_unchecked() }
                 .owner
                 .data_mut()
                 .as_ptr()
@@ -1153,7 +1154,7 @@ impl<'a, 'b, T, B: Backend> RefMut<'a, 'b, T, B> {
 
         if self.0.is_inline() {
             // SAFETY: repr is checked above
-            let owner = unsafe { self.0.as_inline_mut_unchecked() };
+            let owner = unsafe { self.0.as_mut_inline_unchecked() };
             let mut thin = ThinVec::<T, B>::with_capacity(new_cap);
 
             // SAFETY: capacity ≥ new length by `reserve`
@@ -1207,10 +1208,10 @@ impl<'a, 'b, T, B: Backend> RefMut<'a, 'b, T, B> {
             mem::forget(old); // old is empty, it can be forgotten
         } else {
             // SAFETY: repr is checked above
-            let allocated = unsafe { self.0.as_allocated_mut_unchecked() };
+            let allocated = unsafe { self.0.as_mut_allocated_unchecked() };
 
             // SAFETY: repr is checked above (thin) and unique
-            let ref_mut = unsafe { allocated.owner.as_thin_mut() };
+            let ref_mut = unsafe { allocated.owner.as_mut_thin_vec() };
 
             // SAFETY: new capacity >= len by precondition
             unsafe {
@@ -1256,7 +1257,7 @@ impl<T, B: Backend> Drop for RefMut<'_, '_, T, B> {
             // nothing to do
         } else if self.0.is_allocated() {
             // SAFETY: repr is checked above
-            let allocated = unsafe { self.0.as_allocated_mut_unchecked() };
+            let allocated = unsafe { self.0.as_mut_allocated_unchecked() };
             allocated.ptr = allocated.owner.data().as_ptr();
             allocated.len = allocated.owner.len();
         } else {
