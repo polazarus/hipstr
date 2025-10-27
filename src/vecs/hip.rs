@@ -94,6 +94,22 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         Self::DEFAULT
     }
 
+    /// Creates a borrowed `HipVec` from a slice.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::HipVec;
+    /// let slice: &[u8] = &[1, 2, 3];
+    /// let a: HipVec<u8> = HipVec::borrowed(slice);
+    /// assert!(a.is_borrowed());
+    /// ```
+    #[must_use]
+    pub const fn borrowed(slice: &'a [T]) -> Self {
+        let borrowed = Borrowed::<'a, T>::new(slice);
+        unsafe { transmute(borrowed) }
+    }
+
     /// Creates a `HipVec` from an array.
     #[must_use]
     #[inline]
@@ -167,6 +183,121 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         } else {
             Self::from_vector_normalized(v)
         }
+    }
+
+    /// Creates an inline `HipVec` from an `InlineVec`.
+    ///
+    /// In the case where the inline byte size is equal to the inline byte size
+    /// of the `HipVec`, the actual representation is reused. Otherwise, the
+    /// elements are moved to a compatible inline vector.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if:
+    /// - either the length of the input inline vector exceeds the inline
+    ///   capacity of the `HipVec`,
+    /// - or if the `HipVec` cannot be inlined (that is, the alignment of `T` is
+    ///   greater than the alignment of the `HipVec`).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::HipVec;
+    /// use hipstr::inline_vec;
+    /// let inline = inline_vec![24 => 1, 2, 3];
+    /// let hip: HipVec<u8> = HipVec::from_inline(inline);
+    /// assert!(hip.is_inline());
+    #[must_use]
+    pub const fn from_inline<L: InlineLength>(inline: InlineVec<T, L>) -> Self {
+        // compile time check transformed to runtime panic
+        assert!(Self::MAY_INLINE, "this vector cannot be inlined");
+
+        if const { Bytes::USIZE == L::USIZE } {
+            // reuse the inline representation if sizes match
+            debug_assert!(Self::MAY_INLINE);
+
+            // SAFETY: sizes are equal, inline repr
+            unsafe { force_transmute::<InlineVec<T, L>, Self>(inline) }
+        } else {
+            // move the elements to a new compatible inline vector
+            let mut old = inline;
+            let mut new = InlineVec::new();
+            new.const_append(&mut old);
+
+            // forget the old inline vector, the drop is not necessary since the
+            // elements were moved out beforehand
+            let _ = ManuallyDrop::new(old);
+
+            // SAFETY: inline repr
+            unsafe { force_transmute::<InlineVec<T, Bytes>, Self>(new) }
+        }
+    }
+
+    /// Creates a `HipVec` from a slice by cloning the elements.
+    #[must_use]
+    pub(crate) fn from_slice_clone(slice: &[T]) -> Self
+    where
+        T: Clone,
+    {
+        if slice.is_empty() {
+            Self::DEFAULT
+        } else if slice.len() <= Self::INLINE_CAP {
+            let inline = Inline::from_slice_clone(slice);
+            Self::from_inline(inline)
+        } else {
+            let smart = SmartThinVec::from_slice_clone(slice);
+            Self::from_smart_thin(smart)
+        }
+    }
+
+    /// Creates a `HipVec` from a slice by copying the elements.
+    ///
+    /// Provided as an optimization over `HipVec::from` for types that implement `Copy`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::HipVec;
+    /// let slice: &[u8] = &[1, 2, 3];
+    /// let a: HipVec<u8> = HipVec::from_slice_copy(slice);
+    /// assert_eq!(a.as_slice(), slice);
+    /// ```
+    #[must_use]
+    pub fn from_slice_copy(slice: &[T]) -> Self
+    where
+        T: Copy,
+    {
+        if slice.is_empty() {
+            Self::DEFAULT
+        } else if slice.len() <= Self::INLINE_CAP {
+            let inline = Inline::from_slice_copy(slice);
+            Self::from_inline(inline)
+        } else {
+            let smart = SmartThinVec::from_slice_copy(slice);
+            Self::from_smart_thin(smart)
+        }
+    }
+
+    #[must_use]
+    pub(crate) const fn from_smart_thin(v: SmartThinVec<T, B>) -> Self {
+        let len = v.len();
+        let ptr = v.as_ptr();
+
+        #[cfg(debug_assertions)]
+        let is_null = v.capacity() == 0;
+
+        let owner = v;
+        let this =
+            unsafe { transmute::<Sliced<T, SmartThinVec<T, B>>, Self>(Sliced { owner, ptr, len }) };
+
+        #[cfg(debug_assertions)]
+        if is_null {
+            debug_assert!(this.is_borrowed());
+        } else {
+            debug_assert!(this.is_allocated());
+        }
+
+        this
     }
 
     /// Returns `true` if the vector is stored inline.
@@ -434,134 +565,33 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         unsafe { transmute::<Self, Allocated<T, B>>(self) }
     }
 
-    /// Creates a borrowed `HipVec` from a slice.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use hipstr::vecs::HipVec;
-    /// let slice: &[u8] = &[1, 2, 3];
-    /// let a: HipVec<u8> = HipVec::borrowed(slice);
-    /// assert!(a.is_borrowed());
-    /// ```
-    #[must_use]
-    pub const fn borrowed(slice: &'a [T]) -> Self {
-        let borrowed = Borrowed::<'a, T>::new(slice);
-        unsafe { transmute(borrowed) }
-    }
-
-    /// Creates an inline `HipVec` from an `InlineVec`.
-    ///
-    /// In the case where the inline byte size is equal to the inline byte size
-    /// of the `HipVec`, the actual representation is reused. Otherwise, the
-    /// elements are moved to a compatible inline vector.
-    ///
-    /// # Panics
-    ///
-    /// This function panics if:
-    /// - either the length of the input inline vector exceeds the inline
-    ///   capacity of the `HipVec`,
-    /// - or if the `HipVec` cannot be inlined (that is, the alignment of `T` is
-    ///   greater than the alignment of the `HipVec`).
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use hipstr::vecs::HipVec;
-    /// use hipstr::inline_vec;
-    /// let inline = inline_vec![24 => 1, 2, 3];
-    /// let hip: HipVec<u8> = HipVec::from_inline(inline);
-    /// assert!(hip.is_inline());
-    #[must_use]
-    pub const fn from_inline<L: InlineLength>(inline: InlineVec<T, L>) -> Self {
-        // compile time check transformed to runtime panic
-        assert!(Self::MAY_INLINE, "this vector cannot be inlined");
-
-        if const { Bytes::USIZE == L::USIZE } {
-            // reuse the inline representation if sizes match
-            debug_assert!(Self::MAY_INLINE);
-
-            // SAFETY: sizes are equal, inline repr
-            unsafe { force_transmute::<InlineVec<T, L>, Self>(inline) }
-        } else {
-            // move the elements to a new compatible inline vector
-            let mut old = inline;
-            let mut new = InlineVec::new();
-            new.const_append(&mut old);
-
-            // forget the old inline vector, the drop is not necessary since the
-            // elements were moved out beforehand
-            let _ = ManuallyDrop::new(old);
-
-            // SAFETY: inline repr
-            unsafe { force_transmute::<InlineVec<T, Bytes>, Self>(new) }
-        }
-    }
-
-    /// Creates a `HipVec` from a slice by cloning the elements.
-    #[must_use]
-    pub(crate) fn from_slice_clone(slice: &[T]) -> Self
-    where
-        T: Clone,
-    {
-        if slice.is_empty() {
-            Self::DEFAULT
-        } else if slice.len() <= Self::INLINE_CAP {
-            let inline = Inline::from_slice_clone(slice);
-            Self::from_inline(inline)
-        } else {
-            let smart = SmartThinVec::from_slice_clone(slice);
-            Self::from_smart_thin(smart)
-        }
-    }
-
-    #[must_use]
-    pub fn from_slice_copy(slice: &[T]) -> Self
-    where
-        T: Copy,
-    {
-        if slice.is_empty() {
-            Self::DEFAULT
-        } else if slice.len() <= Self::INLINE_CAP {
-            let inline = Inline::from_slice_copy(slice);
-            Self::from_inline(inline)
-        } else {
-            let smart = SmartThinVec::from_slice_copy(slice);
-            Self::from_smart_thin(smart)
-        }
-    }
-
-    #[must_use]
-    pub const fn from_smart_thin(v: SmartThinVec<T, B>) -> Self {
-        let len = v.len();
-        let ptr = v.as_ptr();
-
-        #[cfg(debug_assertions)]
-        let is_null = v.capacity() == 0;
-
-        let owner = v;
-        let this =
-            unsafe { transmute::<Sliced<T, SmartThinVec<T, B>>, Self>(Sliced { owner, ptr, len }) };
-
-        #[cfg(debug_assertions)]
-        if is_null {
-            debug_assert!(this.is_borrowed());
-        } else {
-            debug_assert!(this.is_allocated());
-        }
-
-        this
-    }
-
-    const unsafe fn owner_mut_unchecked(&mut self) -> &mut Owner<T, B> {
-        debug_assert!(self.is_allocated());
-        unsafe { &mut self.as_mut_allocated_unchecked().owner }
-    }
-
     const unsafe fn copy(&self) -> Self {
         Self(self.0, PhantomData)
     }
 
+    /// Ensures the vector is uniquely owned, cloning the elements if necessary.
+    ///
+    /// After calling this method, it is guaranteed that [`is_unique`] returns
+    /// `true`.
+    ///
+    /// If the vector is already unique, this method does nothing.
+    /// Otherwise, the elements are cloned to a new **normalized** vector.
+    ///
+    /// See [`detach_copy`] for an optimized version for types that implement
+    /// `Copy`.
+    ///
+    /// [`is_unique`]: Self::is_unique
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::HipVec;
+    /// let mut hip = HipVec::from([1, 2, 3]);
+    /// let hip2 = hip.clone();
+    /// assert!(!hip.is_unique());
+    /// hip.detach();
+    /// assert!(hip.is_unique());
+    /// ```
     pub fn detach(&mut self)
     where
         T: Clone,
@@ -574,6 +604,30 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         }
     }
 
+    /// Ensures the vector is uniquely owned, copying the elements if necessary.
+    ///
+    /// After calling this method, it is guaranteed that [`is_unique()`] returns
+    /// `true`.
+    ///
+    /// If the vector is already unique, this method does nothing.
+    /// Otherwise, the elements are copied to a new **normalized** vector.
+    ///
+    /// Functionally equivalent to [`detach`]`, this function is provided as an
+    /// optimization for types that implement `Copy`.
+    ///
+    /// [`Self::is_unique()`]: Self::is_unique
+    /// [`detach`]: Self::detach
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::HipVec;
+    /// let mut hip = HipVec::from([1, 2, 3]);
+    /// let hip2 = hip.clone();
+    /// assert!(!hip.is_unique());
+    /// hip.detach_copy();
+    /// assert!(hip.is_unique());
+    /// ```
     pub fn detach_copy(&mut self)
     where
         T: Copy,
@@ -713,9 +767,6 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
 
     /// Clears the vector, removing all values.
     ///
-    /// Note that if the vector is not inline, clearing will not drop any
-    /// elements.
-    ///
     /// # Examples
     ///
     /// ```
@@ -726,7 +777,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     /// assert_eq!(hip.len(), 0);
     /// ```
     pub fn clear(&mut self) {
-        self.truncate(0);
+        *self = Self::DEFAULT
     }
 
     /// Tightens the allocated vector (without shifting), dropping excess
@@ -750,11 +801,14 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
                     let rem_ptr = ptr.add(actual_len);
                     let rem_len = owner.len() - actual_len;
 
-                    // drop the remaining elements
-                    drop_raw_slice(rem_ptr, rem_len);
-
                     // update the length
                     owner.set_len(actual_len);
+
+                    // drop the remaining elements
+                    drop_raw_slice(rem_ptr, rem_len);
+                    // beware: drop after updating the length, to avoid
+                    // double-drop if one element's drop panics
+                    // TODO add test for this case?
                 }
             }
         }
@@ -825,7 +879,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
             // checks if allocated or borrowed
             if self.is_allocated() {
                 // increment the owner reference count
-                let owner = unsafe { self.owner_mut_unchecked() };
+                let owner = unsafe { &mut self.as_mut_allocated_unchecked().owner };
                 if owner.counter().incr() == UpdateResult::Overflow {
                     return Err(SplitOffError::RefCountOverflow);
                 }
@@ -963,7 +1017,7 @@ impl<T, B: Backend> Drop for HipVec<'_, T, B> {
             }
         } else if self.is_allocated() {
             // SAFETY: repr checked above
-            let owner = unsafe { self.owner_mut_unchecked() };
+            let owner = unsafe { &mut self.as_mut_allocated_unchecked().owner };
             // SAFETY: will no be used after drop
             unsafe {
                 owner.drop();
