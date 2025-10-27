@@ -9,7 +9,7 @@ use rules_derive::rules_derive;
 use typenum::Unsigned;
 
 use self::repr::{
-    check_wide_and_thin_compatibility, Allocated, Borrowed, Owner, Pivot, Sliced, UnknownSliced,
+    check_wide_and_thin_compatibility, Allocated, Borrowed, Pivot, Sliced, UnknownSliced,
 };
 use crate::backend::UpdateResult;
 use crate::common::derives::{AsRef, ConstDefault, Copy, DelegateDebug, DelegateHash, Deref, From};
