@@ -22,7 +22,7 @@
 //! ```
 use alloc::boxed::Box;
 use alloc::vec::Vec;
-use core::mem::{self, ManuallyDrop};
+use core::mem::{self, ManuallyDrop, MaybeUninit};
 use core::ptr::{self, NonNull};
 
 use const_default::ConstDefault;
@@ -31,6 +31,7 @@ use rules_derive::rules_derive;
 use self::repr::{WideInner, WideRepr};
 use crate::backend::{BackendImpl, CloneOnOverflow, Counter, PanicOnOverflow, UpdateResult};
 use crate::common::derives::{AsRef, Borrow, ConstDefault, Deref, From, Vector};
+use crate::common::methods::spare_capacity_mut_impl;
 use crate::common::traits::Mutate;
 use crate::Backend;
 
@@ -144,10 +145,40 @@ impl<T, P: ConstDefault> WideVec<T, P> {
         unsafe { core::slice::from_raw_parts_mut(self.as_mut_ptr(), self.len()) }
     }
 
-    pub const fn set_len(&mut self, new_len: usize) {
+    /// Sets the length of the vector.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that:
+    ///
+    /// - `new_len` is less than or equal to the vector's capacity;
+    /// - the elements up to `new_len` are properly initialized.
+    pub const unsafe fn set_len(&mut self, new_len: usize) {
         if let Some(inner) = self.0.as_mut() {
             inner.len = new_len;
         }
+    }
+
+    /// Gets the spare capacity of the vector as a slice of uninitialized memory.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::vecs::wide::WideVec;
+    /// let vec = Vec::with_capacity(10);
+    /// let mut wide_vec: WideVec<i32, ()> = WideVec::from(vec);
+    /// let spare = wide_vec.spare_capacity_mut();
+    /// assert!(spare.len() >= 10);
+    /// for i in 0..spare.len() {
+    ///     spare[i].write((i + 1) as i32);
+    /// }
+    /// unsafe {
+    ///    wide_vec.set_len(10);
+    /// }
+    /// assert_eq!(wide_vec.as_slice(), &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    /// ```
+    pub const fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<T>] {
+        spare_capacity_mut_impl!(self)
     }
 
     #[must_use]

@@ -96,6 +96,27 @@ fn set_len() {
 }
 
 #[test]
+fn spare_capacity_mut() {
+    let vec = Vec::with_capacity(10);
+    let p = vec.as_ptr();
+    let mut wide_vec: V<i32> = V::from(vec);
+    assert_eq!(wide_vec.len(), 0);
+    assert_eq!(wide_vec.as_ptr(), p);
+    let spare_capacity = wide_vec.spare_capacity_mut();
+    assert_eq!(spare_capacity.len(), 10);
+    assert_eq!(spare_capacity.as_ptr(), p.cast());
+
+    for i in 0..10 {
+        spare_capacity[i].write((i + 1) as i32);
+    }
+    unsafe {
+        wide_vec.set_len(10);
+    }
+    assert_eq!(wide_vec.as_ptr(), p);
+    assert_eq!(wide_vec.as_slice(), &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+}
+
+#[test]
 fn set_len_empty() {
     let mut vec: V<i32> = V::DEFAULT;
     assert_eq!(vec.len(), 0);
