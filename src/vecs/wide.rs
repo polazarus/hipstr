@@ -114,6 +114,7 @@ impl<T, P: ConstDefault> WideVec<T, P> {
     }
 
     /// Returns a mutable reference to the prefix.
+    #[cfg(test)]
     pub(crate) fn prefix_mut(&mut self) -> Option<&mut P> {
         match self.0.as_mut() {
             Some(inner) => Some(&mut inner.prefix),
@@ -121,6 +122,7 @@ impl<T, P: ConstDefault> WideVec<T, P> {
         }
     }
 
+    /// Moves the wide vector into a new wide vector with a different prefix type.
     pub(crate) fn fresh_move<Q: ConstDefault>(self) -> WideVec<T, Q> {
         let old = ManuallyDrop::new(self);
         if let Some(inner) = old.0.get() {
@@ -162,6 +164,7 @@ impl<T, P: ConstDefault> WideVec<T, P> {
         }
     }
 
+    /// Gets a raw pointer to the vector's buffer.
     #[must_use]
     #[inline]
     pub const fn as_ptr(&self) -> *const T {
@@ -171,6 +174,7 @@ impl<T, P: ConstDefault> WideVec<T, P> {
         }
     }
 
+    /// Gets a mutable raw pointer to the vector's buffer.
     #[must_use]
     #[inline]
     pub const fn as_mut_ptr(&mut self) -> *mut T {
@@ -180,6 +184,7 @@ impl<T, P: ConstDefault> WideVec<T, P> {
         }
     }
 
+    /// Gets the length of the vector.
     #[must_use]
     #[inline]
     pub const fn len(&self) -> usize {
@@ -189,12 +194,14 @@ impl<T, P: ConstDefault> WideVec<T, P> {
         }
     }
 
+    /// Returns `true` if the vector contains no elements.
     #[must_use]
     #[inline]
     pub const fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
+    /// Gets the capacity of the vector.
     #[must_use]
     #[inline]
     pub const fn capacity(&self) -> usize {
@@ -204,12 +211,14 @@ impl<T, P: ConstDefault> WideVec<T, P> {
         }
     }
 
+    /// Returns a slice containing all elements of the vector.
     #[must_use]
     #[inline]
     pub const fn as_slice(&self) -> &[T] {
         unsafe { core::slice::from_raw_parts(self.as_ptr(), self.len()) }
     }
 
+    /// Returns a mutable slice containing all elements of the vector.
     #[must_use]
     #[inline]
     pub const fn as_mut_slice(&mut self) -> &mut [T] {
@@ -252,6 +261,7 @@ impl<T, P: ConstDefault> WideVec<T, P> {
         spare_capacity_mut_impl!(self)
     }
 
+    /// Converts the wide vector into a standard [`Vec`], returning also the prefix.
     #[must_use]
     pub fn into_vec(self) -> Option<(Vec<T>, P)> {
         let old = ManuallyDrop::new(self);

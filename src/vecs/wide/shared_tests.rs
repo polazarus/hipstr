@@ -5,6 +5,8 @@ use core::{mem, ptr};
 use super::SmartWideVec;
 use crate::backend::PanickyUnique;
 use crate::common::traits::Mutate;
+use crate::common::ZeroUsize;
+use crate::vecs::wide::WideVec;
 use crate::{Arc, Unique};
 
 #[test]
@@ -342,4 +344,76 @@ fn mutate_trait() {
 
     assert_eq!(vec.as_slice(), [1, 2, 3, 4]);
     assert_eq!(vec2.as_slice(), [1, 2, 3, 4, 5]);
+}
+
+#[test]
+fn from_wide_vec_incompatible() {
+    let v = vec![1, 2, 3, 4, 5];
+    let p = v.as_ptr();
+    let wide_vec: WideVec<i32, ()> = WideVec::from(v);
+    let wide_vec: SmartWideVec<i32, Arc> = SmartWideVec::from_wide_vec(wide_vec);
+    assert_eq!(wide_vec.len(), 5);
+    assert_eq!(wide_vec.as_slice(), &[1, 2, 3, 4, 5]);
+    assert_eq!(wide_vec.as_ptr(), p);
+}
+
+#[test]
+fn from_wide_vec_compatible() {
+    let v = vec![1, 2, 3, 4, 5];
+    let p = v.as_ptr();
+    let wide_vec: WideVec<i32, ZeroUsize> = WideVec::from(v);
+    let wide_vec: SmartWideVec<i32, Arc> = SmartWideVec::from_wide_vec(wide_vec);
+    assert_eq!(wide_vec.len(), 5);
+    assert_eq!(wide_vec.as_slice(), &[1, 2, 3, 4, 5]);
+    assert_eq!(wide_vec.as_ptr(), p);
+}
+
+#[test]
+fn as_mut_wide_vec_unique() {
+    let mut v = vec![1, 2, 3, 4, 5];
+    v.reserve(10); // make the pointer stable
+    let p = v.as_ptr();
+    let mut wide_vec: SmartWideVec<i32, Arc> = SmartWideVec::from(v);
+
+    {
+        let wide_ref = wide_vec.as_mut_wide_vec().unwrap();
+        let mut wide_mut = wide_ref.mutate();
+        for i in 6..=10 {
+            wide_mut.push(i);
+        }
+    }
+
+    assert_eq!(wide_vec.len(), 10);
+    assert_eq!(wide_vec.as_slice(), &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    assert_eq!(wide_vec.as_ptr(), p);
+}
+
+#[test]
+fn as_mut_wide_vec_nonunique() {
+    let v = vec![1, 2, 3, 4, 5];
+    let mut wide_vec: SmartWideVec<i32, Arc> = SmartWideVec::from(v);
+    let _wide_vec2 = wide_vec.clone();
+    assert!(wide_vec.as_mut_wide_vec().is_none());
+}
+
+#[test]
+fn as_mut_slice_unique() {
+    let v = vec![1, 2, 3, 4, 5];
+    let p = v.as_ptr();
+    let mut wide_vec: SmartWideVec<i32, Arc> = SmartWideVec::from(v);
+    {
+        let slice_mut = wide_vec.as_mut_slice().unwrap();
+        slice_mut[0] = 10;
+        slice_mut[1] = 20;
+    }
+    assert_eq!(wide_vec.as_slice(), &[10, 20, 3, 4, 5]);
+    assert_eq!(wide_vec.as_ptr(), p);
+}
+
+#[test]
+fn as_mut_slice_nonunique() {
+    let v = vec![1, 2, 3, 4, 5];
+    let mut wide_vec: SmartWideVec<i32, Arc> = SmartWideVec::from(v);
+    let _wide_vec2 = wide_vec.clone();
+    assert!(wide_vec.as_mut_slice().is_none());
 }

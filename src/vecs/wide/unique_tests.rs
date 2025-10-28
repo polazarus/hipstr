@@ -1,6 +1,7 @@
 use alloc::vec;
 use alloc::vec::Vec;
 use core::ptr;
+use core::sync::atomic::AtomicBool;
 
 use const_default::ConstDefault;
 
@@ -11,12 +12,14 @@ type V<T> = WideVec<T, ()>;
 
 #[test]
 fn new() {
-    let v: V<i32> = V::new();
+    let mut v: V<i32> = V::new();
     assert_eq!(v.len(), 0);
     assert_eq!(v.capacity(), 0);
     assert!(v.is_empty());
 
     assert!(v.0.is_null());
+    assert!(v.prefix().is_none());
+    assert!(v.prefix_mut().is_none());
 }
 
 #[test]
@@ -24,24 +27,29 @@ fn from_vec() {
     let vec = vec![1, 2, 3];
     let p = vec.as_ptr();
 
-    let wide_vec: V<i32> = V::from(vec);
+    let mut wide_vec: V<i32> = V::from(vec);
     assert_eq!(wide_vec.len(), 3);
-    assert_eq!(wide_vec[0], 1);
-    assert_eq!(wide_vec[1], 2);
-    assert_eq!(wide_vec[2], 3);
+    assert_eq!(wide_vec.as_slice(), &[1, 2, 3]);
     assert_eq!(wide_vec.as_ptr(), p);
+
     assert!(wide_vec.capacity() >= 3);
+
+    assert_eq!(wide_vec.prefix(), Some(&()));
+    assert_eq!(wide_vec.prefix_mut(), Some(&mut ()));
 }
 
 #[test]
 fn from_vec_empty() {
     let vec = Vec::new();
-    let wide_vec: V<i32> = V::from(vec);
+    let mut wide_vec: V<i32> = V::from(vec);
     assert_eq!(wide_vec.len(), 0);
     assert!(wide_vec.is_empty());
     assert_eq!(wide_vec.as_ptr(), ptr::dangling());
     assert_eq!(wide_vec.capacity(), 0);
     assert!(wide_vec.0.is_null());
+
+    assert!(wide_vec.prefix().is_none());
+    assert!(wide_vec.prefix_mut().is_none());
 }
 
 #[test]
@@ -212,4 +220,52 @@ fn fresh_move_non_empty_compatible() {
     assert_eq!(vec_moved.as_ptr(), p);
     assert!(vec_moved.capacity() >= 3);
     assert_eq!(vec_moved.prefix(), Some(&0));
+}
+
+#[test]
+#[cfg(feature = "std")]
+fn fresh_move_non_empty_compatible_with_drop() {
+    use std::sync::atomic::Ordering::SeqCst;
+    use std::sync::Mutex;
+
+    #[repr(transparent)]
+    struct P(i32);
+    impl Drop for P {
+        fn drop(&mut self) {
+            DROPPED.store(true, SeqCst);
+        }
+    }
+    impl ConstDefault for P {
+        const DEFAULT: Self = P(i32::MAX);
+    }
+
+    // mutex to ensure there is no multiple instance of this test running at the same time
+    static MUTEX: Mutex<()> = Mutex::new(());
+    static DROPPED: AtomicBool = AtomicBool::new(false);
+
+    {
+        let _lock = MUTEX.lock();
+        DROPPED.store(false, SeqCst);
+
+        let v = vec![1, 2, 3];
+        let p = v.as_ptr();
+        let vec: WideVec<i32, P> = WideVec::from(v);
+        let vec_moved: WideVec<i32, i32> = vec.fresh_move();
+        assert_eq!(vec_moved.len(), 3);
+        assert_eq!(vec_moved.as_ptr(), p);
+        assert!(vec_moved.capacity() >= 3);
+        assert_eq!(vec_moved.prefix(), Some(&0));
+        assert_eq!(DROPPED.load(SeqCst), true);
+    }
+}
+
+#[test]
+fn prefix() {
+    let v = vec![1, 2, 3];
+    let mut wide_vec: WideVec<i32, u32> = WideVec::from(v);
+    assert_eq!(wide_vec.prefix(), Some(&0));
+    assert_eq!(wide_vec.prefix_mut(), Some(&mut 0));
+
+    *wide_vec.prefix_mut().unwrap() = 42;
+    assert_eq!(wide_vec.prefix(), Some(&42));
 }
