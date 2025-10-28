@@ -1,4 +1,4 @@
-//! Inline vector implementation.
+//! Inline vector and related types.
 //!
 //! This module provides an inline vector implementation that can store up to a
 //! small and fixed number of elements inline.

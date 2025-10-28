@@ -1,15 +1,20 @@
-//! Thin handles to wide vectors (i.e., [`Vec`]).
+//! Thin handles to wide vectors (i.e., [`Vec`]) and related types.
 //!
-//! This module contains the implementation of smart wide vectors with
-//! reference counting. The main type is [`SmartWideVec<T, B>`], which
-//! represents a vector of elements of type `T` with a backend `B`
-//! that manages the reference counting.
+//! This module contains the implementation of vector types that are thin
+//! handles (pointer sized) to standard [`Vec`]:
 //!
-//! The vectors in this module are designed to be compatible with
-//! the standard library's [`Vec`] type, providing similar functionality
-//! while adding reference counting capabilities. This allows for efficient
-//! sharing of vector data across multiple owners without unnecessary
-//! copying.
+//! - [`SmartWideVec<T, B>`]: a shared vector with a backend `B`.
+//! - [`WideVec<T, P>`]`: a unique vector with an additional associated data
+//!   `P`.
+//!
+//! The latter is an implementation detail and is not intended to be used
+//! directly except for corner case or testing purposes.
+//!
+//! [`WideVec`] and [`SmartWideVec`] requires an additional dereference to
+//! access the underlying data compared to standard [`Vec`] or this crate's own
+//! [`ThinVec`].
+//!
+//! [`ThinVec`]: crate::vecs::thin::ThinVec
 //!
 //! # Examples
 //!

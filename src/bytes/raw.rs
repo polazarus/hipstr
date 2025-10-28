@@ -14,7 +14,7 @@ use borrowed::Borrowed;
 
 use crate::backend::Backend;
 use crate::common::{manually_drop_as_mut, manually_drop_as_ref};
-use crate::vecs::InlineVec;
+use crate::vecs::inline::InlineVec;
 
 pub mod allocated;
 pub mod borrowed;

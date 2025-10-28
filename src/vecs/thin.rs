@@ -1,18 +1,24 @@
-//! This module provides the thin vector implementations.
+//! Thin vectors and related types.
 //!
-//! A thin vector is a contiguous growable array type with heap-allocated
-//! metadata (prefix, capacity, length) and contents.
+//! This module provides two main types:
+//! - [`ThinVec`], which is the thin vector itself.
+//! - [`SmartThinVec`], which is a smart pointer to a [`ThinVec`] that
+//!   automatically deallocates when all the reference to the vector are
+//!   dropped, with a copy-on-write semantics.
 //!
-//! Whereas `Vec` is three-word wide, this vector is one-word wide. It
+//! A thin vector [`ThinVec`] is a contiguous growable array type with
+//! heap-allocated metadata (prefix, capacity, length) and contents. The prefix
+//! is an arbitrary data associated with the vector to support the reference
+//! counted vector type.
+//!
+//! Whereas [`Vec`] is three-word wide, this vector is one-word wide. It
 //! consists in a single pointer to a heap-allocated area containing both the
 //! capacity, the length, and the actual data.
 //!
-//! This module provides two main types:
+//! With respect to [`WideVec`], the thin vector offers more efficient access to
+//! the data but cannot be obtained from [`Vec`] without copy..
 //!
-//! - [`ThinVec`], which is the thin vector itself.
-//! - [`SmartThinVec`], which is a smart pointer to a [`ThinVec`] that
-//!   automatically deallocates when all the reference to the vector are dropped,
-//!   with a copy-on-write semantics.
+//! [`WideVec`]: crate::vecs::wide::WideVec
 //!
 //! # Examples
 //!
