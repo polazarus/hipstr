@@ -30,7 +30,9 @@ use rules_derive::rules_derive;
 
 use self::repr::{WideInner, WideRepr};
 use crate::backend::{BackendImpl, CloneOnOverflow, Counter, PanicOnOverflow, UpdateResult};
-use crate::common::derives::{AsRef, Borrow, ConstDefault, Deref, From, Vector};
+use crate::common::derives::{
+    AsRef, Borrow, ConstDefault, DelegateDebug, DelegateHash, Deref, From, Vector,
+};
 use crate::common::methods::spare_capacity_mut_impl;
 use crate::common::traits::Mutate;
 use crate::Backend;
@@ -43,6 +45,16 @@ mod shared_tests;
 #[cfg(test)]
 mod unique_tests;
 
+/// Checks if two prefix types `P` and `Q` are compatible to reuse a thin vec
+/// allocation when moving from the first prefix `P` type to the other `Q`.
+pub(crate) const fn can_reuse<T, P, Q>() -> bool {
+    const {
+        size_of::<P>() == size_of::<Q>()
+            && align_of::<P>() >= align_of::<Q>()
+            && mem::offset_of!(WideInner<T, P>, prefix) == mem::offset_of!(WideInner<T, Q>, prefix)
+    }
+}
+
 /// A thin handle to a wide vector, i.e., a standard [`Vec`].
 ///
 /// This type stores an additional prefix of type `P` alongside the vector data,
@@ -54,6 +66,8 @@ mod unique_tests;
     Deref([T], Self::as_slice),
     Borrow([T], Self::as_slice),
     From(Vec<T>, Self::from_vec),
+    DelegateDebug(Self::as_slice where T: core::fmt::Debug),
+    DelegateHash(Self::as_slice where T: core::hash::Hash),
     Vector(T),
 )]
 pub struct WideVec<T, P: ConstDefault>(WideRepr<T, P>);
@@ -89,6 +103,63 @@ impl<T, P: ConstDefault> WideVec<T, P> {
             WideRepr::new(inner)
         };
         Self(repr)
+    }
+
+    /// Returns a reference to the prefix.
+    pub(crate) const fn prefix(&self) -> Option<&P> {
+        match self.0.as_ref() {
+            Some(inner) => Some(&inner.prefix),
+            None => None,
+        }
+    }
+
+    /// Returns a mutable reference to the prefix.
+    pub(crate) fn prefix_mut(&mut self) -> Option<&mut P> {
+        match self.0.as_mut() {
+            Some(inner) => Some(&mut inner.prefix),
+            None => None,
+        }
+    }
+
+    pub(crate) fn fresh_move<Q: ConstDefault>(self) -> WideVec<T, Q> {
+        let old = ManuallyDrop::new(self);
+        if let Some(inner) = old.0.get() {
+            if can_reuse::<T, P, Q>() {
+                // free old prefix if needed
+                let mut inner: NonNull<WideInner<T, MaybeUninit<P>>> = inner.cast();
+                if mem::needs_drop::<P>() {
+                    // SAFETY: the prefix is valid by the type invariant
+                    unsafe {
+                        inner.as_mut().prefix.assume_init_drop();
+                    }
+                }
+
+                // write new prefix
+                let mut inner: NonNull<WideInner<T, MaybeUninit<Q>>> = inner.cast();
+                // SAFETY: the pointer is valid by the type invariant
+                unsafe {
+                    inner.as_mut().prefix.write(Q::DEFAULT);
+                }
+
+                // assume init: cast to the new type
+                let inner: NonNull<WideInner<T, Q>> = inner.cast();
+                WideVec(WideRepr::new(inner))
+            } else {
+                let WideInner { ptr, cap, len, .. } = *unsafe { Box::from_raw(inner.as_ptr()) };
+                let new_inner = Box::new(WideInner {
+                    ptr,
+                    cap,
+                    len,
+                    prefix: Q::DEFAULT,
+                });
+                let new_inner = Box::into_raw(new_inner);
+                // SAFETY: Box pointer is not null
+                let new_inner = unsafe { NonNull::new_unchecked(new_inner) };
+                WideVec(WideRepr::new(new_inner))
+            }
+        } else {
+            WideVec::new()
+        }
     }
 
     #[must_use]
@@ -257,6 +328,8 @@ unsafe fn drop_inner<T, P>(inner: NonNull<WideInner<T, P>>) {
     Deref([T], Self::as_slice),
     Borrow([T], Self::as_slice),
     From(Vec<T>, Self::from_vec),
+    DelegateDebug(Self::as_slice where T: core::fmt::Debug),
+    DelegateHash(Self::as_slice where T: core::hash::Hash),
     Vector(T),
 )]
 pub struct SmartWideVec<T, B: Backend>(pub(super) WideRepr<T, B>);
@@ -291,6 +364,12 @@ impl<T, B: Backend> SmartWideVec<T, B> {
     #[inline]
     pub(crate) const unsafe fn from_wide_vec_unchecked(wide_vec: WideVec<T, B>) -> Self {
         unsafe { mem::transmute(wide_vec) }
+    }
+
+    pub(crate) fn from_wide_vec<P: ConstDefault>(wide_vec: WideVec<T, P>) -> Self {
+        let wide_vec: WideVec<T, B> = wide_vec.fresh_move();
+        // SAFETY: fresh_move resets the counter
+        unsafe { Self::from_wide_vec_unchecked(wide_vec) }
     }
 
     /// Returns a reference to the underlying `WideVec`.
@@ -476,7 +555,9 @@ impl<T, B: Backend> SmartWideVec<T, B> {
     #[must_use]
     #[inline]
     pub fn is_unique(&self) -> bool {
-        self.0.as_ref().is_none_or(|inner| inner.prefix.is_unique())
+        self.as_wide_vec()
+            .prefix()
+            .is_none_or(|prefix| prefix.is_unique())
     }
 
     /// Gets a mutable reference to the underlying vector if it is uniquely owned.
@@ -606,12 +687,12 @@ impl<T, B: Backend> SmartWideVec<T, B> {
     where
         T: Clone,
     {
-        if let Some(inner) = self.0.as_ref() {
-            if !inner.prefix.is_unique() {
-                let vec = self.as_slice().to_vec();
-                let new = Self::from_vec(vec);
-                *self = new;
-            }
+        if self.0.is_null() || self.is_unique() {
+            // do nothing
+        } else {
+            let vec = self.as_slice().to_vec();
+            let new = Self::from_vec(vec);
+            *self = new;
         }
     }
 
@@ -624,7 +705,7 @@ impl<T, B: Backend> SmartWideVec<T, B> {
     /// If the vector is already uniquely owned, this method does nothing.
     ///
     /// Equivalent to [`detach`], this function is provided only for consistency
-    /// with other vector types. Indeed, [`detatch`] exploits the built-in
+    /// with other vector types. Indeed, [`detach`] exploits the built-in
     /// specialization of [`Vec`]'s methods in the standard library.
     ///
     /// [`detach`]: Self::detach
@@ -664,8 +745,8 @@ impl<T, B: Backend> SmartWideVec<T, B> {
     /// ```
     #[must_use]
     pub fn try_clone(&self) -> Option<Self> {
-        if let Some(inner) = self.0.as_ref() {
-            if inner.prefix.incr() == UpdateResult::Overflow {
+        if let Some(counter) = self.as_wide_vec().prefix() {
+            if counter.incr() == UpdateResult::Overflow {
                 return None;
             }
             // now when can copy the repr

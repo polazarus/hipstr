@@ -173,3 +173,43 @@ fn mutate_trait() {
         assert_eq!(ref_mut.as_ptr(), p);
     }
 }
+
+#[test]
+fn fresh_move_empty() {
+    let vec: V<i32> = V::new();
+    let vec_moved: WideVec<i32, u32> = vec.fresh_move();
+    assert_eq!(vec_moved.len(), 0);
+    assert!(vec_moved.is_empty());
+    assert_eq!(vec_moved.as_ptr(), ptr::dangling());
+    assert_eq!(vec_moved.capacity(), 0);
+    assert!(vec_moved.0.is_null());
+    assert_eq!(vec_moved.prefix(), None);
+}
+
+#[test]
+fn fresh_move_non_empty_incompatible() {
+    let v = vec![1, 2, 3];
+    let p = v.as_ptr();
+    let vec: V<i32> = V::from(v);
+    let vec_moved: WideVec<i32, u32> = vec.fresh_move();
+    assert_eq!(vec_moved.len(), 3);
+    assert_eq!(vec_moved.as_slice(), &[1, 2, 3]);
+    assert_eq!(vec_moved.as_ptr(), p);
+    assert!(vec_moved.capacity() >= 3);
+    assert_eq!(vec_moved.prefix(), Some(&0));
+}
+
+#[test]
+fn fresh_move_non_empty_compatible() {
+    let v = vec![1, 2, 3];
+    let p = v.as_ptr();
+    let mut vec: WideVec<i32, u32> = WideVec::from(v);
+    *vec.prefix_mut().unwrap() = 1;
+
+    let vec_moved: WideVec<i32, i32> = vec.fresh_move();
+    assert_eq!(vec_moved.len(), 3);
+    assert_eq!(vec_moved.as_slice(), &[1, 2, 3]);
+    assert_eq!(vec_moved.as_ptr(), p);
+    assert!(vec_moved.capacity() >= 3);
+    assert_eq!(vec_moved.prefix(), Some(&0));
+}

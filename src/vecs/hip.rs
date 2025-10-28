@@ -1,3 +1,23 @@
+//! Hip vector and related types.
+//!
+//! Hip vectors are vectors that can store their data in three different ways:
+//! - inline (i.e., within the vector structure itself),
+//! - a copy-on-write shared heap allocation (thin or fat),
+//! - a borrowed slice.
+//!
+//! This design allows for efficient storage and manipulation of small vectors
+//! while still providing the flexibility to handle larger vectors without
+//! unnecessary heap allocations.
+//!
+//! # Examples
+//!
+//! ```
+//! use hipstr::vecs::HipVec;
+//! let h: HipVec<Box<i32>> = HipVec::from([1, 2, 3].map(Box::new));
+//! let h2 = h.clone();
+//! assert!(std::ptr::eq(h.as_slice(), h2.as_slice()));
+//! ```
+
 use alloc::vec::Vec;
 use core::marker::PhantomData;
 use core::mem::{self, needs_drop, transmute, ManuallyDrop};
@@ -12,13 +32,15 @@ use self::repr::{
     check_wide_and_thin_compatibility, Allocated, Borrowed, Pivot, Sliced, UnknownSliced,
 };
 use crate::backend::UpdateResult;
-use crate::common::derives::{AsRef, ConstDefault, Copy, DelegateDebug, DelegateHash, Deref, From};
+use crate::common::derives::{
+    AsRef, ConstDefault, Copy, DelegateDebug, DelegateHash, Deref, From, Vector,
+};
 use crate::common::methods::push_within_capacity;
 use crate::common::traits::Mutate;
 use crate::common::{self, drop_raw_slice, force_transmute};
 use crate::vecs::inline::{InlineLength, InlineVec};
 use crate::vecs::thin::{can_reuse, SmartThinVec, ThinVec};
-use crate::vecs::wide::SmartWideVec;
+use crate::vecs::wide::{SmartWideVec, WideVec};
 use crate::Backend;
 
 pub(crate) mod repr;
@@ -43,10 +65,12 @@ mod tests;
     From([T; N], Self::from_array, (const N: usize)),
     From(Vec<T>, Self::from_vec),
     From(ThinVec<T, P>, Self::from_thin_vec, (P: ConstDefault)),
+    From(WideVec<T, P>, Self::from_wide_vec, (P: ConstDefault)),
     From(&[T], Self::from_slice_clone, () where (T: Clone)),
     From(InlineVec<T, L>, Self::from_inline, (L: InlineLength)),
     DelegateDebug(Self::as_slice where T: core::fmt::Debug),
     DelegateHash(Self::as_slice where T: core::hash::Hash),
+    Vector(T),
 )]
 pub struct HipVec<'a, T, B: Backend>(Pivot, PhantomData<(B, &'a [T])>);
 
@@ -183,6 +207,18 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         } else {
             Self::from_vector_normalized(v)
         }
+    }
+
+    #[must_use]
+    pub(crate) fn from_wide_vec<P: ConstDefault>(v: WideVec<T, P>) -> Self {
+        let smart = SmartWideVec::from_wide_vec(v);
+        let sliced = Sliced {
+            ptr: smart.as_ptr(),
+            len: smart.len(),
+            owner: smart, // the cast is not necessary SmartWideVec is transparent
+        };
+        // SAFETY: repr is correct by construction
+        unsafe { transmute::<Sliced<T, SmartWideVec<T, B>>, Self>(sliced) }
     }
 
     /// Creates an inline `HipVec` from an `InlineVec`.
@@ -444,6 +480,37 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         }
     }
 
+    /// Returns the capacity of the vector.
+    ///
+    /// Depending on the representation, the meaning of capacity varies:
+    /// - for inline vectors, this is the maximum number of elements that can be
+    /// stored inline,
+    /// - for allocated vectors, this is the capacity of the underlying
+    /// allocation,
+    /// - for borrowed vectors, this is the length of the slice.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::HipVec;
+    ///
+    /// let a = HipVec::from([1, 2, 3]);
+    /// assert_eq!(a.capacity(), HipVec::<i32>::INLINE_CAP);
+    ///
+    /// let b = HipVec::from(Vec::with_capacity(100));
+    /// assert_eq!(b.capacity() >= 100);
+    /// ```
+    #[must_use]
+    pub const fn capacity(&self) -> usize {
+        if self.is_inline() {
+            unsafe { self.as_inline_unchecked() }.capacity()
+        } else if self.is_allocated() {
+            unsafe { self.as_allocated_unchecked() }.owner.capacity()
+        } else {
+            self.len()
+        }
+    }
+
     /// Returns `true` if the vector has a length of 0.
     ///
     /// # Examples
@@ -655,6 +722,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         self.slice_range(range)
     }
 
+    /// Returns a slice of the vector given a valid range.
     fn slice_range(&self, range: Range<usize>) -> Self
     where
         T: Clone,
