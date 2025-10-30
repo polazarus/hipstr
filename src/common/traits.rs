@@ -1,4 +1,4 @@
-use core::borrow::BorrowMut;
+use core::borrow::{Borrow, BorrowMut};
 use core::ptr::NonNull;
 
 use sealed::Sealed;
@@ -46,7 +46,7 @@ pub trait Mutate: Vector {
         Self: 'a;
 
     /// A reference type
-    type RefMut<'a>: BorrowMut<Self::MutVector<'a>>
+    type RefMut<'a>: BorrowMut<Self::MutVector<'a>> + Borrow<Self::MutVector<'a>>
     where
         Self: 'a;
 

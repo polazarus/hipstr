@@ -240,7 +240,10 @@ impl<T, P: ConstDefault> WideVec<T, P> {
     /// - the elements up to `new_len` are properly initialized.
     pub const unsafe fn set_len(&mut self, new_len: usize) {
         if let Some(inner) = self.0.as_mut() {
+            debug_assert!(new_len <= inner.cap, "new length out of bounds");
             inner.len = new_len;
+        } else {
+            debug_assert!(new_len == 0, "new length out of bounds");
         }
     }
 

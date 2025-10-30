@@ -20,6 +20,7 @@ pub type Allocated<T, B> = Sliced<T, Owner<T, B>>;
 pub struct Owner<T, B>(WideOrThinRepr<T, B>);
 
 impl<T, B: Backend> Clone for Owner<T, B> {
+    #[cfg_attr(coverage_nightly, coverage(off))] // trivial clone
     fn clone(&self) -> Self {
         *self
     }

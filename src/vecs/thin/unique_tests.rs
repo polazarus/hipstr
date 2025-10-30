@@ -554,6 +554,16 @@ fn space_capacity_set_len() {
 }
 
 #[test]
+fn set_len_empty() {
+    let mut v = ThinVec::<i32>::new();
+    assert!(v.is_empty());
+    unsafe {
+        v.set_len(0);
+    }
+    assert!(v.is_empty());
+}
+
+#[test]
 #[cfg(debug_assertions)]
 #[should_panic(expected = "length out of bounds")]
 fn set_len_out_of_bounds_empty() {
@@ -1067,4 +1077,22 @@ fn drop_prefix() {
     }
 
     assert!(*WITNESS.lock().unwrap());
+}
+
+#[test]
+fn push_within_capacity() {
+    let mut v = ThinVec::with_capacity(10);
+    let p = v.as_ptr();
+    let err = (0..)
+        .find_map(|i| v.push_within_capacity(Box::new(i)).err())
+        .unwrap();
+    assert!(*err >= 10);
+    assert_eq!(v.as_ptr(), p);
+}
+
+#[test]
+fn push_within_capacity_empty() {
+    let mut v = ThinVec::new();
+    let err = v.push_within_capacity(Box::new(1)).unwrap_err();
+    assert_eq!(*err, 1);
 }

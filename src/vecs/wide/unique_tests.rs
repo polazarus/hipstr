@@ -104,6 +104,35 @@ fn set_len() {
 }
 
 #[test]
+fn set_len_empty() {
+    let mut wide_vec: V<i32> = V::DEFAULT;
+    assert_eq!(wide_vec.len(), 0);
+    unsafe {
+        wide_vec.set_len(0);
+    }
+    assert_eq!(wide_vec.len(), 0);
+}
+
+#[test]
+#[should_panic(expected = "new length out of bounds")]
+fn set_len_out_of_bounds() {
+    let vec = Vec::with_capacity(5);
+    let mut wide_vec: V<i32> = V::from(vec);
+    unsafe {
+        wide_vec.set_len(10);
+    }
+}
+
+#[test]
+#[should_panic(expected = "new length out of bounds")]
+fn set_len_out_of_bounds_empty() {
+    let mut wide_vec: V<i32> = V::DEFAULT;
+    unsafe {
+        wide_vec.set_len(1);
+    }
+}
+
+#[test]
 fn spare_capacity_mut() {
     let vec = Vec::with_capacity(10);
     let p = vec.as_ptr();
@@ -122,15 +151,6 @@ fn spare_capacity_mut() {
     }
     assert_eq!(wide_vec.as_ptr(), p);
     assert_eq!(wide_vec.as_slice(), &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-}
-
-#[test]
-fn set_len_empty() {
-    let mut vec: V<i32> = V::DEFAULT;
-    assert_eq!(vec.len(), 0);
-    unsafe {
-        vec.set_len(0);
-    }
 }
 
 #[test]

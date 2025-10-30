@@ -50,7 +50,6 @@ use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::borrow::BorrowMut;
-use core::hint::unreachable_unchecked;
 use core::mem::{offset_of, ManuallyDrop, MaybeUninit};
 use core::ops::{Range, RangeBounds};
 use core::ptr::NonNull;
@@ -84,7 +83,7 @@ pub(crate) mod repr;
 mod smart;
 
 #[cfg(test)]
-mod tests;
+mod unique_tests;
 
 /// A reserved prefix type for thin vectors that do not need a prefix but can be
 /// easily converted to shared thin vectors.
@@ -146,12 +145,23 @@ macro_rules! thin_vec {
 #[rules_derive(
     MutVector(T),
     ConstDefault(Self(ThinRepr::NULL)),
+    // Delegated traits: debug and hash
     DelegateDebug(Self::as_slice where T: core::fmt::Debug),
     DelegateHash(Self::as_slice where T: core::hash::Hash),
+    // As ref
     AsRef([T], Self::as_slice, Self::as_mut_slice),
     Deref([T], Self::as_slice, Self::as_mut_slice),
+    // Iterators
     IntoIterator(T, IntoIter<Self>, IntoIter::new),
     FromIterator(T, Self::from_iter),
+    // From conversions
+    From(Vec<T>, Self::from_vector),
+    From(Box<[T]>, Self::from_boxed_slice),
+    From([T; N], Self::from_array, (const N: usize)),
+    From(&[T], Self::from_slice_clone, () where (T: Clone)),
+    From(&mut [T], Self::from_slice_clone, () where (T: Clone)),
+    From(&[T; N], Self::from_slice_clone, (const N: usize) where (T: Clone)),
+    From(&mut [T;N], Self::from_slice_clone, (const N: usize) where (T: Clone)),
 )]
 pub struct ThinVec<T, P: ConstDefault = Reserved>(pub(super) ThinRepr<T, P>);
 
@@ -436,14 +446,12 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     /// - The elements at `old_len..new_len` must be initialized.
     pub unsafe fn set_len(&mut self, new_len: usize) {
         if let Some(header) = self.0.as_mut() {
-            debug_assert!(new_len <= header.cap, "length out of bounds");
+            debug_assert!(new_len <= header.cap, "new length out of bounds");
 
             // SAFETY: `header` is guaranteed to be valid as long as the vector is valid
             header.len = new_len;
-        } else if new_len > 0 {
-            debug_assert!(false, "length out of bounds");
-            // SAFETY: precondition says new_len <= capacity (here 0)
-            unsafe { unreachable_unchecked() }
+        } else {
+            debug_assert!(new_len == 0, "new length out of bounds");
         }
     }
 
@@ -872,27 +880,7 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
 
     #[inline]
     pub(crate) fn from_boxed_slice(boxed: Box<[T]>) -> Self {
-        let len = boxed.len();
-        let mut this = Self::with_capacity(len);
-
-        // SAFETY:
-        // - `boxed` is a valid pointer to a slice of `T` and length `len`
-        // - `this` has a capacity >= `len`
-        unsafe {
-            // move the box's content to `this`
-            this.ptr()
-                .as_ptr()
-                .copy_from_nonoverlapping(boxed.as_ptr(), len);
-
-            // update the length
-            this.set_len(len);
-        }
-
-        // drop the box without dropping the moved content
-        // SAFETY: ManuallyDrop is a transparent wrapper
-        let _: Box<[ManuallyDrop<T>]> = unsafe { mem::transmute(boxed) };
-
-        this
+        Self::from_vector(boxed.into_vec())
     }
 
     /// Creates a new thin vector from a vector.
@@ -1470,30 +1458,15 @@ macros::trait_impls! {
         Extend {
             T => ThinVec<T, P>;
         }
-        From {
-            Box<[T]> => ThinVec<T, P> = Self::from_boxed_slice;
-            Vec<T> => ThinVec<T, P> = Self::from_vector;
-        }
     }
     [T, P] where [T: Clone, P: ConstDefault] {
         From {
-            &[T] => ThinVec<T, P> = ThinVec::from_slice_clone;
-            &mut [T] => ThinVec<T, P> = ThinVec::from_slice_clone;
             Cow<'_, [T]> => ThinVec<T, P> = ThinVec::from_cow;
         }
     }
     [T, P, const N: usize] where [ T:Clone, P: ConstDefault] {
-        From {
-            &[T; N] => ThinVec<T, P> = ThinVec::from_slice_clone;
-            &mut [T; N] => ThinVec<T, P> = ThinVec::from_slice_clone;
-        }
     }
 
-    [T, P, const N: usize] where [P: ConstDefault] {
-        From {
-            [T; N] => ThinVec<T, P> = ThinVec::from_array;
-        }
-    }
     [T, P: ConstDefault, L: super::inline::InlineLength]
     {
         From {
