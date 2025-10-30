@@ -1,40 +1,4 @@
 //! Smart thin vector.
-//!
-//! This module provides a smart vector [`SmartThinVec`] that can be either
-//! unique or shared (reference counted, atomically or not), with possible
-//! copy-on-write semantics. As a wrapper around [`ThinVec`], [`SmartThinVec`]
-//! is *thin*, i.e., the handle is one pointer wide.
-//!
-//! A [`SmartThinVec`]'s contents may be modified through [`as_mut`] if not
-//! shared or [`mutate`] even if shared, provided the data is `Clone`.
-//!
-//! [`as_mut`]: SmartThinVec::as_mut
-//! [`mutate`]: SmartThinVec::mutate
-//!
-//! # Examples
-//!
-//! ```
-//! use hipstr::smart_thin_vec;
-//!
-//! let mut v = smart_thin_vec![1, 2, 3];
-//!
-//! // SmartThinVec is thin
-//! assert_eq!(size_of_val(&v), size_of::<*const ()>());
-//!
-//! assert_eq!(v.as_slice(), &[1, 2, 3]);
-//! let w = v.clone();
-//!
-//! assert_eq!(v.as_slice(), w.as_slice());
-//! assert_eq!(v.as_ptr(), w.as_ptr());
-//!
-//! {
-//!    let mut v_mut = v.mutate(); // Copy-on-write
-//!    v_mut.push(4);
-//! }
-//!
-//! assert_eq!(v.as_slice(), &[1, 2, 3, 4]);
-//! assert_eq!(w.as_slice(), &[1, 2, 3]);
-//! ```
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;
@@ -50,7 +14,9 @@ use super::{Reserved, ThinVec};
 use crate::backend::{
     Backend, BackendImpl, CloneOnOverflow, Counter, PanicOnOverflow, UpdateResult,
 };
-use crate::common::derives::{AsRef, Borrow, ConstDefault, Deref, From, Vector};
+use crate::common::derives::{
+    AsRef, Borrow, ConstDefault, DelegateDebug, DelegateHash, Deref, From, Vector,
+};
 use crate::common::traits::Mutate;
 use crate::macros::trait_impls;
 
@@ -106,17 +72,26 @@ macro_rules! smart_thin_vec {
 /// ```
 #[repr(transparent)]
 #[rules_derive(
+    Vector(T),
     ConstDefault(Self::EMPTY),
+
+    // Delegated traits: debug and hash
+    DelegateDebug(Self::as_slice where T: core::fmt::Debug),
+    DelegateHash(Self::as_slice where T: core::hash::Hash),
+    // AsRef, Deref and Borrow
     AsRef(ThinVec<T, C>, Self::as_thin_vec),
     AsRef([T], Self::as_slice),
     Deref(ThinVec<T ,C>, Self::as_thin_vec),
     Borrow(ThinVec<T, C>, Self::as_thin_vec),
     Borrow([T], Self::as_slice),
-    Vector(T),
+    // From conversions
     From(Vec<T>, Self::from_vector),
     From(Box<[T]>, Self::from_boxed_slice),
-    From(&[T], Self::from_slice_clone where (T: Clone)),
-    From(&mut [T], Self::from_slice_clone where (T: Clone)),
+    From([T; N], Self::from_array, (const N: usize)),
+    From(&[T], Self::from_slice_clone, () where (T: Clone)),
+    From(&mut [T], Self::from_slice_clone, () where (T: Clone)),
+    From(&[T; N], Self::from_slice_clone, (const N: usize) where (T: Clone)),
+    From(&mut [T;N], Self::from_slice_clone, (const N: usize) where (T: Clone)),
 )]
 pub struct SmartThinVec<T, C: Backend>(pub(crate) ThinRepr<T, C>);
 

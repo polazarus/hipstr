@@ -1,10 +1,10 @@
 //! Thin vectors and related types.
 //!
 //! This module provides two main types:
-//! - [`ThinVec`], which is the thin vector itself.
-//! - [`SmartThinVec`], which is a smart pointer to a [`ThinVec`] that
-//!   automatically deallocates when all the reference to the vector are
-//!   dropped, with a copy-on-write semantics.
+//! - [`ThinVec`], which is the thin vector itself,
+//! - [`SmartThinVec`], which is a smart pointer to a [`ThinVec`].
+//!
+//! # [`ThinVec`]
 //!
 //! A thin vector [`ThinVec`] is a contiguous growable array type with
 //! heap-allocated metadata (prefix, capacity, length) and contents. The prefix
@@ -16,9 +16,22 @@
 //! capacity, the length, and the actual data.
 //!
 //! With respect to [`WideVec`], the thin vector offers more efficient access to
-//! the data but cannot be obtained from [`Vec`] without copy..
+//! the data but cannot be obtained from [`Vec`] without copy.
 //!
 //! [`WideVec`]: crate::vecs::wide::WideVec
+//!
+//! # [`SmartThinVec`]
+//!
+//! The smart vector [`SmartThinVec`] that can be either unique or shared
+//! (reference counted, atomically or not), with possible copy-on-write
+//! semantics. Like [`ThinVec`], [`SmartThinVec`] is *thin*, i.e., the handle
+//! is one pointer wide.
+//!
+//! A [`SmartThinVec`]'s contents may be modified through [`as_mut`] if not
+//! shared or [`mutate`] even if shared, provided the data is `Clone`.
+//!
+//! [`as_mut`]: SmartThinVec::as_mut
+//! [`mutate`]: SmartThinVec::mutate
 //!
 //! # Examples
 //!
@@ -61,8 +74,8 @@ use rules_derive::rules_derive;
 use self::repr::{ThinHeader, ThinRepr};
 pub use self::smart::SmartThinVec;
 use crate::common::derives::{
-    AsRef, ConstDefault, DelegateDebug, DelegateHash, Deref, From, FromIterator, IntoIterator,
-    MutVector,
+    AsRef, Borrow, ConstDefault, DelegateDebug, DelegateHash, Deref, From, FromIterator,
+    IntoIterator, MutVector,
 };
 use crate::common::drain::Drain;
 use crate::common::into_iter::IntoIter;
@@ -148,9 +161,10 @@ macro_rules! thin_vec {
     // Delegated traits: debug and hash
     DelegateDebug(Self::as_slice where T: core::fmt::Debug),
     DelegateHash(Self::as_slice where T: core::hash::Hash),
-    // As ref
+    // AsRef, Deref, Borrow
     AsRef([T], Self::as_slice, Self::as_mut_slice),
     Deref([T], Self::as_slice, Self::as_mut_slice),
+    Borrow([T], Self::as_slice, Self::as_mut_slice),
     // Iterators
     IntoIterator(T, IntoIter<Self>, IntoIter::new),
     FromIterator(T, Self::from_iter),
