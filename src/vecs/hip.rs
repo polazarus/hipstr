@@ -183,13 +183,17 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
 
     /// Creates a `HipVec` from a [`Vec`].
     #[must_use]
-    #[inline]
     pub(crate) fn from_vec(vec: Vec<T>) -> Self {
-        let smart = SmartWideVec::from_vec(vec);
+        Self::from_smart_wide_vec(SmartWideVec::from_vec(vec))
+    }
+
+    /// Creates a `HipVec` from a `SmartWideVec`.
+    #[must_use]
+    pub(crate) fn from_smart_wide_vec(vec: SmartWideVec<T, B>) -> Self {
         let sliced = Sliced {
-            ptr: smart.as_ptr(),
-            len: smart.len(),
-            owner: smart, // the cast is not necessary SmartWideVec is transparent
+            ptr: vec.as_ptr(),
+            len: vec.len(),
+            owner: vec, // the cast is not necessary SmartWideVec is transparent
         };
         // SAFETY: repr is correct by construction
         unsafe { transmute::<Sliced<T, SmartWideVec<T, B>>, Self>(sliced) }
@@ -211,14 +215,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
 
     #[must_use]
     pub(crate) fn from_wide_vec<P: ConstDefault>(v: WideVec<T, P>) -> Self {
-        let smart = SmartWideVec::from_wide_vec(v);
-        let sliced = Sliced {
-            ptr: smart.as_ptr(),
-            len: smart.len(),
-            owner: smart, // the cast is not necessary SmartWideVec is transparent
-        };
-        // SAFETY: repr is correct by construction
-        unsafe { transmute::<Sliced<T, SmartWideVec<T, B>>, Self>(sliced) }
+        Self::from_smart_wide_vec(SmartWideVec::from_wide_vec(v))
     }
 
     /// Creates an inline `HipVec` from an `InlineVec`.
@@ -483,10 +480,11 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     /// Returns the capacity of the vector.
     ///
     /// Depending on the representation, the meaning of capacity varies:
+    ///
     /// - for inline vectors, this is the maximum number of elements that can be
-    /// stored inline,
+    ///   stored inline,
     /// - for allocated vectors, this is the capacity of the underlying
-    /// allocation,
+    ///   allocation,
     /// - for borrowed vectors, this is the length of the slice.
     ///
     /// # Examples
@@ -679,7 +677,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     /// If the vector is already unique, this method does nothing.
     /// Otherwise, the elements are copied to a new **normalized** vector.
     ///
-    /// Functionally equivalent to [`detach`]`, this function is provided as an
+    /// Functionally equivalent to [`detach`], this function is provided as an
     /// optimization for types that implement `Copy`.
     ///
     /// [`Self::is_unique()`]: Self::is_unique
@@ -729,8 +727,9 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     {
         if range.is_empty() {
             Self::DEFAULT
-        } else if Self::MAY_INLINE && range.len() < Self::INLINE_CAP {
-            let inline = Inline::from_slice_clone(&self.as_slice()[range]);
+        } else if self.is_inline() {
+            let slice = unsafe { self.as_inline_unchecked().as_slice().get_unchecked(range) };
+            let inline = Inline::from_slice_clone(slice);
             Self::from_inline(inline)
         } else {
             debug_assert!(!self.is_inline());
@@ -845,7 +844,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     /// assert_eq!(hip.len(), 0);
     /// ```
     pub fn clear(&mut self) {
-        *self = Self::DEFAULT
+        *self = Self::DEFAULT;
     }
 
     /// Tightens the allocated vector (without shifting), dropping excess
@@ -1142,6 +1141,15 @@ impl<'a, 'b, T, B: Backend> RefMut<'a, 'b, T, B> {
         Self(origin)
     }
 
+    /// Returns the current capacity of the vector.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::HipVec;
+    /// let mut hip = HipVec::from([42; 42]);
+    /// assert!(hip.mutate().capacity() >= 42);
+    /// ```
     #[must_use]
     pub const fn capacity(&self) -> usize {
         if self.0.is_inline() {
@@ -1153,6 +1161,15 @@ impl<'a, 'b, T, B: Backend> RefMut<'a, 'b, T, B> {
         }
     }
 
+    /// Returns the number of elements in the vector.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::HipVec;
+    /// let mut hip = HipVec::from([1, 2, 3, 4, 5]);
+    /// assert_eq!(hip.mutate().len(), 5);
+    ///
     #[must_use]
     pub const fn len(&self) -> usize {
         if self.0.is_inline() {
@@ -1164,12 +1181,13 @@ impl<'a, 'b, T, B: Backend> RefMut<'a, 'b, T, B> {
         }
     }
 
-    #[must_use]
-    #[inline]
-    pub const fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
+    /// Sets the length of the vector.
+    ///
+    /// # Safety
+    ///
+    /// The new length must be less than or equal to the capacity.
+    /// The elements between the old length and the new length must be
+    /// properly initialized.
     pub const unsafe fn set_len(&mut self, new_len: usize) {
         if self.0.is_inline() {
             let inline = unsafe { self.0.as_mut_inline_unchecked() };
@@ -1186,6 +1204,30 @@ impl<'a, 'b, T, B: Backend> RefMut<'a, 'b, T, B> {
         }
     }
 
+    /// Returns `true` if the vector has a length of 0.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::HipVec;
+    /// let mut hip = HipVec::new();
+    /// assert!(hip.mutate().is_empty());
+    /// ```
+    #[must_use]
+    #[inline]
+    pub const fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Returns a pointer to the first element of the vector.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::HipVec;
+    /// let hip = HipVec::from([1, 2, 3]);
+    /// assert_eq!(unsafe { *hip.mutate().as_ptr() }, 1);
+    /// ```
     #[must_use]
     pub const fn as_ptr(&self) -> *const T {
         if self.0.is_inline() {
@@ -1200,6 +1242,16 @@ impl<'a, 'b, T, B: Backend> RefMut<'a, 'b, T, B> {
         }
     }
 
+    /// Returns a mutable pointer to the first element of the vector.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::HipVec;
+    /// let mut hip = HipVec::from([1, 2, 3]);
+    /// unsafe { *hip.mutate().as_mut_ptr() = 0; }
+    /// assert_eq!(hip.as_slice(), &[0, 2, 3]);
+    /// ```
     #[must_use]
     pub const fn as_mut_ptr(&mut self) -> *mut T {
         if self.0.is_inline() {

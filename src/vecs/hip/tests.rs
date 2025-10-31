@@ -1,6 +1,7 @@
 use alloc::boxed::Box;
 use alloc::vec;
 use core::ptr;
+use std::vec::Vec;
 
 use const_default::ConstDefault;
 use typenum::U32;
@@ -463,4 +464,53 @@ fn mutate_reserve() {
     //     h_mut.reserve(10);
     //     assert!(h_mut.0.is_inline());
     // }
+}
+
+#[test]
+fn capacity_wide() {
+    let v = Vec::from([42; 100]);
+    let h = HipVec::<u8, Arc>::from(v);
+    let cap = h.capacity();
+    assert!(cap >= 100);
+
+    let h2 = h.slice(10..60);
+    assert_eq!(h2.capacity(), cap);
+}
+
+#[test]
+fn capacity_thin() {
+    let h = HipVec::<u8, Arc>::from([42; 100]);
+    let cap = h.capacity();
+    assert!(cap >= 100);
+
+    let h2 = h.slice(10..60);
+    assert_eq!(h2.capacity(), cap);
+}
+
+#[test]
+fn capacity_inline() {
+    let h = HipVec::<u8, Arc>::from([1, 2, 3, 4, 5]);
+    assert_eq!(h.capacity(), HipVec::<u8, Arc>::INLINE_CAP);
+
+    let h2 = h.slice(1..3);
+    assert_eq!(h2.capacity(), HipVec::<u8, Arc>::INLINE_CAP);
+}
+
+#[test]
+fn capacity_empty() {
+    // for now, the emtpy hipvec is borrowed
+    let h = HipVec::<u8, Arc>::new();
+    assert_eq!(h.capacity(), 0);
+
+    let h2 = h.slice(..);
+    assert_eq!(h2.capacity(), 0);
+}
+
+#[test]
+fn capacity_borrowed() {
+    let h = HipVec::<u8, Arc>::borrowed(b"hello");
+    assert_eq!(h.capacity(), h.len());
+
+    let h2 = h.slice(1..4);
+    assert_eq!(h2.capacity(), h2.len());
 }

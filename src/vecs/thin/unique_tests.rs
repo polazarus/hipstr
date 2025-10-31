@@ -965,6 +965,12 @@ fn from_iterator() {
 
     let v: ThinVec<_> = (1..=10).filter(|x| *x % 2 == 0).collect();
     assert_eq!(v.as_slice(), &[2, 4, 6, 8, 10]);
+
+    let v: ThinVec<u32> = iter::empty().collect();
+    assert!(v.is_empty());
+    // the bounds should allow for zero capacity
+    assert_eq!(v.capacity(), 0);
+    assert!(v.0.is_null());
 }
 
 #[test]

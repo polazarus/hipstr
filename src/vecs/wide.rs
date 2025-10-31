@@ -4,7 +4,7 @@
 //! handles (pointer sized) to standard [`Vec`]:
 //!
 //! - [`SmartWideVec<T, B>`]: a shared vector with a backend `B`.
-//! - [`WideVec<T, P>`]`: a unique vector with an additional associated data
+//! - [`WideVec<T, P>`]: a unique vector with an additional associated data
 //!   `P`.
 //!
 //! The latter is an implementation detail and is not intended to be used
@@ -384,6 +384,8 @@ impl<T, B: Backend> SmartWideVec<T, B> {
         unsafe { mem::transmute(wide_vec) }
     }
 
+    /// Creates a new `SmartWideVec` from a `WideVec`, initializing the counter.
+    #[must_use]
     pub(crate) fn from_wide_vec<P: ConstDefault>(wide_vec: WideVec<T, P>) -> Self {
         let wide_vec: WideVec<T, B> = wide_vec.fresh_move();
         // SAFETY: fresh_move resets the counter
@@ -573,9 +575,7 @@ impl<T, B: Backend> SmartWideVec<T, B> {
     #[must_use]
     #[inline]
     pub fn is_unique(&self) -> bool {
-        self.as_wide_vec()
-            .prefix()
-            .is_none_or(|prefix| prefix.is_unique())
+        self.as_wide_vec().prefix().is_none_or(B::is_unique)
     }
 
     /// Gets a mutable reference to the underlying vector if it is uniquely owned.
@@ -614,7 +614,6 @@ impl<T, B: Backend> SmartWideVec<T, B> {
     /// The caller must ensure that the vector is uniquely owned, i.e. no other
     /// references (clones) to the same data exist. Failing to do so may
     /// result in undefined behavior.
-    #[must_use]
     pub unsafe fn as_mut_unchecked(&mut self) -> RefMut<'_, T, B> {
         debug_assert!(self.is_unique());
         RefMut::new(unsafe { self.as_mut_wide_vec_unchecked() })
@@ -840,13 +839,12 @@ pub struct RefMut<'a, T, P: ConstDefault> {
     vec: Vec<T>,
     /// A mutable reference to the original wide vector handle.
     ///
-    /// Always empty while the RefMut exists.
+    /// Always empty while the `RefMut` exists.
     origin: &'a mut WideVec<T, P>,
 }
 
 impl<'a, T, P: ConstDefault> RefMut<'a, T, P> {
     /// Creates a new `RefMut` from a mutable reference to a `WideVec`.
-    #[must_use]
     fn new(origin: &'a mut WideVec<T, P>) -> Self {
         // take the vector out of the wide vector handle
         let vec = mem::take(origin)

@@ -551,3 +551,13 @@ fn from_slice_copy() {
     assert!(stv.is_empty());
     assert_eq!(stv.capacity(), 0);
 }
+
+#[test]
+fn from_iter() {
+    let stv: SmartThinVec<_, Arc> = (1..4).collect();
+    assert_eq!(stv.as_slice(), &[1, 2, 3]);
+
+    let stv: SmartThinVec<i32, Rc> = core::iter::empty().collect();
+    assert!(stv.is_empty());
+    assert_eq!(stv.capacity(), 0);
+}
