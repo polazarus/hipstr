@@ -9,16 +9,17 @@ use core::borrow::Borrow;
 use core::error::Error;
 use core::hash::Hash;
 use core::hint::unreachable_unchecked;
-use core::mem::{ManuallyDrop, MaybeUninit};
+use core::mem::{self, ManuallyDrop, MaybeUninit};
 use core::ops::{Bound, Deref, DerefMut, Range, RangeBounds};
 use core::ptr;
 
-use raw::borrowed::Borrowed;
-use raw::{Split, SplitMut, Tag, Union, INLINE_CAPACITY};
+use raw::INLINE_CAPACITY;
 
 use self::raw::try_range_of;
 pub use self::raw::HipByt;
 use crate::backend::Backend;
+use crate::common::RangeError;
+use crate::vecs::hip::HipVec;
 use crate::vecs::InlineVec;
 
 mod cmp;
@@ -75,7 +76,7 @@ where
     #[inline]
     #[must_use]
     pub const fn new() -> Self {
-        Self::inline_empty()
+        Self(HipVec::new())
     }
 
     /// Creates a new inline `HipByt` by copying the given slice.
@@ -164,11 +165,7 @@ where
     #[inline]
     #[must_use]
     pub fn with_capacity(capacity: usize) -> Self {
-        if capacity <= Self::inline_capacity() {
-            Self::inline_empty()
-        } else {
-            Self::from_vec(Vec::with_capacity(capacity))
-        }
+        Self(HipVec::with_capacity(capacity))
     }
 
     /// Creates a new `HipByt` from a byte slice.
@@ -187,10 +184,7 @@ where
     #[must_use]
     #[inline]
     pub const fn borrowed(bytes: &'borrow [u8]) -> Self {
-        Union {
-            borrowed: Borrowed::new(bytes),
-        }
-        .into_raw()
+        Self(HipVec::borrowed(bytes))
     }
 
     /// Returns the length of this `HipByt`.
@@ -207,11 +201,7 @@ where
     #[inline]
     #[must_use]
     pub const fn len(&self) -> usize {
-        match self.split() {
-            Split::Inline(inline) => inline.len(),
-            Split::Allocated(heap) => heap.len(),
-            Split::Borrowed(borrowed) => borrowed.len(),
-        }
+        self.0.len()
     }
 
     /// Returns `true` if this `HipByt` has a length of zero, and `false` otherwise.
@@ -242,11 +232,7 @@ where
     #[inline]
     #[must_use]
     pub const fn as_ptr(&self) -> *const u8 {
-        match self.split() {
-            Split::Inline(inline) => inline.as_ptr(),
-            Split::Allocated(heap) => heap.as_ptr(),
-            Split::Borrowed(borrowed) => borrowed.as_ptr(),
-        }
+        self.0.as_ptr()
     }
 
     /// Returns a raw mutable pointer to the start of the byte sequence.
@@ -258,11 +244,7 @@ where
     #[inline]
     #[must_use]
     pub fn as_mut_ptr(&mut self) -> Option<*mut u8> {
-        match self.split_mut() {
-            SplitMut::Inline(inline) => Some(inline.as_mut_ptr()),
-            SplitMut::Allocated(heap) => heap.as_mut_ptr(),
-            SplitMut::Borrowed(_) => None,
-        }
+        self.0.as_mut_ptr()
     }
 
     /// Returns a raw mutable pointer to the start of the byte sequence.
@@ -284,19 +266,7 @@ where
     #[inline]
     #[must_use]
     pub unsafe fn as_mut_ptr_unchecked(&mut self) -> *mut u8 {
-        match self.split_mut() {
-            SplitMut::Inline(inline) => inline.as_mut_ptr(),
-            SplitMut::Allocated(heap) => unsafe { heap.as_mut_ptr_unchecked() },
-            SplitMut::Borrowed(_) => {
-                if cfg!(debug_assertions) {
-                    panic!("mutable pointer of borrowed string");
-                } else {
-                    unsafe {
-                        unreachable_unchecked();
-                    }
-                }
-            }
-        }
+        unsafe { self.0.as_mut_ptr().unwrap_unchecked() }
     }
 
     /// Extracts a slice of the entire `HipByt`.
@@ -314,11 +284,7 @@ where
     #[inline]
     #[must_use]
     pub const fn as_slice(&self) -> &[u8] {
-        match self.split() {
-            Split::Inline(inline) => inline.as_slice(),
-            Split::Allocated(heap) => heap.as_slice(),
-            Split::Borrowed(borrowed) => borrowed.as_slice(),
-        }
+        self.0.as_slice()
     }
 
     /// Extracts a mutable slice of the entire `HipByt` if possible.
@@ -337,11 +303,7 @@ where
     #[inline]
     #[must_use]
     pub fn as_mut_slice(&mut self) -> Option<&mut [u8]> {
-        match self.split_mut() {
-            SplitMut::Inline(inline) => Some(inline.as_mut_slice()),
-            SplitMut::Allocated(allocated) => allocated.as_mut_slice(),
-            SplitMut::Borrowed(_) => None,
-        }
+        self.0.as_mut_slice()
     }
 
     /// Extracts a mutable slice of the entire `HipByt`.
@@ -355,17 +317,7 @@ where
     /// In debug mode, panics if the sequence is borrowed or shared.
     #[inline]
     pub unsafe fn as_mut_slice_unchecked(&mut self) -> &mut [u8] {
-        match self.split_mut() {
-            SplitMut::Inline(inline) => inline.as_mut_slice(),
-            SplitMut::Allocated(allocated) => unsafe { allocated.as_mut_slice_unchecked() },
-            SplitMut::Borrowed(_) => {
-                if cfg!(debug_assertions) {
-                    panic!("mutable slice of borrowed string");
-                } else {
-                    unsafe { unreachable_unchecked() }
-                }
-            }
-        }
+        unsafe { self.0.as_mut_slice().unwrap_unchecked() }
     }
 
     /// Extracts a mutable slice of the entire `HipByt` changing the
@@ -386,9 +338,7 @@ where
     #[inline]
     #[doc(alias = "make_mut")]
     pub fn to_mut_slice(&mut self) -> &mut [u8] {
-        self.make_unique();
-        // SAFETY: `make_unique` above ensures that it is uniquely owned
-        unsafe { self.as_mut_slice_unchecked() }
+        self.0.to_mut_slice_copy()
     }
 
     /// Returns `true` if this `HipByt` uses the inline representation, `false` otherwise.
@@ -411,7 +361,7 @@ where
     #[inline]
     #[must_use]
     pub const fn is_inline(&self) -> bool {
-        matches!(self.tag(), Tag::Inline)
+        self.0.is_inline()
     }
 
     /// Returns `true` if this `HipByt` is a slice borrow, `false` otherwise.
@@ -434,7 +384,7 @@ where
     #[inline]
     #[must_use]
     pub const fn is_borrowed(&self) -> bool {
-        matches!(self.tag(), Tag::Borrowed)
+        self.0.is_borrowed()
     }
 
     /// Converts `self` into a borrowed slice if this `HipByt` is backed by a
@@ -457,13 +407,10 @@ where
     /// assert!(std::ptr::eq(SEQ, c.unwrap()));
     /// ```
     pub const fn into_borrowed(self) -> Result<&'borrow [u8], Self> {
-        match self.split() {
-            Split::Allocated(_) | Split::Inline(_) => Err(self),
-            Split::Borrowed(borrowed) => {
-                let result = borrowed.as_slice();
-                core::mem::forget(self); // not needed
-                Ok(result)
-            }
+        if self.is_borrowed() {
+            Ok(unsafe { self.into_hipvec().into_borrowed_unchecked() })
+        } else {
+            Err(self)
         }
     }
 
@@ -486,10 +433,7 @@ where
     #[inline]
     #[must_use]
     pub const fn as_borrowed(&self) -> Option<&'borrow [u8]> {
-        match self.split() {
-            Split::Allocated(_) | Split::Inline(_) => None,
-            Split::Borrowed(borrowed) => Some(borrowed.as_slice()),
-        }
+        self.0.as_borrowed()
     }
 
     /// Returns `true` if this `HipByt` is a shared heap-allocated byte sequence, `false` otherwise.
@@ -512,7 +456,7 @@ where
     #[inline]
     #[must_use]
     pub const fn is_allocated(&self) -> bool {
-        matches!(self.tag(), Tag::Allocated)
+        self.0.is_allocated()
     }
 
     /// Returns `true` if the representation is normalized.
@@ -526,7 +470,7 @@ where
     #[inline]
     #[must_use]
     pub const fn inline_capacity() -> usize {
-        INLINE_CAPACITY
+        HipVec::<'borrow, u8, B>::INLINE_CAP
     }
 
     /// Returns the total number of bytes the backend can hold.
@@ -547,11 +491,7 @@ where
     #[inline]
     #[must_use]
     pub fn capacity(&self) -> usize {
-        match self.split() {
-            Split::Inline(_) => Self::inline_capacity(),
-            Split::Borrowed(borrowed) => borrowed.len(), // provide something to simplify the API
-            Split::Allocated(allocated) => allocated.capacity(),
-        }
+        self.0.capacity()
     }
 
     /// Converts `self` into a [`Vec`] without clone or allocation if possible.
@@ -563,14 +503,7 @@ where
     #[inline]
     #[allow(clippy::option_if_let_else)]
     pub fn into_vec(self) -> Result<Vec<u8>, Self> {
-        let mut this = ManuallyDrop::new(self);
-        if let Some(allocated) = this.take_allocated() {
-            allocated
-                .try_into_vec()
-                .map_err(|allocated| Union { allocated }.into_raw())
-        } else {
-            Err(ManuallyDrop::into_inner(this))
-        }
+        todo!()
     }
 
     /// Makes the data owned, copying it if the data is actually borrowed.
@@ -591,17 +524,9 @@ where
     #[inline]
     #[must_use]
     pub fn into_owned(self) -> HipByt<'static, B> {
-        let tag = self.tag();
-        let old = self.union_move(); // self is not dropped!
-
-        // SAFETY: tag representation
-        unsafe {
-            match tag {
-                Tag::Allocated => HipByt::from_allocated(old.allocated),
-                Tag::Borrowed => HipByt::from_slice(old.borrowed.as_slice()),
-                Tag::Inline => HipByt::from_inline(ManuallyDrop::into_inner(old.inline)),
-            }
-        }
+        let mut this = self.into_hipvec();
+        this.detach_copy();
+        HipByt(unsafe { mem::transmute(this) })
     }
 
     /// Extracts a slice as its own `HipByt`.
@@ -622,10 +547,7 @@ where
     #[must_use]
     #[track_caller]
     pub fn slice(&self, range: impl RangeBounds<usize>) -> Self {
-        match self.try_slice(range) {
-            Ok(result) => result,
-            Err(err) => panic!("{}", err),
-        }
+        Self(self.0.slice(range))
     }
 
     /// Returns a `HipByt` of a range of bytes in this `HipByt`, if the range is
@@ -645,14 +567,8 @@ where
     /// assert_eq!(a.try_slice(0..2), Ok(HipByt::from(b"ab")));
     /// assert!(a.try_slice(0..4).is_err());
     /// ```
-    pub fn try_slice(
-        &self,
-        range: impl RangeBounds<usize>,
-    ) -> Result<Self, SliceError<'_, 'borrow, B>> {
-        let range = simplify_range(range, self.len())
-            .map_err(|(start, end, kind)| SliceError::new(kind, start, end, self))?;
-        let slice = unsafe { self.range_unchecked(range) };
-        Ok(slice)
+    pub fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, RangeError> {
+        self.0.try_slice(range).map(HipByt)
     }
 
     /// Extracts a slice as its own `HipByt`.
@@ -664,17 +580,7 @@ where
     /// Panics in debug mode. UB in release mode.
     #[must_use]
     pub unsafe fn slice_unchecked(&self, range: impl RangeBounds<usize>) -> Self {
-        let start = match range.start_bound() {
-            Bound::Excluded(&n) => n + 1,
-            Bound::Included(&n) => n,
-            Bound::Unbounded => 0,
-        };
-        let end = match range.end_bound() {
-            Bound::Excluded(&n) => n,
-            Bound::Included(&n) => n + 1,
-            Bound::Unbounded => self.len(),
-        };
-        unsafe { self.range_unchecked(start..end) }
+        Self(unsafe { self.0.slice_unchecked(range) })
     }
 
     /// Extracts a slice as its own `HipByt` based on the given subslice `&[u8]`.
@@ -721,9 +627,7 @@ where
     /// ```
     #[must_use]
     pub fn try_slice_ref(&self, range: &[u8]) -> Option<Self> {
-        let slice = range;
-        let range = try_range_of(self.as_slice(), slice)?;
-        Some(unsafe { self.slice_unchecked(range) })
+        self.0.slice_ref_copy(range).map(Self)
     }
 
     /// Returns a mutable handle to the underlying [`Vec`].
@@ -754,15 +658,8 @@ where
     #[inline]
     #[must_use]
     pub fn mutate(&mut self) -> RefMut<'_, 'borrow, B> {
-        let owned = self.take_vec();
-
-        #[cfg(feature = "bstr")]
-        let owned = owned.into();
-
-        RefMut {
-            result: self,
-            owned,
-        }
+        // TODO support bstr
+        RefMut(self.0.mutate_copy())
     }
 
     /// Truncates this `HipByt`, removing all contents.
@@ -836,49 +733,7 @@ where
     #[inline]
     #[doc(alias = "extend_from_slice", alias = "append")]
     pub fn push_slice(&mut self, addition: &[u8]) {
-        let new_len = self.len() + addition.len();
-
-        if self.is_allocated() {
-            // current allocation may be pushed into it directly?
-
-            // SAFETY: repr checked above
-            let allocated = unsafe { &mut self.union_mut().allocated };
-
-            if allocated.is_unique() {
-                // SAFETY: uniqueness is checked above
-                unsafe {
-                    allocated.push_slice_unchecked(addition);
-                }
-                return;
-            }
-        }
-
-        if new_len <= Self::inline_capacity() {
-            if !self.is_inline() {
-                // make it inline first
-                // SAFETY: `new_len` is checked before, so current len <= INLINE_CAPACITY
-                *self = unsafe { Self::inline_unchecked(self.as_slice()) };
-            }
-
-            // SAFETY:
-            // - `self` is inline
-            // - `new_len` is <= INLINE_CAPACITY
-            unsafe {
-                self.union_mut()
-                    .inline
-                    .extend_from_slice_copy_unchecked(addition);
-            }
-
-            return;
-        }
-
-        // requires a new vector
-        let mut vec = Vec::with_capacity(new_len);
-        vec.extend_from_slice(self.as_slice());
-        vec.extend_from_slice(addition);
-
-        // SAFETY: vec's len (new_len) is checked above to be > INLINE_CAPACITY
-        *self = Self::from_vec(vec);
+        todo!()
     }
 
     /// Creates a new `HipByt` by copying this one `n` times.
@@ -908,33 +763,7 @@ where
     /// ```
     #[must_use]
     pub fn repeat(&self, n: usize) -> Self {
-        if self.is_empty() || n == 1 {
-            return self.clone();
-        }
-
-        let src_len = self.len();
-        let new_len = src_len.checked_mul(n).expect("capacity overflow");
-        if new_len <= Self::inline_capacity() {
-            let mut inline = unsafe { InlineVec::zeroed(new_len) };
-            let src = self.as_slice().as_ptr();
-            let mut dst = inline.as_mut_slice().as_mut_ptr();
-
-            // SAFETY: copy only `new_len` bytes with an
-            // upper bound of `INLINE_CAPACITY` checked above
-            unsafe {
-                // could be better from an algorithmic standpoint
-                // but no expected gain for at most 23 bytes on 64 bit platform
-                for _ in 0..n {
-                    ptr::copy_nonoverlapping(src, dst, src_len);
-                    dst = dst.add(src_len);
-                }
-            }
-
-            Self::from_inline(inline)
-        } else {
-            let vec = self.as_slice().repeat(n);
-            Self::from_vec(vec)
-        }
+        Self(self.0.repeat_copy(n))
     }
 
     /// Returns the remaining spare capacity of the vector as a slice of
@@ -947,11 +776,7 @@ where
     /// [`set_len`]: HipByt::set_len
     #[inline]
     pub fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<u8>] {
-        match self.split_mut() {
-            SplitMut::Borrowed(_) => &mut [],
-            SplitMut::Inline(inline) => inline.spare_capacity_mut(),
-            SplitMut::Allocated(allocated) => allocated.spare_capacity_mut(),
-        }
+        self.0.spare_capacity_mut()
     }
 
     /// Forces the length of the vector to `new_len`.
@@ -965,12 +790,8 @@ where
     ///   * The elements at `old_len..new_len` must be initialized.
     ///   * The vector should not be shared.
     pub unsafe fn set_len(&mut self, new_len: usize) {
-        match self.split_mut() {
-            SplitMut::Borrowed(borrowed) => unsafe {
-                borrowed.set_len(new_len);
-            },
-            SplitMut::Inline(inline) => unsafe { inline.set_len(new_len) },
-            SplitMut::Allocated(allocated) => unsafe { allocated.set_len(new_len) },
+        unsafe {
+            self.0.set_len(new_len);
         }
     }
 
@@ -1025,17 +846,7 @@ where
     /// assert!(s.is_inline());
     /// ```
     pub fn shrink_to(&mut self, min_capacity: usize) {
-        if self.is_allocated() {
-            let min_capacity = min_capacity.max(self.len());
-
-            if min_capacity > Self::inline_capacity() {
-                let allocated = unsafe { &mut self.union_mut().allocated };
-                allocated.shrink_to(min_capacity);
-            } else {
-                let new = unsafe { Self::inline_unchecked(self.as_slice()) };
-                *self = new;
-            }
-        }
+        self.0.shrink_to(min_capacity);
     }
 
     /// Shrinks the capacity of the vector as much as possible.
@@ -1060,7 +871,7 @@ where
     /// assert_eq!(s.capacity(), HipByt::inline_capacity());
     /// ```
     pub fn shrink_to_fit(&mut self) {
-        self.shrink_to(self.len());
+        self.0.shrink_to_fit();
     }
 
     /// Returns a new `HipByt` containing a copy of this slice where each byte
@@ -1712,40 +1523,26 @@ where
 impl<B> Error for SliceError<'_, '_, B> where B: Backend {}
 
 /// A wrapper type for a mutably borrowed vector out of a [`HipByt`].
-pub struct RefMut<'a, 'borrow, B>
+pub struct RefMut<'a, 'borrow, B: Backend>(crate::vecs::hip::RefMut<'a, 'borrow, u8, B>)
 where
-    B: Backend,
-{
-    result: &'a mut HipByt<'borrow, B>,
-    owned: Owned,
-}
+    B: Backend;
 
-impl<B> Drop for RefMut<'_, '_, B>
+impl<'a, 'b, B> Deref for RefMut<'a, 'b, B>
 where
     B: Backend,
 {
-    fn drop(&mut self) {
-        let owned = core::mem::take(&mut self.owned);
-        *self.result = HipByt::from(owned);
-    }
-}
-
-impl<B> Deref for RefMut<'_, '_, B>
-where
-    B: Backend,
-{
-    type Target = Owned;
+    type Target = crate::vecs::hip::RefMut<'a, 'b, u8, B>;
 
     fn deref(&self) -> &Self::Target {
-        &self.owned
+        &self.0
     }
 }
 
-impl<B> DerefMut for RefMut<'_, '_, B>
+impl<'a, 'b, B> DerefMut for RefMut<'a, 'b, B>
 where
     B: Backend,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.owned
+        &mut self.0
     }
 }

@@ -20,9 +20,9 @@
 
 use alloc::vec::Vec;
 use core::marker::PhantomData;
-use core::mem::{self, needs_drop, transmute, ManuallyDrop};
+use core::mem::{self, needs_drop, transmute, ManuallyDrop, MaybeUninit};
 use core::ops::{Range, RangeBounds};
-use core::ptr;
+use core::{ptr, slice};
 
 use const_default::ConstDefault;
 use rules_derive::rules_derive;
@@ -37,7 +37,7 @@ use crate::common::derives::{
 };
 use crate::common::methods::push_within_capacity;
 use crate::common::traits::Mutate;
-use crate::common::{self, drop_raw_slice, force_transmute};
+use crate::common::{self, drop_raw_slice, force_transmute, RangeError};
 use crate::vecs::inline::{InlineLength, InlineVec};
 use crate::vecs::thin::{can_reuse, SmartThinVec, ThinVec};
 use crate::vecs::wide::{SmartWideVec, WideVec};
@@ -73,6 +73,9 @@ mod tests;
     Vector(T),
 )]
 pub struct HipVec<'a, T, B: Backend>(Pivot, PhantomData<(B, &'a [T])>);
+
+unsafe impl<T: Sync, B: Backend + Sync> Sync for HipVec<'_, T, B> {}
+unsafe impl<T: Send, B: Backend + Send> Send for HipVec<'_, T, B> {}
 
 /// Byte size for `HipVec`.
 pub const BYTES: usize = size_of::<Borrowed<()>>();
@@ -118,6 +121,19 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         Self::DEFAULT
     }
 
+    #[must_use]
+    pub fn with_capacity(capacity: usize) -> Self {
+        if capacity == 0 {
+            Self::new()
+        } else if Self::fit_inline(capacity) {
+            let inline = Inline::with_capacity(capacity);
+            Self::from_inline(inline)
+        } else {
+            let smart = SmartThinVec::with_capacity(capacity);
+            Self::from_smart_thin(smart)
+        }
+    }
+
     /// Creates a borrowed `HipVec` from a slice.
     ///
     /// # Examples
@@ -132,6 +148,31 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     pub const fn borrowed(slice: &'a [T]) -> Self {
         let borrowed = Borrowed::<'a, T>::new(slice);
         unsafe { transmute(borrowed) }
+    }
+
+    pub(crate) const unsafe fn into_borrowed_unchecked(self) -> &'a [T] {
+        let sliced = unsafe { self.as_sliced_unchecked() };
+        let slice = unsafe { core::slice::from_raw_parts(sliced.ptr, sliced.len) };
+        core::mem::forget(self);
+        slice
+    }
+
+    pub const fn into_borrowed(self) -> Result<&'a [T], Self> {
+        if self.is_borrowed() {
+            Ok(unsafe { self.into_borrowed_unchecked() })
+        } else {
+            Err(self)
+        }
+    }
+
+    pub const fn as_borrowed(&self) -> Option<&'a [T]> {
+        if self.is_borrowed() {
+            let sliced = unsafe { self.as_sliced_unchecked() };
+            let slice = unsafe { slice::from_raw_parts(sliced.ptr, sliced.len) };
+            Some(slice)
+        } else {
+            None
+        }
     }
 
     /// Creates a `HipVec` from an array.
@@ -185,6 +226,18 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     #[must_use]
     pub(crate) fn from_vec(vec: Vec<T>) -> Self {
         Self::from_smart_wide_vec(SmartWideVec::from_vec(vec))
+    }
+
+    #[must_use]
+    pub(crate) fn from_vec_normalized(vec: Vec<T>) -> Self {
+        if vec.is_empty() {
+            Self::DEFAULT
+        } else if Self::fit_inline(vec.len()) {
+            let inline = Inline::from_vector(vec);
+            Self::from_inline(inline)
+        } else {
+            Self::from_smart_wide_vec(SmartWideVec::from_vec(vec))
+        }
     }
 
     /// Creates a `HipVec` from a `SmartWideVec`.
@@ -452,6 +505,31 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         }
     }
 
+    #[must_use]
+    pub fn as_mut_ptr(&mut self) -> Option<*mut T> {
+        if self.is_unique() {
+            if self.is_inline() {
+                Some(unsafe { self.as_mut_inline_unchecked() }.as_mut_ptr())
+            } else {
+                // self.0.is_allocated()
+                Some(unsafe { self.as_mut_allocated_unchecked() }.ptr.cast_mut())
+            }
+        } else {
+            None
+        }
+    }
+
+    #[must_use]
+    pub unsafe fn as_mut_ptr_unchecked(&mut self) -> *mut T {
+        debug_assert!(self.is_unique());
+        if self.is_inline() {
+            unsafe { self.as_mut_inline_unchecked() }.as_mut_ptr()
+        } else {
+            // self.0.is_allocated()
+            unsafe { self.as_mut_allocated_unchecked() }.ptr.cast_mut()
+        }
+    }
+
     /// Returns the number of elements in the vector.
     ///
     /// # Examples
@@ -549,6 +627,46 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         } else {
             unsafe { self.as_sliced_unchecked() }.as_slice()
         }
+    }
+
+    #[inline]
+    pub fn as_mut_slice(&mut self) -> Option<&mut [T]> {
+        if let Some(ptr) = self.as_mut_ptr() {
+            // SAFETY: ptr is unique
+            Some(unsafe { core::slice::from_raw_parts_mut(ptr, self.len()) })
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    pub unsafe fn as_mut_slice_unchecked(&mut self) -> &mut [T] {
+        debug_assert!(self.is_unique());
+        // SAFETY: ptr is unique
+        unsafe {
+            let ptr = self.as_mut_ptr_unchecked();
+            core::slice::from_raw_parts_mut(ptr, self.len())
+        }
+    }
+
+    #[inline]
+    pub fn to_mut_slice(&mut self) -> &mut [T]
+    where
+        T: Clone,
+    {
+        self.detach();
+        // SAFETY: `detach` above ensures that it is uniquely owned
+        unsafe { self.as_mut_slice_unchecked() }
+    }
+
+    #[inline]
+    pub fn to_mut_slice_copy(&mut self) -> &mut [T]
+    where
+        T: Copy,
+    {
+        self.detach_copy();
+        // SAFETY: `detach_copy` above ensures that it is uniquely owned
+        unsafe { self.as_mut_slice_unchecked() }
     }
 
     /// Gets the inline representation.
@@ -716,8 +834,25 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     where
         T: Clone,
     {
-        let range = common::range(range, self.len()).unwrap();
+        self.try_slice(range).unwrap()
+    }
+
+    #[must_use]
+    pub unsafe fn slice_unchecked(&self, range: impl RangeBounds<usize>) -> Self
+    where
+        T: Clone,
+    {
+        let range = common::range(range, self.len());
+        let range = unsafe { range.unwrap_unchecked() };
         self.slice_range(range)
+    }
+
+    pub fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, RangeError>
+    where
+        T: Clone,
+    {
+        let range = common::range(range, self.len())?;
+        Ok(self.slice_range(range))
     }
 
     /// Returns a slice of the vector given a valid range.
@@ -752,6 +887,44 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
             }
             copy
         }
+    }
+
+    pub fn slice_ref_copy(&self, slice: &[T]) -> Option<Self>
+    where
+        T: Copy,
+    {
+        let range = self.as_slice().as_ptr_range();
+        let slice_range = slice.as_ptr_range();
+        if (range.contains(&slice_range.start) || range.end == slice_range.start)
+            && (range.contains(&slice_range.end) || range.end == slice_range.end)
+        {
+            return None;
+        }
+
+        Some(if slice.is_empty() {
+            Self::DEFAULT
+        } else if self.is_inline() {
+            let inline = Inline::from_slice_clone(slice);
+            Self::from_inline(inline)
+        } else {
+            if self.is_allocated() {
+                // SAFETY: repr is checked above
+                let owner = unsafe { &self.as_allocated_unchecked().owner };
+                if owner.counter().incr() == UpdateResult::Overflow {
+                    return Some(Self::from_slice_copy(slice));
+                }
+            }
+
+            unsafe {
+                let mut result = self.copy();
+                {
+                    let sliced = result.as_mut_sliced_unchecked();
+                    sliced.ptr = slice.as_ptr();
+                    sliced.len = slice.len();
+                }
+                result
+            }
+        })
     }
 
     /// Removes the last element from the vector and returns it, or `None` if
@@ -1068,6 +1241,101 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         self.tighten_and_shift();
         // SAFETY: self is now unique and starts at index 0
         unsafe { RefMut::new(self) }
+    }
+
+    pub fn mutate_copy(&mut self) -> RefMut<'_, 'a, T, B>
+    where
+        T: Copy,
+    {
+        // ensures self is owned uniquely
+        self.detach_copy();
+        // ensures self is tightened and starts at index 0
+        self.tighten_and_shift();
+        // SAFETY: self is now unique and starts at index 0
+        unsafe { RefMut::new(self) }
+    }
+
+    #[must_use]
+    pub fn repeat_copy(&self, n: usize) -> Self
+    where
+        T: Copy,
+    {
+        if self.is_empty() {
+            return Self::new();
+        } else if n == 1 {
+            // TODO clone copy
+            return self.clone();
+        }
+
+        let src_len = self.len();
+        let new_len = src_len.checked_mul(n).expect("capacity overflow");
+        let mut result = Self::with_capacity(new_len);
+
+        let src = self.as_ptr();
+        // SAFETY: vec is unique
+        let mut dst = unsafe { result.as_mut_ptr_unchecked() };
+
+        // SAFETY: copy new_len bytes
+        unsafe {
+            // could be better from an algorithmic standpoint
+            for _ in 0..n {
+                ptr::copy_nonoverlapping(src, dst, src_len);
+                dst = dst.add(src_len);
+            }
+            result.set_len(new_len);
+        }
+
+        result
+    }
+
+    pub unsafe fn set_len(&mut self, new_len: usize) {
+        if self.is_inline() {
+            unsafe {
+                self.as_mut_inline_unchecked().set_len(new_len);
+            }
+        } else {
+            let allocated = unsafe { self.as_mut_allocated_unchecked() };
+            let len = allocated.len;
+            if len > new_len {
+                let removal = len - new_len;
+                let owner_len = allocated.owner.len();
+                unsafe {
+                    allocated.owner.set_len(owner_len - removal);
+                }
+                allocated.len = new_len;
+            } else if len == new_len {
+            }
+        }
+        todo!()
+    }
+
+    pub fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<T>] {
+        if self.is_unique() {
+            if self.is_inline() {
+                let inline = unsafe { self.as_mut_inline_unchecked() };
+                inline.spare_capacity_mut()
+            } else {
+                self.tighten();
+
+                let allocated = unsafe { self.as_mut_allocated_unchecked() };
+                let owner = &mut allocated.owner;
+                let len = owner.len();
+                let cap = owner.capacity();
+                let ptr = owner.data_mut().as_ptr();
+
+                let spare = cap - len;
+                unsafe { core::slice::from_raw_parts_mut(ptr.add(len).cast(), spare) }
+            }
+        } else {
+            &mut []
+        }
+    }
+
+    pub fn shrink_to(&mut self, min_cap: usize) {
+        todo!()
+    }
+    pub fn shrink_to_fit(&mut self) {
+        self.shrink_to(self.len());
     }
 }
 
