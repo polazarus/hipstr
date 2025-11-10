@@ -229,6 +229,22 @@ macro_rules! extend_from_slice_impl {
     }};
 }
 
+macro_rules! extend_from_slice_copy_impl {
+    ($self:ident, $slice:expr) => {{
+        let slice = $slice;
+        let slice_len = slice.len();
+        $self.reserve(slice_len);
+
+        unsafe {
+            $self
+                .as_mut_ptr()
+                .add($self.len())
+                .copy_from_nonoverlapping(slice.as_ptr(), slice_len);
+            $self.set_len($self.len() + slice_len);
+        }
+    }};
+}
+
 macro_rules! remove_unchecked_impl {
     ($self:ident, $index:expr) => {{
         let len = $self.len();
@@ -315,8 +331,8 @@ macro_rules! split_off_impl {
 }
 
 pub(crate) use {
-    append_impl, extend_from_array_impl, extend_from_slice_impl, from_array_impl,
-    from_slice_clone_impl, insert_impl, pop_if_impl, pop_impl, push_within_capacity,
-    remove_unchecked_impl, resize_impl, spare_capacity_mut_impl, split_off_impl, swap_remove_impl,
-    truncate_impl,
+    append_impl, extend_from_array_impl, extend_from_slice_copy_impl, extend_from_slice_impl,
+    from_array_impl, from_slice_clone_impl, insert_impl, pop_if_impl, pop_impl,
+    push_within_capacity, remove_unchecked_impl, resize_impl, spare_capacity_mut_impl,
+    split_off_impl, swap_remove_impl, truncate_impl,
 };

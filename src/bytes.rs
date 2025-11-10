@@ -733,7 +733,7 @@ where
     #[inline]
     #[doc(alias = "extend_from_slice", alias = "append")]
     pub fn push_slice(&mut self, addition: &[u8]) {
-        todo!()
+        self.0.extend_from_slice_copy(addition);
     }
 
     /// Creates a new `HipByt` by copying this one `n` times.
@@ -1523,9 +1523,52 @@ where
 impl<B> Error for SliceError<'_, '_, B> where B: Backend {}
 
 /// A wrapper type for a mutably borrowed vector out of a [`HipByt`].
-pub struct RefMut<'a, 'borrow, B: Backend>(crate::vecs::hip::RefMut<'a, 'borrow, u8, B>)
+pub struct RefMut<'a, 'borrow, B: Backend>(pub(crate) crate::vecs::hip::RefMut<'a, 'borrow, u8, B>)
 where
     B: Backend;
+
+impl<B: Backend> RefMut<'_, '_, B> {
+    #[cfg(feature = "bstr")]
+    pub fn push_str(&mut self, value: &str) {
+        self.0.extend_from_slice_copy(value.as_bytes());
+    }
+
+    #[cfg(feature = "bstr")]
+    pub fn push_char(&mut self, value: char) {
+        let mut buf = [0u8; 4];
+        let s = value.encode_utf8(&mut buf);
+        self.0.extend_from_slice_copy(s.as_bytes());
+    }
+
+    #[cfg(feature = "bstr")]
+    pub fn push_byte(&mut self, value: u8) {
+        self.0.push(value);
+    }
+
+    #[doc(alias = "push_slice", alias = "push_bytes")]
+    pub fn extend_from_slice(&mut self, addition: &[u8]) {
+        self.0.extend_from_slice_copy(addition);
+    }
+
+    #[cfg(feature = "bstr")]
+    pub fn pop_char(&mut self) -> Option<char> {
+        let (ch, width) = ::bstr::decode_last_utf8(self.as_slice());
+        if width == 0 {
+            return None;
+        }
+
+        let new_len = self.len() - width;
+        unsafe {
+            self.0.set_len(new_len);
+        }
+        Some(ch.unwrap_or(core::char::REPLACEMENT_CHARACTER))
+    }
+
+    #[cfg(feature = "bstr")]
+    pub fn pop_byte(&mut self) -> Option<u8> {
+        self.0.pop()
+    }
+}
 
 impl<'a, 'b, B> Deref for RefMut<'a, 'b, B>
 where

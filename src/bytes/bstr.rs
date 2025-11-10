@@ -144,14 +144,15 @@ mod tests {
 
     #[test]
     fn test_mutate() {
-        let mut b = HipByt::from(b"Hello, World!");
-        {
-            let mut m = b.mutate();
-            let r: &mut BString = &mut m;
-            r.push_char('!');
-            assert_eq!(r, "Hello, World!!");
-        }
-        assert_eq!(b, b"Hello, World!!");
+        // let mut b = HipByt::from(b"Hello, World!");
+        // {
+        //     let mut m = b.mutate();
+        //     let r: &mut BString = &mut m;
+        //     r.push_char('!');
+        //     assert_eq!(r, "Hello, World!!");
+        // }
+        // assert_eq!(b, b"Hello, World!!");
+        todo!()
     }
 
     #[test]

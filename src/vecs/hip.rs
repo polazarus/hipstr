@@ -35,7 +35,10 @@ use crate::backend::UpdateResult;
 use crate::common::derives::{
     AsRef, ConstDefault, Copy, DelegateDebug, DelegateHash, Deref, From, Vector,
 };
-use crate::common::methods::push_within_capacity;
+use crate::common::methods::{
+    extend_from_slice_copy_impl, extend_from_slice_impl, pop_impl, push_within_capacity,
+    truncate_impl,
+};
 use crate::common::traits::Mutate;
 use crate::common::{self, drop_raw_slice, force_transmute, RangeError};
 use crate::vecs::inline::{InlineLength, InlineVec};
@@ -1331,11 +1334,17 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         }
     }
 
-    pub fn shrink_to(&mut self, min_cap: usize) {
+    pub fn shrink_to(&mut self, _min_cap: usize) {
         todo!()
     }
     pub fn shrink_to_fit(&mut self) {
         self.shrink_to(self.len());
+    }
+    pub fn extend_from_slice_copy(&mut self, slice: &[T])
+    where
+        T: Copy,
+    {
+        self.mutate_copy().extend_from_slice_copy(slice);
     }
 }
 
@@ -1690,6 +1699,33 @@ impl<'a, 'b, T, B: Backend> RefMut<'a, 'b, T, B> {
     /// ```
     pub const fn push_within_capacity(&mut self, value: T) -> Result<(), T> {
         push_within_capacity!(self, value)
+    }
+
+    #[doc(alias = "push_slice")]
+    pub fn extend_from_slice(&mut self, slice: &[T])
+    where
+        T: Clone,
+    {
+        extend_from_slice_impl!(self, slice);
+    }
+
+    pub fn extend_from_slice_copy(&mut self, slice: &[T])
+    where
+        T: Copy,
+    {
+        extend_from_slice_copy_impl!(self, slice);
+    }
+
+    pub fn truncate(&mut self, new_len: usize) {
+        truncate_impl!(self, new_len);
+    }
+
+    pub fn clear(&mut self) {
+        self.truncate(0);
+    }
+
+    pub fn pop(&mut self) -> Option<T> {
+        pop_impl!(self)
     }
 }
 

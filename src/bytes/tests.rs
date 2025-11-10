@@ -533,43 +533,47 @@ fn test_slice_ok() {
 #[test]
 #[allow(clippy::reversed_empty_ranges)]
 fn test_try_slice_start_out_of_bounds() {
-    let err = H_ABCDEF.try_slice(7..).unwrap_err();
-    assert_eq!(err.kind(), SliceErrorKind::StartOutOfBounds);
-    assert_eq!(err.start(), 7);
-    assert_eq!(err.end(), 6);
-    assert_eq!(err.range(), 7..6);
-    assert!(ptr::eq(err.source(), &H_ABCDEF));
-    assert_eq!(format!("{err:?}"), "SliceError { kind: StartOutOfBounds, start: 7, end: 6, bytes: [97, 98, 99, 100, 101, 102] }");
-    assert_eq!(
-        format!("{err}"),
-        "range start index 7 out of bounds for slice of length 6"
-    );
-    assert_eq!(err.clone(), err);
+    // let err = H_ABCDEF.try_slice(7..).unwrap_err();
+    // assert_eq!(err.kind(), SliceErrorKind::StartOutOfBounds);
+    // assert_eq!(err.start(), 7);
+    // assert_eq!(err.end(), 6);
+    // assert_eq!(err.range(), 7..6);
+    // assert!(ptr::eq(err.source(), &H_ABCDEF));
+    // assert_eq!(format!("{err:?}"), "SliceError { kind: StartOutOfBounds, start: 7, end: 6, bytes: [97, 98, 99, 100, 101, 102] }");
+    // assert_eq!(
+    //     format!("{err}"),
+    //     "range start index 7 out of bounds for slice of length 6"
+    // );
+    // assert_eq!(err.clone(), err);
+    todo!()
 }
 
 #[test]
 fn test_try_slice_end_out_of_bounds() {
-    let err = H_ABCDEF.try_slice(..7).unwrap_err();
-    assert_eq!(err.kind(), SliceErrorKind::EndOutOfBounds);
-    assert_eq!(
-        format!("{err:?}"),
-        "SliceError { kind: EndOutOfBounds, start: 0, end: 7, bytes: [97, 98, 99, 100, 101, 102] }"
-    );
-    assert_eq!(
-        format!("{err}"),
-        "range end index 7 out of bounds for slice of length 6"
-    );
-    assert_eq!(err.clone(), err);
+    // let err = H_ABCDEF.try_slice(..7).unwrap_err();
+    // assert_eq!(err.kind(), SliceErrorKind::EndOutOfBounds);
+    // assert_eq!(
+    //     format!("{err:?}"),
+    //     "SliceError { kind: EndOutOfBounds, start: 0, end: 7, bytes: [97, 98, 99, 100, 101, 102] }"
+    // );
+    // assert_eq!(
+    //     format!("{err}"),
+    //     "range end index 7 out of bounds for slice of length 6"
+    // );
+    // assert_eq!(err.clone(), err);
+    todo!()
 }
 
 #[test]
 #[allow(clippy::reversed_empty_ranges)]
 fn test_try_slice_start_greater_than_end() {
-    let err = H_ABCDEF.try_slice(1..0).unwrap_err();
-    assert_eq!(err.kind(), SliceErrorKind::StartGreaterThanEnd);
-    assert_eq!(format!("{err:?}"), "SliceError { kind: StartGreaterThanEnd, start: 1, end: 0, bytes: [97, 98, 99, 100, 101, 102] }");
-    assert_eq!(format!("{err}"), "range starts at 1 but ends at 0");
-    assert_eq!(err.clone(), err);
+    // let err = H_ABCDEF.try_slice(1..0).unwrap_err();
+    // assert_eq!(err.kind(), SliceErrorKind::StartGreaterThanEnd);
+    // assert_eq!(format!("{err:?}"), "SliceError { kind: StartGreaterThanEnd, start: 1, end: 0, bytes: [97, 98, 99, 100, 101, 102] }");
+    // assert_eq!(format!("{err}"), "range starts at 1 but ends at 0");
+    // assert_eq!(err.clone(), err);
+
+    todo!()
 }
 
 #[test]

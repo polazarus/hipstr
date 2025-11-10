@@ -15,7 +15,7 @@ use core::str::{Lines, SplitAsciiWhitespace, SplitWhitespace, Utf8Error};
 
 use self::pattern::{DoubleEndedPattern, IterWrapper, Pattern, ReversePattern};
 use crate::backend::Backend;
-use crate::bytes::{simplify_range, HipByt, SliceErrorKind as ByteSliceErrorKind};
+use crate::bytes::{self, simplify_range, HipByt, SliceErrorKind as ByteSliceErrorKind};
 
 mod cmp;
 mod convert;
@@ -921,13 +921,7 @@ where
     #[inline]
     #[must_use]
     pub fn mutate(&mut self) -> RefMut<'_, 'borrow, B> {
-        let vec = self.0.take_vec();
-        // SAFETY: type invariant
-        let owned = unsafe { String::from_utf8_unchecked(vec) };
-        RefMut {
-            result: self,
-            owned,
-        }
+        RefMut(self.0.mutate())
     }
 
     /// Shortens this string to the specified length.
@@ -2264,31 +2258,15 @@ where
 impl<B> Error for FromUtf8Error<'_, B> where B: Backend {}
 
 /// A wrapper type for a mutably borrowed [`String`] out of a [`HipStr`].
-pub struct RefMut<'a, 'borrow, B>
-where
-    B: Backend,
-{
-    result: &'a mut HipStr<'borrow, B>,
-    owned: String,
-}
-
-impl<B> Drop for RefMut<'_, '_, B>
-where
-    B: Backend,
-{
-    fn drop(&mut self) {
-        let owned = core::mem::take(&mut self.owned);
-        *self.result = HipStr::from(owned);
-    }
-}
+pub struct RefMut<'a, 'borrow, B: Backend>(bytes::RefMut<'a, 'borrow, B>);
 
 impl<B> Deref for RefMut<'_, '_, B>
 where
     B: Backend,
 {
-    type Target = String;
+    type Target = str;
     fn deref(&self) -> &Self::Target {
-        &self.owned
+        self.as_str()
     }
 }
 
@@ -2297,7 +2275,65 @@ where
     B: Backend,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.owned
+        self.as_mut_str()
+    }
+}
+
+impl<B> RefMut<'_, '_, B>
+where
+    B: Backend,
+{
+    /// Returns a reference to the string slice.
+    #[inline]
+    #[must_use]
+    pub const fn as_str(&self) -> &str {
+        unsafe { str::from_utf8_unchecked(self.0 .0.as_slice()) }
+    }
+
+    /// Returns a mutable reference to the string slice.
+    #[inline]
+    #[must_use]
+    pub const fn as_mut_str(&mut self) -> &mut str {
+        unsafe { str::from_utf8_unchecked_mut(self.0 .0.as_mut_slice()) }
+    }
+
+    /// Appends a string slice onto the end of this `HipStr`.
+    #[inline]
+    pub fn push_str(&mut self, string: &str) {
+        self.0 .0.extend_from_slice_copy(string.as_bytes());
+    }
+
+    /// Appends a single character onto the end of this `HipStr`.
+    #[inline]
+    pub fn push(&mut self, ch: char) {
+        let mut buf = [0u8; 4];
+        let s = ch.encode_utf8(&mut buf);
+        self.0 .0.extend_from_slice_copy(s.as_bytes());
+    }
+
+    /// Clears the string, removing all contents.
+    #[inline]
+    pub fn clear(&mut self) {
+        self.0 .0.clear();
+    }
+
+    /// Truncates the string to the specified length.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `len` is not a char boundary.
+    #[inline]
+    pub fn truncate(&mut self, len: usize) {
+        assert!(self.as_str().is_char_boundary(len));
+        self.0 .0.truncate(len);
+    }
+
+    /// Removes the last character from the string and returns it.
+    #[inline]
+    pub fn pop(&mut self) -> Option<char> {
+        let (i, ch) = self.as_str().char_indices().next_back()?;
+        self.0.truncate(i);
+        Some(ch)
     }
 }
 
