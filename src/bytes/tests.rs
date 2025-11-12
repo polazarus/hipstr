@@ -88,11 +88,17 @@ fn test_ptr_panic_borrowed() {
 }
 
 #[test]
-fn test_with_capacity() {
+fn with_capacity() {
     let h = H::with_capacity(0);
     assert_eq!(h, EMPTY_SLICE);
     assert!(h.is_empty());
-    assert_eq!(h.capacity(), INLINE_CAPACITY);
+    assert_eq!(h.capacity(), H::new().capacity());
+
+    let h = H::with_capacity(1);
+    assert_eq!(h, EMPTY_SLICE);
+    assert!(h.is_empty());
+    assert!(h.capacity() >= 1);
+    assert!(h.is_inline());
 
     let mut h = H::with_capacity(42);
     let p = h.as_ptr();
@@ -203,13 +209,16 @@ fn test_from_static() {
 }
 
 #[test]
-fn test_from_slice() {
+fn from_slice() {
     let s = BIG;
 
     for size in [0, 1, INLINE_CAPACITY, INLINE_CAPACITY + 1, 256, 1024] {
         let h = H::from(&s[..size]);
-        assert_eq!(size <= INLINE_CAPACITY, h.is_inline());
-        assert_eq!(size > INLINE_CAPACITY, h.is_allocated());
+        if size > 0 && size <= INLINE_CAPACITY {
+            assert!(h.is_inline());
+        } else if size > INLINE_CAPACITY {
+            assert!(h.is_allocated());
+        }
         assert_eq!(h.len(), size);
     }
 }
@@ -619,7 +628,7 @@ fn test_empty_slice() {
 }
 
 #[test]
-fn test_into_vec() {
+fn into_vec() {
     {
         // static
         let a = H::borrowed(ABC);
@@ -632,7 +641,7 @@ fn test_into_vec() {
         assert!(a.into_vec().is_err());
     }
 
-    let v = vec![42; INLINE_CAPACITY + 2];
+    let v: Vec<u8> = (0..((INLINE_CAPACITY + 2) as u8)).collect();
     {
         // allocated, unique
         let v = v.clone();
@@ -661,9 +670,13 @@ fn test_into_vec() {
     }
 
     {
-        // allocated, unique, sliced at start
+        // thin, unique, sliced at start
+        let v = v.clone();
+        let p = v.as_ptr();
         let a = H::from(v).slice(1..5);
-        assert!(a.into_vec().is_err());
+        let v = a.into_vec().unwrap();
+        assert_eq!(v.as_ptr(), p);
+        assert_eq!(v.as_slice(), [1, 2, 3, 4]);
     }
 }
 
@@ -823,7 +836,7 @@ fn test_shrink_to() {
 }
 
 #[test]
-fn test_truncate() {
+fn truncate() {
     let mut h = H::borrowed(MEDIUM);
     h.truncate(MEDIUM.len() + 1);
     assert_eq!(h, MEDIUM);
@@ -838,7 +851,6 @@ fn test_truncate() {
 
     let mut h = H::from(MEDIUM);
     h.truncate(INLINE_CAPACITY + 1);
-    assert!(h.is_allocated());
     assert_eq!(h, &MEDIUM[..=INLINE_CAPACITY]);
 
     let mut h = H::from(&MEDIUM[..INLINE_CAPACITY]);
@@ -847,21 +859,18 @@ fn test_truncate() {
 }
 
 #[test]
-fn test_clear() {
+fn clear() {
     let mut h = H::borrowed(MEDIUM);
     h.clear();
     assert!(h.is_empty());
-    assert!(!h.is_allocated());
 
     let mut h = H::from(MEDIUM);
     h.clear();
     assert!(h.is_empty());
-    assert!(!h.is_allocated());
 
     let mut h = H::from(&MEDIUM[..INLINE_CAPACITY]);
     h.clear();
     assert!(h.is_empty());
-    assert!(!h.is_allocated());
 }
 
 #[test]

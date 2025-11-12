@@ -1224,13 +1224,15 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     /// assert_eq!(hip.len(), 3);
     /// ```
     pub fn truncate(&mut self, len: usize) {
-        if self.is_inline() {
-            // SAFETY: repr checked above
-            let inline = unsafe { self.as_mut_inline_unchecked() };
-            inline.truncate(len);
-        } else {
-            let sliced = unsafe { self.as_mut_sliced_unchecked() };
-            sliced.len = len;
+        if len < self.len() {
+            if self.is_inline() {
+                // SAFETY: repr checked above
+                let inline = unsafe { self.as_mut_inline_unchecked() };
+                inline.truncate(len);
+            } else {
+                let sliced = unsafe { self.as_mut_sliced_unchecked() };
+                sliced.len = len;
+            }
         }
     }
 
@@ -1291,25 +1293,61 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         result
     }
 
+    /// Sets the length of the vector.
+    ///
+    /// # Safety
+    ///
+    /// The new length must be less than or equal to the capacity of the vector.
+    ///
+    /// If the new length is greater than the current length:
+    /// - the vector must be uniquely owned,
+    /// - the elements between the old length and the new length must be properly initialized.
+    ///
+    /// If the new length is less than the current length and the vector is inline,
+    /// the elements between the new length and the old length will not be dropped.
     pub unsafe fn set_len(&mut self, new_len: usize) {
         if self.is_inline() {
             unsafe {
                 self.as_mut_inline_unchecked().set_len(new_len);
             }
         } else {
-            let allocated = unsafe { self.as_mut_allocated_unchecked() };
-            let len = allocated.len;
-            if len > new_len {
-                let removal = len - new_len;
-                let owner_len = allocated.owner.len();
-                unsafe {
-                    allocated.owner.set_len(owner_len - removal);
+            let is_allocated = self.is_allocated();
+            let sliced = unsafe { self.as_mut_sliced_unchecked() };
+            let len = sliced.len;
+
+            if len >= new_len {
+                sliced.len = new_len;
+            } else {
+                debug_assert!(is_allocated, "cannot increase length of borrowed slice");
+
+                if is_allocated {
+                    let allocated = unsafe { self.as_mut_allocated_unchecked() };
+                    debug_assert!(
+                        allocated.owner.is_unique(),
+                        "cannot increase length of non-unique allocated vector"
+                    );
+                    let start = unsafe {
+                        allocated
+                            .ptr
+                            .offset_from_unsigned(allocated.owner.data().as_ptr())
+                    };
+                    let expected_owner_len = start + len;
+                    let owner_new_len = start + new_len;
+                    debug_assert!(
+                        allocated.owner.len() == expected_owner_len,
+                        "the owner length is inconsistent with the slice"
+                    );
+                    debug_assert!(
+                        owner_new_len <= allocated.owner.capacity(),
+                        "new length exceeds capacity"
+                    );
+                    unsafe {
+                        allocated.owner.set_len(owner_new_len);
+                    }
+                    allocated.len = new_len;
                 }
-                allocated.len = new_len;
-            } else if len == new_len {
             }
         }
-        todo!()
     }
 
     pub fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<T>] {
@@ -1345,6 +1383,39 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         T: Copy,
     {
         self.mutate_copy().extend_from_slice_copy(slice);
+    }
+
+    /// Converts the `HipVec` into a standard `Vec<T>` without clone or allocation if possible.
+    pub fn into_vec(self) -> Result<Vec<T>, Self> {
+        if self.is_wide() && self.is_unique() {
+            let allocated = unsafe { self.into_allocated_unchecked() };
+            let mut vec = unsafe {
+                allocated
+                    .owner
+                    .into_smart_wide_unchecked()
+                    .into_vec_unchecked()
+            };
+            let slice_start = unsafe { allocated.ptr.offset_from_unsigned(vec.as_ptr()) };
+            vec.drain(..slice_start);
+            vec.truncate(allocated.len);
+
+            Ok(vec)
+        } else {
+            Err(self)
+        }
+    }
+
+    pub fn into_owned(self) -> HipVec<'static, T, B>
+    where
+        T: Clone,
+    {
+        if self.is_borrowed() {
+            HipVec::from_slice_clone(self.as_slice())
+        } else {
+            let old = core::mem::ManuallyDrop::new(self);
+            // SAFETY: old is not borrowed
+            HipVec(old.0, PhantomData)
+        }
     }
 }
 
