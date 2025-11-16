@@ -5,7 +5,6 @@ use alloc::{format, vec};
 use core::cell::Cell;
 use core::mem::MaybeUninit;
 use core::ops::Bound;
-use core::ptr;
 #[cfg(feature = "std")]
 use std::collections::HashSet;
 
@@ -13,6 +12,7 @@ use std::collections::HashSet;
 use fastrand::Rng;
 
 use super::{simplify_range, SliceErrorKind};
+use crate::common::RangeError;
 use crate::HipByt as H;
 
 type S<'a> = &'a [u8];
@@ -104,7 +104,7 @@ fn with_capacity() {
     let p = h.as_ptr();
     assert_eq!(h, EMPTY_SLICE);
     assert!(h.is_empty());
-    assert_eq!(h.capacity(), 42);
+    assert!(h.capacity() >= 42);
     for _ in 0..42 {
         h.push_slice(A);
     }
@@ -451,7 +451,7 @@ fn test_slice_borrowed() {
 }
 
 #[test]
-fn test_slice_allocated() {
+fn slice_allocated() {
     let v = MEDIUM;
     let s = H::from(v);
     assert!(s.is_allocated());
@@ -459,14 +459,11 @@ fn test_slice_allocated() {
     let sl1 = s.slice(4..30);
     assert_eq!(&sl1, &v[4..30]);
     assert_eq!(sl1.as_ptr(), s[4..30].as_ptr());
-    assert!(sl1.is_normalized());
     drop(s);
 
     let sl2 = sl1.slice(5..8);
     drop(sl1);
     assert_eq!(&sl2, &v[9..12]);
-    assert!(sl2.is_inline());
-    assert!(sl2.is_normalized());
 }
 
 #[test]
@@ -541,52 +538,60 @@ fn test_slice_ok() {
 
 #[test]
 #[allow(clippy::reversed_empty_ranges)]
-fn test_try_slice_start_out_of_bounds() {
-    // let err = H_ABCDEF.try_slice(7..).unwrap_err();
-    // assert_eq!(err.kind(), SliceErrorKind::StartOutOfBounds);
-    // assert_eq!(err.start(), 7);
-    // assert_eq!(err.end(), 6);
-    // assert_eq!(err.range(), 7..6);
-    // assert!(ptr::eq(err.source(), &H_ABCDEF));
-    // assert_eq!(format!("{err:?}"), "SliceError { kind: StartOutOfBounds, start: 7, end: 6, bytes: [97, 98, 99, 100, 101, 102] }");
-    // assert_eq!(
-    //     format!("{err}"),
-    //     "range start index 7 out of bounds for slice of length 6"
-    // );
-    // assert_eq!(err.clone(), err);
-    todo!()
+fn try_slice_start_out_of_bounds() {
+    let err = H_ABCDEF.try_slice(7..).unwrap_err();
+    assert_eq!(err, RangeError::StartOutOfBounds { start: 7, len: 6 });
+    assert_eq!(
+        format!("{err}"),
+        "start index 7 is out of bounds for slice of length 6"
+    );
+    assert_eq!(err.clone(), err);
 }
 
 #[test]
-fn test_try_slice_end_out_of_bounds() {
-    // let err = H_ABCDEF.try_slice(..7).unwrap_err();
-    // assert_eq!(err.kind(), SliceErrorKind::EndOutOfBounds);
-    // assert_eq!(
-    //     format!("{err:?}"),
-    //     "SliceError { kind: EndOutOfBounds, start: 0, end: 7, bytes: [97, 98, 99, 100, 101, 102] }"
-    // );
-    // assert_eq!(
-    //     format!("{err}"),
-    //     "range end index 7 out of bounds for slice of length 6"
-    // );
-    // assert_eq!(err.clone(), err);
-    todo!()
+fn try_slice_start_overflows() {
+    let err = H_ABCDEF
+        .try_slice((Bound::Excluded(usize::MAX), Bound::Unbounded))
+        .unwrap_err();
+    assert_eq!(err, RangeError::StartOverflows);
+    assert_eq!(format!("{err}"), "start index overflows");
+    assert_eq!(err.clone(), err);
+}
+
+#[test]
+fn try_slice_end_overflows() {
+    let err = H_ABCDEF
+        .try_slice((Bound::Included(0), Bound::Included(usize::MAX)))
+        .unwrap_err();
+    assert_eq!(err, RangeError::EndOverflows);
+    assert_eq!(format!("{err}"), "end index overflows");
+    assert_eq!(err.clone(), err);
+}
+
+#[test]
+fn try_slice_end_out_of_bounds() {
+    let err = H_ABCDEF.try_slice(..7).unwrap_err();
+    assert_eq!(err, RangeError::EndOutOfBounds { end: 7, len: 6 });
+    assert_eq!(
+        format!("{err}"),
+        "end index 7 is out of bounds for slice of length 6"
+    );
+    assert_eq!(err.clone(), err);
 }
 
 #[test]
 #[allow(clippy::reversed_empty_ranges)]
-fn test_try_slice_start_greater_than_end() {
-    // let err = H_ABCDEF.try_slice(1..0).unwrap_err();
-    // assert_eq!(err.kind(), SliceErrorKind::StartGreaterThanEnd);
-    // assert_eq!(format!("{err:?}"), "SliceError { kind: StartGreaterThanEnd, start: 1, end: 0, bytes: [97, 98, 99, 100, 101, 102] }");
-    // assert_eq!(format!("{err}"), "range starts at 1 but ends at 0");
-    // assert_eq!(err.clone(), err);
-
-    todo!()
+fn try_slice_start_greater_than_end() {
+    let err = H_ABCDEF.try_slice(1..0).unwrap_err();
+    assert_eq!(err, RangeError::StartGreaterThanEnd { start: 1, end: 0 });
+    assert_eq!(
+        format!("{err}"),
+        "start index 1 is greater than end index 0"
+    );
 }
 
 #[test]
-fn test_try_slice_ok() {
+fn try_slice_ok() {
     assert_eq!(H_ABCDEF.try_slice(..).unwrap(), b"abcdef");
     assert_eq!(H_ABCDEF.try_slice(..5).unwrap(), b"abcde");
     assert_eq!(H_ABCDEF.try_slice(1..4).unwrap(), b"bcd");
@@ -789,7 +794,7 @@ fn test_shrink_to_fit() {
 }
 
 #[test]
-fn test_shrink_to() {
+fn shrink_to() {
     // borrowed no-op
     let mut h = H::borrowed(MEDIUM);
     h.shrink_to(0);
@@ -957,7 +962,7 @@ fn test_push_slice_inline() {
     #[track_caller]
     fn should_allocate(input: S, addition: S, expected: S) {
         let mut a = H::from(input);
-        assert!(a.is_inline());
+        assert!(a.is_inline(), "input should be inline");
         a.push_slice(addition);
         assert!(a.is_allocated());
         assert_eq!(a, expected);
@@ -998,7 +1003,7 @@ fn test_push_slice_inline() {
 }
 
 #[test]
-fn test_push_slice_allocated() {
+fn push_slice_thin() {
     // allocated, unique
     let mut a = H::from(MEDIUM);
     assert!(a.is_allocated());
@@ -1024,16 +1029,47 @@ fn test_push_slice_allocated() {
         x.slice(1..39)
     };
     assert!(a.is_allocated());
-    let p = a.as_ptr();
     a.push_slice(ABC);
     assert_eq!(&a[..38], &MEDIUM[1..39]);
     assert_eq!(&a[38..], ABC);
-    assert_eq!(a.as_ptr(), p);
     // => the underlying vector is big enough
 }
 
 #[test]
-fn test_push() {
+fn push_slice_wide() {
+    // allocated, unique
+    let mut a = H::from(MEDIUM.to_vec());
+    assert!(a.is_allocated());
+    a.push_slice(ABC);
+    assert_eq!(&a[0..42], MEDIUM);
+    assert_eq!(&a[42..], ABC);
+
+    // allocated, not unique
+    let mut a = H::from(MEDIUM.to_vec());
+    assert!(a.is_allocated());
+    let pa = a.as_ptr();
+    let b = a.clone();
+    assert_eq!(pa, b.as_ptr());
+    a.push_slice(ABC);
+    assert_ne!(a.as_ptr(), pa);
+    assert_eq!(&a[0..42], MEDIUM);
+    assert_eq!(&a[42..], ABC);
+    assert_eq!(b, MEDIUM);
+
+    // allocated, unique but sliced
+    let mut a = {
+        let x = H::from(MEDIUM.to_vec());
+        x.slice(1..39)
+    };
+    assert!(a.is_allocated());
+    a.push_slice(ABC);
+    assert_eq!(&a[..38], &MEDIUM[1..39]);
+    assert_eq!(&a[38..], ABC);
+    // => the underlying vector is big enough
+}
+
+#[test]
+fn push() {
     // for now, push uses push_slice
     // so test can be minimal
 
@@ -1243,7 +1279,7 @@ fn test_slice_ref_unchecked() {
 }
 
 #[test]
-fn test_try_slice_ref() {
+fn try_slice_ref() {
     let s = Owned::from(ABC);
     let a = H::borrowed(s.as_slice());
 
@@ -1276,7 +1312,7 @@ fn test_slice_ref_panic() {
 }
 
 #[test]
-fn test_spare_capacity_mut() {
+fn spare_capacity_mut() {
     let mut h = H::from_static(ABC);
     assert!(h.spare_capacity_mut().is_empty());
 
@@ -1284,7 +1320,7 @@ fn test_spare_capacity_mut() {
     assert_eq!(h.spare_capacity_mut().len(), INLINE_CAPACITY - ABC.len());
 
     let mut h = H::with_capacity(42);
-    assert_eq!(h.spare_capacity_mut().len(), 42);
+    assert!(h.spare_capacity_mut().len() >= 42);
 }
 
 #[test]

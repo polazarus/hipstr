@@ -80,6 +80,9 @@ fn range_mono(
         Bound::Excluded(start) => start.checked_add(1).ok_or(RangeError::StartOverflows)?,
         Bound::Unbounded => 0,
     };
+    if start > len {
+        return Err(RangeError::StartOutOfBounds { start, len });
+    }
     let end = match end {
         Bound::Included(end) => end.checked_add(1).ok_or(RangeError::EndOverflows)?,
         Bound::Excluded(end) => end,
@@ -103,6 +106,8 @@ pub enum RangeError {
     EndOverflows,
     /// The start index is greater than the end index.
     StartGreaterThanEnd { start: usize, end: usize },
+    /// The start index is out of bounds.
+    StartOutOfBounds { start: usize, len: usize },
     /// The end index is out of bounds.
     EndOutOfBounds { end: usize, len: usize },
 }
@@ -115,6 +120,7 @@ impl RangeError {
             Self::StartOverflows => "start index overflows",
             Self::EndOverflows => "end index overflows",
             Self::StartGreaterThanEnd { .. } => "start index is greater than end index",
+            Self::StartOutOfBounds { .. } => "start index is out of bounds",
             Self::EndOutOfBounds { .. } => "end index is out of bounds",
         }
     }
@@ -129,6 +135,12 @@ impl fmt::Display for RangeError {
             Self::EndOverflows => write!(f, "end index overflows"),
             Self::StartGreaterThanEnd { start, end } => {
                 write!(f, "start index {start} is greater than end index {end}")
+            }
+            Self::StartOutOfBounds { start, len } => {
+                write!(
+                    f,
+                    "start index {start} is out of bounds for slice of length {len}",
+                )
             }
             Self::EndOutOfBounds { end, len } => {
                 write!(
@@ -291,5 +303,17 @@ pub(crate) const unsafe fn force_transmute<A, B>(value: A) -> B {
             }
             .b,
         )
+    }
+}
+
+pub(crate) fn range_of<T>(child: &[T], parent: &[T]) -> Option<Range<usize>> {
+    let child = child.as_ptr_range();
+    let parent = parent.as_ptr_range();
+    if parent.start <= child.start && child.end <= parent.end {
+        let start = unsafe { child.start.offset_from_unsigned(parent.start) };
+        let end = unsafe { child.end.offset_from_unsigned(parent.start) };
+        Some(start..end)
+    } else {
+        None
     }
 }

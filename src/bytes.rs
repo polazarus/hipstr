@@ -30,19 +30,10 @@ pub mod serde;
 mod tests;
 
 #[cfg(feature = "bstr")]
-type Owned = ::bstr::BString;
-
-#[cfg(not(feature = "bstr"))]
-type Owned = Vec<u8>;
-
-#[cfg(feature = "bstr")]
 type Slice = ::bstr::BStr;
 
 #[cfg(not(feature = "bstr"))]
 type Slice = [u8];
-
-/// Maximal byte capacity of an inline [`HipByt`].
-pub(crate) const INLINE_CAPACITY: usize = Inline::CAPACITY;
 
 /// Alias type for `Inline` with set inline capacity
 pub(crate) type Inline = crate::vecs::hip::Inline<u8>;
@@ -409,7 +400,7 @@ where
     #[inline]
     #[must_use]
     pub unsafe fn as_mut_ptr_unchecked(&mut self) -> *mut u8 {
-        unsafe { self.0.as_mut_ptr().unwrap_unchecked() }
+        unsafe { self.0.as_mut_ptr_unchecked() }
     }
 
     /// Extracts a slice of the entire `HipByt`.
@@ -719,6 +710,8 @@ where
     ///
     /// Panics in debug mode. UB in release mode.
     #[must_use]
+    #[inline]
+    #[track_caller]
     pub unsafe fn slice_unchecked(&self, range: impl RangeBounds<usize>) -> Self {
         Self(unsafe { self.0.slice_unchecked(range) })
     }
