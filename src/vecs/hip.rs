@@ -20,7 +20,7 @@
 
 use alloc::vec::Vec;
 use core::marker::PhantomData;
-use core::mem::{self, needs_drop, transmute, ManuallyDrop, MaybeUninit};
+use core::mem::{transmute, ManuallyDrop, MaybeUninit};
 use core::ops::{Range, RangeBounds};
 use core::{ptr, slice};
 
@@ -28,16 +28,13 @@ use const_default::ConstDefault;
 use rules_derive::rules_derive;
 use typenum::Unsigned;
 
+pub use self::mutate::RefMut;
 use self::repr::{
     check_wide_and_thin_compatibility, Allocated, Borrowed, Pivot, Sliced, UnknownSliced,
 };
 use crate::backend::UpdateResult;
 use crate::common::derives::{
     AsRef, ConstDefault, Copy, DelegateDebug, DelegateHash, Deref, From, Vector,
-};
-use crate::common::methods::{
-    extend_from_slice_copy_impl, extend_from_slice_impl, pop_impl, push_within_capacity,
-    truncate_impl,
 };
 use crate::common::traits::Mutate;
 use crate::common::{self, drop_raw_slice, force_transmute, range_of, RangeError};
@@ -46,6 +43,7 @@ use crate::vecs::thin::{can_reuse, SmartThinVec, ThinVec};
 use crate::vecs::wide::{SmartWideVec, WideVec};
 use crate::Backend;
 
+pub(crate) mod mutate;
 pub(crate) mod repr;
 
 #[cfg(test)]
@@ -70,6 +68,7 @@ mod tests;
     From(ThinVec<T, P>, Self::from_thin_vec, (P: ConstDefault)),
     From(WideVec<T, P>, Self::from_wide_vec, (P: ConstDefault)),
     From(&[T], Self::from_slice_clone, () where (T: Clone)),
+    From(&[T; N], Self::from_slice_clone, (const N: usize) where (T: Clone)),
     From(InlineVec<T, L>, Self::from_inline, (L: InlineLength)),
     DelegateDebug(Self::as_slice where T: core::fmt::Debug),
     DelegateHash(Self::as_slice where T: core::hash::Hash),
@@ -99,10 +98,22 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
 
     const MAY_INLINE: bool = Self::INLINE_CAP > 0;
 
-    const fn fit_inline(len: usize) -> bool {
-        len > 0 && len <= Self::INLINE_CAP
+    pub(crate) const fn fit_inline(len: usize) -> bool {
+        len <= Self::INLINE_CAP
     }
 
+    /// Checks if this hip vector is valid, constly
+    const fn const_is_valid(&self) -> bool {
+        (self.is_inline() ^ self.is_borrowed() ^ self.is_allocated())
+            && if self.is_allocated() {
+                let allocated = unsafe { self.as_allocated_unchecked() };
+                allocated.owner.len() >= allocated.len && !allocated.ptr.is_null()
+            } else {
+                true
+            }
+    }
+
+    /// Checks if this hip vector is valid.
     fn is_valid(&self) -> bool {
         (self.is_inline() ^ self.is_borrowed() ^ self.is_allocated())
             && if self.is_allocated() {
@@ -117,7 +128,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
             }
     }
 
-    /// Creates a new empty `HipVec`.
+    /// Creates a new empty hip vector.
     ///
     /// This vector is not *allocated*.
     ///
@@ -138,6 +149,18 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         Self::DEFAULT
     }
 
+    /// Creates a `HipVec` with the specified capacity.
+    ///
+    /// The created vector will have a length of 0.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::HipVec;
+    /// let a: HipVec<u8> = HipVec::with_capacity(10);
+    /// assert_eq!(a.len(), 0);
+    /// assert!(a.capacity() >= 10);
+    /// ```
     #[must_use]
     pub fn with_capacity(capacity: usize) -> Self {
         if capacity == 0 {
@@ -167,24 +190,89 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         unsafe { transmute(borrowed) }
     }
 
+    pub const fn inline_copy(slice: &[T]) -> Self
+    where
+        T: Copy,
+    {
+        let inline = Inline::from_slice_copy(slice);
+        Self::from_inline(inline)
+    }
+
+    pub const fn try_inline_copy(slice: &[T]) -> Option<Self>
+    where
+        T: Copy,
+    {
+        if Self::fit_inline(slice.len()) {
+            Some(Self::inline_copy(slice))
+        } else {
+            None
+        }
+    }
+
+    pub const fn inline_array<const N: usize>(array: [T; N]) -> Self {
+        let inline = Inline::from_array(array);
+        Self::from_inline(inline)
+    }
+
+    pub(crate) const fn inline_empty() -> Self {
+        let inline = Inline::new();
+        Self::from_inline(inline)
+    }
+
+    /// Converts the vector into a borrowed slice without checking the representation.
+    ///
+    /// # Safety
+    ///
+    /// The vector must be in the borrowed representation.
     pub(crate) const unsafe fn into_borrowed_unchecked(self) -> &'a [T] {
+        debug_assert!(self.is_borrowed(), "vector should be borrowed");
         let sliced = unsafe { self.as_sliced_unchecked() };
         let slice = unsafe { core::slice::from_raw_parts(sliced.ptr, sliced.len) };
         core::mem::forget(self);
         slice
     }
 
+    /// Converts the vector into a borrowed slice if it is in the borrowed representation.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err(self)` if the vector is not borrowed.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::HipVec;
+    /// let slice: &[u8] = &[1, 2, 3];
+    /// let a: HipVec<u8> = HipVec::borrowed(slice);
+    /// let b = a.into_borrowed().unwrap();
+    /// assert_eq!(b, slice);
+    /// ```
     pub const fn into_borrowed(self) -> Result<&'a [T], Self> {
         if self.is_borrowed() {
+            // SAFETY: representation is checked above
             Ok(unsafe { self.into_borrowed_unchecked() })
         } else {
             Err(self)
         }
     }
 
+    /// Returns the borrowed slice if the vector is in the borrowed
+    /// representation, `None` otherwise.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::HipVec;
+    /// let slice: &[u8] = &[1, 2, 3];
+    /// let a: HipVec<u8> = HipVec::borrowed(slice);
+    /// let b = a.as_borrowed().unwrap();
+    /// assert_eq!(b, slice);
+    /// ```
     pub const fn as_borrowed(&self) -> Option<&'a [T]> {
         if self.is_borrowed() {
+            // SAFETY: representation checked above
             let sliced = unsafe { self.as_sliced_unchecked() };
+            // SAFETY: type invariant of this representation
             let slice = unsafe { slice::from_raw_parts(sliced.ptr, sliced.len) };
             Some(slice)
         } else {
@@ -196,7 +284,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     #[must_use]
     #[inline]
     pub(crate) fn from_array<const N: usize>(array: [T; N]) -> Self {
-        if N == 0 {
+        if const { N == 0 } {
             Self::new()
         } else if const { Self::fit_inline(N) } {
             let inline = Inline::from_array(array);
@@ -284,6 +372,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     }
 
     #[must_use]
+    #[inline]
     pub(crate) fn from_wide_vec<P: ConstDefault>(v: WideVec<T, P>) -> Self {
         Self::from_smart_wide_vec(SmartWideVec::from_wide_vec(v))
     }
@@ -315,7 +404,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         // compile time check transformed to runtime panic
         assert!(Self::MAY_INLINE, "this vector cannot be inlined");
 
-        if const { Bytes::USIZE == L::USIZE } {
+        let result = if const { Bytes::USIZE == L::USIZE } {
             // reuse the inline representation if sizes match
             debug_assert!(Self::MAY_INLINE);
 
@@ -333,7 +422,9 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
 
             // SAFETY: inline repr
             unsafe { force_transmute::<InlineVec<T, Bytes>, Self>(new) }
-        }
+        };
+        debug_assert!(result.const_is_valid());
+        result
     }
 
     /// Creates a `HipVec` from a slice by cloning the elements.
@@ -393,14 +484,20 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         let this =
             unsafe { transmute::<Sliced<T, SmartThinVec<T, B>>, Self>(Sliced { owner, ptr, len }) };
 
-        #[cfg(debug_assertions)]
-        if is_null {
-            debug_assert!(this.is_borrowed());
+        debug_assert!(if is_null {
+            this.is_borrowed()
         } else {
-            debug_assert!(this.is_allocated());
-        }
+            this.is_allocated()
+        });
+        debug_assert!(this.const_is_valid());
 
         this
+    }
+
+    /// Returns `true` if the vector is the normalized empty vector, i.e., for
+    /// now, borrowed and empty.
+    pub(crate) const fn is_nil(&self) -> bool {
+        self.0.is_borrowed() && self.len() == 0
     }
 
     /// Returns `true` if the vector is stored inline.
@@ -471,6 +568,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     pub fn is_unique(&self) -> bool {
         self.is_inline()
             || (self.is_allocated() && unsafe { self.as_allocated_unchecked() }.owner.is_unique())
+            || self.is_nil()
     }
 
     pub(crate) fn is_trimmed(&self) -> bool {
@@ -479,7 +577,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
             allocated.ptr == allocated.owner.data().as_ptr()
                 && allocated.len == allocated.owner.len()
         } else {
-            self.is_inline()
+            true
         }
     }
 
@@ -535,12 +633,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     #[must_use]
     pub fn as_mut_ptr(&mut self) -> Option<*mut T> {
         if self.is_unique() {
-            if self.is_inline() {
-                Some(unsafe { self.as_mut_inline_unchecked() }.as_mut_ptr())
-            } else {
-                // self.0.is_allocated()
-                Some(unsafe { self.as_mut_allocated_unchecked() }.ptr.cast_mut())
-            }
+            Some(unsafe { self.as_mut_ptr_unchecked() })
         } else {
             None
         }
@@ -548,12 +641,11 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
 
     #[must_use]
     pub unsafe fn as_mut_ptr_unchecked(&mut self) -> *mut T {
-        debug_assert!(self.is_unique());
+        debug_assert!(self.is_unique(), "vector must be uniquely owned");
         if self.is_inline() {
             unsafe { self.as_mut_inline_unchecked() }.as_mut_ptr()
         } else {
-            // self.0.is_allocated()
-            unsafe { self.as_mut_allocated_unchecked() }.ptr.cast_mut()
+            unsafe { self.as_mut_sliced_unchecked() }.ptr.cast_mut()
         }
     }
 
@@ -656,19 +748,38 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         }
     }
 
+    /// Extracts a mutable slice of the entire vector if possible.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::vecs::HipVec;
+    /// let mut s = HipVec::from(b"foo");
+    /// let slice = s.as_mut_slice().unwrap();
+    /// slice.copy_from_slice(b"bar");
+    /// assert_eq!(b"bar", slice);
+    /// ```
     #[inline]
     pub fn as_mut_slice(&mut self) -> Option<&mut [T]> {
-        if let Some(ptr) = self.as_mut_ptr() {
-            // SAFETY: ptr is unique
-            Some(unsafe { core::slice::from_raw_parts_mut(ptr, self.len()) })
+        if self.is_unique() {
+            Some(unsafe { self.as_mut_slice_unchecked() })
         } else {
             None
         }
     }
 
+    /// Extracts a mutable slice of the entire vector.
+    ///
+    /// # Safety
+    ///
+    /// This vector should be shared or borrowed.
+    ///
+    /// # Panics
+    ///
+    /// In debug mode, panics if the sequence is not uniquely owned.
     #[inline]
     pub unsafe fn as_mut_slice_unchecked(&mut self) -> &mut [T] {
-        debug_assert!(self.is_unique());
+        debug_assert!(self.is_unique(), "vector must be uniquely owned");
         // SAFETY: ptr is unique
         unsafe {
             let ptr = self.as_mut_ptr_unchecked();
@@ -676,6 +787,22 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         }
     }
 
+    /// Extracts a mutable slice of the entire vector changing the
+    /// representation if needed.
+    ///
+    /// The representation is changed to be uniquely owned.
+    ///
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::vecs::HipVec;
+    /// let mut s = HipVec::borrowed(b"foo");
+    /// let slice = s.to_mut_slice();
+    /// slice.copy_from_slice(b"bar");
+    /// assert_eq!(b"bar", slice);
+    /// assert!(s.is_inline());
+    /// ```
     #[inline]
     pub fn to_mut_slice(&mut self) -> &mut [T]
     where
@@ -686,6 +813,26 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         unsafe { self.as_mut_slice_unchecked() }
     }
 
+    /// Extracts a mutable slice of the entire vector changing the
+    /// representation if needed.
+    ///
+    /// The representation is changed to be uniquely owned.
+    ///
+    /// This function is specialized for `T: Copy`. See [`to_mut_slice`] for the
+    /// more general function.
+    ///
+    /// [`to_mut_slice`]: Self::to_mut_slice
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::vecs::HipVec;
+    /// let mut s = HipVec::borrowed(b"foo");
+    /// let slice = s.to_mut_slice_copy();
+    /// slice.copy_from_slice(b"bar");
+    /// assert_eq!(b"bar", slice);
+    /// assert!(s.is_inline());
+    /// ```
     #[inline]
     pub fn to_mut_slice_copy(&mut self) -> &mut [T]
     where
@@ -718,6 +865,13 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         debug_assert!(self.is_inline());
         // SAFETY: precondition
         unsafe { &mut *ptr::from_mut(self).cast() }
+    }
+
+    #[inline]
+    const unsafe fn into_inline_unchecked(self) -> InlineVec<T, Bytes> {
+        debug_assert!(self.is_inline());
+        // SAFETY: precondition
+        unsafe { force_transmute::<Self, InlineVec<T, Bytes>>(self) }
     }
 
     /// Gets a reference to the underlying sliced representation.
@@ -768,6 +922,11 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         unsafe { &mut *ptr::from_mut(self).cast() }
     }
 
+    /// Moves to the allocated representation.
+    ///
+    /// # Safety
+    ///
+    /// The vector must be allocated and unique.
     #[inline]
     const unsafe fn into_allocated_unchecked(self) -> Allocated<T, B> {
         debug_assert!(self.is_allocated());
@@ -775,6 +934,15 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         unsafe { transmute::<Self, Allocated<T, B>>(self) }
     }
 
+    /// Bitwise copies the vector.
+    ///
+    /// # Safety
+    ///
+    /// The vector must be copyable:
+    ///
+    /// - A borrowed vector is copyable
+    /// - An inline vector of Copy elements is copyable
+    /// - A shared vector is copyiable if the counter has already been increased.
     const unsafe fn copy(&self) -> Self {
         Self(self.0, PhantomData)
     }
@@ -888,6 +1056,21 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         self.slice_range(range)
     }
 
+    /// Returns a vector of a range of elements in this vector, if the range is
+    /// valid.
+    ///
+    /// # Errors
+    ///
+    /// This function returns an error if the range is invalid.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::vecs::HipVec;
+    /// let a = HipVec::from(b"abc");
+    /// assert_eq!(a.try_slice(0..2), Ok(HipVec::from(b"ab")));
+    /// assert!(a.try_slice(0..4).is_err());
+    /// ```
     pub fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, RangeError>
     where
         T: Clone,
@@ -983,6 +1166,16 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     where
         T: Clone,
     {
+        let result = self._pop();
+        debug_assert!(self.is_valid());
+        result
+    }
+
+    #[inline]
+    fn _pop(&mut self) -> Option<T>
+    where
+        T: Clone,
+    {
         if self.is_inline() {
             // SAFETY: repr is checked above
             let inline = unsafe { self.as_mut_inline_unchecked() };
@@ -995,7 +1188,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
                 let allocated = unsafe { self.as_mut_allocated_unchecked() };
                 let owner = &mut allocated.owner;
                 if owner.is_unique() {
-                    let ptr = owner.data().as_ptr();
+                    let ptr = owner.as_mut_ptr();
 
                     // SAFETY: the slice is inside the owner's buffer by type
                     // invariant
@@ -1038,8 +1231,49 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
 
             // update the length
             sliced.len -= 1;
+
             Some(value)
         }
+    }
+
+    /// Appends an element to this vector.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::vecs::HipVec;
+    /// let mut vec = HipVec::from([1, 2, 3]);
+    /// vec.push(4);
+    /// vec.push(5);
+    /// vec.push(6);
+    /// assert_eq!(vec.as_slice(), &[1, 2, 3, 4, 5, 6]);
+    /// ```
+    pub fn push(&mut self, value: T)
+    where
+        T: Clone,
+    {
+        self.mutate().push(value);
+    }
+
+    /// Appends an element to this vector.
+    ///
+    /// This function is a specialization of [`push`] for `T: Copy`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::vecs::HipVec;
+    /// let mut vec = HipVec::from([1, 2, 3]);
+    /// vec.push_copy(4);
+    /// vec.push_copy(5);
+    /// vec.push_copy(6);
+    /// assert_eq!(vec.as_slice(), &[1, 2, 3, 4, 5, 6]);
+    /// ```
+    pub fn push_copy(&mut self, value: T)
+    where
+        T: Copy,
+    {
+        self.mutate_copy().push(value)
     }
 
     /// Clears the vector, removing all values.
@@ -1054,7 +1288,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     /// assert_eq!(hip.len(), 0);
     /// ```
     pub fn clear(&mut self) {
-        *self = Self::DEFAULT;
+        self.truncate(0);
     }
 
     /// Tightens the allocated vector (without shifting), dropping excess
@@ -1285,8 +1519,28 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
                 sliced.len = len;
             }
         }
+        debug_assert!(self.is_valid());
     }
 
+    /// Returns a mutable view of this vector.
+    ///
+    /// This operation may reallocate a new vector if either:
+    ///
+    /// - the representation is not _allocated_ (i.e. _inline_ or _borrowed_),
+    /// - the underlying buffer is shared.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use hipstr::vecs::HipVec;
+    /// let mut s = HipVec::borrowed(b"abc");
+    /// {
+    ///     let mut r = s.mutate();
+    ///     r.extend_from_slice(b"def");
+    ///     assert_eq!(r.as_slice(), b"abcdef");
+    /// }
+    /// assert_eq!(s.as_slice(), b"abcdef");
+    /// ```
     pub fn mutate(&mut self) -> RefMut<'_, 'a, T, B>
     where
         T: Clone,
@@ -1299,6 +1553,25 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         unsafe { RefMut::new(self) }
     }
 
+    /// Returns a mutable view of this vector.
+    ///
+    /// This operation may reallocate a new vector if either:
+    ///
+    /// - the representation is not _allocated_ (i.e. _inline_ or _borrowed_),
+    /// - the underlying buffer is shared.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use hipstr::vecs::HipVec;
+    /// let mut s = HipVec::borrowed(b"abc");
+    /// {
+    ///     let mut r = s.mutate_copy();
+    ///     r.extend_from_slice_copy(b"def");
+    ///     assert_eq!(r.as_slice(), b"abcdef");
+    /// }
+    /// assert_eq!(s.as_slice(), b"abcdef");
+    /// ```
     pub fn mutate_copy(&mut self) -> RefMut<'_, 'a, T, B>
     where
         T: Copy,
@@ -1311,6 +1584,25 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         unsafe { RefMut::new(self) }
     }
 
+    /// Returns a mutable view of this vector.
+    ///
+    /// # Safety
+    ///
+    /// The vector must be either the normal empty vector or a unique allocated
+    /// vector.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use hipstr::vecs::HipVec;
+    /// let mut s = HipVec::borrowed(b"abc");
+    /// {
+    ///     let mut r = s.mutate_copy();
+    ///     r.extend_from_slice_copy(b"def");
+    ///     assert_eq!(r.as_slice(), b"abcdef");
+    /// }
+    /// assert_eq!(s.as_slice(), b"abcdef");
+    /// ```
     pub(crate) unsafe fn mutate_unchecked(&mut self) -> RefMut<'_, 'a, T, B> {
         debug_assert!(self.is_unique());
         debug_assert!(self.is_trimmed());
@@ -1453,6 +1745,26 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         self.shrink_to(self.len());
     }
 
+    pub fn extend_from_slice(&mut self, slice: &[T])
+    where
+        T: Clone,
+    {
+        if self.is_unique() {
+            self.trim();
+
+            // SAFETY: self is now unique and starts at index 0
+            unsafe { RefMut::new(self) }.extend_from_slice(slice);
+        } else {
+            let mut new = Self::with_capacity(self.len() + slice.len());
+            {
+                let mut mutable = unsafe { RefMut::new(&mut new) };
+                mutable.extend_from_slice(self.as_slice());
+                mutable.extend_from_slice(slice);
+            }
+            *self = new;
+        }
+    }
+
     pub fn extend_from_slice_copy(&mut self, slice: &[T])
     where
         T: Copy,
@@ -1512,13 +1824,11 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
 impl<T, B: Backend> Drop for HipVec<'_, T, B> {
     fn drop(&mut self) {
         if self.is_inline() {
-            if needs_drop::<T>() {
-                // SAFETY: repr checked above
-                let inline = unsafe { self.as_mut_inline_unchecked() };
-                // SAFETY: will no be used after drop
-                unsafe {
-                    inline.drop_contents();
-                }
+            // SAFETY: repr checked above
+            let inline = unsafe { self.as_mut_inline_unchecked() };
+            // SAFETY: will no be used after drop
+            unsafe {
+                inline.drop_contents();
             }
         } else if self.is_allocated() {
             // SAFETY: repr checked above
@@ -1559,395 +1869,4 @@ pub enum SplitOffError {
     OutOfBounds,
     /// The reference count overflowed.
     RefCountOverflow,
-}
-
-/// A mutable reference to a `HipVec`.
-pub struct RefMut<'a, 'b, T, B: Backend>(&'a mut HipVec<'b, T, B>);
-
-impl<'a, 'b, T, B: Backend> RefMut<'a, 'b, T, B> {
-    #[must_use]
-    unsafe fn new(origin: &'a mut HipVec<'b, T, B>) -> Self {
-        #[cfg(debug_assertions)]
-        if origin.is_allocated() {
-            let allocated = unsafe { origin.as_allocated_unchecked() };
-            assert_eq!(allocated.owner.data().as_ptr().cast_const(), allocated.ptr);
-            assert_eq!(allocated.owner.len(), allocated.len);
-        } else {
-            assert!(origin.is_inline());
-        }
-
-        Self(origin)
-    }
-
-    /// Returns the current capacity of the vector.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use hipstr::vecs::HipVec;
-    /// let mut hip = HipVec::from([42; 42]);
-    /// assert!(hip.mutate().capacity() >= 42);
-    /// ```
-    #[must_use]
-    pub const fn capacity(&self) -> usize {
-        if self.0.is_inline() {
-            unsafe { self.0.as_inline_unchecked() }.capacity()
-        } else if self.0.is_allocated() {
-            unsafe { self.0.as_allocated_unchecked() }.owner.capacity()
-        } else {
-            unreachable!();
-        }
-    }
-
-    /// Returns the number of elements in the vector.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use hipstr::vecs::HipVec;
-    /// let mut hip = HipVec::from([1, 2, 3, 4, 5]);
-    /// assert_eq!(hip.mutate().len(), 5);
-    ///
-    #[must_use]
-    pub const fn len(&self) -> usize {
-        if self.0.is_inline() {
-            // SAFETY: repr is checked above
-            unsafe { self.0.as_inline_unchecked() }.len()
-        } else if self.0.is_allocated() {
-            // SAFETY: repr is checked above
-            unsafe { self.0.as_allocated_unchecked() }.owner.len()
-        } else {
-            unreachable!();
-        }
-    }
-
-    /// Sets the length of the vector.
-    ///
-    /// # Safety
-    ///
-    /// The new length must be less than or equal to the capacity.
-    /// The elements between the old length and the new length must be
-    /// properly initialized.
-    pub const unsafe fn set_len(&mut self, new_len: usize) {
-        if self.0.is_inline() {
-            // SAFETY: repr is checked above
-            let inline = unsafe { self.0.as_mut_inline_unchecked() };
-            // SAFETY: precondition
-            unsafe {
-                inline.set_len(new_len);
-            }
-        } else if self.0.is_allocated() {
-            // SAFETY: repr is checked above
-            let allocated = unsafe { self.0.as_mut_allocated_unchecked() };
-            // SAFETY: precondition
-            unsafe {
-                allocated.owner.set_len(new_len);
-            }
-        } else {
-            unreachable!();
-        }
-    }
-
-    /// Returns `true` if the vector has a length of 0.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use hipstr::vecs::HipVec;
-    /// let mut hip = HipVec::new();
-    /// assert!(hip.mutate().is_empty());
-    /// ```
-    #[must_use]
-    #[inline]
-    pub const fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    /// Returns a pointer to the first element of the vector.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use hipstr::vecs::HipVec;
-    /// let hip = HipVec::from([1, 2, 3]);
-    /// assert_eq!(unsafe { *hip.mutate().as_ptr() }, 1);
-    /// ```
-    #[must_use]
-    pub const fn as_ptr(&self) -> *const T {
-        if self.0.is_inline() {
-            // SAFETY: repr is checked above
-            unsafe { self.0.as_inline_unchecked() }.as_ptr()
-        } else if self.0.is_allocated() {
-            // SAFETY: repr is checked above
-            unsafe { self.0.as_allocated_unchecked() }
-                .owner
-                .data()
-                .as_ptr()
-        } else {
-            unreachable!();
-        }
-    }
-
-    /// Returns a mutable pointer to the first element of the vector.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use hipstr::vecs::HipVec;
-    /// let mut hip = HipVec::from([1, 2, 3]);
-    /// unsafe { *hip.mutate().as_mut_ptr() = 0; }
-    /// assert_eq!(hip.as_slice(), &[0, 2, 3]);
-    /// ```
-    #[must_use]
-    pub const fn as_mut_ptr(&mut self) -> *mut T {
-        if self.0.is_inline() {
-            unsafe { self.0.as_mut_inline_unchecked() }.as_mut_ptr()
-        } else if self.0.is_allocated() {
-            unsafe { self.0.as_mut_allocated_unchecked() }
-                .owner
-                .data_mut()
-                .as_ptr()
-        } else {
-            unreachable!();
-        }
-    }
-
-    #[must_use]
-    #[inline]
-    pub const fn as_slice(&self) -> &[T] {
-        unsafe { core::slice::from_raw_parts(self.as_ptr(), self.len()) }
-    }
-
-    #[must_use]
-    #[inline]
-    pub const fn as_mut_slice(&mut self) -> &mut [T] {
-        unsafe { core::slice::from_raw_parts_mut(self.as_mut_ptr(), self.len()) }
-    }
-
-    /// Reserves capacity for at least `additional` more elements to be inserted
-    /// in the given vector.
-    ///
-    /// The collection may reserve more space to avoid frequent reallocations.
-    ///
-    /// # Panics
-    ///
-    /// This function panics if the new capacity overflows.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use hipstr::vecs::HipVec;
-    /// let mut hip = HipVec::new();
-    /// hip.mutate().reserve(10);
-    /// assert!(hip.mutate().capacity() >= 10);
-    /// ```
-    pub fn reserve(&mut self, additional: usize) {
-        let len = self.len();
-        let cap = self.capacity();
-        if additional >= cap - len {
-            let required = self
-                .len()
-                .checked_add(additional)
-                .expect("capacity overflow");
-            let new_cap = required.max(cap * 2);
-            unsafe {
-                self.set_capacity(new_cap);
-            }
-        }
-    }
-
-    /// Sets the capacity of the vector.
-    ///
-    /// # Safety
-    ///
-    /// The new capacity must be greater than or equal to the current length.
-    pub unsafe fn set_capacity(&mut self, new_cap: usize) {
-        debug_assert!(self.0.is_unique(), "unique by type invariant");
-        let len = self.len();
-        let cap = self.capacity();
-        debug_assert!(new_cap >= len);
-
-        let new_cap = new_cap.max(HipVec::<T, B>::INLINE_CAP);
-        if cap == new_cap {
-            return;
-        }
-
-        debug_assert!(!self.0.is_inline(), "inline cannot be shrunk");
-
-        if new_cap <= HipVec::<T, B>::INLINE_CAP {
-            unsafe {
-                self.make_inline();
-            }
-        } else if self.0.is_wide() {
-            unsafe {
-                self.make_wide_thin(new_cap);
-            }
-        } else {
-            // SAFETY: repr is checked above
-            let allocated = unsafe { self.0.as_mut_allocated_unchecked() };
-
-            // SAFETY: repr is checked above (thin) and unique
-            let ref_mut = unsafe { allocated.owner.as_mut_thin_vec() };
-
-            // SAFETY: new capacity >= len by precondition
-            unsafe {
-                ref_mut.set_capacity(new_cap);
-            }
-        }
-    }
-
-    /// Converts the allocated vector from wide to thin.
-    ///
-    /// # Safety
-    ///
-    /// The vector must be allocated and wide.
-    /// Its length must be less than or equal to `new_cap`.
-    unsafe fn make_wide_thin(&mut self, new_cap: usize) {
-        let old = mem::replace(self.0, HipVec::DEFAULT);
-        // SAFETY: precondition
-        let allocated = unsafe { old.into_allocated_unchecked() };
-        let len = allocated.owner.len();
-        debug_assert!(len <= new_cap);
-        debug_assert!(allocated.owner.is_wide());
-        debug_assert!(allocated.owner.is_unique());
-
-        let mut thin: ThinVec<T, B> = ThinVec::with_capacity(new_cap);
-        {
-            // SAFETY: repr is checked above (wide)
-            let smart_wide = unsafe { allocated.owner.into_smart_wide_unchecked() };
-            debug_assert!(smart_wide.is_unique());
-
-            // SAFETY: unique by type invariant
-            let mut vec = unsafe { smart_wide.into_vec_unchecked() };
-            debug_assert!(vec.len() <= new_cap);
-
-            // SAFETY: capacity ≥ new length by `reserve`
-            unsafe {
-                vec.set_len(0);
-                thin.as_mut_ptr()
-                    .copy_from_nonoverlapping(vec.as_ptr(), len.min(new_cap));
-                thin.set_len(len);
-            }
-        }
-        // SAFETY: thin vec with the default prefix
-        let shared = unsafe { SmartThinVec::from_thin_vec_unchecked(thin) };
-
-        let new = HipVec::from_smart_thin(shared);
-        let old = mem::replace(self.0, new);
-        mem::forget(old);
-        // old is empty, it can be forgotten
-    }
-
-    /// Converts the allocated vector into an inline vector.
-    ///
-    /// # Safety
-    ///
-    /// The vector must be allocated (thin or wide).
-    /// Its length must be less than or equal to the inline capacity.
-    unsafe fn make_inline(&mut self) {
-        debug_assert!(self.0.is_allocated());
-        let old = mem::replace(self.0, HipVec::DEFAULT);
-        let mut inline = Inline::new();
-        // SAFETY: repr cannot be inline
-        unsafe {
-            let mut allocated = old.into_allocated_unchecked();
-            let len = allocated.owner.len();
-            debug_assert!(len <= HipVec::<T, B>::INLINE_CAP);
-            allocated.owner.set_len(0);
-            allocated
-                .owner
-                .data()
-                .as_ptr()
-                .copy_to_nonoverlapping(inline.as_mut_ptr(), len);
-            allocated.owner.drop();
-            inline.set_len(len);
-        }
-        let new = HipVec::from_inline(inline);
-        let old = mem::replace(self.0, new);
-        mem::forget(old);
-        // old is empty, it can be forgotten
-    }
-
-    pub fn push(&mut self, value: T) {
-        self.reserve(1);
-        let Ok(()) = self.push_within_capacity(value) else {
-            unreachable!();
-        };
-    }
-
-    /// Pushes a value to the end of the vector, assuming there is enough
-    /// capacity.
-    ///
-    /// # Errors
-    ///
-    /// If there is not enough capacity, returns `Err(value)`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use hipstr::vecs::HipVec;
-    /// let mut hip = HipVec::with_capacity(2);
-    /// {
-    ///     let mut m = hip.mutate();
-    ///     let n = (0..).find(|i| r.push_with_capacity(i).is_err()).unwrap();
-    ///     assert!(n >= 2);
-    /// }
-    /// assert!(hip.len() >= 2);
-    /// ```
-    pub const fn push_within_capacity(&mut self, value: T) -> Result<(), T> {
-        push_within_capacity!(self, value)
-    }
-
-    #[doc(alias = "push_slice")]
-    pub fn extend_from_slice(&mut self, slice: &[T])
-    where
-        T: Clone,
-    {
-        extend_from_slice_impl!(self, slice);
-    }
-
-    pub fn extend_from_slice_copy(&mut self, slice: &[T])
-    where
-        T: Copy,
-    {
-        extend_from_slice_copy_impl!(self, slice);
-    }
-
-    pub fn truncate(&mut self, new_len: usize) {
-        truncate_impl!(self, new_len);
-    }
-
-    pub fn clear(&mut self) {
-        self.truncate(0);
-    }
-
-    pub fn pop(&mut self) -> Option<T> {
-        pop_impl!(self)
-    }
-
-    pub fn shrink_to(&mut self, cap: usize) {
-        if cap >= self.len() && cap < self.capacity() {
-            unsafe {
-                self.set_capacity(cap);
-            }
-        }
-    }
-    pub fn shrink_to_fit(&mut self) {
-        self.shrink_to(self.len());
-    }
-}
-
-impl<T, B: Backend> Drop for RefMut<'_, '_, T, B> {
-    fn drop(&mut self) {
-        if self.0.is_inline() {
-            // nothing to do
-        } else if self.0.is_allocated() {
-            // SAFETY: repr is checked above
-            let allocated = unsafe { self.0.as_mut_allocated_unchecked() };
-            allocated.ptr = allocated.owner.data().as_ptr();
-            allocated.len = allocated.owner.len();
-        } else {
-            unreachable!("ref mut cannot be borrowed");
-        }
-    }
 }

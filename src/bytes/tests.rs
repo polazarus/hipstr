@@ -32,7 +32,7 @@ const MEDIUM: &[u8] = &[42; 42];
 const BIG: &[u8] = &[42; 1024];
 
 #[test]
-fn test_new_default() {
+fn new_default() {
     let new = H::new();
     assert_eq!(new, EMPTY_SLICE);
     assert!(new.is_empty());
@@ -43,7 +43,7 @@ fn test_new_default() {
 }
 
 #[test]
-fn test_ptr() {
+fn ptr() {
     let mut h = H::inline(ABCDEF);
     let p_const = h.as_ptr();
     let p_mut = h.as_mut_ptr().unwrap();
@@ -70,7 +70,7 @@ fn test_ptr() {
 #[test]
 #[cfg(debug_assertions)]
 #[should_panic]
-fn test_ptr_panic_shared() {
+fn as_mut_ptr_panic_shared() {
     let mut h = H::from(MEDIUM);
     let _h2 = h.clone();
     assert!(h.as_mut_ptr().is_none());
@@ -81,7 +81,7 @@ fn test_ptr_panic_shared() {
 #[test]
 #[cfg(debug_assertions)]
 #[should_panic]
-fn test_ptr_panic_borrowed() {
+fn as_mut_ptr_panic_borrowed() {
     let mut h = H::borrowed(MEDIUM);
     assert!(h.as_mut_ptr().is_none());
     let _ = unsafe { h.as_mut_ptr_unchecked() };
@@ -114,7 +114,7 @@ fn with_capacity() {
 }
 
 #[test]
-fn test_inline() {
+fn inline() {
     let h = H::inline(ABC);
     assert_eq!(h, ABC);
     assert_eq!(h.len(), 3);
@@ -125,19 +125,19 @@ fn test_inline() {
 
 #[test]
 #[should_panic]
-fn test_inline_panic() {
+fn inline_panic() {
     let _ = H::inline(MEDIUM);
 }
 
 #[test]
-fn test_try_inline() {
+fn ry_inline() {
     assert_eq!(H::try_inline(ABC), Some(H::from(ABC)));
     assert_eq!(H::try_inline(MEDIUM), None);
 }
 
 #[test]
 #[cfg(feature = "std")]
-fn test_borrow_and_hash() {
+fn borrow_and_hash() {
     let mut set = HashSet::new();
     set.insert(H::from(A));
     set.insert(H::from(B));
@@ -147,7 +147,7 @@ fn test_borrow_and_hash() {
 }
 
 #[test]
-fn test_fmt() {
+fn fmt() {
     let source = ABC;
 
     let a = H::borrowed(source);
@@ -896,13 +896,13 @@ fn test_pop() {
 }
 
 #[test]
-fn test_push_slice_borrowed() {
+fn push_slice_borrowed() {
     #[track_caller]
     fn should_inline(input: S, addition: S, expected: S) {
         let mut a = H::borrowed(input);
         assert!(a.is_borrowed());
         a.push_slice(addition);
-        assert!(a.is_inline());
+        assert!(a.is_inline(), "{input:?} + {addition:?} should be inline");
         assert_eq!(a, expected);
     }
 
@@ -950,11 +950,14 @@ fn test_push_slice_borrowed() {
 }
 
 #[test]
-fn test_push_slice_inline() {
+fn push_slice_inline() {
     #[track_caller]
     fn should_stay_inline(input: S, addition: S, expected: S) {
         let mut a = H::from(input);
-        assert!(a.is_inline());
+        assert!(
+            input.is_empty() || a.is_inline(),
+            "input {input:?} should be inline"
+        );
         a.push_slice(addition);
         assert!(a.is_inline());
         assert_eq!(a, expected);
@@ -962,7 +965,7 @@ fn test_push_slice_inline() {
     #[track_caller]
     fn should_allocate(input: S, addition: S, expected: S) {
         let mut a = H::from(input);
-        assert!(a.is_inline(), "input should be inline");
+        assert!(input.is_empty() || a.is_inline(), "input should be inline");
         a.push_slice(addition);
         assert!(a.is_allocated());
         assert_eq!(a, expected);

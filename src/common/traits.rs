@@ -35,7 +35,11 @@ pub trait MutVector: Vector {
 
     fn as_non_null(&mut self) -> NonNull<Self::Item>;
 
-    fn as_mut_slice(&mut self) -> &mut [Self::Item];
+    fn as_mut_slice(&mut self) -> &mut [Self::Item] {
+        unsafe { core::slice::from_raw_parts_mut(self.as_mut_ptr(), self.len()) }
+    }
+
+    fn reserve(&mut self, additional: usize);
 }
 
 /// Traits for vectors that can be mutated.
@@ -107,5 +111,9 @@ impl<T> MutVector for alloc::vec::Vec<T> {
 
     fn as_non_null(&mut self) -> NonNull<Self::Item> {
         unsafe { NonNull::new_unchecked(self.as_mut_ptr()) }
+    }
+
+    fn reserve(&mut self, additional: usize) {
+        self.reserve(additional)
     }
 }

@@ -6,7 +6,6 @@
 use alloc::fmt;
 use alloc::vec::Vec;
 use core::borrow::Borrow;
-use core::error::Error;
 use core::hash::Hash;
 use core::mem::{self, MaybeUninit};
 use core::ops::{Bound, Deref, DerefMut, Range, RangeBounds};
@@ -14,7 +13,7 @@ use core::ptr;
 
 use crate::backend::Backend;
 use crate::common::RangeError;
-use crate::vecs::hip::HipVec;
+use crate::vecs::hip::{HipVec, Inline};
 
 mod cmp;
 mod convert;
@@ -34,9 +33,6 @@ type Slice = ::bstr::BStr;
 
 #[cfg(not(feature = "bstr"))]
 type Slice = [u8];
-
-/// Alias type for `Inline` with set inline capacity
-pub(crate) type Inline = crate::vecs::hip::Inline<u8>;
 
 /// Smart bytes, i.e. cheaply clonable and sliceable byte string.
 ///
@@ -235,10 +231,13 @@ where
     /// ```
     #[must_use]
     pub const fn inline(bytes: &[u8]) -> Self {
-        assert!(bytes.len() <= Self::inline_capacity(), "slice too large");
+        Self(HipVec::inline_copy(bytes))
+    }
 
-        // SAFETY: length checked above
-        unsafe { Self::inline_unchecked(bytes) }
+    #[must_use]
+    #[inline]
+    pub(crate) const fn fit_inline(len: usize) -> bool {
+        HipVec::<u8, B>::fit_inline(len)
     }
 
     /// Creates a new inline `HipByt` by copying the given the slice.
@@ -258,10 +257,10 @@ where
     /// assert_eq!(s, b"hello\0");
     /// ```
     #[must_use]
+    #[inline]
     pub const fn try_inline(bytes: &[u8]) -> Option<Self> {
-        if bytes.len() <= Self::inline_capacity() {
-            // SAFETY: length checked above
-            Some(unsafe { Self::inline_unchecked(bytes) })
+        if Self::fit_inline(bytes.len()) {
+            Some(Self::inline(bytes))
         } else {
             None
         }
@@ -451,7 +450,7 @@ where
     /// In debug mode, panics if the sequence is borrowed or shared.
     #[inline]
     pub unsafe fn as_mut_slice_unchecked(&mut self) -> &mut [u8] {
-        unsafe { self.0.as_mut_slice().unwrap_unchecked() }
+        unsafe { self.0.as_mut_slice_unchecked() }
     }
 
     /// Extracts a mutable slice of the entire `HipByt` changing the
@@ -826,14 +825,7 @@ where
     /// assert_eq!(h, [1, 2]);
     /// ```
     pub fn pop(&mut self) -> Option<u8> {
-        let len = self.len();
-        if len == 0 {
-            None
-        } else {
-            let result = unsafe { *self.as_slice().get_unchecked(len - 1) };
-            self.truncate(len - 1);
-            Some(result)
-        }
+        self.0.pop()
     }
 
     /// Appends a byte to this `HipByt`.
@@ -850,7 +842,7 @@ where
     /// ```
     #[inline]
     pub fn push(&mut self, value: u8) {
-        self.push_slice(&[value]);
+        self.0.push_copy(value);
     }
 
     /// Appends all bytes of the slice to this `HipByt`.
@@ -1509,141 +1501,6 @@ const fn simplify_range_mono(
         Ok(Range { start, end })
     }
 }
-
-/// A possible error value when slicing a [`HipByt`].
-///
-/// This type is the error type for [`HipByt::try_slice`].
-pub struct SliceError<'a, 'borrow, B>
-where
-    B: Backend,
-{
-    kind: SliceErrorKind,
-    start: usize,
-    end: usize,
-    bytes: &'a HipByt<'borrow, B>,
-}
-
-impl<B> Clone for SliceError<'_, '_, B>
-where
-    B: Backend,
-{
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<B> Copy for SliceError<'_, '_, B> where B: Backend {}
-
-impl<B> Eq for SliceError<'_, '_, B> where B: Backend {}
-
-impl<B> PartialEq for SliceError<'_, '_, B>
-where
-    B: Backend,
-{
-    fn eq(&self, other: &Self) -> bool {
-        self.kind == other.kind
-            && self.start == other.start
-            && self.end == other.end
-            && self.bytes == other.bytes
-    }
-}
-
-impl<'a, 'borrow, B> SliceError<'a, 'borrow, B>
-where
-    B: Backend,
-{
-    const fn new(
-        kind: SliceErrorKind,
-        start: usize,
-        end: usize,
-        bytes: &'a HipByt<'borrow, B>,
-    ) -> Self {
-        Self {
-            kind,
-            start,
-            end,
-            bytes,
-        }
-    }
-
-    /// Returns the kind of error.
-    #[inline]
-    #[must_use]
-    pub const fn kind(&self) -> SliceErrorKind {
-        self.kind
-    }
-
-    /// Returns the start of the requested range.
-    #[inline]
-    #[must_use]
-    pub const fn start(&self) -> usize {
-        self.start
-    }
-
-    /// Returns the end of the requested range.
-    #[inline]
-    #[must_use]
-    pub const fn end(&self) -> usize {
-        self.end
-    }
-
-    /// Returns the _normalized_ requested range.
-    #[inline]
-    #[must_use]
-    pub const fn range(&self) -> Range<usize> {
-        self.start..self.end
-    }
-
-    /// Returns a reference to the source `HipByt` to slice.
-    #[inline]
-    #[must_use]
-    pub const fn source(&self) -> &HipByt<'borrow, B> {
-        self.bytes
-    }
-}
-
-impl<B> fmt::Debug for SliceError<'_, '_, B>
-where
-    B: Backend,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SliceError")
-            .field("kind", &self.kind)
-            .field("start", &self.start)
-            .field("end", &self.end)
-            .field("bytes", &self.bytes)
-            .finish()
-    }
-}
-
-impl<B> fmt::Display for SliceError<'_, '_, B>
-where
-    B: Backend,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.kind {
-            SliceErrorKind::StartGreaterThanEnd => {
-                write!(f, "range starts at {} but ends at {}", self.start, self.end)
-            }
-            SliceErrorKind::StartOutOfBounds => write!(
-                f,
-                "range start index {} out of bounds for slice of length {}",
-                self.start,
-                self.bytes.len()
-            ),
-            SliceErrorKind::EndOutOfBounds => {
-                write!(
-                    f,
-                    "range end index {} out of bounds for slice of length {}",
-                    self.end,
-                    self.bytes.len()
-                )
-            }
-        }
-    }
-}
-
-impl<B> Error for SliceError<'_, '_, B> where B: Backend {}
 
 /// A wrapper type for a mutably borrowed vector out of a [`HipByt`].
 pub struct RefMut<'a, 'borrow, B: Backend>(pub(crate) crate::vecs::hip::RefMut<'a, 'borrow, u8, B>)

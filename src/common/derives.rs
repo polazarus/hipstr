@@ -418,6 +418,10 @@ macro_rules! MutVector {
             fn as_non_null(&mut self) -> ::core::ptr::NonNull<Self::Item> {
                 self.as_non_null()
             }
+            #[inline]
+            fn reserve(&mut self, additional: usize) {
+                self.reserve(additional)
+            }
         }
     };
 }

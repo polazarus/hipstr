@@ -8,9 +8,10 @@ use typenum::U32;
 
 use super::Bytes;
 use crate::backend::tests::BoundedRc;
-use crate::vecs::hip::{HipVec, SplitOffError};
+use crate::vecs::hip::{HipVec, Inline, SplitOffError};
 use crate::vecs::inline::{InlineVec, PointerSize};
 use crate::vecs::thin::{Reserved, ThinVec};
+use crate::vecs::wide::WideVec;
 use crate::{Arc, Unique};
 
 #[test]
@@ -43,10 +44,98 @@ fn new_boxed() {
 }
 
 #[test]
+fn with_capacity() {
+    let h = HipVec::<u8, Arc>::with_capacity(0);
+    assert_eq!(h.len(), 0);
+    assert!(!h.is_allocated());
+    assert!(h.is_nil());
+
+    let h = HipVec::<u8, Arc>::with_capacity(10);
+    assert_eq!(h.len(), 0);
+    assert!(h.is_inline());
+    assert!(!h.is_borrowed());
+    assert!(!h.is_allocated());
+
+    let h = HipVec::<u8, Arc>::with_capacity(100);
+    assert_eq!(h.len(), 0);
+    assert!(h.is_thin());
+    assert!(h.is_allocated());
+    assert!(!h.is_borrowed());
+    assert!(!h.is_inline());
+}
+
+#[test]
+fn inline_copy() {
+    let slice = &[];
+    let h = HipVec::<u8, Arc>::inline_copy(slice);
+    assert_eq!(h.len(), slice.len());
+    assert!(h.is_inline());
+    assert_eq!(h.as_slice(), slice);
+
+    let slice = &[1, 2, 3, 4, 5];
+    let h = HipVec::<u8, Arc>::inline_copy(slice);
+    assert_eq!(h.len(), slice.len());
+    assert!(h.is_inline());
+    assert_eq!(h.as_slice(), slice);
+}
+
+#[test]
+#[should_panic(expected = "required capacity exceeds inline capacity")]
+fn inline_copy_panic() {
+    let slice = &[42; 42];
+    let _h = HipVec::<u8, Arc>::inline_copy(slice);
+}
+
+#[test]
+fn try_inline_copy() {
+    let slice = &[];
+    let h = HipVec::<u8, Arc>::try_inline_copy(slice).unwrap();
+    assert_eq!(h.len(), slice.len());
+    assert!(h.is_inline());
+    assert_eq!(h.as_slice(), slice);
+
+    let slice = &[1, 2, 3, 4, 5];
+    let h = HipVec::<u8, Arc>::try_inline_copy(slice).unwrap();
+    assert_eq!(h.len(), slice.len());
+    assert!(h.is_inline());
+    assert_eq!(h.as_slice(), slice);
+
+    let slice = &[42; 42];
+    let h = HipVec::<u8, Arc>::try_inline_copy(slice);
+    assert!(h.is_none());
+}
+
+#[test]
+fn inline_array() {
+    let h = HipVec::<u8, Arc>::inline_array([]);
+    assert_eq!(h.len(), 0);
+    assert!(h.is_inline());
+
+    let h = HipVec::<u8, Arc>::inline_array([1, 2, 3, 4, 5]);
+    assert_eq!(h.len(), 5);
+    assert!(h.is_inline());
+    assert_eq!(h.as_slice(), &[1, 2, 3, 4, 5]);
+}
+
+#[test]
+#[should_panic(expected = "required capacity exceeds inline capacity")]
+fn inline_array_panic() {
+    let _h = HipVec::<u8, Arc>::inline_array([42; 42]);
+}
+
+#[test]
+fn inline_empty() {
+    let h = HipVec::<u8, Arc>::inline_empty();
+    assert_eq!(h.len(), 0);
+    assert!(h.is_inline());
+    assert!(!h.is_nil());
+}
+
+#[test]
 fn from_array_empty() {
     let h = HipVec::<u8, Arc>::from([]);
     assert_eq!(h.len(), 0);
-    assert!(h.is_borrowed()); // for now, the empty hipvec is borrowed
+    assert!(h.is_nil());
     assert!(h.as_slice().is_empty());
 }
 
@@ -271,6 +360,25 @@ fn truncate() {
 }
 
 #[test]
+fn clear() {
+    let mut h = HipVec::<i32, Arc>::new();
+    h.clear();
+    assert!(h.is_empty());
+
+    let mut h = HipVec::<i32, Arc>::from([1, 2]);
+    h.clear();
+    assert!(h.is_empty());
+
+    let mut h = HipVec::<i32, Arc>::from([42; 42]);
+    h.clear();
+    assert!(h.is_empty());
+
+    let mut h = HipVec::<i32, Arc>::from([42; 42]);
+    h.clear();
+    assert!(h.is_empty());
+}
+
+#[test]
 fn from_vector_normalized() {
     let h = HipVec::<u8, Arc>::from_vector_normalized(vec![]);
     assert_eq!(h.len(), 0);
@@ -314,6 +422,9 @@ fn is_unique() {
 
 #[test]
 fn pop() {
+    let mut h = HipVec::<u8, Arc>::DEFAULT;
+    assert_eq!(h.pop(), None);
+
     let mut h = HipVec::<u8, Arc>::from([1, 2, 3]);
     assert!(h.is_inline());
     assert_eq!(h.pop(), Some(3));
@@ -429,41 +540,72 @@ fn slice_empty() {
 }
 
 #[test]
+fn slice_unchecked() {
+    let h = HipVec::<i32, Arc>::borrowed(&[1, 2, 3]);
+    let _h2 = unsafe { h.slice_unchecked(..) };
+    let _h3 = unsafe { h.slice_unchecked(1..) };
+    let _h4 = unsafe { h.slice_unchecked(1..2) };
+}
+
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic(expected = "invalid range")]
+fn slice_unchecked_debug_panic() {
+    let h = HipVec::<i32, Arc>::from([1, 2, 3]);
+    let _h2 = unsafe { h.slice_unchecked(4..) };
+}
+
+#[test]
+fn push() {
+    let mut h = HipVec::<u8, Arc>::from([1, 2, 3]);
+    h.push(4);
+    assert_eq!(h.as_slice(), [1, 2, 3, 4]);
+
+    let mut h = HipVec::<u8, Arc>::new();
+    h.push(1);
+    assert_eq!(h.as_slice(), [1]);
+
+    let mut h = HipVec::<u8, Arc>::from([42; 42]);
+    h.push(42);
+    assert_eq!(h.as_slice(), [42; 43]);
+}
+
+#[test]
+fn push_boxed() {
+    let mut h = HipVec::<Box<u8>, Arc>::from([1].map(Box::new));
+    h.push(Box::new(2));
+    assert_eq!(h.as_slice(), [1, 2].map(Box::new));
+
+    let mut h = HipVec::<Box<u8>, Arc>::new();
+    h.push(Box::new(1));
+    assert_eq!(h.as_slice(), [Box::new(1)]);
+
+    let mut h = HipVec::<Box<u8>, Arc>::from([42; 42].map(Box::new));
+    h.push(Box::new(42));
+    assert_eq!(h.as_slice(), [42; 43].map(Box::new));
+}
+
+#[test]
+fn push_copy() {
+    let mut h = HipVec::<u8, Arc>::from([1, 2, 3]);
+    h.push_copy(4);
+    assert_eq!(h.as_slice(), [1, 2, 3, 4]);
+
+    let mut h = HipVec::<u8, Arc>::new();
+    h.push_copy(1);
+    assert_eq!(h.as_slice(), [1]);
+
+    let mut h = HipVec::<u8, Arc>::from([42; 42]);
+    h.push_copy(42);
+    assert_eq!(h.as_slice(), [42; 43]);
+}
+
+#[test]
 fn inline_ptr_is_inline() {
     let h = HipVec::<u8, Arc>::from([1, 2, 3]);
     let start: *const u8 = ptr::from_ref(&h).cast();
     let end: *const u8 = ptr::from_ref(&h).wrapping_add(1).cast();
     assert!((start..end).contains(&h.as_ptr()));
-}
-
-#[test]
-fn mutate_reserve() {
-    let mut h = HipVec::<u8, Arc>::from([1, 2, 3, 4, 5]);
-    {
-        let mut h_mut = h.mutate();
-        assert!(h_mut.0.is_inline());
-        h_mut.reserve(100);
-        assert!(h_mut.0.is_thin());
-    }
-    assert!(h.is_thin());
-
-    let mut h = HipVec::<u8, Arc>::from(vec![42; 42]);
-    {
-        let mut h_mut = h.mutate();
-        assert!(h_mut.0.is_wide());
-        h_mut.reserve(100);
-        assert!(h_mut.0.is_thin());
-    }
-    assert!(h.is_thin());
-
-    // let mut h = HipVec::<u8, Arc>::new();
-    // assert!(h.is_borrowed());
-    // {
-    //     let mut h_mut = h.mutate();
-    //     assert!(h_mut.0.is_borrowed());
-    //     h_mut.reserve(10);
-    //     assert!(h_mut.0.is_inline());
-    // }
 }
 
 #[test]
@@ -513,4 +655,314 @@ fn capacity_borrowed() {
 
     let h2 = h.slice(1..4);
     assert_eq!(h2.capacity(), h2.len());
+}
+
+#[test]
+fn shrink_to_fit_empty() {
+    let mut h = HipVec::<u8, Arc>::with_capacity(42);
+    h.shrink_to_fit();
+    assert_eq!(h.capacity(), 0);
+    assert!(h.is_borrowed()); // empty is borrowed
+}
+
+#[test]
+fn shrink_to_fit_inline() {
+    let mut h = HipVec::<u8, Arc>::with_capacity(42);
+    {
+        let mut m = h.mutate();
+        m.extend_from_slice_copy(&[0; 8]);
+        m.shrink_to_fit();
+    }
+    assert!(h.capacity() >= 8);
+    assert_eq!(h.capacity(), Inline::<u8>::CAPACITY);
+    assert!(h.is_inline());
+}
+
+#[test]
+fn shrink_to_fit_thin() {
+    let mut h = HipVec::<u8, Arc>::with_capacity(100);
+    {
+        let mut m = h.mutate();
+        m.extend_from_slice_copy(&[0; 50]);
+        m.shrink_to_fit();
+    }
+    assert!(h.capacity() >= 50);
+    assert!(h.capacity() < 100);
+    assert!(h.is_thin());
+}
+
+#[test]
+fn shrink_to_fit_wide() {
+    let mut v = Vec::with_capacity(100);
+    v.extend_from_slice(&[0; 50]);
+    let mut h = HipVec::<u8, Arc>::from(v);
+    assert!(h.is_wide());
+    {
+        let mut m = h.mutate();
+        m.shrink_to_fit();
+    }
+    assert!(h.capacity() >= 50);
+    assert!(h.is_thin());
+}
+
+#[test]
+fn shrink_to_noop() {
+    let mut h = HipVec::<u8, Arc>::with_capacity(100);
+    {
+        let mut m = h.mutate();
+        m.extend_from_slice_copy(&[0; 50]);
+        m.shrink_to(30);
+    }
+    assert!(h.capacity() >= 100);
+    assert!(h.is_thin());
+}
+
+#[test]
+fn shrink_to_zero() {
+    let mut h = HipVec::<u8, Arc>::with_capacity(100);
+    {
+        let mut m = h.mutate();
+        m.shrink_to(0);
+    }
+    assert_eq!(h.capacity(), 0);
+    assert!(h.is_borrowed()); // empty is borrowed
+}
+
+#[test]
+fn shrink_to_inline() {
+    let mut h = HipVec::<u8, Arc>::with_capacity(100);
+    {
+        let mut m = h.mutate();
+        m.extend_from_slice_copy(&[0; 8]);
+        m.shrink_to(10);
+    }
+    assert!(h.capacity() >= 8);
+    assert!(h.is_inline());
+    assert_eq!(h.capacity(), Inline::<u8>::CAPACITY);
+}
+
+#[test]
+fn shrink_to_thin() {
+    let mut h = HipVec::<u8, Arc>::with_capacity(100);
+    {
+        let mut m = h.mutate();
+        m.extend_from_slice_copy(&[0; 50]);
+        m.shrink_to(60);
+    }
+    assert!(h.capacity() >= 60);
+    assert!(h.capacity() < 100);
+    assert!(h.is_thin());
+}
+
+#[test]
+fn shrink_to_wide() {
+    let mut v = Vec::with_capacity(150);
+    v.extend_from_slice(&[0; 80]);
+    let mut h = HipVec::<u8, Arc>::from(v);
+    assert!(h.is_wide());
+    {
+        let mut m = h.mutate();
+        m.shrink_to(90);
+    }
+    assert!(h.capacity() >= 90);
+    assert!(h.capacity() < 150);
+    assert!(h.is_thin());
+}
+
+#[test]
+fn as_mut_slice_unchecked() {
+    let mut h = HipVec::<u8, Arc>::from([1, 2, 3, 4, 5]);
+    let slice = unsafe { h.as_mut_slice_unchecked() };
+    slice[0] = 42;
+    assert_eq!(h.as_slice(), &[42, 2, 3, 4, 5]);
+}
+
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic(expected = "vector must be uniquely owned")]
+fn as_mut_slice_unchecked_panic_borrowed() {
+    let mut h = HipVec::<u8, Arc>::borrowed(b"hello");
+    let _slice = unsafe { h.as_mut_slice_unchecked() };
+}
+
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic(expected = "vector must be uniquely owned")]
+fn as_mut_slice_unchecked_panic_shared() {
+    let mut h = HipVec::<u8, Arc>::from(vec![1, 2, 3, 4, 5]);
+    let h2 = h.clone();
+    assert!(!h.is_unique());
+    let _slice = unsafe { h.as_mut_slice_unchecked() };
+    let _ = h2;
+}
+
+#[test]
+fn into_borrowed() {
+    let h = HipVec::<u8, Arc>::borrowed(b"hello");
+    let b = h.into_borrowed().unwrap();
+    assert_eq!(b, b"hello");
+
+    let h = HipVec::<u8, Arc>::from([1, 2, 3]);
+    assert!(h.into_borrowed().is_err());
+}
+
+#[test]
+fn into_borrowed_unchecked() {
+    let h = HipVec::<u8, Arc>::borrowed(b"hello");
+    let b = unsafe { h.into_borrowed_unchecked() };
+    assert_eq!(b, b"hello");
+}
+
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic(expected = "vector should be borrowed")]
+fn into_borrowed_unchecked_panic() {
+    let h = HipVec::<u8, Arc>::from([1, 2, 3]);
+    let _b = unsafe { h.into_borrowed_unchecked() };
+}
+
+#[test]
+fn as_borrowed() {
+    let h = HipVec::<u8, Arc>::borrowed(b"hello");
+    let b = h.as_borrowed().unwrap();
+    assert_eq!(b, b"hello");
+
+    let h = HipVec::<u8, Arc>::from([1, 2, 3]);
+    assert!(h.as_borrowed().is_none());
+}
+
+#[test]
+fn from_wide_vec() {
+    let v = vec![1u8; 200];
+    let wv = WideVec::<u8, Arc>::from(v);
+    let h = HipVec::<u8, Arc>::from(wv);
+    assert_eq!(h.len(), 200);
+    assert!(h.is_wide());
+    assert_eq!(h.as_slice(), &[1u8; 200]);
+
+    let v = vec![];
+    let wv = WideVec::<u8, Arc>::from(v);
+    let h = HipVec::<u8, Arc>::from(wv);
+    assert_eq!(h.len(), 0);
+    assert!(h.is_nil());
+    assert!(!h.is_allocated());
+}
+
+#[test]
+fn is_trimmed() {
+    let h = HipVec::<u8, Arc>::new();
+    assert!(h.is_trimmed());
+
+    let h = HipVec::<u8, Arc>::from(vec![1, 2, 3]);
+    assert!(h.is_allocated());
+    assert!(h.is_trimmed());
+
+    {
+        let h2 = h.slice(0..2);
+        assert!(!h2.is_trimmed());
+    }
+
+    {
+        let h3 = h.slice(1..3);
+        assert!(!h3.is_trimmed());
+    }
+
+    {
+        let h4 = h.clone();
+        assert!(h4.is_trimmed());
+    }
+}
+
+#[test]
+fn as_mut_ptr() {
+    let mut h = HipVec::<u8, Arc>::new();
+    assert_eq!(h.as_mut_ptr().unwrap(), ptr::dangling_mut());
+
+    let mut h = HipVec::<u8, Arc>::from([1_u8, 2, 3]);
+    {
+        let p = h.as_mut_ptr().unwrap();
+        unsafe {
+            *p = 0;
+        }
+    }
+    assert_eq!(h.as_slice(), [0_u8, 2, 3]);
+
+    let mut h = HipVec::<u8, Arc>::from([0; 42]);
+    {
+        let p = h.as_mut_ptr().unwrap();
+        unsafe {
+            *p = 1;
+        }
+    }
+    assert_eq!(h[0], 1);
+
+    let mut h = HipVec::<u8, Arc>::borrowed(b"abc");
+    assert!(h.as_mut_ptr().is_none());
+
+    let mut h1 = HipVec::<u8, Arc>::from([42; 42]);
+    let _h2 = h1.clone();
+    assert!(h1.as_mut_ptr().is_none());
+}
+
+#[test]
+fn as_mut_slice() {
+    let mut h = HipVec::<u8, Arc>::borrowed(b"abc");
+    assert!(h.as_mut_slice().is_none());
+
+    let mut h = HipVec::<u8, Arc>::new();
+    assert!(h.is_nil());
+    assert!(h.as_mut_slice().unwrap().is_empty());
+
+    let mut h = HipVec::<u8, Arc>::from([1, 2, 3]);
+    assert!(h.is_inline());
+    assert_eq!(h.as_mut_slice().unwrap(), &mut [1, 2, 3]);
+
+    let mut h = HipVec::<u8, Arc>::from(vec![1, 2, 3]);
+    assert!(h.is_wide());
+    assert_eq!(h.as_mut_slice().unwrap(), &mut [1, 2, 3]);
+
+    let mut h = HipVec::<u8, Arc>::from([0; 42]);
+    h.truncate(3);
+    assert!(h.is_thin());
+    assert_eq!(h.as_mut_slice().unwrap(), &mut [0, 0, 0]);
+}
+
+#[test]
+fn to_mut_slice() {
+    let mut h = HipVec::<u8, Arc>::new();
+    assert!(h.to_mut_slice().is_empty());
+
+    let mut h = HipVec::<u8, Arc>::from([1, 2, 3]);
+    assert_eq!(h.to_mut_slice(), [1, 2, 3]);
+
+    let mut h = HipVec::<u8, Arc>::from([42; 42]);
+    assert_eq!(h.to_mut_slice(), [42; 42]);
+
+    let mut h2 = h.clone();
+    assert!(!h.is_unique());
+    assert!(!h2.is_unique());
+    h2.to_mut_slice().fill(41);
+    assert_eq!(h2.as_slice(), [41; 42]);
+    assert!(h.is_unique());
+    assert!(h2.is_unique());
+}
+
+#[test]
+fn to_mut_slice_copy() {
+    let mut h = HipVec::<u8, Arc>::new();
+    assert!(h.to_mut_slice_copy().is_empty());
+
+    let mut h = HipVec::<u8, Arc>::from([1, 2, 3]);
+    assert_eq!(h.to_mut_slice_copy(), [1, 2, 3]);
+
+    let mut h = HipVec::<u8, Arc>::from([42; 42]);
+    assert_eq!(h.to_mut_slice_copy(), [42; 42]);
+
+    let mut h2 = h.clone();
+    assert!(!h.is_unique());
+    assert!(!h2.is_unique());
+    h2.to_mut_slice_copy().fill(41);
+    assert_eq!(h2.as_slice(), [41; 42]);
+    assert!(h.is_unique());
+    assert!(h2.is_unique());
 }

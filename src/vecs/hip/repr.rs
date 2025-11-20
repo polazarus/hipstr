@@ -63,6 +63,19 @@ impl<T, B: Backend> Owner<T, B> {
         &self.0.as_ref().unwrap().prefix
     }
 
+    pub const fn as_mut_ptr(&mut self) -> *mut T {
+        if let Some(r) = self.0.as_mut() {
+            if let Some(p) = r.ptr {
+                p.as_ptr()
+            } else {
+                let repr: &ThinRepr<T, B> = unsafe { &*ptr::from_mut(self).cast() };
+                repr.data().as_ptr()
+            }
+        } else {
+            ptr::dangling_mut()
+        }
+    }
+
     pub const fn data(&self) -> NonNull<T> {
         if let Some(r) = self.0.as_ref() {
             if let Some(p) = r.ptr {

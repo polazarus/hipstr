@@ -36,7 +36,7 @@ use crate::common::methods::{
     resize_impl, spare_capacity_mut_impl, split_off_impl, swap_remove_impl, truncate_impl,
 };
 use crate::common::traits::{MutVector, Mutate, Vector};
-use crate::common::{drop_raw_slice, panic_display, SliceWriteGuard};
+use crate::common::{drop_raw_slice, unwrap_display, SliceWriteGuard};
 use crate::{common, macros};
 
 pub(crate) mod length;
@@ -158,7 +158,7 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     /// ```
     #[inline]
     #[track_caller]
-    pub const fn reserve(&self, additional: usize) {
+    pub const fn reserve(&mut self, additional: usize) {
         assert!(
             self.len() + additional <= Self::CAPACITY,
             "new length exceeds capacity"
@@ -739,10 +739,7 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     #[track_caller]
     #[inline]
     pub const fn remove(&mut self, index: usize) -> T {
-        let len = self.len();
-
-        assert!(index < len, "index out of bounds");
-
+        assert!(index < self.len(), "index out of bounds");
         // SAFETY: index checked above
         unsafe { self.remove_unchecked(index) }
     }
@@ -874,7 +871,7 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     /// assert_eq!(v, &[]);
     /// ```
     pub fn drain(&mut self, range: impl RangeBounds<usize>) -> Drain<'_, Self> {
-        Drain::new(self, range).unwrap_or_else(panic_display)
+        unwrap_display(Drain::new(self, range))
     }
 }
 

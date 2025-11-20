@@ -4,6 +4,7 @@
 
 use alloc::fmt;
 use core::hash::Hash;
+use core::mem;
 use core::ops::{Deref, DerefMut};
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
@@ -395,15 +396,11 @@ where
     #[inline]
     #[must_use]
     pub fn mutate(&mut self) -> RefMut<'_, 'borrow, B> {
-        let owned = self.take_path_buf();
+        let owned: PathBuf = mem::take(self).into();
         RefMut {
             result: self,
             owned,
         }
-    }
-
-    fn take_path_buf(&mut self) -> PathBuf {
-        PathBuf::from(self.0.take_os_string())
     }
 
     // /// Appends a given string slice onto the end of this `HipPath`.

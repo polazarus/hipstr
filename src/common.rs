@@ -52,6 +52,14 @@ pub(crate) fn panic_display<T>(e: impl fmt::Display) -> T {
     panic!("{e}");
 }
 
+#[track_caller]
+pub(crate) fn unwrap_display<T>(result: Result<T, impl fmt::Display>) -> T {
+    match result {
+        Ok(value) => value,
+        Err(e) => panic_display(e),
+    }
+}
+
 /// Converts any generic range into a concrete `Range<usize>` given a length.
 ///
 /// # Errors

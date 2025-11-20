@@ -87,7 +87,7 @@ use crate::common::methods::{
 };
 use crate::common::traits::{MutVector, Mutate, Vector};
 use crate::common::{
-    check_alloc, drop_raw_slice, maybe_uninit_write_copy_of_slice, panic_display, RangeError,
+    check_alloc, drop_raw_slice, maybe_uninit_write_copy_of_slice, unwrap_display, RangeError,
     ZeroUsize,
 };
 use crate::macros::trait_impls;
@@ -678,7 +678,7 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     /// assert_eq!(v, [1, 5]);
     /// ```
     pub fn drain(&mut self, range: impl RangeBounds<usize>) -> Drain<'_, Self> {
-        Drain::new(self, range).unwrap_or_else(panic_display)
+        unwrap_display(Drain::new(self, range))
     }
 
     /// Attempts to create a draining iterator that removes the specified range in the vector
