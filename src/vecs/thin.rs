@@ -745,8 +745,7 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     where
         T: Clone,
     {
-        self.try_extend_from_within(range)
-            .unwrap_or_else(common::panic_display);
+        unwrap_display(self.try_extend_from_within(range));
     }
 
     /// Attempts to extend the vector from a range of elements within itself.

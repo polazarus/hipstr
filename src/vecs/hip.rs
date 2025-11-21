@@ -37,7 +37,10 @@ use crate::common::derives::{
     AsRef, ConstDefault, Copy, DelegateDebug, DelegateHash, Deref, From, Vector,
 };
 use crate::common::traits::Mutate;
-use crate::common::{self, drop_raw_slice, force_transmute, range_of, RangeError};
+use crate::common::{
+    self, drop_raw_slice, force_transmute, range_of, unwrap_display, unwrap_unchecked_display,
+    RangeError,
+};
 use crate::vecs::inline::{InlineLength, InlineVec};
 use crate::vecs::thin::{can_reuse, SmartThinVec, ThinVec};
 use crate::vecs::wide::{SmartWideVec, WideVec};
@@ -1029,30 +1032,25 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     where
         T: Clone,
     {
-        self.try_slice(range).unwrap()
+        unwrap_display(self.try_slice(range))
     }
 
     /// Returns a slice of the vector without checking the range.
+    ///
+    /// # Panics
+    ///
+    /// In debug mode, this function panics if the range is out of bounds.
     ///
     /// # Safety
     ///
     /// The provided range must be valid for the vector.
     #[must_use]
-    #[track_caller]
     pub unsafe fn slice_unchecked(&self, range: impl RangeBounds<usize>) -> Self
     where
         T: Clone,
     {
         let range = common::range(range, self.len());
-
-        if cfg!(debug_assertions) {
-            if let Err(err) = range {
-                panic!("invalid range: {err}");
-            }
-        }
-
-        let range = unsafe { range.unwrap_unchecked() };
-
+        let range = unwrap_unchecked_display(range);
         self.slice_range(range)
     }
 

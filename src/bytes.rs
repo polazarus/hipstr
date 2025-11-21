@@ -11,9 +11,12 @@ use core::mem::{self, MaybeUninit};
 use core::ops::{Bound, Deref, DerefMut, Range, RangeBounds};
 use core::ptr;
 
+use rules_derive::rules_derive;
+
 use crate::backend::Backend;
+use crate::common::derives::ConstDefault;
 use crate::common::RangeError;
-use crate::vecs::hip::{HipVec, Inline};
+use crate::vecs::hip::HipVec;
 
 mod cmp;
 mod convert;
@@ -86,7 +89,8 @@ type Slice = [u8];
 /// [`bstr::BString`]: https://docs.rs/bstr/latest/bstr/struct.BString.html
 /// [`Deref`]: core::ops::Deref
 /// [`RefMut`]: super::RefMut
-#[repr(C)]
+#[repr(transparent)]
+#[rules_derive(ConstDefault(Self::new()))]
 pub struct HipByt<'borrow, B: Backend>(pub(crate) HipVec<'borrow, u8, B>);
 
 impl<'borrow, B: Backend> Clone for HipByt<'borrow, B>
@@ -107,25 +111,12 @@ where
         unsafe { mem::transmute(self) }
     }
 
-    /// Creates a new `HipByt` from a short slice.
-    ///
-    /// # Safety
-    ///
-    /// The input slice's length MUST be at most `INLINE_CAPACITY`.
-    pub(super) const unsafe fn inline_unchecked(bytes: &[u8]) -> Self {
-        // SAFETY: see function precondition
-        let inline = unsafe { Inline::from_slice_copy_unchecked(bytes) };
-        Self(HipVec::from_inline(inline))
-    }
-
     // derived constructors
 
     /// Creates a new `HipByt` from a vector.
-    ///
-    /// Will normalize the representation depending on the size of the vector.
     #[inline]
-    pub(crate) fn from_vec_normalized(vec: Vec<u8>) -> Self {
-        Self(HipVec::from_vec_normalized(vec))
+    pub(crate) fn from_vec(vec: Vec<u8>) -> Self {
+        Self(HipVec::from_vec(vec))
     }
 
     /// Creates a new `HipByt` from a slice.
@@ -592,6 +583,18 @@ where
         self.0.is_allocated()
     }
 
+    // TODO doc
+    #[must_use]
+    pub const fn is_wide(&self) -> bool {
+        self.0.is_wide()
+    }
+
+    // TODO doc
+    #[must_use]
+    pub const fn is_thin(&self) -> bool {
+        self.0.is_thin()
+    }
+
     /// Returns `true` if the representation is normalized.
     #[inline]
     #[must_use]
@@ -623,7 +626,7 @@ where
     /// ```
     #[inline]
     #[must_use]
-    pub fn capacity(&self) -> usize {
+    pub const fn capacity(&self) -> usize {
         self.0.capacity()
     }
 
@@ -698,7 +701,7 @@ where
     /// assert!(a.try_slice(0..4).is_err());
     /// ```
     pub fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, RangeError> {
-        self.0.try_slice(range).map(HipByt)
+        self.0.try_slice(range).map(Self)
     }
 
     /// Extracts a slice as its own `HipByt`.
@@ -809,7 +812,7 @@ where
     /// ```
     #[inline]
     pub fn clear(&mut self) {
-        self.0.clear()
+        self.0.clear();
     }
 
     /// Removes the last element from this `HipByt` and returns it, or [`None`]
@@ -1397,16 +1400,6 @@ where
     }
 }
 
-impl<B> Default for HipByt<'_, B>
-where
-    B: Backend,
-{
-    #[inline]
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl<B> Deref for HipByt<'_, B>
 where
     B: Backend,
@@ -1503,9 +1496,7 @@ const fn simplify_range_mono(
 }
 
 /// A wrapper type for a mutably borrowed vector out of a [`HipByt`].
-pub struct RefMut<'a, 'borrow, B: Backend>(pub(crate) crate::vecs::hip::RefMut<'a, 'borrow, u8, B>)
-where
-    B: Backend;
+pub struct RefMut<'a, 'borrow, B: Backend>(pub(crate) crate::vecs::hip::RefMut<'a, 'borrow, u8, B>);
 
 impl<B: Backend> RefMut<'_, '_, B> {
     #[cfg(feature = "bstr")]
@@ -1561,7 +1552,7 @@ where
     }
 }
 
-impl<'a, 'b, B> DerefMut for RefMut<'a, 'b, B>
+impl<B> DerefMut for RefMut<'_, '_, B>
 where
     B: Backend,
 {

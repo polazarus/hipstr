@@ -53,10 +53,25 @@ pub(crate) fn panic_display<T>(e: impl fmt::Display) -> T {
 }
 
 #[track_caller]
-pub(crate) fn unwrap_display<T>(result: Result<T, impl fmt::Display>) -> T {
+pub(crate) fn unwrap_display<T, E: fmt::Display>(result: Result<T, E>) -> T {
     match result {
         Ok(value) => value,
-        Err(e) => panic_display(e),
+        Err(e) => panic!("{e}"),
+    }
+}
+
+#[track_caller]
+#[cfg_attr(coverage_nightly, coverage(off))]
+pub(crate) fn unwrap_unchecked_display<T, E: fmt::Display>(result: Result<T, E>) -> T {
+    match result {
+        Ok(value) => value,
+        Err(e) => unsafe {
+            if cfg!(debug_assertions) {
+                panic!("{e}");
+            } else {
+                core::hint::unreachable_unchecked()
+            }
+        },
     }
 }
 

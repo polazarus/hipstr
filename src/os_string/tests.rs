@@ -8,7 +8,7 @@ use std::sync::LazyLock;
 use crate::HipOsStr;
 
 type H<'borrow> = HipOsStr<'borrow>;
-const EMPTY_SLICE: LazyLock<&OsStr> = LazyLock::new(|| OsStr::new(""));
+static EMPTY_SLICE: LazyLock<&OsStr> = LazyLock::new(|| OsStr::new(""));
 const A: &str = "A";
 
 const INLINE_CAPACITY: usize = HipOsStr::inline_capacity();

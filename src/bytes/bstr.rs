@@ -94,7 +94,7 @@ symmetric_ord! {
 
 #[cfg(test)]
 mod tests {
-    use bstr::{ByteSlice, ByteVec};
+    use bstr::ByteSlice;
 
     use super::*;
     use crate::HipByt;

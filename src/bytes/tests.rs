@@ -32,6 +32,12 @@ const MEDIUM: &[u8] = &[42; 42];
 const BIG: &[u8] = &[42; 1024];
 
 #[test]
+fn size_and_niche() {
+    assert_eq!(size_of::<H>(), 3 * size_of::<usize>());
+    assert_eq!(size_of::<Option<H>>(), 3 * size_of::<usize>());
+}
+
+#[test]
 fn new_default() {
     let new = H::new();
     assert_eq!(new, EMPTY_SLICE);
@@ -43,7 +49,35 @@ fn new_default() {
 }
 
 #[test]
-fn ptr() {
+fn as_ptr_empty() {
+    let h = H::new();
+    assert!(!h.as_ptr().is_null());
+}
+
+#[test]
+fn as_ptr_inline() {
+    let h = H::inline(ABCDEF);
+
+    assert_eq!(h.len(), ABCDEF.len());
+    let slice_start = h.as_ptr();
+    let slice_end = slice_start.wrapping_add(ABCDEF.len());
+    let start: *const u8 = (&raw const h).cast();
+    let end: *const u8 = (&raw const h).wrapping_add(1).cast();
+    assert!(start <= slice_start && slice_start <= slice_end && slice_end <= end);
+}
+
+#[test]
+fn as_ptr_wide() {
+    let v = Vec::from(ABCDEF);
+    let p = v.as_ptr();
+    let h = H::from(v);
+    assert!(h.is_wide());
+    assert_eq!(h.len(), ABCDEF.len());
+    assert_eq!(h.as_ptr(), p);
+}
+
+#[test]
+fn as_mut_ptr() {
     let mut h = H::inline(ABCDEF);
     let p_const = h.as_ptr();
     let p_mut = h.as_mut_ptr().unwrap();
@@ -69,7 +103,7 @@ fn ptr() {
 /// Tests that `as_mut_ptr_unchecked` panics when the sequence is shared in debug.
 #[test]
 #[cfg(debug_assertions)]
-#[should_panic]
+#[should_panic(expected = "vector is not uniquely owned")]
 fn as_mut_ptr_panic_shared() {
     let mut h = H::from(MEDIUM);
     let _h2 = h.clone();
@@ -80,7 +114,7 @@ fn as_mut_ptr_panic_shared() {
 /// Tests that `as_mut_ptr_unchecked` panics when the sequence is borrowed in debug.
 #[test]
 #[cfg(debug_assertions)]
-#[should_panic]
+#[should_panic(expected = "vector is not uniquely owned")]
 fn as_mut_ptr_panic_borrowed() {
     let mut h = H::borrowed(MEDIUM);
     assert!(h.as_mut_ptr().is_none());
@@ -124,13 +158,13 @@ fn inline() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "slice too large")]
 fn inline_panic() {
     let _ = H::inline(MEDIUM);
 }
 
 #[test]
-fn ry_inline() {
+fn try_inline() {
     assert_eq!(H::try_inline(ABC), Some(H::from(ABC)));
     assert_eq!(H::try_inline(MEDIUM), None);
 }
@@ -158,26 +192,34 @@ fn fmt() {
 }
 
 #[test]
-fn test_from_owned() {
-    let s = Owned::from(MEDIUM);
+fn from_vec() {
+    let s = Vec::from(MEDIUM);
     let h = H::from(s.clone());
+
     assert!(!h.is_inline());
     assert!(!h.is_borrowed());
     assert!(h.is_allocated());
+    assert!(!h.is_thin());
+    assert!(h.is_wide());
+
     assert_eq!(h.len(), 42);
     assert_eq!(h.as_slice(), s.as_slice());
 
-    let o = Owned::from(ABC);
+    let o = Vec::from(ABC);
     let h = H::from(o);
-    assert!(h.is_inline());
+
+    assert!(!h.is_inline());
     assert!(!h.is_borrowed());
-    assert!(!h.is_allocated());
+    assert!(h.is_allocated());
+    assert!(!h.is_thin());
+    assert!(h.is_wide());
+
     assert_eq!(h.len(), 3);
     assert_eq!(h.as_slice(), ABC);
 }
 
 #[test]
-fn test_borrowed() {
+fn borrowed() {
     let s = BIG;
 
     for size in [0, 1, INLINE_CAPACITY, INLINE_CAPACITY + 1, 256, 1024] {
@@ -191,7 +233,7 @@ fn test_borrowed() {
 }
 
 #[test]
-fn test_from_static() {
+fn from_static() {
     const fn is_static_type<T: 'static>(_: &T) {}
 
     let s = ALPHABET;
@@ -224,7 +266,7 @@ fn from_slice() {
 }
 
 #[test]
-fn test_as_slice() {
+fn as_slice() {
     // static
     {
         let a = H::borrowed(ABC);
@@ -252,7 +294,7 @@ fn test_as_slice() {
 }
 
 #[test]
-fn test_clone() {
+fn clone() {
     // static
     {
         let a = H::borrowed(ABC);
@@ -286,7 +328,7 @@ fn test_clone() {
 }
 
 #[test]
-fn test_clone_drop() {
+fn clone_drop() {
     let v = Vec::from(MEDIUM);
     let mut rand = Rng::with_seed(0);
     for n in [5, 10, 20, 100] {
@@ -314,7 +356,7 @@ fn test_clone_drop() {
 }
 
 #[test]
-fn test_into_borrowed() {
+fn into_borrowed() {
     // static
     let a = H::borrowed(ABC);
     let s = a.into_borrowed().unwrap();
@@ -333,7 +375,7 @@ fn test_into_borrowed() {
 }
 
 #[test]
-fn test_as_borrowed() {
+fn as_borrowed() {
     // borrowed
     let a = H::borrowed(ABC);
     let b = a.as_borrowed().unwrap();
@@ -350,7 +392,7 @@ fn test_as_borrowed() {
 }
 
 #[test]
-fn test_as_mut_slice() {
+fn as_mut_slice() {
     // static
     let mut a = H::borrowed(ABC);
     assert_eq!(a.as_mut_slice(), None);
@@ -374,7 +416,7 @@ fn test_as_mut_slice() {
 }
 
 #[test]
-fn test_to_mut_slice_borrowed() {
+fn to_mut_slice_borrowed() {
     let mut a = H::borrowed(ABC);
     assert!(a.is_borrowed());
     assert_eq!(a.to_mut_slice(), ABC);
@@ -387,7 +429,7 @@ fn test_to_mut_slice_borrowed() {
 }
 
 #[test]
-fn test_to_mut_slice_inline() {
+fn to_mut_slice_inline() {
     let mut a = H::from(ABC);
     let p = a.as_ptr();
     assert!(a.is_inline());
@@ -397,7 +439,7 @@ fn test_to_mut_slice_inline() {
 }
 
 #[test]
-fn test_to_mut_slice_allocated() {
+fn to_mut_slice_allocated() {
     let mut a = H::from(MEDIUM);
     let p = a.as_ptr();
     assert!(a.is_allocated());
@@ -420,7 +462,7 @@ fn test_to_mut_slice_allocated() {
 }
 
 #[test]
-fn test_slice_inline() {
+fn slice_inline() {
     let v = &MEDIUM[0..INLINE_CAPACITY];
     let s = H::from(v);
     let sl = s.slice(0..10);
@@ -431,7 +473,7 @@ fn test_slice_inline() {
 }
 
 #[test]
-fn test_slice_borrowed() {
+fn slice_borrowed() {
     let m = MEDIUM;
     let s = H::borrowed(m);
 
@@ -467,29 +509,29 @@ fn slice_allocated() {
 }
 
 #[test]
-#[should_panic]
-fn test_slice_panic_start() {
+#[should_panic(expected = "start index 4 is out of bounds for slice of length 3")]
+fn slice_panic_start() {
     let a = H::borrowed(ABC);
     let _b = a.slice(4..);
 }
 
 #[test]
-#[should_panic]
-fn test_slice_panic_end() {
+#[should_panic(expected = "end index 5 is out of bounds for slice of length 3")]
+fn slice_panic_end() {
     let a = H::borrowed(ABC);
     let _b = a.slice(0..5);
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "start index 3 is greater than end index 2")]
 #[allow(clippy::reversed_empty_ranges)]
-fn test_slice_panic_mixed() {
+fn slice_panic_mixed() {
     let a = H::borrowed(ABC);
     let _b = a.slice(3..2);
 }
 
 #[test]
-fn test_slice_unchecked() {
+fn slice_unchecked() {
     use core::ops::Bound;
     let a = H::borrowed(ABC);
     assert_eq!(unsafe { a.slice_unchecked(0..2) }, b"ab");
@@ -504,31 +546,31 @@ fn test_slice_unchecked() {
 
 #[test]
 #[cfg(debug_assertions)]
-#[should_panic]
-fn test_slice_unchecked_debug_panic_start() {
+#[should_panic(expected = "start index 4 is out of bounds for slice of length 3")]
+fn slice_unchecked_debug_panic_start() {
     let a = H::borrowed(ABC);
     let _ = unsafe { a.slice_unchecked(4..) };
 }
 
 #[test]
 #[cfg(debug_assertions)]
-#[should_panic]
-fn test_slice_unchecked_debug_panic_end() {
+#[should_panic(expected = "end index 5 is out of bounds for slice of length 3")]
+fn slice_unchecked_debug_panic_end() {
     let a = H::borrowed(ABC);
     let _ = unsafe { a.slice_unchecked(..5) };
 }
 
 #[test]
 #[cfg(debug_assertions)]
-#[should_panic]
+#[should_panic(expected = "start index 3 is greater than end index 2")]
 #[allow(clippy::reversed_empty_ranges)]
-fn test_slice_unchecked_debug_panic_mixed() {
+fn slice_unchecked_debug_panic_mixed() {
     let a = H::borrowed(ABC);
     let _ = unsafe { a.slice_unchecked(3..2) };
 }
 
 #[test]
-fn test_slice_ok() {
+fn slice_ok() {
     assert_eq!(H_ABCDEF.slice(..), ABCDEF);
     assert_eq!(H_ABCDEF.slice(..1), A);
     assert_eq!(H_ABCDEF.slice(..=1), AB);
@@ -607,7 +649,7 @@ fn try_slice_ok() {
 }
 
 #[test]
-fn test_empty_vec() {
+fn empty_vec() {
     let source = vec![];
     let heap_zero = H::from(source);
     assert!(heap_zero.is_normalized());
@@ -617,7 +659,7 @@ fn test_empty_vec() {
 }
 
 #[test]
-fn test_empty_slice() {
+fn empty_slice() {
     // should normalize slice
     let source1 = H::from(vec![1, 2, 3]);
     let empty_slice1 = source1.slice(0..0);
