@@ -549,7 +549,7 @@ fn slice_unchecked() {
 
 #[test]
 #[cfg(debug_assertions)]
-#[should_panic(expected = "invalid range")]
+#[should_panic(expected = "start index 4 is out of bounds for slice of length 3")]
 fn slice_unchecked_debug_panic() {
     let h = HipVec::<i32, Arc>::from([1, 2, 3]);
     let _h2 = unsafe { h.slice_unchecked(4..) };
