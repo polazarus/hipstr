@@ -1,5 +1,6 @@
 use alloc::boxed::Box;
 use alloc::vec;
+use core::mem::MaybeUninit;
 use core::ptr;
 use std::vec::Vec;
 
@@ -965,4 +966,97 @@ fn to_mut_slice_copy() {
     assert_eq!(h2.as_slice(), [41; 42]);
     assert!(h.is_unique());
     assert!(h2.is_unique());
+}
+
+#[test]
+fn repeat() {
+    let h1 = HipVec::<u8, Arc>::new();
+    let h2 = h1.repeat(5);
+    assert_eq!(h2.len(), 0);
+
+    let h1 = HipVec::<u8, Arc>::from([1, 2, 3]);
+    let h2 = h1.repeat(3);
+    assert_eq!(h2.as_slice(), [1, 2, 3, 1, 2, 3, 1, 2, 3]);
+
+    let h1 = HipVec::<u8, Arc>::from([0; 7]);
+    let h2 = h1.repeat(10);
+    assert_eq!(h2.len(), 70);
+
+    let h1 = HipVec::<u8, Arc>::from([42; 42]);
+    let h2 = h1.repeat(2);
+    assert_eq!(h2.as_slice(), [42; 84]);
+    let h3 = h1.repeat(0);
+    assert_eq!(h3.len(), 0);
+    let h4 = h1.repeat(1);
+    assert_eq!(h4.as_slice(), [42; 42]);
+    assert_eq!(h1.as_ptr(), h4.as_ptr());
+}
+
+#[test]
+fn repeat_copy() {
+    let h1 = HipVec::<u8, Arc>::new();
+    let h2 = h1.repeat_copy(5);
+    assert_eq!(h2.len(), 0);
+
+    let h1 = HipVec::<u8, Arc>::from([1, 2, 3]);
+    let h2 = h1.repeat_copy(3);
+    assert_eq!(h2.as_slice(), [1, 2, 3, 1, 2, 3, 1, 2, 3]);
+
+    let h1 = HipVec::<u8, Arc>::from([0; 7]);
+    let h2 = h1.repeat_copy(10);
+    assert_eq!(h2.len(), 70);
+
+    let h1 = HipVec::<u8, Arc>::from([42; 42]);
+    let h2 = h1.repeat_copy(2);
+    assert_eq!(h2.as_slice(), [42; 84]);
+    let h3 = h1.repeat_copy(0);
+    assert_eq!(h3.len(), 0);
+    let h4 = h1.repeat_copy(1);
+    assert_eq!(h4.as_slice(), [42; 42]);
+    assert_eq!(h1.as_ptr(), h4.as_ptr());
+}
+
+#[test]
+fn spare_capacity_mut() {
+    #[track_caller]
+    fn fill(n: usize) {
+        let mut h = HipVec::<u8, Arc>::with_capacity(n);
+        {
+            let spare = h.spare_capacity_mut();
+            assert!(spare.len() >= n);
+            spare.fill(MaybeUninit::new(42));
+        }
+        unsafe {
+            h.set_len(n);
+        }
+        assert_eq!(h.as_slice(), vec![42; n].as_slice());
+    }
+
+    #[track_caller]
+    fn fill_vec(n: usize) {
+        let mut h = HipVec::<u8, Arc>::from(Vec::with_capacity(n));
+        {
+            let spare = h.spare_capacity_mut();
+            assert!(spare.len() >= n);
+            spare.fill(MaybeUninit::new(42));
+        }
+        unsafe {
+            h.set_len(n);
+        }
+        assert_eq!(h.as_slice(), vec![42; n].as_slice());
+    }
+
+    fill(0);
+    fill(5);
+    fill(42);
+    fill(100);
+
+    fill_vec(0);
+    fill_vec(5);
+    fill_vec(42);
+    fill_vec(100);
+
+    let mut h = HipVec::<u8, Arc>::from([42; 42]);
+    let _h = h.clone();
+    assert!(h.spare_capacity_mut().is_empty());
 }

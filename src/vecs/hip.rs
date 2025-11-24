@@ -39,7 +39,7 @@ use crate::common::derives::{
 use crate::common::traits::Mutate;
 use crate::common::{
     self, drop_raw_slice, force_transmute, range_of, unwrap_display, unwrap_unchecked_display,
-    RangeError,
+    RangeError, SliceWriteGuard,
 };
 use crate::vecs::inline::{InlineLength, InlineVec};
 use crate::vecs::thin::{can_reuse, SmartThinVec, ThinVec};
@@ -946,7 +946,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     /// - A borrowed vector is copyable
     /// - An inline vector of Copy elements is copyable
     /// - A shared vector is copyiable if the counter has already been increased.
-    const unsafe fn copy(&self) -> Self {
+    const unsafe fn raw_copy(&self) -> Self {
         Self(self.0, PhantomData)
     }
 
@@ -1101,7 +1101,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
 
             // SAFETY: counter is incremented if allocated
             // otherwise, the borrowed slice is copyable
-            let mut copy = unsafe { self.copy() };
+            let mut copy = unsafe { self.raw_copy() };
             unsafe {
                 let copy = copy.as_mut_sliced_unchecked();
                 copy.ptr = copy.ptr.add(range.start);
@@ -1134,7 +1134,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
             }
 
             unsafe {
-                let mut result = self.copy();
+                let mut result = self.raw_copy();
                 {
                     let sliced = result.as_mut_sliced_unchecked();
                     sliced.ptr = slice.as_ptr();
@@ -1412,7 +1412,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
             }
 
             // SAFETY: the reference count was incremented if needed
-            let mut other = unsafe { self.copy() };
+            let mut other = unsafe { self.raw_copy() };
 
             // SAFETY: repr is not inline
             unsafe {
@@ -1608,6 +1608,20 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         unsafe { RefMut::new(self) }
     }
 
+    /// Creates a new vector by repeating the contents of this vector `n` times.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the capacity overflows.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::vecs::HipVec;
+    /// let vec = HipVec::from([1, 2, 3]);
+    /// let repeated = vec.repeat_copy(3);
+    /// assert_eq!(repeated.as_slice(), &[1, 2, 3, 1, 2, 3, 1, 2, 3]);
+    /// ```
     #[must_use]
     pub fn repeat_copy(&self, n: usize) -> Self
     where
@@ -1616,8 +1630,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         if self.is_empty() {
             return Self::new();
         } else if n == 1 {
-            // TODO clone copy
-            return self.clone();
+            return self.copy();
         }
 
         let src_len = self.len();
@@ -1635,6 +1648,56 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
                 ptr::copy_nonoverlapping(src, dst, src_len);
                 dst = dst.add(src_len);
             }
+            result.set_len(new_len);
+        }
+
+        result
+    }
+
+    /// Creates a new vector by repeating the contents of this vector `n` times.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the capacity overflows.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::vecs::HipVec;
+    /// let vec = HipVec::from([1, 2, 3]);
+    /// let repeated = vec.repeat(3);
+    /// assert_eq!(repeated.as_slice(), &[1, 2, 3, 1, 2, 3, 1, 2, 3]);
+    /// ```
+    #[must_use]
+    pub fn repeat(&self, n: usize) -> Self
+    where
+        T: Clone,
+    {
+        if self.is_empty() {
+            return Self::new();
+        } else if n == 1 {
+            return self.clone();
+        }
+
+        let src_len = self.len();
+        let new_len = src_len.checked_mul(n).expect("capacity overflow");
+        let mut result = Self::with_capacity(new_len);
+
+        let src = self.as_ptr();
+        // SAFETY: vec is unique
+        let dst = unsafe { result.as_mut_ptr_unchecked() };
+
+        // SAFETY: copy new_len bytes
+        unsafe {
+            let mut guard = SliceWriteGuard::new(dst, new_len);
+            // could be better from an algorithmic standpoint
+            for _ in 0..n {
+                for i in 0..src_len {
+                    let value = &*src.add(i);
+                    guard.write(value.clone());
+                }
+            }
+            guard.complete();
             result.set_len(new_len);
         }
 
@@ -1659,62 +1722,71 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
                 self.as_mut_inline_unchecked().set_len(new_len);
             }
         } else {
-            let is_allocated = self.is_allocated();
             let sliced = unsafe { self.as_mut_sliced_unchecked() };
             let len = sliced.len;
 
             if len >= new_len {
                 sliced.len = new_len;
             } else {
-                debug_assert!(is_allocated, "cannot increase length of borrowed slice");
+                debug_assert!(
+                    self.is_allocated(),
+                    "cannot increase length of borrowed slice"
+                );
 
-                if is_allocated {
-                    let allocated = unsafe { self.as_mut_allocated_unchecked() };
-                    debug_assert!(
-                        allocated.owner.is_unique(),
-                        "cannot increase length of non-unique allocated vector"
-                    );
-                    let start = unsafe {
-                        allocated
-                            .ptr
-                            .offset_from_unsigned(allocated.owner.data().as_ptr())
-                    };
-                    let expected_owner_len = start + len;
-                    let owner_new_len = start + new_len;
-                    debug_assert!(
-                        allocated.owner.len() == expected_owner_len,
-                        "the owner length is inconsistent with the slice"
-                    );
-                    debug_assert!(
-                        owner_new_len <= allocated.owner.capacity(),
-                        "new length exceeds capacity"
-                    );
-                    unsafe {
-                        allocated.owner.set_len(owner_new_len);
-                    }
-                    allocated.len = new_len;
+                let allocated = unsafe { self.as_mut_allocated_unchecked() };
+                debug_assert!(
+                    allocated.owner.is_unique(),
+                    "cannot increase length of non-unique allocated vector"
+                );
+                let start = unsafe {
+                    allocated
+                        .ptr
+                        .offset_from_unsigned(allocated.owner.data().as_ptr())
+                };
+                let expected_owner_len = start + len;
+                let owner_new_len = start + new_len;
+                debug_assert!(
+                    allocated.owner.len() == expected_owner_len,
+                    "the owner length is inconsistent with the slice"
+                );
+                debug_assert!(
+                    owner_new_len <= allocated.owner.capacity(),
+                    "new length exceeds capacity"
+                );
+                unsafe {
+                    allocated.owner.set_len(owner_new_len);
                 }
+                allocated.len = new_len;
             }
         }
     }
 
+    /// Returns the spare capacity of the vector as a slice of uninitialized
+    /// elements.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::vecs::HipVec;
+    /// let mut vec = HipVec::with_capacity(10);
+    /// let spare = vec.spare_capacity_mut();
+    /// assert_eq!(spare.len(), 10);
+    /// ```
     pub fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<T>] {
-        if self.is_unique() {
-            if self.is_inline() {
-                let inline = unsafe { self.as_mut_inline_unchecked() };
-                inline.spare_capacity_mut()
-            } else {
-                self.right_trim();
+        if self.is_inline() {
+            let inline = unsafe { self.as_mut_inline_unchecked() };
+            inline.spare_capacity_mut()
+        } else if self.is_allocated() && self.is_unique() {
+            self.right_trim();
 
-                let allocated = unsafe { self.as_mut_allocated_unchecked() };
-                let owner = &mut allocated.owner;
-                let len = owner.len();
-                let cap = owner.capacity();
-                let ptr = owner.data_mut().as_ptr();
+            let allocated = unsafe { self.as_mut_allocated_unchecked() };
+            let owner = &mut allocated.owner;
+            let len = owner.len();
+            let cap = owner.capacity();
+            let ptr = owner.data_mut().as_ptr();
 
-                let spare = cap - len;
-                unsafe { core::slice::from_raw_parts_mut(ptr.add(len).cast(), spare) }
-            }
+            let spare = cap - len;
+            unsafe { core::slice::from_raw_parts_mut(ptr.add(len).cast(), spare) }
         } else {
             &mut []
         }
@@ -1743,6 +1815,19 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         self.shrink_to(self.len());
     }
 
+    /// Appends a slice to this vector.
+    ///
+    /// See also [`extend_from_slice_copy`] for a specialization for `T: Copy`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::vecs::HipVec;
+    /// let mut vec = HipVec::from([1, 2, 3]);
+    /// vec.extend_from_slice(&[4, 5, 6]);
+    /// assert_eq!(vec.as_slice(), &[1, 2, 3, 4, 5, 6]);
+    /// ```
+    #[doc(alias = "push_slice")]
     pub fn extend_from_slice(&mut self, slice: &[T])
     where
         T: Clone,
@@ -1763,6 +1848,19 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         }
     }
 
+    /// Appends a slice to this vector.
+    ///
+    /// This function is a specialization of [`extend_from_slice`] for `T: Copy`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::vecs::HipVec;
+    /// let mut vec = HipVec::from([1, 2, 3]);
+    /// vec.extend_from_slice_copy(&[4, 5, 6]);
+    /// assert_eq!(vec.as_slice(), &[1, 2, 3, 4, 5, 6]);
+    /// ```
+    #[doc(alias = "push_slice_copy")]
     pub fn extend_from_slice_copy(&mut self, slice: &[T])
     where
         T: Copy,
@@ -1786,6 +1884,19 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     }
 
     /// Converts the `HipVec` into a standard `Vec<T>` without clone or allocation if possible.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err(self)` if the conversion is not possible without clone or allocation.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::vecs::HipVec;
+    /// let hip = HipVec::from(vec![1, 2, 3, 4]);
+    /// let vec = hip.into_vec().unwrap();
+    /// assert_eq!(vec, vec![1, 2, 3, 4]);
+    /// ```
     pub fn into_vec(self) -> Result<Vec<T>, Self> {
         if self.is_wide() && self.is_unique() {
             let allocated = unsafe { self.into_allocated_unchecked() };
@@ -1805,6 +1916,24 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         }
     }
 
+    /// Converts the `HipVec` into an owned `HipVec<'static, T, B>`, cloning the
+    /// elements if necessary.
+    ///
+    /// Note that if the vector is owned but shared, this function does not
+    /// clone the elements. See [`detach`] for making it unique.
+    ///
+    /// [`detach`]: Self::detach
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::vecs::HipVec;
+    /// let hip = HipVec::borrowed(b"hello");
+    /// let owned_hip = hip.into_owned();
+    /// assert_eq!(owned_hip.as_slice(), b"hello");
+    /// assert!(!owned_hip.is_borrowed());
+    /// ```
+    #[must_use]
     pub fn into_owned(self) -> HipVec<'static, T, B>
     where
         T: Clone,
@@ -1815,6 +1944,64 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
             let old = core::mem::ManuallyDrop::new(self);
             // SAFETY: old is not borrowed
             HipVec(old.0, PhantomData)
+        }
+    }
+
+    #[must_use]
+    pub(crate) fn clone(&self) -> Self
+    where
+        T: Clone,
+    {
+        if self.is_inline() {
+            // SAFETY: repr is checked above
+            let inline = unsafe { self.as_inline_unchecked() };
+            // TODO optimize if T is Copy
+            Self::from_inline(inline.clone())
+        } else {
+            if self.is_allocated() {
+                // SAFETY: repr is checked above
+                let allocated = unsafe { self.as_allocated_unchecked() };
+                if allocated.owner.counter().incr() == UpdateResult::Overflow {
+                    return Self::from_slice_clone(allocated.as_slice());
+                }
+            }
+            // SAFETY: either ref count increased or borrowed repr => copyable
+            unsafe { self.raw_copy() }
+        }
+    }
+
+    /// Creates a copy of the vector.
+    ///
+    /// Specialized `clone` for `T: Copy`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::vecs::HipVec;
+    /// let hip = HipVec::from([1, 2, 3]);
+    /// let hip_copy = hip.copy();
+    /// assert_eq!(hip.as_slice(), hip_copy.as_slice());
+    /// ```
+    #[must_use]
+    pub fn copy(&self) -> Self
+    where
+        T: Copy,
+    {
+        if self.is_inline() {
+            // SAFETY: repr is checked above
+            let inline = unsafe { self.as_inline_unchecked() };
+            // TODO optimize if T is Copy
+            Self::from_inline(inline.copy())
+        } else {
+            if self.is_allocated() {
+                // SAFETY: repr is checked above
+                let allocated = unsafe { self.as_allocated_unchecked() };
+                if allocated.owner.counter().incr() == UpdateResult::Overflow {
+                    return Self::from_slice_copy(allocated.as_slice());
+                }
+            }
+            // SAFETY: either ref count increased or borrowed repr => copyable
+            unsafe { self.raw_copy() }
         }
     }
 }
@@ -1841,22 +2028,7 @@ impl<T, B: Backend> Drop for HipVec<'_, T, B> {
 
 impl<T: Clone, B: Backend> Clone for HipVec<'_, T, B> {
     fn clone(&self) -> Self {
-        if self.is_inline() {
-            // SAFETY: repr is checked above
-            let inline = unsafe { self.as_inline_unchecked() };
-            // TODO optimize if T is Copy
-            Self::from_inline(inline.clone())
-        } else {
-            if self.is_allocated() {
-                // SAFETY: repr is checked above
-                let allocated = unsafe { self.as_allocated_unchecked() };
-                if allocated.owner.counter().incr() == UpdateResult::Overflow {
-                    return Self::from_slice_clone(allocated.as_slice());
-                }
-            }
-            // SAFETY: either ref count increased or borrowed repr => copyable
-            unsafe { self.copy() }
-        }
+        self.clone()
     }
 }
 

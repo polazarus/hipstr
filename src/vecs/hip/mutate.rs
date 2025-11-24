@@ -228,6 +228,24 @@ impl<'a, 'b, T, B: Backend> RefMut<'a, 'b, T, B> {
         }
     }
 
+    /// Reserves the minimum capacity for exactly `additional` more elements to
+    /// be inserted in the given vector.
+    ///
+    /// The collection may still reserve more space than necessary to hold the
+    /// additional elements for technical reasons.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if the new capacity overflows.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::HipVec;
+    /// let mut hip = HipVec::new();
+    /// hip.mutate().reserve_exact(10);
+    /// assert!(hip.mutate().capacity() >= 10);
+    /// ```
     pub fn reserve_exact(&mut self, additional: usize) {
         let len = self.len();
         let cap = self.capacity();
@@ -513,7 +531,7 @@ impl<'a, 'b, T, B: Backend> RefMut<'a, 'b, T, B> {
     /// assert_eq!(h.mutate_copy().pop(), Some(3));
     /// assert_eq!(h.as_slice(), [1, 2]);
     /// ```
-    pub fn pop(&mut self) -> Option<T> {
+    pub const fn pop(&mut self) -> Option<T> {
         pop_impl!(self)
     }
 
@@ -581,36 +599,158 @@ impl<'a, 'b, T, B: Backend> RefMut<'a, 'b, T, B> {
         swap_remove_impl!(self, index)
     }
 
+    /// Removes and returns the element at position `index`, shifting all
+    /// elements after it to the left.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if `index` is out of bounds.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::vecs::HipVec;
+    /// let mut h = HipVec::from([1, 2, 3, 4, 5]);
+    /// assert_eq!(h.mutate().remove(2), 3);
+    /// assert_eq!(h.as_slice(), [1, 2, 4, 5]);
+    /// ```
     pub fn remove(&mut self, index: usize) -> T {
         assert!(index < self.len(), "index out of bounds");
         remove_unchecked_impl!(self, index)
     }
 
+    /// Inserts an element at position `index`, shifting all elements after it to
+    /// the right.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if `index` is out of bounds.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::vecs::HipVec;
+    /// let mut h = HipVec::from([1, 2, 4, 5]);
+    /// h.mutate().insert(2, 3);
+    /// assert_eq!(h.as_slice(), [1, 2, 3, 4, 5]);
+    /// ```
     pub fn insert(&mut self, index: usize, value: T) {
         insert_impl!(self, index, value);
     }
 
+    /// Appends all elements from another mutable vector to this vector.
+    ///
+    /// The other vector will be empty after this operation.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::vecs::HipVec;
+    /// let mut a = HipVec::from([1, 2, 3]);
+    /// let mut b = HipVec::from([4, 5, 6]);
+    /// a.mutate().append(&mut b);
+    /// assert_eq!(a.as_slice(), [1, 2, 3, 4, 5, 6]);
+    /// assert!(b.is_empty());
+    /// ```
     pub fn append(&mut self, other: &mut impl Mutate<Item = T>) {
         let mut other = other.mutate();
         let other = other.borrow_mut();
         append_impl!(self, other);
     }
 
+    /// Creates a draining iterator that removes the specified range in the
+    /// vector and yields the removed items.
+    ///
+    /// If the draining iterator is dropped before being fully consumed, all
+    /// remaining items will be dropped.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if the range is out of bounds.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::vecs::HipVec;
+    /// let mut h = HipVec::from([1, 2, 3, 4, 5]);
+    /// {
+    ///     let mut drain = h.mutate().drain(1..4);
+    ///     assert_eq!(drain.next(), Some(2));
+    ///     assert_eq!(drain.next(), Some(3));
+    ///     assert_eq!(drain.next(), Some(4));
+    ///     assert_eq!(drain.next(), None);
+    /// }
+    /// assert_eq!(h.as_slice(), [1, 5]);
+    /// ```
     pub fn drain(&mut self, range: impl RangeBounds<usize>) -> Drain<'_, Self> {
         unwrap_display(Drain::new(self, range))
     }
 
-    pub fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<T>] {
+    /// Returns the spare capacity of the vector as a mutable slice of
+    /// uninitialized elements.
+    ///
+    /// This function can be use in conjunction with [`set_len`] to manually
+    /// initialize elements in the vector.
+    ///
+    /// [`set_len`]: Self::set_len
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::vecs::HipVec;
+    /// let mut h = HipVec::<u8>::with_capacity(10);
+    /// let spare = h.mutate().spare_capacity_mut();
+    /// assert!(spare.len()>= 10);
+    /// ```
+    pub const fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<T>] {
         spare_capacity_mut_impl!(self)
     }
 
+    /// Resizes the vector to the specified length.
+    ///
+    /// If the new length is greater than the current length, the vector is
+    /// extended by the difference, with each additional slot filled with
+    /// `value`. If the new length is less than the current length, the vector
+    /// is truncated to the new length.
+    ///
+    ///  # Examples
+    ///
+    /// ```
+    /// # use hipstr::vecs::HipVec;
+    /// let mut h = HipVec::from([1, 2, 3]);
+    /// h.mutate().resize(5, 0);
+    /// assert_eq!(h.as_slice(), [1, 2, 3, 0, 0]);
+    /// h.mutate().resize(2, 0);
+    /// assert_eq!(h.as_slice(), [1, 2]);
+    /// ```
     pub fn resize(&mut self, new_len: usize, value: T)
     where
         T: Clone,
     {
-        resize_impl!(self, new_len, value.clone())
+        resize_impl!(
+            self,
+            new_len,
+            iter::repeat_n(value, new_len.saturating_sub(self.len()))
+        );
     }
 
+    /// Resizes the vector to the specified length.
+    ///
+    /// If the new length is greater than the current length, the vector is
+    /// extended by the difference, with each additional slot filled with
+    /// `value`. If the new length is less than the current length, the vector
+    /// is truncated to the new length.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::vecs::HipVec;
+    /// let mut h = HipVec::from([1, 2, 3]);
+    /// h.mutate_copy().resize_copy(5, 0);
+    /// assert_eq!(h.as_slice(), [1, 2, 3, 0, 0]);
+    /// h.mutate_copy().resize_copy(2, 0);
+    /// assert_eq!(h.as_slice(), [1, 2]);
+    /// ```
     pub fn resize_copy(&mut self, new_len: usize, value: T)
     where
         T: Copy,
@@ -626,9 +766,25 @@ impl<'a, 'b, T, B: Backend> RefMut<'a, 'b, T, B> {
         }
     }
 
+    /// Resizes the vector to the specified length.
+    ///
+    /// If the new length is greater than the current length, the vector is
+    /// extended by the difference, with each additional slot filled with the result
+    /// of calling the provided function. If the new length is less than the current length,
+    /// the vector is truncated to the new length.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::vecs::HipVec;
+    /// let mut h = HipVec::from([1, 2, 3]);
+    /// h.mutate().resize_with(5, || 0);
+    /// assert_eq!(h.as_slice(), [1, 2, 3, 0, 0]);
+    /// h.mutate().resize_with(2, || 0);
+    /// assert_eq!(h.as_slice(), [1, 2]);
+    /// ```
     pub fn resize_with(&mut self, new_len: usize, f: impl FnMut() -> T) {
-        let mut f = f;
-        resize_impl!(self, new_len, f())
+        resize_impl!(self, new_len, iter::repeat_with(f));
     }
 }
 

@@ -1,6 +1,6 @@
 /// `resize_with` impl, requires `len`, `set_len` and `as_mut_ptr`
 macro_rules! resize_impl {
-    ($self:ident, $new_len:expr, $f:expr) => {{
+    ($self:ident, $new_len:expr, $iter:expr) => {{
         use $crate::common::SliceWriteGuard;
 
         let old_len = $self.len();
@@ -13,9 +13,9 @@ macro_rules! resize_impl {
             let base = $self.as_mut_ptr();
 
             let mut guard = SliceWriteGuard::new(unsafe { base.add(old_len) }, additional);
-            for _i in old_len..new_len {
+            for e in $iter.take(additional) {
                 unsafe {
-                    guard.write($f);
+                    guard.write(e);
                 }
             }
             guard.complete();

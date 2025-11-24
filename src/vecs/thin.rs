@@ -66,7 +66,7 @@ use core::borrow::BorrowMut;
 use core::mem::{offset_of, ManuallyDrop, MaybeUninit};
 use core::ops::{Range, RangeBounds};
 use core::ptr::NonNull;
-use core::{cmp, mem, ptr, slice};
+use core::{cmp, iter, mem, ptr, slice};
 
 use const_default::ConstDefault;
 use rules_derive::rules_derive;
@@ -1398,7 +1398,11 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     where
         T: Clone,
     {
-        resize_impl!(self, new_len, value.clone());
+        resize_impl!(
+            self,
+            new_len,
+            iter::repeat_n(value, new_len.saturating_sub(self.len()))
+        );
     }
 
     /// Resizes the vector to the specified length, filling in new elements
@@ -1419,11 +1423,11 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     /// v.resize_with(2, || 0);
     /// assert_eq!(v.as_slice(), [1, 2]);
     /// ```
-    pub fn resize_with(&mut self, new_len: usize, mut f: impl FnMut() -> T)
+    pub fn resize_with(&mut self, new_len: usize, f: impl FnMut() -> T)
     where
         T: Clone,
     {
-        resize_impl!(self, new_len, f());
+        resize_impl!(self, new_len, iter::repeat_with(f));
     }
 }
 

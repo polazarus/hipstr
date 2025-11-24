@@ -18,7 +18,7 @@ use core::fmt::{self};
 use core::mem::MaybeUninit;
 use core::ops::{Range, RangeBounds};
 use core::ptr::NonNull;
-use core::{error, slice};
+use core::{error, iter, slice};
 
 use const_default::ConstDefault;
 use rules_derive::rules_derive;
@@ -804,11 +804,11 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     /// inline.resize_with(1, || 0);
     /// assert_eq!(inline.as_slice(), &[42]);
     /// ```
-    pub fn resize_with<F>(&mut self, new_len: usize, mut f: F)
+    pub fn resize_with<F>(&mut self, new_len: usize, f: F)
     where
         F: FnMut() -> T,
     {
-        resize_impl!(self, new_len, f());
+        resize_impl!(self, new_len, iter::repeat_with(f));
     }
 
     /// Appends an array of elements to the inline vector, by moving the
@@ -1011,7 +1011,11 @@ where
     /// assert_eq!(inline.as_slice(), &[42]);
     /// ```
     pub fn resize(&mut self, new_len: usize, value: T) {
-        resize_impl!(self, new_len, value.clone());
+        resize_impl!(
+            self,
+            new_len,
+            iter::repeat_n(value, new_len.saturating_sub(self.len()))
+        );
     }
 }
 
