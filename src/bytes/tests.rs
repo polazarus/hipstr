@@ -103,7 +103,7 @@ fn as_mut_ptr() {
 /// Tests that `as_mut_ptr_unchecked` panics when the sequence is shared in debug.
 #[test]
 #[cfg(debug_assertions)]
-#[should_panic(expected = "vector is not uniquely owned")]
+#[should_panic(expected = "vector must be uniquely owned")]
 fn as_mut_ptr_panic_shared() {
     let mut h = H::from(MEDIUM);
     let _h2 = h.clone();
@@ -114,7 +114,7 @@ fn as_mut_ptr_panic_shared() {
 /// Tests that `as_mut_ptr_unchecked` panics when the sequence is borrowed in debug.
 #[test]
 #[cfg(debug_assertions)]
-#[should_panic(expected = "vector is not uniquely owned")]
+#[should_panic(expected = "vector must be uniquely owned")]
 fn as_mut_ptr_panic_borrowed() {
     let mut h = H::borrowed(MEDIUM);
     assert!(h.as_mut_ptr().is_none());
@@ -158,7 +158,7 @@ fn inline() {
 }
 
 #[test]
-#[should_panic(expected = "slice too large")]
+#[should_panic(expected = "required capacity exceeds inline capacity")]
 fn inline_panic() {
     let _ = H::inline(MEDIUM);
 }

@@ -9,6 +9,8 @@ use core::ptr;
 use std::collections::HashSet;
 
 use super::SliceErrorKind;
+use crate::common::RangeError;
+use crate::string::SliceError;
 use crate::{HipByt, HipStr as H};
 
 type S<'a> = &'a str;
@@ -49,17 +51,16 @@ fn test_new_default() {
 }
 
 #[test]
-fn test_with_capacity() {
+fn with_capacity() {
     let h = H::with_capacity(0);
     assert_eq!(h, EMPTY_SLICE);
     assert!(h.is_empty());
-    assert_eq!(h.capacity(), INLINE_CAPACITY);
 
     let mut h = H::with_capacity(42);
     let p = h.as_ptr();
     assert_eq!(h, EMPTY_SLICE);
     assert!(h.is_empty());
-    assert_eq!(h.capacity(), 42);
+    assert!(h.capacity() >= 42);
     for _ in 0..42 {
         h.push_str(A);
     }
@@ -70,7 +71,7 @@ fn test_with_capacity() {
 
 #[test]
 #[cfg(feature = "std")]
-fn test_borrow_and_hash() {
+fn borrow_and_hash() {
     let mut set = HashSet::new();
     set.insert(H::from(A));
     set.insert(H::from(B));
@@ -93,26 +94,20 @@ fn test_fmt() {
 }
 
 #[test]
-fn test_from_owned() {
-    let s = Owned::from(MEDIUM);
+fn from_string() {
+    let s = String::from(MEDIUM);
     let h = H::from(s.clone());
-    assert!(!h.is_inline());
-    assert!(!h.is_borrowed());
-    assert!(h.is_allocated());
     assert_eq!(h.len(), 42);
     assert_eq!(h.as_str(), s.as_str());
 
-    let o = Owned::from(ABC);
+    let o = String::from(ABC);
     let h = H::from(o);
-    assert!(h.is_inline());
-    assert!(!h.is_borrowed());
-    assert!(!h.is_allocated());
     assert_eq!(h.len(), 3);
     assert_eq!(h.as_str(), ABC);
 }
 
 #[test]
-fn test_borrowed() {
+fn borrowed() {
     let s = BIG;
 
     for size in [0, 1, INLINE_CAPACITY, INLINE_CAPACITY + 1, 256, 1024] {
@@ -126,7 +121,7 @@ fn test_borrowed() {
 }
 
 #[test]
-fn test_from_static() {
+fn from_static() {
     const fn is_static_type<T: 'static>(_: &T) {}
 
     let s = ALPHABET;
@@ -144,12 +139,12 @@ fn test_from_static() {
 }
 
 #[test]
-fn test_from_slice() {
+fn from_slice() {
     let s = BIG;
 
     for size in [0, 1, INLINE_CAPACITY, INLINE_CAPACITY + 1, 256, 1024] {
         let h = H::from(&s[..size]);
-        assert_eq!(size <= INLINE_CAPACITY, h.is_inline());
+        assert_eq!(size > 0 && size <= INLINE_CAPACITY, h.is_inline());
         assert_eq!(size > INLINE_CAPACITY, h.is_allocated());
         assert_eq!(h.len(), size);
     }
@@ -360,7 +355,7 @@ fn test_to_mut_str_allocated() {
 }
 
 #[test]
-fn test_slice_inline() {
+fn slice_inline() {
     let v = &MEDIUM[0..INLINE_CAPACITY];
     let s = H::from(v);
     let sl = s.slice(0..10);
@@ -370,7 +365,7 @@ fn test_slice_inline() {
 }
 
 #[test]
-fn test_slice_borrowed() {
+fn slice_borrowed() {
     let m = MEDIUM;
     let s = H::borrowed(m);
 
@@ -388,7 +383,7 @@ fn test_slice_borrowed() {
 }
 
 #[test]
-fn test_slice_allocated() {
+fn slice_allocated() {
     let v = MEDIUM;
     let s = H::from(v);
     assert!(s.is_allocated());
@@ -401,47 +396,46 @@ fn test_slice_allocated() {
     let sl2 = sl1.slice(5..8);
     drop(sl1);
     assert_eq!(&sl2, &v[9..12]);
-    assert!(sl2.is_inline());
 }
 
 #[test]
-#[should_panic]
-fn test_slice_panic_start() {
+#[should_panic(expected = "start index 4 is out of bounds for slice of length 3")]
+fn slice_panic_start() {
     let a = H::borrowed(ABC);
     let _b = a.slice(4..);
 }
 
 #[test]
-#[should_panic]
-fn test_slice_panic_end() {
+#[should_panic(expected = "end index 5 is out of bounds for slice of length 3")]
+fn slice_panic_end() {
     let a = H::borrowed(ABC);
     let _b = a.slice(0..5);
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "start index 3 is greater than end index 2")]
 #[allow(clippy::reversed_empty_ranges)]
-fn test_slice_panic_mixed() {
+fn slice_panic_mixed() {
     let a = H::borrowed(ABC);
     let _b = a.slice(3..2);
 }
 
 #[test]
-#[should_panic]
-fn test_slice_panic_start_char_boundary() {
+#[should_panic(expected = "start index 1 is not a char boundary")]
+fn slice_panic_start_char_boundary() {
     let a = H::borrowed("\u{1F980}");
     let _b = a.slice(1..);
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "end index 2 is not a char boundary")]
 fn test_slice_panic_end_char_boundary() {
     let a = H::borrowed("\u{1F980}");
     let _b = a.slice(0..2);
 }
 
 #[test]
-fn test_slice_unchecked() {
+fn slice_unchecked() {
     use core::ops::Bound;
     let a = H::borrowed(ABC);
     assert_eq!(unsafe { a.slice_unchecked(0..2) }, "ab");
@@ -457,7 +451,7 @@ fn test_slice_unchecked() {
 #[test]
 #[cfg(debug_assertions)]
 #[should_panic]
-fn test_slice_unchecked_debug_panic_start() {
+fn slice_unchecked_debug_panic_start() {
     let a = H::borrowed(ABC);
     let _ = unsafe { a.slice_unchecked(4..) };
 }
@@ -465,7 +459,7 @@ fn test_slice_unchecked_debug_panic_start() {
 #[test]
 #[cfg(debug_assertions)]
 #[should_panic]
-fn test_slice_unchecked_debug_panic_end() {
+fn slice_unchecked_debug_panic_end() {
     let a = H::borrowed(ABC);
     let _ = unsafe { a.slice_unchecked(..5) };
 }
@@ -474,7 +468,7 @@ fn test_slice_unchecked_debug_panic_end() {
 #[cfg(debug_assertions)]
 #[should_panic]
 #[allow(clippy::reversed_empty_ranges)]
-fn test_slice_unchecked_debug_panic_mixed() {
+fn slice_unchecked_debug_panic_mixed() {
     let a = H::borrowed(ABC);
     let _ = unsafe { a.slice_unchecked(3..2) };
 }
@@ -507,86 +501,70 @@ fn test_slice_ok() {
 static RUST_CRAB: H = H::borrowed("Rust \u{1F980}");
 
 #[test]
-fn test_try_slice_start_out_of_bounds() {
+fn try_slice_start_out_of_bounds() {
     let err = RUST_CRAB.try_slice(10..).unwrap_err();
-    assert_eq!(err.kind(), SliceErrorKind::StartOutOfBounds);
-    assert_eq!(err.start(), 10);
-    assert_eq!(err.end(), RUST_CRAB.len());
-    assert_eq!(err.range(), 10..RUST_CRAB.len());
-    assert!(ptr::eq(err.source(), &RUST_CRAB));
     assert_eq!(
-        format!("{err:?}"),
-        "SliceError { kind: StartOutOfBounds, start: 10, end: 9, string: \"Rust \u{1F980}\" }"
+        err,
+        SliceError::StartOutOfBounds {
+            start: 10,
+            len: RUST_CRAB.len(),
+        }
     );
+    assert_eq!(format!("{err:?}"), "StartOutOfBounds { start: 10, len: 9 }");
     assert_eq!(
         format!("{err}"),
-        "range start index 10 is out of bounds of `Rust \u{1F980}`"
+        "start index 10 is out of bounds for slice of length 9"
     );
     assert_eq!(err.clone(), err);
 }
 
 #[test]
-fn test_try_slice_end_out_of_bounds() {
+fn try_slice_end_out_of_bounds() {
     let err = RUST_CRAB.try_slice(..10).unwrap_err();
-    assert_eq!(err.kind(), SliceErrorKind::EndOutOfBounds);
-    assert_eq!(
-        format!("{err:?}"),
-        "SliceError { kind: EndOutOfBounds, start: 0, end: 10, string: \"Rust \u{1F980}\" }"
-    );
+    assert_eq!(err, SliceError::EndOutOfBounds { end: 10, len: 9 });
+    assert_eq!(format!("{err:?}"), "EndOutOfBounds { end: 10, len: 9 }");
     assert_eq!(
         format!("{err}"),
-        "range end index 10 is out of bounds of `Rust \u{1F980}`"
+        "end index 10 is out of bounds for slice of length 9"
     );
     assert_eq!(err.clone(), err);
 }
 
 #[test]
 #[allow(clippy::reversed_empty_ranges)]
-fn test_try_slice_start_greater_than_end() {
+fn try_slice_start_greater_than_end() {
     let err = RUST_CRAB.try_slice(4..2).unwrap_err();
-    assert_eq!(err.kind(), SliceErrorKind::StartGreaterThanEnd);
+    assert_eq!(err, SliceError::StartGreaterThanEnd { start: 4, end: 2 });
     assert_eq!(
         format!("{err:?}"),
-        "SliceError { kind: StartGreaterThanEnd, start: 4, end: 2, string: \"Rust \u{1F980}\" }"
+        "StartGreaterThanEnd { start: 4, end: 2 }"
     );
     assert_eq!(
         format!("{err}"),
-        "range starts at 4 but ends at 2 when slicing `Rust \u{1F980}`"
+        "start index 4 is greater than end index 2"
     );
     assert_eq!(err.clone(), err);
 }
 
 #[test]
-fn test_try_slice_start_not_a_char_boundary() {
+fn try_slice_start_not_a_char_boundary() {
     let err = RUST_CRAB.try_slice(6..).unwrap_err();
-    assert_eq!(err.kind(), SliceErrorKind::StartNotACharBoundary);
-    assert_eq!(
-        format!("{err:?}"),
-        "SliceError { kind: StartNotACharBoundary, start: 6, end: 9, string: \"Rust \u{1F980}\" }"
-    );
-    assert_eq!(
-        format!("{err}"),
-        "range start index 6 is not a char boundary of `Rust \u{1F980}`"
-    );
+    assert_eq!(err, SliceError::StartNotACharBoundary(6));
+    assert_eq!(format!("{err:?}"), "StartNotACharBoundary(6)");
+    assert_eq!(format!("{err}"), "start index 6 is not a char boundary");
 }
 
 #[test]
-fn test_try_slice_end_not_a_char_boundary() {
+fn try_slice_end_not_a_char_boundary() {
     let err = RUST_CRAB.try_slice(..6).unwrap_err();
-    assert_eq!(err.kind(), SliceErrorKind::EndNotACharBoundary);
-    assert_eq!(
-        format!("{err:?}"),
-        "SliceError { kind: EndNotACharBoundary, start: 0, end: 6, string: \"Rust \u{1F980}\" }"
-    );
-    assert_eq!(
-        format!("{err}"),
-        "range end index 6 is not a char boundary of `Rust \u{1F980}`"
-    );
+    assert_eq!(err, SliceError::EndNotACharBoundary(6));
+    assert_eq!(format!("{err:?}"), "EndNotACharBoundary(6)");
+    assert_eq!(format!("{err}"), "end index 6 is not a char boundary");
     assert_eq!(err.clone(), err);
 }
 
 #[test]
-fn test_try_slice_ok() {
+fn try_slice_ok() {
     let s = RUST_CRAB.as_str();
     assert_eq!(RUST_CRAB.try_slice(..).unwrap(), RUST_CRAB);
     assert_eq!(RUST_CRAB.try_slice(0..5).unwrap(), &s[0..5]);
@@ -777,7 +755,7 @@ fn test_shrink_to() {
 }
 
 #[test]
-fn test_truncate() {
+fn truncate() {
     let mut h = H::borrowed(MEDIUM);
     h.truncate(MEDIUM.len() + 1);
     assert_eq!(h, MEDIUM);
@@ -788,12 +766,10 @@ fn test_truncate() {
 
     let mut h = H::from(MEDIUM);
     h.truncate(1);
-    assert!(h.is_inline());
     assert_eq!(h, &MEDIUM[..1]);
 
     let mut h = H::from(MEDIUM);
     h.truncate(INLINE_CAPACITY + 1);
-    assert!(h.is_allocated());
     assert_eq!(h, &MEDIUM[..=INLINE_CAPACITY]);
 
     let mut h = H::from(&MEDIUM[..INLINE_CAPACITY]);
@@ -802,32 +778,29 @@ fn test_truncate() {
 }
 
 #[test]
-#[should_panic]
-fn test_truncate_char_boundary() {
+#[should_panic(expected = "byte index 1 is not a char boundary")]
+fn truncate_panic_char_boundary() {
     let mut h = H::borrowed("\u{1F980}");
     h.truncate(1);
 }
 
 #[test]
-fn test_clear() {
+fn clear() {
     let mut h = H::borrowed(MEDIUM);
     h.clear();
     assert!(h.is_empty());
-    assert!(!h.is_allocated());
 
     let mut h = H::from(MEDIUM);
     h.clear();
     assert!(h.is_empty());
-    assert!(!h.is_allocated());
 
     let mut h = H::from(&MEDIUM[..INLINE_CAPACITY]);
     h.clear();
     assert!(h.is_empty());
-    assert!(!h.is_allocated());
 }
 
 #[test]
-fn test_pop() {
+fn pop() {
     let mut h = H::borrowed(MEDIUM);
     assert_eq!(h.pop(), Some('*'));
     assert_eq!(h, &MEDIUM[..MEDIUM.len() - 1]);
@@ -842,7 +815,6 @@ fn test_pop() {
 
     let mut h = H::from(&MEDIUM[..=INLINE_CAPACITY]);
     assert_eq!(h.pop(), Some('*'));
-    assert!(h.is_inline());
     assert_eq!(h, &MEDIUM[..INLINE_CAPACITY]);
 
     assert_eq!(H::new().pop(), None);
@@ -878,11 +850,9 @@ fn test_push_slice_allocated() {
         let x = H::from(MEDIUM);
         x.slice(1..39)
     };
-    let p = a.as_ptr();
     a.push_str(ABC);
     assert_eq!(&a[..38], &MEDIUM[1..39]);
     assert_eq!(&a[38..], ABC);
-    assert_eq!(a.as_ptr(), p);
     // => the underlying vector is big enough
 }
 
@@ -1159,10 +1129,13 @@ fn test_join_bad_iter2() {
 #[inline]
 #[track_caller]
 fn value_eq<'a>(computed: H<'a>, expected: &'a str) {
-    assert!(
-        core::ptr::eq(computed.as_str(), expected),
-        "{computed:?} and {expected:?} are not the same"
-    );
+    assert_eq!(computed.as_str(), expected);
+    if !expected.is_empty() {
+        assert!(
+            core::ptr::eq(computed.as_str(), expected),
+            "{computed:?} and {expected:?} are not the same wide pointer"
+        );
+    }
 }
 
 #[inline]

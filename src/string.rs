@@ -16,6 +16,7 @@ use core::str::{Lines, SplitAsciiWhitespace, SplitWhitespace, Utf8Error};
 use self::pattern::{DoubleEndedPattern, IterWrapper, Pattern, ReversePattern};
 use crate::backend::Backend;
 use crate::bytes::{self, simplify_range, HipByt, SliceErrorKind as ByteSliceErrorKind};
+use crate::common::{self, unwrap_display, RangeError};
 
 mod cmp;
 mod convert;
@@ -514,10 +515,7 @@ where
     #[must_use]
     #[track_caller]
     pub fn slice(&self, range: impl RangeBounds<usize>) -> Self {
-        match self.try_slice(range) {
-            Ok(result) => result,
-            Err(err) => panic!("{}", err),
-        }
+        unwrap_display(self.try_slice(range))
     }
 
     /// Returns a `HipStr` of a range of bytes in this `HipStr`, if the range is
@@ -538,29 +536,15 @@ where
     /// assert_eq!(a.try_slice(0..4), Ok(HipStr::from("Rust")));
     /// assert!(a.try_slice(5..6).is_err());
     /// ```
-    pub fn try_slice(
-        &self,
-        range: impl RangeBounds<usize>,
-    ) -> Result<Self, SliceError<'_, 'borrow, B>> {
-        let range = simplify_range(range, self.len())
-            .map_err(|(start, end, kind)| SliceError::new(kind, start, end, self))?;
+    pub fn try_slice(&self, range: impl RangeBounds<usize>) -> Result<Self, SliceError> {
+        let range = common::range(range, self.len()).map_err(SliceError::new)?;
 
         if !self.is_char_boundary(range.start) {
-            return Err(SliceError {
-                kind: SliceErrorKind::StartNotACharBoundary,
-                start: range.start,
-                end: range.end,
-                string: self,
-            });
+            return Err(SliceError::StartNotACharBoundary(range.start));
         }
 
         if !self.is_char_boundary(range.end) {
-            return Err(SliceError {
-                kind: SliceErrorKind::EndNotACharBoundary,
-                start: range.start,
-                end: range.end,
-                string: self,
-            });
+            return Err(SliceError::EndNotACharBoundary(range.end));
         }
 
         // SAFETY: range and char boundaries checked above
@@ -582,10 +566,10 @@ where
     pub unsafe fn slice_unchecked(&self, range: impl RangeBounds<usize>) -> Self {
         #[cfg(debug_assertions)]
         {
-            let range =
-                simplify_range((range.start_bound(), range.end_bound()), self.len()).unwrap();
-            assert!(self.is_char_boundary(range.start));
-            assert!(self.is_char_boundary(range.end));
+            let range = (range.start_bound(), range.end_bound());
+            let range = unwrap_display(common::range(range, self.len()));
+            check_char_boundary(self, range.start);
+            check_char_boundary(self, range.end);
         }
         Self(unsafe { self.0.slice_unchecked(range) })
     }
@@ -941,9 +925,10 @@ where
     /// assert_eq!(s, "a");
     /// ```
     #[inline]
+    #[track_caller]
     pub fn truncate(&mut self, new_len: usize) {
         if new_len <= self.len() {
-            assert!(self.is_char_boundary(new_len), "char boundary");
+            check_char_boundary(self, new_len);
             self.0.truncate(new_len);
         }
     }
@@ -1946,150 +1931,82 @@ pub enum SliceErrorKind {
 /// A possible error value when slicing a [`HipStr`].
 ///
 /// This type is the error type for [`HipStr::try_slice`].
-pub struct SliceError<'a, 'borrow, B>
-where
-    B: Backend,
-{
-    kind: SliceErrorKind,
-    start: usize,
-    end: usize,
-    string: &'a HipStr<'borrow, B>,
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SliceError {
+    /// The start index overflows.
+    StartOverflows,
+    /// The end index overflows.
+    EndOverflows,
+    /// The start index is greater than the end index.
+    StartGreaterThanEnd { start: usize, end: usize },
+    /// The start index is out of bounds.
+    StartOutOfBounds { start: usize, len: usize },
+    /// The end index is out of bounds.
+    EndOutOfBounds { end: usize, len: usize },
+    /// The start index is not a char boundary
+    StartNotACharBoundary(usize),
+    /// The end index is not a char boundary
+    EndNotACharBoundary(usize),
 }
 
-impl<B> Eq for SliceError<'_, '_, B> where B: Backend {}
-
-impl<B> PartialEq for SliceError<'_, '_, B>
-where
-    B: Backend,
-{
-    fn eq(&self, other: &Self) -> bool {
-        self.kind == other.kind
-            && self.start == other.start
-            && self.end == other.end
-            && self.string == other.string
-    }
-}
-
-impl<B> Clone for SliceError<'_, '_, B>
-where
-    B: Backend,
-{
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<B> Copy for SliceError<'_, '_, B> where B: Backend {}
-
-impl<'a, 'borrow, B> SliceError<'a, 'borrow, B>
-where
-    B: Backend,
-{
-    const fn new(
-        kind: ByteSliceErrorKind,
-        start: usize,
-        end: usize,
-        string: &'a HipStr<'borrow, B>,
-    ) -> Self {
-        let kind = match kind {
-            ByteSliceErrorKind::StartGreaterThanEnd => SliceErrorKind::StartGreaterThanEnd,
-            ByteSliceErrorKind::StartOutOfBounds => SliceErrorKind::StartOutOfBounds,
-            ByteSliceErrorKind::EndOutOfBounds => SliceErrorKind::EndOutOfBounds,
-        };
-        Self {
-            kind,
-            start,
-            end,
-            string,
+impl SliceError {
+    const fn new(err: common::RangeError) -> Self {
+        match err {
+            common::RangeError::StartOverflows => Self::StartOverflows,
+            common::RangeError::EndOverflows => Self::EndOverflows,
+            common::RangeError::StartGreaterThanEnd { start, end } => {
+                Self::StartGreaterThanEnd { start, end }
+            }
+            common::RangeError::StartOutOfBounds { start, len } => {
+                Self::StartOutOfBounds { start, len }
+            }
+            common::RangeError::EndOutOfBounds { end, len } => Self::EndOutOfBounds { end, len },
         }
     }
-
-    /// Returns the kind of error.
-    #[inline]
-    #[must_use]
-    pub const fn kind(&self) -> SliceErrorKind {
-        self.kind
-    }
-
-    /// Returns the start of the requested range.
-    #[inline]
-    #[must_use]
-    pub const fn start(&self) -> usize {
-        self.start
-    }
-
-    /// Returns the end of the requested range.
-    #[inline]
-    #[must_use]
-    pub const fn end(&self) -> usize {
-        self.end
-    }
-
-    /// Returns the _normalized_ requested range.
-    #[inline]
-    #[must_use]
-    pub const fn range(&self) -> Range<usize> {
-        self.start..self.end
-    }
-
-    /// Returns a reference to the source `HipByt` to slice.
-    #[inline]
-    #[must_use]
-    pub const fn source(&self) -> &HipStr<'borrow, B> {
-        self.string
-    }
-}
-
-impl<B> fmt::Debug for SliceError<'_, '_, B>
-where
-    B: Backend,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SliceError")
-            .field("kind", &self.kind)
-            .field("start", &self.start)
-            .field("end", &self.end)
-            .field("string", &self.string)
-            .finish()
-    }
-}
-
-impl<B> fmt::Display for SliceError<'_, '_, B>
-where
-    B: Backend,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.kind {
-            SliceErrorKind::StartGreaterThanEnd => write!(
-                f,
-                "range starts at {} but ends at {} when slicing `{}`",
-                self.start, self.end, self.string
-            ),
-            SliceErrorKind::StartOutOfBounds => write!(
-                f,
-                "range start index {} is out of bounds of `{}`",
-                self.start, self.string
-            ),
-            SliceErrorKind::EndOutOfBounds => write!(
-                f,
-                "range end index {} is out of bounds of `{}`",
-                self.end, self.string
-            ),
-            SliceErrorKind::StartNotACharBoundary => write!(
-                f,
-                "range start index {} is not a char boundary of `{}`",
-                self.start, self.string
-            ),
-            SliceErrorKind::EndNotACharBoundary => write!(
-                f,
-                "range end index {} is not a char boundary of `{}`",
-                self.end, self.string
-            ),
+    const fn const_message(&self) -> &str {
+        match self {
+            Self::StartOverflows => "start index overflows",
+            Self::EndOverflows => "end index overflows",
+            Self::StartGreaterThanEnd { .. } => "start index is greater than end index",
+            Self::StartOutOfBounds { .. } => "start index is out of bounds",
+            Self::EndOutOfBounds { .. } => "end index is out of bounds",
+            Self::StartNotACharBoundary(_) => "start byte index is not a char boundary",
+            Self::EndNotACharBoundary(_) => "end byte index is not a char boundary",
         }
     }
 }
 
-impl<B> Error for SliceError<'_, '_, B> where B: Backend {}
+impl fmt::Display for SliceError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::StartOverflows => write!(f, "start index overflows"),
+            Self::EndOverflows => write!(f, "end index overflows"),
+            Self::StartGreaterThanEnd { start, end } => {
+                write!(f, "start index {start} is greater than end index {end}")
+            }
+            Self::StartOutOfBounds { start, len } => {
+                write!(
+                    f,
+                    "start index {start} is out of bounds for slice of length {len}",
+                )
+            }
+            Self::EndOutOfBounds { end, len } => {
+                write!(
+                    f,
+                    "end index {end} is out of bounds for slice of length {len}",
+                )
+            }
+            Self::StartNotACharBoundary(index) => {
+                write!(f, "start index {index} is not a char boundary")
+            }
+            Self::EndNotACharBoundary(index) => {
+                write!(f, "end index {index} is not a char boundary")
+            }
+        }
+    }
+}
+
+impl Error for SliceError {}
 
 /// A possible error value when converting a [`HipStr`] from a [`HipByt`].
 ///
@@ -2324,7 +2241,7 @@ where
     /// Panics if `len` is not a char boundary.
     #[inline]
     pub fn truncate(&mut self, len: usize) {
-        assert!(self.as_str().is_char_boundary(len));
+        check_char_boundary(self, len);
         self.0 .0.truncate(len);
     }
 
@@ -2344,5 +2261,18 @@ impl<T: AsRef<str>> AsRef<[u8]> for AsBytes<T> {
     #[inline]
     fn as_ref(&self) -> &[u8] {
         self.0.as_ref().as_bytes()
+    }
+}
+
+#[inline]
+#[track_caller]
+fn check_char_boundary(string: &str, index: usize) {
+    #[cold]
+    #[track_caller]
+    fn panic_not_char_boundary(index: usize) -> ! {
+        panic!("byte index {} is not a char boundary", index)
+    }
+    if !string.is_char_boundary(index) {
+        panic_not_char_boundary(index)
     }
 }
