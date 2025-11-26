@@ -48,13 +48,11 @@ fn ranges() {
     );
     assert_eq!(err.const_message(), "end index is out of bounds");
 
-    assert_eq!(
-        range(6..10, 5).unwrap_err(),
-        RangeError::EndOutOfBounds { end: 10, len: 5 }
-    );
+    let err = range(6..10, 5).unwrap_err();
+    assert_eq!(err, RangeError::StartOutOfBounds { start: 6, len: 5 });
     assert_eq!(
         format!("{err}"),
-        "end index 10 is out of bounds for slice of length 5"
+        "start index 5 is out of bounds for slice of length 5"
     );
     assert_eq!(err.const_message(), "end index is out of bounds");
 }
