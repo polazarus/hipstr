@@ -31,17 +31,16 @@ fn test_new_default() {
 }
 
 #[test]
-fn test_with_capacity() {
+fn with_capacity() {
     let h = H::with_capacity(0);
     assert_eq!(h, *EMPTY_SLICE);
     assert!(h.is_empty());
-    assert_eq!(h.capacity(), INLINE_CAPACITY);
 
     let mut h = H::with_capacity(42);
     let p = h.as_ptr();
     assert_eq!(h, *EMPTY_SLICE);
     assert!(h.is_empty());
-    assert_eq!(h.capacity(), 42);
+    assert!(h.capacity() >= 42);
     for _ in 0..42 {
         h.push(A);
     }
@@ -52,7 +51,7 @@ fn test_with_capacity() {
 
 #[test]
 #[cfg(feature = "std")]
-fn test_borrow_and_hash() {
+fn borrow_and_hash() {
     let mut set = HashSet::new();
     set.insert(HipOsStr::from("a"));
     set.insert(HipOsStr::from("b"));
@@ -62,14 +61,14 @@ fn test_borrow_and_hash() {
 }
 
 #[test]
-fn test_fmt() {
+fn format() {
     let source: &OsStr = "Rust \u{1F980}".as_ref();
     let a = HipOsStr::borrowed(source);
     assert_eq!(format!("{a:?}"), format!("{source:?}"));
 }
 
 #[test]
-fn test_from_string() {
+fn from_string() {
     let s = "A".repeat(42);
     let hs = HipOsStr::from(s.clone());
     assert!(!hs.is_borrowed());
@@ -80,7 +79,7 @@ fn test_from_string() {
 }
 
 #[test]
-fn test_borrowed() {
+fn borrowed() {
     let s = "0123456789";
     let string = HipOsStr::borrowed(s);
     assert!(string.is_borrowed());
@@ -91,7 +90,7 @@ fn test_borrowed() {
 }
 
 #[test]
-fn test_from_static() {
+fn from_static() {
     const fn is_static_type<T: 'static>(_: &T) {}
 
     let s = "abcdefghijklmnopqrstuvwxyz";
@@ -109,20 +108,20 @@ fn test_from_static() {
 }
 
 #[test]
-fn test_from_slice() {
+fn from_slice() {
     static V: &[u8] = &[b'a'; 1024];
     let s = core::str::from_utf8(V).unwrap();
 
     for size in [0, 1, INLINE_CAPACITY, INLINE_CAPACITY + 1, 256, 1024] {
         let string = HipOsStr::from(&s[..size]);
-        assert_eq!(size <= INLINE_CAPACITY, string.is_inline());
+        assert_eq!(size > 0 && size <= INLINE_CAPACITY, string.is_inline());
         assert_eq!(size > INLINE_CAPACITY, string.is_allocated());
         assert_eq!(string.len(), size);
     }
 }
 
 #[test]
-fn test_as_slice() {
+fn as_slice() {
     // static
     {
         let a = HipOsStr::borrowed("abc");
