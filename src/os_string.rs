@@ -5,6 +5,7 @@
 use alloc::borrow::Cow;
 use alloc::fmt;
 use core::hash::Hash;
+use core::mem;
 use core::ops::{Deref, DerefMut};
 use std::ffi::{OsStr, OsString};
 
@@ -454,7 +455,8 @@ where
     #[must_use]
     pub fn mutate(&mut self) -> RefMut<'_, 'borrow, B> {
         // SAFETY: type invariant
-        let owned = self.take_os_string();
+        let owned = mem::take(&mut self.0).into();
+        let owned = unsafe { OsString::from_encoded_bytes_unchecked(owned) };
         RefMut {
             result: self,
             owned,

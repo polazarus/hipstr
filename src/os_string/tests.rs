@@ -507,22 +507,22 @@ fn test_slice_ref_panic() {
 }
 
 #[test]
-fn test_shrink_to_fit() {
+fn shrink_to_fit() {
     let mut h = H::with_capacity(INLINE_CAPACITY + 1);
     h.shrink_to_fit();
-    assert_eq!(h.capacity(), INLINE_CAPACITY);
+    assert_eq!(h.capacity(), 0);
 
     let mut h = H::from("abc");
     h.shrink_to_fit();
     assert_eq!(h.capacity(), INLINE_CAPACITY);
 
-    let mut h = H::from_static("abc");
+    let mut h = H::borrowed("abc");
     h.shrink_to_fit();
     assert_eq!(h.capacity(), 3);
 }
 
 #[test]
-fn test_shrink_to() {
+fn shrink_to() {
     let mut h = H::with_capacity(INLINE_CAPACITY + 1);
     h.push("a");
     h.shrink_to(0);
