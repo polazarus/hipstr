@@ -52,9 +52,9 @@ fn ranges() {
     assert_eq!(err, RangeError::StartOutOfBounds { start: 6, len: 5 });
     assert_eq!(
         format!("{err}"),
-        "start index 5 is out of bounds for slice of length 5"
+        "start index 6 is out of bounds for slice of length 5"
     );
-    assert_eq!(err.const_message(), "end index is out of bounds");
+    assert_eq!(err.const_message(), "start index is out of bounds");
 }
 
 #[test]

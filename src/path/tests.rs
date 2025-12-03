@@ -93,7 +93,7 @@ fn test_from_slice() {
 
     for size in [0, 1, INLINE_CAPACITY, INLINE_CAPACITY + 1, 256, 1024] {
         let path = H::from(&s[..size]);
-        assert_eq!(size <= INLINE_CAPACITY, path.is_inline());
+        assert_eq!(size > 0 && size <= INLINE_CAPACITY, path.is_inline());
         assert_eq!(size > INLINE_CAPACITY, path.is_allocated());
         assert_eq!(path.0.len(), size);
     }
@@ -344,7 +344,7 @@ fn test_shrink_to_fit() {
     let h = HipOsStr::with_capacity(INLINE_CAPACITY + 1);
     let mut h = H::from(h);
     h.shrink_to_fit();
-    assert_eq!(h.capacity(), INLINE_CAPACITY);
+    assert_eq!(h.capacity(), 0);
 
     let mut h = H::from("abc");
     h.shrink_to_fit();

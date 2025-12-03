@@ -2,7 +2,7 @@ use core::borrow::BorrowMut;
 use core::mem::MaybeUninit;
 use core::ops::RangeBounds;
 use core::ptr::NonNull;
-use core::{iter, mem, ptr};
+use core::{cmp, iter, mem, ptr};
 
 use const_default::ConstDefault;
 use rules_derive::rules_derive;
@@ -221,7 +221,7 @@ impl<'a, 'b, T, B: Backend> RefMut<'a, 'b, T, B> {
         let cap = self.capacity();
         if additional > cap - len {
             let required = len.checked_add(additional).expect("capacity overflow");
-            let new_cap = required.max(cap * 2);
+            let new_cap = cmp::max(required, cap * 2);
             unsafe {
                 self.set_capacity(new_cap);
             }
@@ -560,7 +560,8 @@ impl<'a, 'b, T, B: Backend> RefMut<'a, 'b, T, B> {
     /// assert!(s.is_inline());
     /// ```
     pub fn shrink_to(&mut self, cap: usize) {
-        if cap >= self.len() && cap < self.capacity() {
+        let cap = cmp::max(cap, self.len());
+        if cap < self.capacity() {
             unsafe {
                 self.set_capacity(cap);
             }

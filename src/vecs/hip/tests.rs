@@ -707,14 +707,28 @@ fn shrink_to_fit_wide() {
 }
 
 #[test]
-fn shrink_to_noop() {
+fn shrink_to_noop_larger_cap() {
     let mut h = HipVec::<u8, Arc>::with_capacity(100);
+    let old_capacity = h.capacity();
     {
         let mut m = h.mutate();
         m.extend_from_slice_copy(&[0; 50]);
-        m.shrink_to(30);
+        m.shrink_to(150);
     }
-    assert!(h.capacity() >= 100);
+    assert_eq!(h.capacity(), old_capacity);
+    assert!(h.is_thin());
+}
+
+#[test]
+fn shrink_to_noop_larger_len() {
+    let mut h = HipVec::<u8, Arc>::with_capacity(100);
+    let old_capacity = h.capacity();
+    {
+        let mut m = h.mutate();
+        m.extend_from_slice_copy(&[0; 100]);
+        m.shrink_to(50);
+    }
+    assert_eq!(h.capacity(), old_capacity);
     assert!(h.is_thin());
 }
 

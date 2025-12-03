@@ -22,7 +22,7 @@ use alloc::vec::Vec;
 use core::marker::PhantomData;
 use core::mem::{transmute, ManuallyDrop, MaybeUninit};
 use core::ops::{Range, RangeBounds};
-use core::{ptr, slice};
+use core::{cmp, ptr, slice};
 
 use const_default::ConstDefault;
 use rules_derive::rules_derive;
@@ -1792,18 +1792,26 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         }
     }
 
-    pub fn shrink_to(&mut self, cap: usize)
+    pub fn shrink_to(&mut self, new_cap: usize)
     where
         T: Clone,
     {
-        if cap >= self.len() && cap < self.capacity() {
-            if self.is_unique() {
-                self.trim();
-                unsafe { self.mutate_unchecked() }.shrink_to(cap);
-            } else {
-                let mut new = Self::with_capacity(cap);
-                unsafe { new.mutate_unchecked() }.extend_from_slice(self.as_slice());
-                *self = new;
+        let old_cap = self.capacity();
+        // checks if the old cap
+        if old_cap > new_cap {
+            // computes the actual capacity to shrink to
+            let cap = cmp::max(new_cap, self.len());
+
+            // checks if there is still a point to shrink
+            if old_cap > cap {
+                if self.is_unique() {
+                    self.trim();
+                    unsafe { self.mutate_unchecked() }.shrink_to(cap);
+                } else {
+                    let mut new = Self::with_capacity(cap);
+                    unsafe { new.mutate_unchecked() }.extend_from_slice(self.as_slice());
+                    *self = new;
+                }
             }
         }
     }
