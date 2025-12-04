@@ -15,7 +15,7 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::borrow::BorrowMut;
 use core::fmt::{self};
-use core::mem::MaybeUninit;
+use core::mem::{self, ManuallyDrop, MaybeUninit};
 use core::ops::{Range, RangeBounds};
 use core::ptr::NonNull;
 use core::{error, iter, slice};
@@ -36,7 +36,7 @@ use crate::common::methods::{
     resize_impl, spare_capacity_mut_impl, split_off_impl, swap_remove_impl, truncate_impl,
 };
 use crate::common::traits::{MutVector, Mutate, Vector};
-use crate::common::{drop_raw_slice, unwrap_display, SliceWriteGuard};
+use crate::common::{drop_raw_slice, force_transmute, unwrap_display, SliceWriteGuard};
 use crate::{common, macros};
 
 pub(crate) mod length;
@@ -1199,6 +1199,116 @@ where
             self.set_len(new_len);
         }
     }
+
+    /// Truncates the inline vector to the specified length.
+    ///
+    /// Do nothing if the new length is greater than or equal to the current
+    /// length.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::InlineVec;
+    /// use typenum::U8;
+    /// let mut inline = InlineVec::<u8, U8>::new();
+    /// inline.push(1);
+    /// inline.push(2);
+    /// assert_eq!(inline.len(), 2);
+    /// inline.const_truncate(1);
+    /// assert_eq!(inline.len(), 1);
+    /// inline.const_truncate(0);
+    /// assert_eq!(inline.len(), 0);
+    /// ```
+    pub const fn const_truncate(&mut self, new_len: usize) {
+        if new_len < self.len() {
+            // SAFETY: new_len < self.len() < Self::CAPACITY
+            // nothing to drop for Copy types
+            unsafe {
+                self.set_len(new_len);
+            }
+        }
+    }
+
+    /// Resizes the inline vector to the specified length.
+    ///
+    /// If the new length is greater than the current length, the array is
+    /// extended with the given value. If the new length is less than the
+    /// current length, the array is truncated.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new length exceeds the capacity of the inline vector.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::vecs::InlineVec;
+    /// use typenum::U8;
+    /// let mut inline = InlineVec::<u8>::new();
+    /// inline.const_resize(3, 42);
+    /// assert_eq!(inline.as_slice(), &[42, 42, 42]);
+    /// inline.const_resize(1, 0);
+    /// assert_eq!(inline.as_slice(), &[42]);
+    /// ```
+    pub const fn const_resize(&mut self, new_len: usize, value: T) {
+        if new_len <= self.len() {
+            // SAFETY: new_len < self.len() < Self::CAPACITY
+            // nothing to drop for Copy types
+            unsafe {
+                self.set_len(new_len);
+            }
+        } else {
+            assert!(new_len <= Self::CAPACITY, "length exceeds capacity");
+            let additional = new_len - self.len();
+            let slice = self.spare_capacity_mut();
+            let mut i = 0;
+            while i < additional {
+                slice[i].write(value);
+                i += 1;
+            }
+            // SAFETY: new_len <= Self::CAPACITY
+            // and we just initialized the new elements
+            unsafe {
+                self.set_len(new_len);
+            }
+        }
+    }
+
+    /// Drops the inline vector const-ly, doing nothing.
+    ///
+    /// Like `std::mem::forget`, but the generic bound ensures (`T: Copy`)
+    /// there is actually nothing to drop and as such no leak occurs.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::inline_vec;
+    /// const {
+    ///   let inline = inline_vec![8 => 1_u8, 2, 3];
+    ///   inline.const_drop(); // no leak occurs
+    /// }
+    /// ```
+    #[inline]
+    pub const fn const_drop(self) {
+        core::mem::forget(self);
+    }
+}
+
+impl<T: ConstDefault, L: InlineLength> InlineVec<T, L> {
+    pub const FULL_DEFAULT: Self = {
+        let mut inline = Self::new();
+        let slice = inline.spare_capacity_mut();
+
+        let mut i = Self::CAPACITY;
+        while i > 0 {
+            i -= 1;
+            slice[i].write(T::DEFAULT);
+        }
+        unsafe {
+            inline.set_len(Self::CAPACITY);
+        }
+        inline
+    };
 }
 
 impl<T, L: InlineLength> Clone for InlineVec<T, L>
