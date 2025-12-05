@@ -20,6 +20,7 @@ macro_rules! resize_impl {
                 }
             }
             guard.complete();
+            // SAFETY: the additioanl elements have been initialized
             unsafe {
                 $self.set_len(new_len);
             }
@@ -202,6 +203,7 @@ macro_rules! from_slice_clone_impl {
         let slice = $slice;
         let len = slice.len();
         let mut this = Self::with_capacity(len);
+        // SAFETY: capacity ≥ new length
         unsafe {
             guarded_slice_clone(this.as_mut_ptr(), slice.as_ptr(), len);
             this.set_len(len);
@@ -219,6 +221,7 @@ macro_rules! extend_from_slice_impl {
         let slice_len = slice.len();
         $self.reserve(slice_len);
 
+        // SAFETY: capacity ≥ new length
         unsafe {
             guarded_slice_clone(
                 $self.as_mut_ptr().add($self.len()),

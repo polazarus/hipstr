@@ -65,18 +65,30 @@ pub(crate) fn unwrap_display<T, E: fmt::Display>(result: Result<T, E>) -> T {
     }
 }
 
+/// Unwraps a `Result`, informing the compiler that the `Err` case is unreachable.
+///
+/// # Safety
+///
+/// The caller must ensure that the `Result` is actually `Ok`.
+///
+/// # Panics
+///
+/// In debug builds, panics with the display of the error if the result is an `Err`.
 #[track_caller]
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) fn unwrap_unchecked_display<T, E: fmt::Display>(result: Result<T, E>) -> T {
     match result {
         Ok(value) => value,
-        Err(e) => unsafe {
-            if cfg!(debug_assertions) {
-                panic!("{e}");
-            } else {
-                core::hint::unreachable_unchecked()
+        Err(e) => {
+            // SAFETY: the caller must ensure the error is actually unreachable
+            unsafe {
+                if cfg!(debug_assertions) {
+                    panic!("{e}");
+                } else {
+                    core::hint::unreachable_unchecked()
+                }
             }
-        },
+        }
     }
 }
 
