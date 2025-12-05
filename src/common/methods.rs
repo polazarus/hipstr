@@ -12,7 +12,8 @@ macro_rules! resize_impl {
 
             let base = $self.as_mut_ptr();
 
-            let mut guard = SliceWriteGuard::new(unsafe { base.add(old_len) }, additional);
+            // SAFETY: valid write because the reserve call ensures there is enough capacity
+            let mut guard = unsafe { SliceWriteGuard::new(base.add(old_len), additional) };
             for e in $iter.take(additional) {
                 unsafe {
                     guard.write(e);

@@ -532,6 +532,7 @@ where
     /// ```
     pub const fn into_borrowed(self) -> Result<&'borrow [u8], Self> {
         if self.is_borrowed() {
+            // SAFETY: repr is checked above
             Ok(unsafe { self.into_hipvec().into_borrowed_unchecked() })
         } else {
             Err(self)
@@ -715,6 +716,7 @@ where
     #[inline]
     #[track_caller]
     pub unsafe fn slice_unchecked(&self, range: impl RangeBounds<usize>) -> Self {
+        // SAFETY: range is checked by the caller
         Self(unsafe { self.0.slice_unchecked(range) })
     }
 
@@ -1365,6 +1367,7 @@ where
             });
         }
 
+        // SAFETY: everything is initialized
         unsafe { new.set_len(new_len) };
         debug_assert_eq!(final_ptr.cast_const(), new.as_slice().as_ptr_range().end);
 
@@ -1491,6 +1494,7 @@ impl<B: Backend> RefMut<'_, '_, B> {
         }
 
         let new_len = self.len() - width;
+        // SAFETY: length decreases
         unsafe {
             self.0.set_len(new_len);
         }

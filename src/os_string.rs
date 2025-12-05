@@ -594,7 +594,10 @@ where
     #[must_use]
     pub fn to_str_lossy(&self) -> HipStr<'borrow, B> {
         match self.as_os_str().to_string_lossy() {
-            Cow::Borrowed(_) => unsafe { HipStr::from_utf8_unchecked(self.0.clone()) },
+            Cow::Borrowed(_) => {
+                //  SAFETY: the previous line checked the encoding
+                unsafe { HipStr::from_utf8_unchecked(self.0.clone()) }
+            }
             Cow::Owned(s) => HipStr::from(s),
         }
     }
@@ -624,7 +627,7 @@ where
         Self(self.0.slice_ref(slice.as_encoded_bytes()))
     }
 
-    /// Returns a slice as it own `HipStr` based on the given subslice `&OsStr`.
+    /// Returns a slice as it own `HipOsStr` based on the given subslice `&OsStr`.
     ///
     /// # Errors
     ///
@@ -639,6 +642,7 @@ where
     /// # use std::path::Path;
     /// # use std::ffi::OsStr;
     /// let a = HipOsStr::from("abc");
+    /// // SAFETY: slice is part of an OS string
     /// let sl: &OsStr = unsafe { OsStr::from_encoded_bytes_unchecked(&a.as_encoded_bytes()[0..2]) };
     /// assert_eq!(a.try_slice_ref(sl), Some(HipOsStr::from("ab")));
     /// assert!(a.try_slice_ref("z".as_ref()).is_none());

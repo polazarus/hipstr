@@ -279,10 +279,10 @@ where
     #[must_use]
     pub const fn as_borrowed(&self) -> Option<&'borrow str> {
         match self.0.as_borrowed() {
-            Some(slice) => Some(unsafe {
-                // SAFETY: type invariant
-                core::str::from_utf8_unchecked(slice)
-            }),
+            Some(slice) => {
+                // SAFETY: type invariant for strings
+                Some(unsafe { core::str::from_utf8_unchecked(slice) })
+            }
             None => None,
         }
     }
@@ -409,6 +409,7 @@ where
     #[inline]
     #[must_use]
     pub unsafe fn as_mut_ptr_unchecked(&mut self) -> *mut u8 {
+        // SAFETY: caller ensured the safety condition
         unsafe { self.0.as_mut_ptr_unchecked() }
     }
 
@@ -571,6 +572,7 @@ where
             check_char_boundary(self, range.start);
             check_char_boundary(self, range.end);
         }
+        // SAFETY: caller ensured the safety conditions
         Self(unsafe { self.0.slice_unchecked(range) })
     }
 
@@ -607,6 +609,7 @@ where
     #[must_use]
     pub unsafe fn slice_ref_unchecked(&self, slice: &str) -> Self {
         let slice = slice.as_bytes();
+        // SAFETY: caller ensured the safety condition
         unsafe { Self(self.0.slice_ref_unchecked(slice)) }
     }
 
@@ -706,6 +709,7 @@ where
     /// // some bytes, in a vector
     /// let sparkle_heart = vec![240, 159, 146, 150];
     ///
+    /// // SAFETY: we know these bytes are valid UTF-8
     /// let sparkle_heart = unsafe {
     ///     String::from_utf8_unchecked(sparkle_heart)
     /// };
@@ -1322,6 +1326,7 @@ where
     #[must_use]
     pub fn trim(&self) -> Self {
         let s = self.as_str().trim();
+        // SAFETY: slices are from self
         unsafe { self.slice_ref_unchecked(s) }
     }
 
@@ -1342,6 +1347,7 @@ where
     #[must_use]
     pub fn trim_start(&self) -> Self {
         let s = self.as_str().trim_start();
+        // SAFETY: slices are from self
         unsafe { self.slice_ref_unchecked(s) }
     }
 
@@ -1362,6 +1368,7 @@ where
     #[must_use]
     pub fn trim_end(&self) -> Self {
         let s = self.as_str().trim_end();
+        // SAFETY: slices are from self
         unsafe { self.slice_ref_unchecked(s) }
     }
 
@@ -1499,9 +1506,10 @@ where
     /// ```
     #[inline]
     pub fn split_once<P: Pattern>(&self, pattern: P) -> Option<(Self, Self)> {
-        pattern
-            .split_once(self.as_str())
-            .map(|(a, b)| unsafe { (self.slice_ref_unchecked(a), self.slice_ref_unchecked(b)) })
+        pattern.split_once(self.as_str()).map(|(a, b)| {
+            // SAFETY: slices are from self
+            unsafe { (self.slice_ref_unchecked(a), self.slice_ref_unchecked(b)) }
+        })
     }
 
     /// Splits the string on the last occurrence of the specified delimiter and
@@ -1519,9 +1527,10 @@ where
     /// ```
     #[inline]
     pub fn rsplit_once<P: ReversePattern>(&self, pattern: P) -> Option<(Self, Self)> {
-        pattern
-            .rsplit_once(self.as_str())
-            .map(|(a, b)| unsafe { (self.slice_ref_unchecked(a), self.slice_ref_unchecked(b)) })
+        pattern.rsplit_once(self.as_str()).map(|(a, b)| {
+            // SAFETY: slices are from self
+            unsafe { (self.slice_ref_unchecked(a), self.slice_ref_unchecked(b)) }
+        })
     }
 
     /// An iterator over the disjoint matches of a pattern within the given string
@@ -1588,6 +1597,7 @@ where
     #[must_use]
     pub fn trim_matches(&self, p: impl DoubleEndedPattern) -> Self {
         let s = p.trim_matches(self.as_str());
+        // SAFETY: slices are from self
         unsafe { self.slice_ref_unchecked(s) }
     }
 
@@ -1600,6 +1610,7 @@ where
     #[must_use]
     pub fn trim_start_matches(&self, p: impl Pattern) -> Self {
         let s = p.trim_start_matches(self.as_str());
+        // SAFETY: slices are from self
         unsafe { self.slice_ref_unchecked(s) }
     }
 
@@ -1612,6 +1623,7 @@ where
     #[must_use]
     pub fn trim_end_matches(&self, p: impl ReversePattern) -> Self {
         let s = p.trim_end_matches(self.as_str());
+        // SAFETY: slices are from self
         unsafe { self.slice_ref_unchecked(s) }
     }
 
@@ -1627,9 +1639,10 @@ where
     /// See [`str::strip_prefix`] for examples and possible patterns.
     #[inline]
     pub fn strip_prefix(&self, prefix: impl Pattern) -> Option<Self> {
-        prefix
-            .strip_prefix(self.as_str())
-            .map(|s| unsafe { self.slice_ref_unchecked(s) })
+        prefix.strip_prefix(self.as_str()).map(|s| {
+            // SAFETY: slices are from self
+            unsafe { self.slice_ref_unchecked(s) }
+        })
     }
 
     /// Returns a string with the suffix removed.
@@ -1645,9 +1658,10 @@ where
     /// See [`str::strip_suffix`] for examples and possible patterns.
     #[inline]
     pub fn strip_suffix(&self, suffix: impl ReversePattern) -> Option<Self> {
-        suffix
-            .strip_suffix(self.as_str())
-            .map(|s| unsafe { self.slice_ref_unchecked(s) })
+        suffix.strip_suffix(self.as_str()).map(|s| {
+            // SAFETY: slices are from self
+            unsafe { self.slice_ref_unchecked(s) }
+        })
     }
 
     /// Splits a string by whitespace.
@@ -1698,9 +1712,7 @@ where
     #[inline]
     #[must_use]
     pub fn concat_slices(slices: &[&str]) -> Self {
-        #[expect(clippy::transmute_ptr_to_ptr)]
-        let slices: &[&[u8]] = unsafe { transmute(slices) };
-
+        let slices = bytes_slices_from_str_slices(slices);
         Self(HipByt::concat_slices(slices))
     }
 
@@ -1757,8 +1769,7 @@ where
     #[inline]
     #[must_use]
     pub fn join_slices(slices: &[&str], sep: &str) -> Self {
-        #[expect(clippy::transmute_ptr_to_ptr)]
-        let slices: &[&[u8]] = unsafe { transmute(slices) };
+        let slices = bytes_slices_from_str_slices(slices);
 
         Self(HipByt::join_slices(slices, sep.as_bytes()))
     }
@@ -2215,6 +2226,7 @@ where
     #[inline]
     #[must_use]
     pub const fn as_str(&self) -> &str {
+        // SAFETY: type invariant for strings
         unsafe { str::from_utf8_unchecked(self.0 .0.as_slice()) }
     }
 
@@ -2222,6 +2234,7 @@ where
     #[inline]
     #[must_use]
     pub const fn as_mut_str(&mut self) -> &mut str {
+        // SAFETY: type invariant for strings
         unsafe { str::from_utf8_unchecked_mut(self.0 .0.as_mut_slice()) }
     }
 
@@ -2286,4 +2299,15 @@ fn check_char_boundary(string: &str, index: usize) {
     if !string.is_char_boundary(index) {
         panic_not_char_boundary(index)
     }
+}
+
+/// Converts a slice of `&str` to a slice of `&[u8]` without copying.
+///
+/// This is safe beacuse `&str` and `&[u8]` have the same memory representation.
+#[inline]
+fn bytes_slices_from_str_slices<'a, 'b>(slices: &'a [&'b str]) -> &'a [&'b [u8]] {
+    #[allow(clippy::transmute_ptr_to_ptr, reason = "more readable this way")]
+    // SAFETY: &str has the same represetnation as &[u8]
+    let slices: &[&[u8]] = unsafe { transmute(slices) };
+    slices
 }

@@ -358,7 +358,7 @@ macro_rules! Vector {
         $body:tt
     ) => {
         impl $(< $($generics_bindings)* >)? $crate::common::traits::sealed::Sealed for $ty where $($generics_where)* {}
-        impl $(< $($generics_bindings)* >)? $crate::common::traits::Vector for $ty where $($generics_where)* {
+        unsafe impl $(< $($generics_bindings)* >)? $crate::common::traits::Vector for $ty where $($generics_where)* {
             type Item = $item;
             #[inline]
             fn len(&self) -> usize {
@@ -400,7 +400,7 @@ macro_rules! MutVector {
         where ($($generics_where:tt)*)
         $body:tt
     ) => {
-        impl $(< $($generics_bindings)* >)? $crate::common::traits::MutVector for $ty where $($generics_where)* {
+        unsafe impl $(< $($generics_bindings)* >)? $crate::common::traits::MutVector for $ty where $($generics_where)* {
             #[inline]
             unsafe fn set_len(&mut self, len: usize) {
                 // SAFETY: same safety requirements

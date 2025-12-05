@@ -48,15 +48,20 @@ pub(crate) const unsafe fn force_copy<T>(value: &T) -> T {
 ///
 /// Always panics with the provided error message.
 #[track_caller]
-pub(crate) fn panic_display<T>(e: impl fmt::Display) -> T {
+pub(crate) fn panic_display(e: impl fmt::Display) -> ! {
     panic!("{e}");
 }
 
+/// Unwraps a `Result`, panicking with the display of the error on failure.
+///
+/// # Panics
+///
+/// Always panics if the result is an `Err`.
 #[track_caller]
 pub(crate) fn unwrap_display<T, E: fmt::Display>(result: Result<T, E>) -> T {
     match result {
         Ok(value) => value,
-        Err(e) => panic!("{e}"),
+        Err(e) => panic_display(e),
     }
 }
 
@@ -175,18 +180,11 @@ impl fmt::Display for RangeError {
     }
 }
 
-/// Converts a `ManuallyDrop<T>` reference to a `T` reference in a `const` context.
-///
-/// # Safety
-///
-/// This function is safe because `ManuallyDrop<T>` is a transparent wrapper of `T`.
-#[inline]
-pub(crate) const fn manually_drop_as_ref<T>(m: &ManuallyDrop<T>) -> &T {
-    // SAFETY: `ManuallyDrop<T>` is a transparent wrapper of `T`.
-    unsafe { core::mem::transmute::<&ManuallyDrop<T>, &T>(m) }
-}
-
 /// Copies a `T` slice to a `ManuallyDrop<T>` slice.
+///
+/// # Panics
+///
+/// Panics if the lengths of the source and destination slices do not match.
 pub(crate) const fn maybe_uninit_write_copy_of_slice<T>(dst: &mut [MaybeUninit<T>], src: &[T])
 where
     T: Copy,
@@ -196,23 +194,19 @@ where
         len == dst.len(),
         "source slice length does not match destination slice length"
     );
+    // SAFETY: `T` is `Copy`, and the lengths are equal
     unsafe {
         dst.as_mut_ptr().copy_from(src.as_ptr().cast(), len);
     }
 }
 
-/// Converts a `ManuallyDrop<T>` mutable reference to a `T` mutable reference in a `const` context.
-///
-/// # Safety
-///
-/// This function is safe because `ManuallyDrop<T>` is a transparent wrapper of `T`.
-#[inline]
-pub(crate) const fn manually_drop_as_mut<T>(m: &mut ManuallyDrop<T>) -> &mut T {
-    // SAFETY: `ManuallyDrop<T>` is a transparent wrapper of `T`.
-    unsafe { core::mem::transmute::<&mut ManuallyDrop<T>, &mut T>(m) }
-}
-
 /// A guard that drops the initialized elements of a slice.
+///
+/// # Type invariants
+///
+/// - The pointer `ptr` must be valid for reads and writes of `len` elements of type `T`.
+/// - The `initialized` field must always be less than or equal to `len`.
+/// - The elements from `ptr` to `ptr.add(initialized)` (excluded) must be initialized.
 pub(crate) struct SliceWriteGuard<T> {
     ptr: *mut T,
     #[cfg(debug_assertions)]
@@ -224,8 +218,12 @@ impl<T> SliceWriteGuard<T> {
     /// Creates a new `SliceWriteGuard` from a raw pointer and a length.
     ///
     /// The length is only stored in debug builds for assertions.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the pointer is valid for writes of `len` elements of type `T`.
     #[inline]
-    pub const fn new(ptr: *mut T, len: usize) -> Self {
+    pub const unsafe fn new(ptr: *mut T, len: usize) -> Self {
         Self {
             ptr,
             #[cfg(debug_assertions)]
@@ -260,6 +258,7 @@ impl<T> SliceWriteGuard<T> {
 
 impl<T> Drop for SliceWriteGuard<T> {
     fn drop(&mut self) {
+        // SAFETY: valid drop by precondition
         unsafe {
             debug_assert!(self.initialized <= self.len);
             drop_raw_slice(self.ptr, self.initialized);
@@ -267,10 +266,17 @@ impl<T> Drop for SliceWriteGuard<T> {
     }
 }
 
+/// Clones a slice of elements from a source pointer to a destination pointer,
+/// using a guard to ensure proper dropping of initialized elements on panic.
+///
+/// # Safety
+///
+/// The caller must ensure that both pointers are valid for reads and writes
+/// of `len` elements of type `T`.
 #[inline]
 #[track_caller]
 pub(crate) unsafe fn guarded_slice_clone<T: Clone>(dst: *mut T, src: *const T, len: usize) {
-    let mut guard = SliceWriteGuard::new(dst, len);
+    let mut guard = unsafe { SliceWriteGuard::new(dst, len) };
 
     for i in 0..len {
         // SAFETY: valid read by precondition
@@ -311,31 +317,40 @@ pub(crate) unsafe fn drop_raw_slice<T>(ptr: *mut T, len: usize) {
     }
 }
 
+/// Transmutes a value of type `A` to type `B` by bitwise copying.
+///
+/// # Safety
+///
+/// The caller must ensure that `A` and `B` have the same size and that
+/// the bitwise representation of `A` is valid for `B`.
 pub(crate) const unsafe fn force_transmute<A, B>(value: A) -> B {
     union U<A, B> {
         a: ManuallyDrop<A>,
         b: ManuallyDrop<B>,
     }
 
-    assert!(mem::size_of::<A>() == mem::size_of::<B>());
+    debug_assert!(mem::size_of::<A>() == mem::size_of::<B>());
 
-    unsafe {
-        ManuallyDrop::into_inner(
-            U {
-                a: ManuallyDrop::new(value),
-            }
-            .b,
-        )
-    }
+    let union = U {
+        a: ManuallyDrop::new(value),
+    };
+
+    // SAFETY: caller ensures that the types are compatible.
+    unsafe { ManuallyDrop::into_inner(union.b) }
 }
 
+/// Gets the range of indices of a child slice within a parent slice, if the
+/// child is contained within the parent.
 pub(crate) fn range_of<T>(child: &[T], parent: &[T]) -> Option<Range<usize>> {
     let child = child.as_ptr_range();
     let parent = parent.as_ptr_range();
     if parent.start <= child.start && child.end <= parent.end {
-        let start = unsafe { child.start.offset_from_unsigned(parent.start) };
-        let end = unsafe { child.end.offset_from_unsigned(parent.start) };
-        Some(start..end)
+        // SAFETY: pointers are checked to be in the same range
+        unsafe {
+            let start = child.start.offset_from_unsigned(parent.start);
+            let end = child.end.offset_from_unsigned(parent.start);
+            Some(start..end)
+        }
     } else {
         None
     }

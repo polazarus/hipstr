@@ -976,7 +976,10 @@ where
         assert!(new_len <= Self::CAPACITY, "new length exceeds capacity");
 
         let ptr = self.as_mut_ptr();
-        let mut slice_guard = SliceWriteGuard::new(unsafe { ptr.add(len) }, range_len);
+
+        // SAFETY: the ptr + len is valid for range_len writes
+        // because new_len <= CAPACITY
+        let mut slice_guard = unsafe { SliceWriteGuard::new(ptr.add(len), range_len) };
 
         for src in range {
             // SAFETY: valid range
@@ -989,6 +992,8 @@ where
         }
 
         slice_guard.complete();
+
+        // SAFETY: new_len <= CAPACITY
         unsafe {
             self.set_len(new_len);
         }
