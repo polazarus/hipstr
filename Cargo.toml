@@ -75,6 +75,9 @@ unexpected_cfgs = { level = "warn", check-cfg = [
     'cfg(loom)',
 ] }
 
+[lints.clippy]
+missing_safety_doc = "warn"
+
 [[bench]]
 name = "main"
 harness = false

@@ -10,13 +10,13 @@ use core::borrow::Borrow;
 use core::error::Error;
 use core::hash::Hash;
 use core::mem::transmute;
-use core::ops::{Deref, DerefMut, Range, RangeBounds};
+use core::ops::{Deref, DerefMut, RangeBounds};
 use core::str::{Lines, SplitAsciiWhitespace, SplitWhitespace, Utf8Error};
 
 use self::pattern::{DoubleEndedPattern, IterWrapper, Pattern, ReversePattern};
 use crate::backend::Backend;
-use crate::bytes::{self, simplify_range, HipByt, SliceErrorKind as ByteSliceErrorKind};
-use crate::common::{self, unwrap_display, RangeError};
+use crate::bytes::{self, HipByt};
+use crate::common::{self, unwrap_display};
 
 mod cmp;
 mod convert;
@@ -1963,7 +1963,18 @@ impl SliceError {
             common::RangeError::EndOutOfBounds { end, len } => Self::EndOutOfBounds { end, len },
         }
     }
-    const fn const_message(&self) -> &str {
+
+    /// Returns a constant string message describing the error.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::string::SliceError;
+    ///
+    /// assert_eq!(SliceError::StartOverflows.const_message(), "start index overflows");
+    /// ```
+    #[must_use]
+    pub const fn const_message(&self) -> &'static str {
         match self {
             Self::StartOverflows => "start index overflows",
             Self::EndOverflows => "end index overflows",

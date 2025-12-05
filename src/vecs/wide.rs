@@ -120,7 +120,7 @@ impl<T, P: ConstDefault> WideVec<T, P> {
 
     /// Returns a mutable reference to the prefix.
     #[cfg(test)]
-    pub(crate) fn prefix_mut(&mut self) -> Option<&mut P> {
+    pub(crate) const fn prefix_mut(&mut self) -> Option<&mut P> {
         match self.0.as_mut() {
             Some(inner) => Some(&mut inner.prefix),
             None => None,
@@ -152,7 +152,11 @@ impl<T, P: ConstDefault> WideVec<T, P> {
                 let inner: NonNull<WideInner<T, Q>> = inner.cast();
                 WideVec(WideRepr::new(inner))
             } else {
+                // need to allocate a new inner
+                // move the previous inner out of the previous box
+                // SAFETY: type invariant, the inner pointer is allocated by Box
                 let WideInner { ptr, cap, len, .. } = *unsafe { Box::from_raw(inner.as_ptr()) };
+                // create a new inner
                 let new_inner = Box::new(WideInner {
                     ptr,
                     cap,
@@ -360,8 +364,9 @@ impl<T, B: Backend> SmartWideVec<T, B> {
     /// # Examples
     ///
     /// ```
-    /// # use hipstr::vecs::SmartWideVec;
-    /// let vec: SmartWideVec<i32> = SmartWideVec::new();
+    /// # use hipstr::vecs::wide::SmartWideVec;
+    /// # use hipstr::Arc;
+    /// let vec: SmartWideVec<i32, Arc> = SmartWideVec::new();
     /// assert!(vec.is_empty());
     /// assert_eq!(vec.len(), 0);
     /// assert_eq!(vec.capacity(), 0);
@@ -370,7 +375,14 @@ impl<T, B: Backend> SmartWideVec<T, B> {
     #[inline]
     #[must_use]
     pub const fn new() -> Self {
-        unsafe { Self::from_wide_vec_unchecked(WideVec::new()) }
+        // make it const, even if WideVec::new is not called in const context
+        const {
+            // SAFETY: WideVec::new returns a WideVec with a valid representation
+            //
+            // The default payload of WideVec is ConstDefault of B
+            // which is valid for a uniquely owned WideVec
+            unsafe { Self::from_wide_vec_unchecked(WideVec::new()) }
+        }
     }
 
     /// Creates a new `SmartWideVec` from a `WideVec` without checking the prefix.
@@ -381,6 +393,8 @@ impl<T, B: Backend> SmartWideVec<T, B> {
     #[must_use]
     #[inline]
     pub(crate) const unsafe fn from_wide_vec_unchecked(wide_vec: WideVec<T, B>) -> Self {
+        // SAFETY: WideVec as the same representation as SmartWideVec
+        // the transmute's call is necessary because WideVec implements Drop
         unsafe { mem::transmute(wide_vec) }
     }
 
@@ -395,8 +409,8 @@ impl<T, B: Backend> SmartWideVec<T, B> {
     /// Returns a reference to the underlying `WideVec`.
     #[must_use]
     #[inline]
-    pub(crate) const fn as_wide_vec(&self) -> &WideVec<T, B> {
-        // SAFETY: type invariant
+    pub const fn as_wide_vec(&self) -> &WideVec<T, B> {
+        // SAFETY: type invariant: WideVec and SmartWideVec have the same representation
         unsafe { &*ptr::from_ref(self).cast() }
     }
 
@@ -406,6 +420,7 @@ impl<T, B: Backend> SmartWideVec<T, B> {
     #[inline]
     pub fn as_mut_wide_vec(&mut self) -> Option<&mut WideVec<T, B>> {
         if self.is_unique() {
+            // SAFETY: the uniqueness is checked above
             Some(unsafe { self.as_mut_wide_vec_unchecked() })
         } else {
             None
@@ -422,22 +437,44 @@ impl<T, B: Backend> SmartWideVec<T, B> {
     #[must_use]
     #[inline]
     pub(crate) const unsafe fn as_mut_wide_vec_unchecked(&mut self) -> &mut WideVec<T, B> {
-        // SAFETY: type invariant, uniqueness must be ensured by the caller
+        // SAFETY:
+        // - type invariant: WideVec and SmartWideVec have the same representation
+        // - uniqueness must be ensured by the caller
         unsafe { &mut *ptr::from_mut(self).cast() }
     }
 
     /// Creates a new `SmartWideVec` from a standard `Vec`.
     pub(crate) fn from_vec(vec: Vec<T>) -> Self {
         let wide_vec = WideVec::from_vec(vec);
+        // SAFETY: newly created WideVec has a valid counter
         unsafe { Self::from_wide_vec_unchecked(wide_vec) }
     }
 
     /// Converts the `SmartWideVec` into a standard `Vec` without checking
     /// for uniqueness.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the vector is uniquely owned.
     pub(crate) unsafe fn into_vec_unchecked(self) -> Vec<T> {
-        debug_assert!(self.is_unique());
-        let wide_vec: WideVec<T, B> = unsafe { mem::transmute(self) };
+        // SAFETY: the caller must ensure uniqueness
+        let wide_vec = unsafe { self.into_wide_vec_unchecked() };
         wide_vec.into_vec().map_or_else(Vec::new, |(vec, _)| vec)
+    }
+
+    /// Converts the `SmartWideVec` into a standard `WideVec` without checking
+    /// for uniqueness.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the vector is uniquely owned.
+    pub(crate) unsafe fn into_wide_vec_unchecked(self) -> WideVec<T, B> {
+        debug_assert!(self.is_unique(), "the vector is not uniquely owned");
+        // SAFETY:
+        // - type invariant: WideVec and SmartWideVec have the same representation
+        // - uniqueness must be ensured by the caller
+        let wide_vec: WideVec<T, B> = unsafe { mem::transmute(self) };
+        wide_vec
     }
 
     /// Returns a raw pointer to the vector's buffer.
@@ -773,6 +810,12 @@ impl<T, B: Backend> SmartWideVec<T, B> {
         Some(unsafe { self.copy() })
     }
 
+    /// Returns a copy of this [`SmartWideVec<T, B>`].
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the reference count is consistant, typically
+    /// already increased.
     const unsafe fn copy(&self) -> Self {
         Self(self.0)
     }

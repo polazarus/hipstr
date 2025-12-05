@@ -830,7 +830,8 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
 
             let new_header: NonNull<ThinHeader<T, Q>> = header.cast();
 
-            // SAFETY: write the new prefix without dropping the already-drop, maybe invalid, prefix
+            // write the new prefix without dropping the already-drop, maybe invalid, prefix
+            // SAFETY: new_header is a valid pointer (even if the prefix is inconsistant)
             unsafe {
                 let prefix_ptr = &raw mut (*new_header.as_ptr()).prefix;
                 prefix_ptr.write(Q::DEFAULT);

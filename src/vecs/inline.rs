@@ -168,13 +168,18 @@ impl<T, L: InlineLength> InlineVec<T, L> {
     /// Creates a new inline vector with the specified length, initialized to
     /// zero.
     ///
+    /// # Panics
+    ///
+    /// Panics if the specified length exceeds the capacity of the inline vector.
+    ///
     /// # Safety
     ///
     /// - The caller must ensure that the length is less than or equal to the
     ///   capacity of the inline vector.
     /// - The caller must ensure that the elements are initialized.
     #[inline]
-    pub(crate) const unsafe fn zeroed(new_len: usize) -> Self {
+    #[must_use]
+    pub const unsafe fn zeroed(new_len: usize) -> Self {
         assert!(new_len <= Self::CAPACITY, "new length exceeds capacity");
         // SAFETY: the caller must ensure that the elements are zeroable
         let mut new = Self(unsafe { InlineRepr::<T, L>::zeroed() });
@@ -1142,6 +1147,7 @@ where
     /// [`clone`]: Self::clone
     #[must_use]
     pub const fn copy(&self) -> Self {
+        // SAFETY: T is Copy
         unsafe {
             let mut this: MaybeUninit<Self> = MaybeUninit::uninit();
             this.as_mut_ptr().copy_from_nonoverlapping(self, 1);
@@ -1182,6 +1188,7 @@ where
         let new_len = len + range.len();
         assert!(new_len <= Self::CAPACITY, "new length exceeds capacity");
 
+        // SAFETY: type invariant
         let data_slice: &mut [MaybeUninit<T>] = unsafe {
             let ptr = self.as_mut_ptr().cast();
             slice::from_raw_parts_mut(ptr, Self::CAPACITY)

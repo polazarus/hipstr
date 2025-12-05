@@ -8,7 +8,7 @@ use alloc::vec::Vec;
 use core::borrow::Borrow;
 use core::hash::Hash;
 use core::mem::{self, MaybeUninit};
-use core::ops::{Bound, Deref, DerefMut, Range, RangeBounds};
+use core::ops::{Deref, DerefMut, RangeBounds};
 use core::ptr;
 
 use rules_derive::rules_derive;
@@ -1457,44 +1457,6 @@ pub enum SliceErrorKind {
     EndOutOfBounds,
 }
 
-/// Normalizes any [`RangeBounds`] to a [`Range`].
-pub(crate) fn simplify_range(
-    range: impl RangeBounds<usize>,
-    len: usize,
-) -> Result<Range<usize>, (usize, usize, SliceErrorKind)> {
-    simplify_range_mono(
-        range.start_bound().cloned(),
-        range.end_bound().cloned(),
-        len,
-    )
-}
-
-const fn simplify_range_mono(
-    start: Bound<usize>,
-    end: Bound<usize>,
-    len: usize,
-) -> Result<Range<usize>, (usize, usize, SliceErrorKind)> {
-    let start = match start {
-        Bound::Included(start) => start,
-        Bound::Excluded(start) => start + 1,
-        Bound::Unbounded => 0,
-    };
-    let end = match end {
-        Bound::Included(end) => end + 1,
-        Bound::Excluded(end) => end,
-        Bound::Unbounded => len,
-    };
-    if start > len {
-        Err((start, end, SliceErrorKind::StartOutOfBounds))
-    } else if end > len {
-        Err((start, end, SliceErrorKind::EndOutOfBounds))
-    } else if start > end {
-        Err((start, end, SliceErrorKind::StartGreaterThanEnd))
-    } else {
-        Ok(Range { start, end })
-    }
-}
-
 /// A wrapper type for a mutably borrowed vector out of a [`HipByt`].
 pub struct RefMut<'a, 'borrow, B: Backend>(pub(crate) crate::vecs::hip::RefMut<'a, 'borrow, u8, B>);
 
@@ -1536,7 +1498,7 @@ impl<B: Backend> RefMut<'_, '_, B> {
     }
 
     #[cfg(feature = "bstr")]
-    pub fn pop_byte(&mut self) -> Option<u8> {
+    pub const fn pop_byte(&mut self) -> Option<u8> {
         self.0.pop()
     }
 }

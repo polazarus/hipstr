@@ -347,7 +347,7 @@ where
     /// ```
     #[inline]
     #[must_use]
-    pub fn capacity(&self) -> usize {
+    pub const fn capacity(&self) -> usize {
         self.0.capacity()
     }
 

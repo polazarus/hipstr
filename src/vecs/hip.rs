@@ -271,6 +271,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     /// let b = a.as_borrowed().unwrap();
     /// assert_eq!(b, slice);
     /// ```
+    #[must_use]
     pub const fn as_borrowed(&self) -> Option<&'a [T]> {
         if self.is_borrowed() {
             // SAFETY: representation checked above
@@ -334,18 +335,6 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     #[must_use]
     pub(crate) fn from_vec(vec: Vec<T>) -> Self {
         Self::from_smart_wide_vec(SmartWideVec::from_vec(vec))
-    }
-
-    #[must_use]
-    pub(crate) fn from_vec_normalized(vec: Vec<T>) -> Self {
-        if vec.is_empty() {
-            Self::DEFAULT
-        } else if Self::fit_inline(vec.len()) {
-            let inline = Inline::from_vector(vec);
-            Self::from_inline(inline)
-        } else {
-            Self::from_smart_wide_vec(SmartWideVec::from_vec(vec))
-        }
     }
 
     /// Creates a `HipVec` from a `SmartWideVec`.
@@ -500,7 +489,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     /// Returns `true` if the vector is the normalized empty vector, i.e., for
     /// now, borrowed and empty.
     pub(crate) const fn is_nil(&self) -> bool {
-        self.0.is_borrowed() && self.len() == 0
+        self.0.is_borrowed() && self.is_empty()
     }
 
     /// Returns `true` if the vector is stored inline.
@@ -642,6 +631,11 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         }
     }
 
+    /// Returns a mutable pointer to the first element of the vector.
+    ///
+    /// # Safety
+    ///
+    /// This vector should be uniquely owned.
     #[must_use]
     pub unsafe fn as_mut_ptr_unchecked(&mut self) -> *mut T {
         debug_assert!(self.is_unique(), "vector must be uniquely owned");
@@ -1164,13 +1158,13 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     where
         T: Clone,
     {
-        let result = self._pop();
+        let result = self.pop_aux();
         debug_assert!(self.is_valid());
         result
     }
 
     #[inline]
-    fn _pop(&mut self) -> Option<T>
+    fn pop_aux(&mut self) -> Option<T>
     where
         T: Clone,
     {
@@ -1271,7 +1265,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
     where
         T: Copy,
     {
-        self.mutate_copy().push(value)
+        self.mutate_copy().push(value);
     }
 
     /// Clears the vector, removing all values.
@@ -1792,6 +1786,32 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         }
     }
 
+    /// Shrinks the capacity of the vector with a lower bound.
+    ///
+    /// The capacity will remain at least as large as both the length and the
+    /// supplied value.
+    ///
+    /// If the current capacity is less than the lower limit, this is a no-op.
+    /// If the vector is borrowed, this is a no-op.
+    ///
+    /// If the capacity is changed, this method will use:
+    ///
+    /// - the borrowed representation if the new capacity is 0,
+    /// - the inline representation if the new capacity is less than or equal than [`Self::INLINE_CAP`],
+    /// - the thin allocated representation otherwise.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::vecs::HipVec;
+    /// let mut vec = HipVec::with_capacity(100);
+    /// vec.extend_from_slice(&[1, 2, 3, 4, 5]);
+    /// assert!(vec.capacity() >= 100);
+    /// vec.shrink_to(3);
+    /// assert!(vec.capacity() >= 3 && vec.capacity() < 100);
+    /// vec.shrink_to(200); // no-op
+    /// assert!(vec.capacity() >= 3 && vec.capacity() < 100);
+    /// ```
     pub fn shrink_to(&mut self, new_cap: usize)
     where
         T: Clone,
@@ -1806,9 +1826,11 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
             if old_cap > cap {
                 if self.is_unique() {
                     self.trim();
+                    // SAFETY: self is now unique and trimmed
                     unsafe { self.mutate_unchecked() }.shrink_to(cap);
                 } else {
                     let mut new = Self::with_capacity(cap);
+                    // SAFETY: new is unique and trimmed by construction
                     unsafe { new.mutate_unchecked() }.extend_from_slice(self.as_slice());
                     *self = new;
                 }

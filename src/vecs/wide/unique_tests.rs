@@ -143,8 +143,8 @@ fn spare_capacity_mut() {
     assert_eq!(spare_capacity.len(), 10);
     assert_eq!(spare_capacity.as_ptr(), p.cast());
 
-    for i in 0..10 {
-        spare_capacity[i].write((i + 1) as i32);
+    for (i, e) in spare_capacity.iter_mut().enumerate() {
+        e.write((i + 1).try_into().unwrap());
     }
     unsafe {
         wide_vec.set_len(10);
@@ -256,7 +256,7 @@ fn fresh_move_non_empty_compatible_with_drop() {
         }
     }
     impl ConstDefault for P {
-        const DEFAULT: Self = P(i32::MAX);
+        const DEFAULT: Self = Self(i32::MAX);
     }
 
     // mutex to ensure there is no multiple instance of this test running at the same time
@@ -275,7 +275,7 @@ fn fresh_move_non_empty_compatible_with_drop() {
         assert_eq!(vec_moved.as_ptr(), p);
         assert!(vec_moved.capacity() >= 3);
         assert_eq!(vec_moved.prefix(), Some(&0));
-        assert_eq!(DROPPED.load(SeqCst), true);
+        assert!(DROPPED.load(SeqCst));
     }
 }
 

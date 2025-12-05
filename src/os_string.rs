@@ -599,12 +599,6 @@ where
         }
     }
 
-    pub(crate) fn take_os_string(&mut self) -> OsString {
-        // SAFETY: type invariant
-        // unsafe { OsString::from_encoded_bytes_unchecked(self.0.take_vec()) }
-        todo!()
-    }
-
     /// Extracts a slice as its own `HipOsStr` based on the given subslice `&OsStr`.
     ///
     /// # Panics

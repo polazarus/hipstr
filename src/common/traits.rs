@@ -114,6 +114,6 @@ impl<T> MutVector for alloc::vec::Vec<T> {
     }
 
     fn reserve(&mut self, additional: usize) {
-        self.reserve(additional)
+        self.reserve(additional);
     }
 }
