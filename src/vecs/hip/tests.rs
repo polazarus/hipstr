@@ -920,6 +920,15 @@ fn as_mut_ptr() {
 }
 
 #[test]
+#[should_panic(expected = "vector must be uniquely owned")]
+fn as_mut_ptr_unchecked_debug_check() {
+    let mut h = HipVec::<u8, Arc>::from(vec![1, 2, 3]);
+    let _h2 = h.clone();
+    assert!(!h.is_unique());
+    let _p = unsafe { h.as_mut_ptr_unchecked() };
+}
+
+#[test]
 fn as_mut_slice() {
     let mut h = HipVec::<u8, Arc>::borrowed(b"abc");
     assert!(h.as_mut_slice().is_none());
@@ -1073,4 +1082,38 @@ fn spare_capacity_mut() {
     let mut h = HipVec::<u8, Arc>::from([42; 42]);
     let _h = h.clone();
     assert!(h.spare_capacity_mut().is_empty());
+}
+
+#[test]
+fn slice_ref_copy() {
+    // test with inline vector
+    let h = HipVec::<u8, Arc>::from([1, 2, 3, 4, 5]);
+    let slice = h.as_slice();
+    let sr = h.slice_ref_copy(&slice[1..]).unwrap();
+    assert_eq!(sr.as_slice(), &[2, 3, 4, 5]);
+
+    let empty = h.slice_ref_copy(&slice[0..0]).unwrap();
+    assert!(empty.as_slice().is_empty());
+
+    assert!(h.slice_ref_copy(b"abc").is_none());
+
+    // test with large vector
+    let h = HipVec::<u8, Arc>::from([42; 100]);
+    let slice = h.as_slice();
+    let sr = h.slice_ref_copy(&slice[10..90]).unwrap();
+    assert_eq!(sr.as_slice(), &[42; 80]);
+
+    assert!(h.slice_ref_copy(&[42; 100]).is_none());
+
+    // test with large vector (Unique)
+    let h = HipVec::<u8, Unique>::from([42; 100]);
+    let slice = h.as_slice();
+    let sr = h.slice_ref_copy(&slice[10..90]).unwrap();
+    assert_eq!(sr.as_slice(), &[42; 80]);
+
+    // test with borrowed vector
+    let h = HipVec::<u8, Arc>::borrowed(b"hello world");
+    let slice = h.as_slice();
+    let sr = h.slice_ref_copy(&slice[6..]).unwrap();
+    assert_eq!(sr.as_slice(), b"world");
 }
