@@ -15,7 +15,7 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::borrow::BorrowMut;
 use core::fmt::{self};
-use core::mem::{self, ManuallyDrop, MaybeUninit};
+use core::mem::MaybeUninit;
 use core::ops::{Range, RangeBounds};
 use core::ptr::NonNull;
 use core::{error, iter, slice};
@@ -36,7 +36,7 @@ use crate::common::methods::{
     resize_impl, spare_capacity_mut_impl, split_off_impl, swap_remove_impl, truncate_impl,
 };
 use crate::common::traits::{MutVector, Mutate, Vector};
-use crate::common::{drop_raw_slice, force_transmute, unwrap_display, SliceWriteGuard};
+use crate::common::{drop_raw_slice, unwrap_display, SliceWriteGuard};
 use crate::{common, macros};
 
 pub(crate) mod length;
@@ -1263,26 +1263,24 @@ where
     /// assert_eq!(inline.as_slice(), &[42]);
     /// ```
     pub const fn const_resize(&mut self, new_len: usize, value: T) {
-        if new_len <= self.len() {
-            // SAFETY: new_len < self.len() < Self::CAPACITY
-            // nothing to drop for Copy types
-            unsafe {
-                self.set_len(new_len);
-            }
-        } else {
+        let old_len = self.len();
+
+        // we need to set new elements?
+        if new_len > old_len {
             assert!(new_len <= Self::CAPACITY, "length exceeds capacity");
-            let additional = new_len - self.len();
+            let additional = new_len - old_len;
             let slice = self.spare_capacity_mut();
             let mut i = 0;
             while i < additional {
                 slice[i].write(value);
                 i += 1;
             }
-            // SAFETY: new_len <= Self::CAPACITY
-            // and we just initialized the new elements
-            unsafe {
-                self.set_len(new_len);
-            }
+        }
+
+        // SAFETY: new_len <= Self::CAPACITY and either new_len < self.len() or
+        // we just initialized the new elements
+        unsafe {
+            self.set_len(new_len);
         }
     }
 

@@ -8,8 +8,6 @@ use core::ptr;
 #[cfg(feature = "std")]
 use std::collections::HashSet;
 
-use super::SliceErrorKind;
-use crate::common::RangeError;
 use crate::string::SliceError;
 use crate::{HipByt, HipStr as H};
 
