@@ -263,7 +263,7 @@ where
         unsafe {
             if self.inner().count.decr() == UpdateResult::Overflow {
                 let ptr = self.0.as_ptr();
-                let _ = Box::from_raw(ptr);
+                drop(Box::from_raw(ptr));
             }
         }
     }

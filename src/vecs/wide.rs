@@ -335,11 +335,11 @@ unsafe fn drop_inner<T, P>(inner: NonNull<WideInner<T, P>>) {
 
     // drop the inner box, will drop the prefix too
     // SAFETY: precondition
-    let _ = unsafe { Box::from_raw(inner.as_ptr()) };
+    drop(unsafe { Box::from_raw(inner.as_ptr()) });
 
     // SAFETY: we are taking ownership of the vector, so the pointer is valid
     // and was allocated by the global allocator
-    let _ = unsafe { Vec::from_raw_parts(ptr.as_ptr(), len, cap) };
+    drop(unsafe { Vec::from_raw_parts(ptr.as_ptr(), len, cap) });
 }
 
 /// A shared vector backed by a standard wide vector, [`Vec`].

@@ -38,11 +38,11 @@ impl<T, B: Backend> Owner<T, B> {
         match self.0.into_split() {
             Variant::Thin(repr) => {
                 // SAFETY: should not be used after drop
-                let _ = SmartThinVec(repr);
+                drop(SmartThinVec(repr));
             }
             Variant::Wide(repr) => {
                 // SAFETY: should not be used after drop
-                let _ = SmartWideVec(repr);
+                drop(SmartWideVec(repr));
             }
         }
     }

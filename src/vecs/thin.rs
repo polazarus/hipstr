@@ -2118,7 +2118,8 @@ impl<T, B: Backend> Drop for SmartThinVec<T, B> {
             // Decrement the reference count
             if count.decr() == UpdateResult::Overflow {
                 // rewrap the repr into ThinVec to drop it
-                let _: ThinVec<T, B> = ThinVec(self.0);
+                let vec: ThinVec<T, B> = ThinVec(self.0);
+                drop(vec);
             }
         }
     }
