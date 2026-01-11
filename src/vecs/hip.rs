@@ -396,7 +396,7 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
         // compile time check transformed to runtime panic
         assert!(Self::MAY_INLINE, "this vector cannot be inlined");
 
-        let result = if const { Bytes::USIZE == L::USIZE } {
+        let result = if const { Bytes::USIZE == L::BYTES } {
             // reuse the inline representation if sizes match
             debug_assert!(Self::MAY_INLINE);
 

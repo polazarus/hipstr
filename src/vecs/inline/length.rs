@@ -35,9 +35,11 @@ where
 /// Trait for type numbers that can be used as inline lengths.
 ///
 /// Basically, this means they are non-zero and divisible by the pointer size.
-pub trait InlineLength: NonZero + ArrayLength + Divisible<PointerSize> + Seal {}
+pub trait InlineLength: PrivInlineLength {}
 
-pub trait Seal {
+pub trait PrivInlineLength {
+    /// Size in bytes of the inline blob (with the encoded size).
+    const BYTES: usize;
     type Words: ArrayLength;
     type WordsM1: ArrayLength;
 }
@@ -50,12 +52,13 @@ where
 {
 }
 
-impl<T> Seal for T
+impl<T> PrivInlineLength for T
 where
     T: NonZero + ArrayLength + Divisible<PointerSize>,
     Quot<T, PointerSize>: ArrayLength + Sub<B1>,
     Sub1<Quot<T, PointerSize>>: ArrayLength,
 {
+    const BYTES: usize = T::USIZE;
     type Words = Quot<T, PointerSize>;
     type WordsM1 = Sub1<Self::Words>;
 }

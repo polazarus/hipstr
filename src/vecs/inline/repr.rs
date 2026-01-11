@@ -89,7 +89,7 @@ where
 
     /// Various constants about the inline representation.
     const LENGTH_AND_DATA: (usize, usize, usize, usize) = {
-        let blob = L::USIZE;
+        let blob = L::BYTES;
         let t_align = align_of::<T>();
         let t_size = size_of::<T>();
 
