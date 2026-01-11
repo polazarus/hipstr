@@ -154,7 +154,7 @@ macro_rules! thin_vec {
 /// consists in a single pointer to a heap-allocated area containing both the
 /// capacity, the length, and the actual data.
 ///
-/// `ThinVec` contains an arbitrary additional data `P`.
+/// The prefix of `ThinVec` is an arbitrary associated data of type `P`.
 ///
 /// [`Vec`]: alloc::vec::Vec
 #[repr(transparent)]
@@ -183,20 +183,7 @@ macro_rules! thin_vec {
 pub struct ThinVec<T, P: ConstDefault = Reserved>(pub(super) ThinRepr<T, P>);
 
 impl<T, P: ConstDefault> ThinVec<T, P> {
-    const MINIMAL_CAPACITY: usize = {
-        let header = size_of::<ThinHeader<T, P>>();
-        let base = (header + 1).next_power_of_two() - header;
-        let t = size_of::<T>();
-        if t == 0 {
-            usize::MAX
-        } else if 16 * t <= base {
-            base / t
-        } else if 4 * t <= base {
-            8
-        } else {
-            1
-        }
-    };
+    const MINIMAL_CAPACITY: usize = minimal_capacity::<T, P>();
 
     #[inline]
     const fn ptr(&self) -> NonNull<T> {
@@ -1429,6 +1416,23 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
         T: Clone,
     {
         resize_impl!(self, new_len, iter::repeat_with(f));
+    }
+}
+
+/// Computes a reasonable minimal capacity for an allocated thin vector
+/// depending on the prefix type and the element type.
+pub(crate) const fn minimal_capacity<T, P>() -> usize {
+    let header = size_of::<ThinHeader<T, P>>();
+    let base = (header + 1).next_power_of_two() - header;
+    let t = size_of::<T>();
+    if t == 0 {
+        usize::MAX
+    } else if 16 * t <= base {
+        base / t
+    } else if 4 * t <= base {
+        8
+    } else {
+        1
     }
 }
 
