@@ -1,0 +1,9 @@
+[package]
+name = "hipvec"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+default = ["std"]
+alloc = []
+std = ["alloc"]

@@ -72,3 +72,6 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 [[bench]]
 name = "main"
 harness = false
+
+[workspace]
+members = ["./hipvec"]
