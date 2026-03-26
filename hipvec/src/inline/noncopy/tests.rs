@@ -89,7 +89,7 @@ fn from_array() {
 #[test]
 fn from_array_empty() {
     let l = Inline::<i32>::from([]);
-    assert_eq!(l.as_slice(), &[]);
+    assert!(l.as_slice().is_empty());
 }
 
 #[test]

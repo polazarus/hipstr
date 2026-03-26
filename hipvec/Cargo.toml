@@ -7,3 +7,11 @@ edition = "2024"
 default = ["std"]
 alloc = []
 std = ["alloc"]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(coverage)',
+    'cfg(coverage_nightly)',
+    'cfg(docsrs)',
+    'cfg(loom)',
+] }
