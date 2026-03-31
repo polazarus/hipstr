@@ -110,6 +110,36 @@ impl<T, L: Layout<T>> Base<T, L> {
     pub const fn spare_capacity_mut(&mut self) -> &mut [core::mem::MaybeUninit<T>] {
         methods::spare_capacity_mut!(self)
     }
+
+    pub fn truncate(&mut self, new_len: usize) {
+        methods::truncate!(self, new_len)
+    }
+
+    pub const fn truncate_copy(&mut self, new_len: usize)
+    where
+        T: Copy,
+    {
+        let len = self.len();
+        if new_len < len {
+            unsafe {
+                self.set_len(new_len);
+            }
+        }
+    }
+
+    pub fn extend_from_slice(&mut self, slice: &[T])
+    where
+        T: Clone,
+    {
+        methods::extend_from_slice!(self, slice);
+    }
+
+    pub const fn extend_from_slice_copy(&mut self, slice: &[T])
+    where
+        T: Copy,
+    {
+        methods::extend_from_slice_copy!(self, slice);
+    }
 }
 
 impl<T, L: Layout<T>> Copy for Base<T, L> where L: Copy {}

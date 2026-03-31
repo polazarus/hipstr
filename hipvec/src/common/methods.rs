@@ -34,14 +34,17 @@ macro_rules! resize_impl {
 
             // SAFETY: type invariant
             unsafe {
-                $crate::common::drop_raw_slice($self.as_mut_ptr().add(new_len), old_len - new_len);
+                $crate::common::utils::drop_raw_slice(
+                    $self.as_mut_ptr().add(new_len),
+                    old_len - new_len,
+                );
             }
         }
     }};
 }
 
 /// `truncate` impl, requires `len`, `set_len`, and `as_mut_ptr`
-macro_rules! truncate_impl {
+macro_rules! truncate {
     ($self:ident, $new_len:expr) => {{
         let old_len = $self.len();
         let new_len = $new_len;
@@ -53,7 +56,10 @@ macro_rules! truncate_impl {
 
             // SAFETY: type invariant
             unsafe {
-                $crate::common::drop_raw_slice($self.as_mut_ptr().add(new_len), old_len - new_len);
+                $crate::common::utils::drop_raw_slice(
+                    $self.as_mut_ptr().add(new_len),
+                    old_len - new_len,
+                );
             }
         }
     }};
@@ -402,4 +408,4 @@ pub(crate) use resize_impl;
 pub(crate) use spare_capacity_mut;
 pub(crate) use split_off_impl;
 pub(crate) use swap_remove_impl;
-pub(crate) use truncate_impl;
+pub(crate) use truncate;

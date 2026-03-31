@@ -277,14 +277,7 @@ impl<T, L: Layout<T>> InlineVec<T, L> {
     /// assert_eq!(vec.as_slice(), &[1, 2]);
     /// ```
     pub fn truncate(&mut self, new_len: usize) {
-        let len = self.len();
-        if new_len < len {
-            unsafe {
-                self.set_len(new_len);
-
-                drop_raw_slice(self.as_mut_ptr().add(new_len), len - new_len);
-            }
-        }
+        self.base.truncate(new_len)
     }
 
     /// Clears the vector, removing all elements.
@@ -300,7 +293,9 @@ impl<T, L: Layout<T>> InlineVec<T, L> {
     pub fn clear(&mut self) {
         *self = Self::new();
     }
+}
 
+impl<T: Clone, L: Layout<T>> InlineVec<T, L> {
     /// Clones and appends all elements in a slice to the vector.
     ///
     /// # Panics
@@ -315,11 +310,9 @@ impl<T, L: Layout<T>> InlineVec<T, L> {
     /// vec.extend_from_slice(&[3, 4]);
     /// assert_eq!(vec.as_slice(), &[1, 2, 3, 4]);
     /// ```
-    pub fn extend_from_slice(&mut self, value: &[T])
-    where
-        T: Clone,
-    {
-        methods::extend_from_slice!(self, value);
+    #[inline]
+    pub fn extend_from_slice(&mut self, value: &[T]) {
+        self.base.extend_from_slice(value);
     }
 }
 

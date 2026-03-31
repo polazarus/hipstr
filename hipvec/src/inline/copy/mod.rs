@@ -11,6 +11,7 @@ use const_default::ConstDefault;
 
 use super::base::Base;
 use super::layouts::Layout;
+use crate::common::methods;
 use crate::inline::noncopy;
 use crate::traits::impl_vector;
 
@@ -277,12 +278,7 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     /// assert_eq!(vec.as_slice(), &[1, 2]);
     /// ```
     pub const fn truncate(&mut self, new_len: usize) {
-        let len = self.len();
-        if new_len < len {
-            unsafe {
-                self.set_len(new_len);
-            }
-        }
+        self.base.truncate_copy(new_len);
     }
 
     /// Clears the vector, removing all elements.
@@ -303,17 +299,12 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     }
 
     #[inline]
-    pub(crate) const fn from_slice(slice: &[T]) -> Self {
+    pub const fn from_slice(slice: &[T]) -> Self {
         assert!(slice.len() <= L::CAPACITY, "slice length exceeds capacity");
 
-        let mut base = Self::new();
-        unsafe {
-            base.set_len(slice.len());
-            let dst = base.as_mut_ptr();
-            let src = slice.as_ptr();
-            dst.copy_from_nonoverlapping(src, slice.len());
-        }
-        base
+        let mut this = Self::new();
+        this.extend_from_slice(slice);
+        this
     }
 
     /// Copies and appends all elements in a slice to the vector.
@@ -332,15 +323,7 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     /// ```
     #[inline]
     pub const fn extend_from_slice(&mut self, slice: &[T]) {
-        let additional = slice.len();
-        self.reserve(additional);
-        let len = self.len();
-        unsafe {
-            self.set_len(len + additional);
-            let dst = self.as_mut_ptr().add(len);
-            let src = slice.as_ptr();
-            dst.copy_from_nonoverlapping(src, additional);
-        }
+        self.base.extend_from_slice_copy(slice);
     }
 
     #[inline]
