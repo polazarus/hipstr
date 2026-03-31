@@ -6,9 +6,14 @@
 //! [`inline::copy`]: crate::inline::copy
 use core::{mem, ptr};
 
+use const_default::ConstDefault;
+
 use super::base::Base;
 use super::layouts::Layout;
+use crate::common::methods;
+use crate::common::utils::drop_raw_slice;
 use crate::inline::copy;
+use crate::traits::impl_vector;
 
 #[cfg(test)]
 mod tests;
@@ -36,6 +41,16 @@ mod tests;
 #[repr(transparent)]
 pub struct InlineVec<T, L: Layout<T>> {
     pub(super) base: Base<T, L>,
+}
+
+impl<T, L: Layout<T>> ConstDefault for InlineVec<T, L> {
+    const DEFAULT: Self = Self::new();
+}
+
+impl<T, L: Layout<T>> Default for InlineVec<T, L> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<T, L: Layout<T>> InlineVec<T, L> {
@@ -158,6 +173,7 @@ impl<T, L: Layout<T>> InlineVec<T, L> {
     ///
     /// See [`CAPACITY`] for the compile-time constant capacity.
     ///
+    /// [`CAPACITY`]: Self::CAPACITY
     /// # Examples
     ///
     /// ```
@@ -184,7 +200,7 @@ impl<T, L: Layout<T>> InlineVec<T, L> {
     ///
     /// The following will panic because the new length exceeds the capacity:
     ///
-    /// ```
+    /// ```should_panic
     /// # use hipvec::inline::InlineVec;
     /// let mut vec = InlineVec::<i32>::new();
     /// vec.reserve(InlineVec::<i32>::CAPACITY + 1);
@@ -206,7 +222,7 @@ impl<T, L: Layout<T>> InlineVec<T, L> {
     ///
     /// The following will panic because the new length exceeds the capacity:
     ///
-    /// ```
+    /// ```should_panic
     /// # use hipvec::inline::InlineVec;
     /// let mut vec = InlineVec::<i32>::new();
     /// vec.reserve_exact(InlineVec::<i32>::CAPACITY + 1);
@@ -266,11 +282,7 @@ impl<T, L: Layout<T>> InlineVec<T, L> {
             unsafe {
                 self.set_len(new_len);
 
-                if mem::needs_drop::<T>() {
-                    let ptr = self.as_mut_ptr().add(new_len);
-                    let slice = ptr::slice_from_raw_parts_mut(ptr, len - new_len);
-                    ptr::drop_in_place(slice);
-                }
+                drop_raw_slice(self.as_mut_ptr().add(new_len), len - new_len);
             }
         }
     }
@@ -307,19 +319,14 @@ impl<T, L: Layout<T>> InlineVec<T, L> {
     where
         T: Clone,
     {
-        self.reserve(value.len());
-
-        // TODO use a drop guard to make it more efficient while keeping it safe in case of panic
-        for item in value {
-            self.push(item.clone());
-        }
+        methods::extend_from_slice!(self, value);
     }
 }
 
 impl<T, L: Layout<T>> Drop for InlineVec<T, L> {
     fn drop(&mut self) {
         unsafe {
-            ptr::drop_in_place(self.as_mut_slice());
+            drop_raw_slice(self.as_mut_ptr(), self.len());
         }
     }
 }
@@ -337,7 +344,7 @@ where
     T: Copy,
 {
     fn from(value: copy::InlineVec<T, L>) -> Self {
-        Self { base: value.0 }
+        Self { base: value.base }
     }
 }
 
@@ -359,3 +366,5 @@ where
         this
     }
 }
+
+impl_vector!(impl(T, L: Layout<T>) Vector<Item=T> for InlineVec<T, L>);

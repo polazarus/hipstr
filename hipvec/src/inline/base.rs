@@ -7,6 +7,7 @@ use alloc::slice;
 use core::marker::PhantomData;
 
 use super::layouts::{self, Layout};
+use crate::common::methods;
 
 pub(super) struct Base<T, L: Layout<T>> {
     repr: L,
@@ -83,7 +84,6 @@ impl<T, L: Layout<T>> Base<T, L> {
         L::CAPACITY
     }
 
-    #[inline]
     pub const fn reserve(&mut self, additional: usize) {
         let len = self.len();
         let new_len = len + additional;
@@ -95,43 +95,20 @@ impl<T, L: Layout<T>> Base<T, L> {
         self.reserve(additional);
     }
 
-    #[inline]
     pub const fn push(&mut self, value: T) {
-        self.reserve(1);
-
-        let len = self.len();
-        unsafe {
-            self.as_mut_ptr().add(len).write(value);
-            self.set_len(len + 1);
-        }
+        methods::push!(self, value)
     }
 
-    #[inline]
     pub const fn pop(&mut self) -> Option<T> {
-        let len = self.len();
-        if len == 0 {
-            None
-        } else {
-            unsafe {
-                self.set_len(len - 1);
-                Some(self.as_ptr().add(len - 1).read())
-            }
-        }
+        methods::pop!(self)
     }
 
-    #[inline]
     pub const fn insert(&mut self, index: usize, value: T) {
-        let len = self.len();
-        assert!(index <= len, "index out of bounds");
+        methods::insert!(self, index, value)
+    }
 
-        self.reserve(1);
-
-        unsafe {
-            let ptr = self.as_mut_ptr().add(index);
-            ptr.copy_to(ptr.add(1), len - index);
-            ptr.write(value);
-            self.set_len(len + 1);
-        }
+    pub const fn spare_capacity_mut(&mut self) -> &mut [core::mem::MaybeUninit<T>] {
+        methods::spare_capacity_mut!(self)
     }
 }
 

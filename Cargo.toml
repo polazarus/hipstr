@@ -75,3 +75,6 @@ harness = false
 
 [workspace]
 members = ["./hipvec"]
+
+[workspace.lints.clippy]
+pedantic = "warn"

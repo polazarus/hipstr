@@ -1,0 +1,309 @@
+//! Internal representation of thin vectors.
+
+use core::cmp;
+use core::num::NonZeroUsize;
+use core::ptr::{self, NonNull};
+
+use const_default::ConstDefault;
+
+use crate::common::methods;
+
+mod header;
+pub use header::Header;
+
+const TAG: usize = 0x10;
+const NZ_TAG: NonZeroUsize = NonZeroUsize::new(TAG).unwrap();
+
+const fn min_non_zero_cap(size: usize) -> usize {
+    if size == 1 {
+        8
+    } else if size <= 1024 {
+        4
+    } else {
+        1
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Base<T, P>(NonNull<Header<T, P>>);
+
+impl<T, P> Default for Base<T, P> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T, P> ConstDefault for Base<T, P> {
+    const DEFAULT: Self = Self::new();
+}
+
+impl<T, P> Base<T, P> {
+    #[inline]
+    const fn unmasked(&self) -> Option<NonNull<Header<T, P>>> {
+        NonNull::new(unsafe { self.0.as_ptr().byte_sub(TAG) })
+    }
+
+    #[inline]
+    const fn header(&self) -> Option<&Header<T, P>> {
+        if let Some(header) = self.unmasked() {
+            unsafe { Some(header.as_ref()) }
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    const fn header_mut(&mut self) -> Option<&mut Header<T, P>> {
+        if let Some(mut header) = self.unmasked() {
+            unsafe { Some(header.as_mut()) }
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    pub const fn new() -> Self {
+        const { Self(NonNull::without_provenance(NZ_TAG)) }
+    }
+
+    #[inline]
+    pub const fn len(&self) -> usize {
+        if let Some(header) = self.header() {
+            header.len
+        } else {
+            0
+        }
+    }
+
+    /// Sets the length
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that `len` does not exceed the current capacity and that the new
+    /// elements are properly initialized.
+    pub const unsafe fn set_len(&mut self, len: usize) {
+        if let Some(header) = self.header_mut() {
+            assert!(len <= header.cap, "length exceeds capacity");
+            header.len = len;
+        } else if len != 0 {
+            panic!("length overflow");
+        }
+    }
+
+    #[inline]
+    pub const fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    #[inline]
+    pub const fn capacity(&self) -> usize {
+        if let Some(header) = self.header() {
+            header.cap
+        } else {
+            0
+        }
+    }
+
+    #[inline]
+    pub const fn as_ptr(&self) -> *const T {
+        if let Some(header) = self.unmasked() {
+            unsafe { Header::data(header).as_ptr().cast_const() }
+        } else {
+            ptr::dangling()
+        }
+    }
+
+    #[inline]
+    pub const fn as_mut_ptr(&mut self) -> *mut T {
+        if let Some(header) = self.unmasked() {
+            unsafe { Header::data(header).as_ptr() }
+        } else {
+            ptr::dangling_mut()
+        }
+    }
+
+    #[inline]
+    pub const fn as_non_null(&mut self) -> NonNull<T> {
+        if let Some(header) = self.unmasked() {
+            unsafe { Header::data(header) }
+        } else {
+            NonNull::dangling()
+        }
+    }
+    #[inline]
+    pub const fn as_slice(&self) -> &[T] {
+        unsafe { core::slice::from_raw_parts(self.as_ptr(), self.len()) }
+    }
+
+    #[inline]
+    pub const fn as_mut_slice(&mut self) -> &mut [T] {
+        unsafe { core::slice::from_raw_parts_mut(self.as_mut_ptr(), self.len()) }
+    }
+
+    #[inline]
+    pub const fn spare_capacity_mut(&mut self) -> &mut [core::mem::MaybeUninit<T>] {
+        methods::spare_capacity_mut!(self)
+    }
+
+    pub fn pop(&mut self) -> Option<T> {
+        methods::pop!(self)
+    }
+
+    pub fn pop_if(&mut self, predicate: impl FnOnce(&mut T) -> bool) -> Option<T> {
+        methods::pop_if!(self, predicate)
+    }
+
+    pub const fn prefix(&self) -> Option<&P> {
+        if let Some(header) = self.header() {
+            Some(&header.prefix)
+        } else {
+            None
+        }
+    }
+
+    /// Creates a bitwise copy of the vector handle.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the original and the copy may be used simultaneously without
+    /// violating Rust's aliasing rules.
+    pub const unsafe fn copy(&self) -> Self {
+        Self(self.0)
+    }
+}
+
+impl<T, P> Base<T, P>
+where
+    P: ConstDefault,
+{
+    pub fn with_capacity(capacity: usize) -> Self {
+        if capacity == 0 {
+            return Self::new();
+        }
+
+        let Some((layout, capacity)) = Header::<T, P>::layout(capacity) else {
+            panic!("capacity overflow");
+        };
+
+        let ptr = unsafe { alloc::alloc::alloc(layout) };
+        if ptr.is_null() {
+            alloc::alloc::handle_alloc_error(layout);
+        }
+        let header_ptr = ptr.cast::<Header<T, P>>();
+        unsafe {
+            header_ptr.write(Header::with_capacity(capacity));
+        }
+
+        let tagged = unsafe { header_ptr.byte_add(TAG) };
+        let nonnull = NonNull::new(tagged).unwrap();
+        Self(nonnull)
+    }
+
+    const MIN_CAPACITY: usize = const { min_non_zero_cap(size_of::<T>()) };
+
+    pub fn reserve(&mut self, additional: usize) {
+        let old_cap = self.capacity();
+
+        // Compute the required capacity, checking for overflow.
+        let req_cap = old_cap.checked_add(additional).expect("capacity overflow");
+
+        // Exponential growth to avoid frequent reallocations.
+        // The doubling cannot overflow because the old cap is less than isize::MAX
+        let floor_cap = cmp::max(old_cap * 2, Self::MIN_CAPACITY);
+
+        let new_cap = cmp::max(req_cap, floor_cap);
+        if new_cap > old_cap {
+            unsafe {
+                self.set_capacity(new_cap);
+            }
+        }
+    }
+
+    pub fn reserve_exact(&mut self, additional: usize) {
+        let old_cap = self.capacity();
+        let new_cap = old_cap.checked_add(additional).expect("capacity overflow");
+        if new_cap > old_cap {
+            unsafe {
+                self.set_capacity(new_cap);
+            }
+        }
+    }
+
+    pub unsafe fn set_capacity(&mut self, new_cap: usize) {
+        if new_cap == 0 {
+            *self = Self::new();
+            return;
+        }
+
+        let old_cap = self.capacity();
+        let old_layout = Header::<T, P>::layout(old_cap)
+            .expect("capacity overflow")
+            .0;
+        let (new_layout, new_cap) = Header::<T, P>::layout(new_cap).expect("capacity overflow");
+
+        if new_cap != old_cap {
+            if let Some(ptr) = self.unmasked() {
+                let ptr: *mut Header<T, P> = unsafe {
+                    alloc::alloc::realloc(ptr.as_ptr().cast(), old_layout, new_layout.size()).cast()
+                };
+                if ptr.is_null() {
+                    alloc::alloc::handle_alloc_error(new_layout);
+                }
+                unsafe {
+                    (*ptr).cap = new_cap;
+                }
+                let tagged = unsafe { ptr.byte_add(TAG) };
+                self.0 = NonNull::new(tagged).unwrap();
+            } else {
+                *self = Self::with_capacity(new_cap);
+            }
+        }
+    }
+
+    #[inline]
+    pub fn push(&mut self, value: T) {
+        let _ = self.push_mut(value);
+    }
+
+    pub fn push_mut(&mut self, value: T) -> &mut T {
+        methods::push_mut!(self, value)
+    }
+
+    pub fn insert(&mut self, index: usize, value: T) {
+        let _ = self.insert_mut(index, value);
+    }
+
+    pub fn insert_mut(&mut self, index: usize, value: T) -> &mut T {
+        methods::insert_mut!(self, index, value)
+    }
+
+    pub fn extend_from_array<const N: usize>(&mut self, array: [T; N]) {
+        methods::extend_from_array!(self, array);
+    }
+}
+
+impl<T, P> Drop for Base<T, P> {
+    fn drop(&mut self) {
+        if let Some(header) = self.unmasked() {
+            let layout = Header::<T, P>::layout(unsafe { header.as_ref().cap })
+                .unwrap()
+                .0;
+            unsafe {
+                alloc::alloc::dealloc(header.as_ptr().cast(), layout);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new() {
+        let repr: Base<u8, ()> = Base::new();
+        assert_eq!(repr.len(), 0);
+        assert_eq!(repr.capacity(), 0);
+        assert_eq!(repr.as_ptr(), ptr::dangling());
+    }
+}

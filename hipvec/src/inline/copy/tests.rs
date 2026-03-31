@@ -20,6 +20,34 @@ fn new() {
 }
 
 #[test]
+fn dst() {
+    #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+    struct Dst;
+
+    assert_eq!(size_of::<Dst>(), 0);
+
+    let mut l = Inline::<Dst>::new();
+    assert_eq!(l.len(), 0);
+
+    l.push(Dst);
+    l.push(Dst);
+    l.push(Dst);
+    assert_eq!(l.len(), 3);
+
+    assert_eq!(l.as_slice(), &[Dst, Dst, Dst]);
+
+    assert_eq!(l.pop(), Some(Dst));
+    assert_eq!(l.pop(), Some(Dst));
+    assert_eq!(l.pop(), Some(Dst));
+    assert_eq!(l.pop(), None);
+    assert_eq!(l.len(), 0);
+
+    assert_eq!(<BasicLayout as Layout<()>>::CAPACITY, usize::MAX >> 1);
+    assert_eq!(Inline::<Dst>::CAPACITY, usize::MAX >> 1);
+    assert_eq!(l.capacity(), usize::MAX >> 1);
+}
+
+#[test]
 fn slice() {
     let mut l = Inline::<i32>::new();
     l.push(1);

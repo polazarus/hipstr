@@ -7,9 +7,12 @@
 //! [`inline::noncopy`]: crate::inline::noncopy
 use core::mem::ManuallyDrop;
 
+use const_default::ConstDefault;
+
 use super::base::Base;
 use super::layouts::Layout;
 use crate::inline::noncopy;
+use crate::traits::impl_vector;
 
 #[cfg(test)]
 mod tests;
@@ -36,7 +39,19 @@ mod tests;
 /// assert!(vec.is_empty());
 /// ```
 #[repr(transparent)]
-pub struct InlineVec<T: Copy, L: Layout<T>>(pub(super) Base<T, L>);
+pub struct InlineVec<T: Copy, L: Layout<T>> {
+    pub(super) base: Base<T, L>,
+}
+
+impl<T: Copy, L: Layout<T>> ConstDefault for InlineVec<T, L> {
+    const DEFAULT: Self = Self::new();
+}
+
+impl<T: Copy, L: Layout<T>> Default for InlineVec<T, L> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     /// Creates a new empty inline vector.
@@ -49,7 +64,7 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     /// assert!(vec.is_empty());
     /// ```
     pub const fn new() -> Self {
-        Self(Base::new())
+        Self { base: Base::new() }
     }
 
     /// Returns the number of elements in the vector.
@@ -64,7 +79,7 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     /// assert_eq!(vec.len(), 2);
     /// ```
     pub const fn len(&self) -> usize {
-        self.0.len()
+        self.base.len()
     }
 
     /// Returns `true` if the vector contains no elements.
@@ -81,7 +96,7 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     /// assert!(!vec.is_empty());
     /// ```
     pub const fn is_empty(&self) -> bool {
-        self.0.is_empty()
+        self.base.is_empty()
     }
 
     /// Sets the length of the vector.
@@ -92,7 +107,7 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     /// `old_len..new_len` (if any) must be initialized.
     pub const unsafe fn set_len(&mut self, new_len: usize) {
         unsafe {
-            self.0.set_len(new_len);
+            self.base.set_len(new_len);
         }
     }
 
@@ -107,7 +122,7 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     /// assert_eq!(vec.as_slice(), &[9, 2]);
     /// ```
     pub const fn as_mut_slice(&mut self) -> &mut [T] {
-        self.0.as_mut_slice()
+        self.base.as_mut_slice()
     }
 
     /// Returns the contents as a shared slice.
@@ -120,17 +135,17 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     /// assert_eq!(vec.as_slice(), &[1, 2]);
     /// ```
     pub const fn as_slice(&self) -> &[T] {
-        self.0.as_slice()
+        self.base.as_slice()
     }
 
     /// Returns a raw mutable pointer to the vector's buffer.
     pub const fn as_mut_ptr(&mut self) -> *mut T {
-        self.0.as_mut_ptr()
+        self.base.as_mut_ptr()
     }
 
     /// Returns a raw const pointer to the vector's buffer.
     pub const fn as_ptr(&self) -> *const T {
-        self.0.as_ptr()
+        self.base.as_ptr()
     }
 
     /// The maximum number of elements the vector can hold.
@@ -144,6 +159,8 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     ///
     /// See [`CAPACITY`] for the compile-time constant capacity.
     ///
+    /// [`CAPACITY`]: Self::CAPACITY
+    ///
     /// # Examples
     ///
     /// ```
@@ -152,7 +169,7 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     /// assert_eq!(vec.capacity(), CopyInlineVec::<i32>::CAPACITY);
     /// ```
     pub const fn capacity(&self) -> usize {
-        self.0.capacity()
+        self.base.capacity()
     }
 
     /// Reserves capacity for at least `additional` more elements.
@@ -169,13 +186,13 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     ///
     /// The following will panic because the new length exceeds the capacity:
     ///
-    /// ```
+    /// ```should_panic
     /// # use hipvec::inline::CopyInlineVec;
     /// let mut vec = CopyInlineVec::<i32>::new();
     /// vec.reserve(vec.capacity() + 1);
     /// ```
     pub const fn reserve(&mut self, additional: usize) {
-        self.0.reserve(additional);
+        self.base.reserve(additional);
     }
 
     /// Reserves exactly `additional` more elements.
@@ -192,13 +209,13 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     ///
     /// The following will panic because the new length exceeds the capacity:
     ///
-    /// ```
+    /// ```should_panic
     /// # use hipvec::inline::CopyInlineVec;
     /// let mut vec = CopyInlineVec::<i32>::new();
     /// vec.reserve_exact(vec.capacity() + 1);
     /// ```
     pub const fn reserve_exact(&mut self, additional: usize) {
-        self.0.reserve_exact(additional);
+        self.base.reserve_exact(additional);
     }
 
     /// Appends an element to the end of the vector.
@@ -212,7 +229,7 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     /// assert_eq!(vec.as_slice(), &[7]);
     /// ```
     pub const fn push(&mut self, value: T) {
-        self.0.push(value);
+        self.base.push(value);
     }
 
     /// Removes and returns the last element, if any.
@@ -227,7 +244,7 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     /// assert_eq!(vec.pop(), None);
     /// ```
     pub const fn pop(&mut self) -> Option<T> {
-        self.0.pop()
+        self.base.pop()
     }
 
     /// Inserts an element at `index`, shifting later elements to the right.
@@ -241,7 +258,7 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     /// assert_eq!(vec.as_slice(), &[1, 2, 3]);
     /// ```
     pub const fn insert(&mut self, index: usize, value: T) {
-        self.0.insert(index, value);
+        self.base.insert(index, value);
     }
 
     /// Shortens the vector, keeping the first `new_len` elements.
@@ -325,11 +342,18 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
             dst.copy_from_nonoverlapping(src, additional);
         }
     }
+
+    #[inline]
+    pub const fn spare_capacity_mut(&mut self) -> &mut [core::mem::MaybeUninit<T>] {
+        self.base.spare_capacity_mut()
+    }
 }
 
 impl<T: Copy, L: Layout<T>, const N: usize> From<[T; N]> for InlineVec<T, L> {
     fn from(value: [T; N]) -> Self {
-        Self(Base::from_array(value))
+        Self {
+            base: Base::from_array(value),
+        }
     }
 }
 
@@ -342,7 +366,7 @@ impl<T: Copy, L: Layout<T>> From<&[T]> for InlineVec<T, L> {
 impl<T: Copy, L: Layout<T> + Copy> From<noncopy::InlineVec<T, L>> for InlineVec<T, L> {
     fn from(value: noncopy::InlineVec<T, L>) -> Self {
         let value = ManuallyDrop::new(value);
-        Self(value.base)
+        Self { base: value.base }
     }
 }
 
@@ -353,3 +377,5 @@ impl<T: Copy, L: Layout<T> + Copy> Clone for InlineVec<T, L> {
         *self
     }
 }
+
+impl_vector!(impl(T: Copy, L: Layout<T> + Copy) MutVector<Item=T> for InlineVec<T, L>);

@@ -15,3 +15,6 @@ unexpected_cfgs = { level = "warn", check-cfg = [
     'cfg(docsrs)',
     'cfg(loom)',
 ] }
+
+[dependencies]
+const-default = "1.0.0"
