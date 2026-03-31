@@ -144,3 +144,51 @@ fn extend_from_slice_panic() {
     let too_many = [0; <BasicLayout as Layout<i32>>::CAPACITY + 1];
     l.extend_from_slice(&too_many);
 }
+
+#[test]
+fn with_capacity() {
+    let l = Inline::<i32>::with_capacity(0);
+    assert!(l.is_empty());
+    assert_eq!(l.capacity(), Inline::<i32>::CAPACITY);
+
+    let l = Inline::<i32>::with_capacity(Inline::<i32>::CAPACITY);
+    assert!(l.is_empty());
+}
+
+#[test]
+#[should_panic(expected = "required capacity exceeds maximum")]
+fn with_capacity_panic() {
+    let _ = Inline::<i32>::with_capacity(Inline::<i32>::CAPACITY + 1);
+}
+
+#[test]
+fn inline_vec_empty() {
+    let l: Inline<i32> = crate::inline_vec![];
+    assert!(l.is_empty());
+}
+
+#[test]
+fn inline_vec_list() {
+    let l: Inline<i32> = crate::inline_vec![1, 2, 3];
+    assert_eq!(l.as_slice(), &[1, 2, 3]);
+}
+
+#[test]
+fn inline_vec_list_trailing_comma() {
+    let l: Inline<i32> = crate::inline_vec![1, 2, 3,];
+    assert_eq!(l.as_slice(), &[1, 2, 3]);
+}
+
+#[test]
+fn inline_vec_repeat() {
+    let l: Inline<i32> = crate::inline_vec![7; 3];
+    assert_eq!(l.as_slice(), &[7, 7, 7]);
+}
+
+#[test]
+fn inline_vec_repeat_zero() {
+    let mut side_effect = 0usize;
+    let l: Inline<i32> = crate::inline_vec![{ side_effect += 1; 42 }; 0];
+    assert!(l.is_empty());
+    assert_eq!(side_effect, 1);
+}

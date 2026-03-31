@@ -13,3 +13,12 @@ pub enum ZeroUsize {
 impl ConstDefault for ZeroUsize {
     const DEFAULT: Self = Self::ZeroUsize;
 }
+
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __count {
+    (@ $_x:tt) => { () };
+    ($($x:tt),* $(,)? ) => {
+        <[()]>::len(&[$($crate::__count!(@ $x)),*])
+    };
+}

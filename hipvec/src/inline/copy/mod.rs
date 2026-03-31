@@ -68,6 +68,49 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
         Self { base: Base::new() }
     }
 
+    /// Constructs a new, empty inline vector with at least the specified capacity.
+    ///
+    /// This method is provided for compatibility with standard vecs. Since [`CAPACITY`] is fixed at
+    /// compile time, this method will panic if the requested capacity exceeds the inline capacity.
+    ///
+    /// [`CAPACITY`]: Self::CAPACITY
+    ///
+    /// # Panics
+    ///
+    /// Panics if the requested capacity exceeds [`CAPACITY`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipvec::inline::CopyInlineVec;
+    /// let mut vec = CopyInlineVec::<u8>::with_capacity(10);
+    ///
+    /// // The vector contains no items, even though it has capacity for more
+    /// assert_eq!(vec.len(), 0);
+    /// assert!(vec.capacity() >= 10);
+    ///
+    /// for i in 0..10 {
+    ///     vec.push(i);
+    /// }
+    /// assert_eq!(vec.len(), 10);
+    /// assert!(vec.capacity() >= 10);
+    /// ```
+    ///
+    /// The following example will always panic:
+    ///
+    /// ```should_panic
+    /// let mut vec = CopyInlineVec::<u8>::with_capacity(CopyInlineVec::<u8>::CAPACITY + 1);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub const fn with_capacity(capacity: usize) -> Self {
+        assert!(
+            capacity <= Self::CAPACITY,
+            "required capacity exceeds maximum"
+        );
+        Self::new()
+    }
+
     /// Returns the number of elements in the vector.
     ///
     /// # Examples

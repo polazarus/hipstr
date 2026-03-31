@@ -32,7 +32,6 @@ impl fmt::Debug for Reserved {
 pub type ThinVec<T> = noncopy::ThinVec<T, Reserved>;
 pub type CopyThinVec<T> = copy::ThinVec<T, Reserved>;
 
-// TODO improve macros to count elements and set capacity
 // TODO improve repetitions to use from iterator when available
 
 #[macro_export]
@@ -42,8 +41,7 @@ macro_rules! thin_vec {
     };
     ($e:expr; $n:expr) => {
         {
-            let mut vec = $crate::thin::ThinVec::new();
-            vec.reserve($n);
+            let mut vec = $crate::thin::ThinVec::with_capacity($n);
             for e in core::iter::repeat_n($e, $n) {
                 vec.push(e);
             }
@@ -52,7 +50,7 @@ macro_rules! thin_vec {
     };
     ($($e:expr),* $(,)?) => {
         {
-            let mut vec = $crate::thin::ThinVec::new();
+            let mut vec = $crate::thin::ThinVec::with_capacity($crate::__count!($($e),*));
             $(
                 vec.push($e);
             )*
@@ -68,8 +66,7 @@ macro_rules! copy_thin_vec {
     };
     ($e:expr; $n:expr) => {
         {
-            let mut vec = $crate::thin::CopyThinVec::new();
-            vec.reserve($n);
+            let mut vec = $crate::thin::CopyThinVec::with_capacity($n);
             for e in core::iter::repeat_n($e, $n) {
                 vec.push(e);
             }
@@ -78,7 +75,7 @@ macro_rules! copy_thin_vec {
     };
     ($($e:expr),* $(,)?) => {
         {
-            let mut vec = $crate::thin::CopyThinVec::new();
+            let mut vec = $crate::thin::CopyThinVec::with_capacity($crate::__count!($($e),*));
             $(
                 vec.push($e);
             )*
