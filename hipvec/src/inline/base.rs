@@ -5,6 +5,7 @@
 //! The `Base` struct is copyable, even if the elements are not copyable.
 use alloc::slice;
 use core::marker::PhantomData;
+use core::ptr::NonNull;
 
 use super::layouts::{self, Layout};
 use crate::common::methods;
@@ -72,6 +73,11 @@ impl<T, L: Layout<T>> Base<T, L> {
     #[inline]
     pub const fn as_mut_ptr(&mut self) -> *mut T {
         layouts::data_mut_ptr(&mut self.repr)
+    }
+
+    #[inline]
+    pub const fn as_non_null(&mut self) -> NonNull<T> {
+        layouts::data_non_null(&mut self.repr)
     }
 
     #[inline]

@@ -2,6 +2,7 @@ use core::mem::MaybeUninit;
 #[cfg(target_endian = "little")]
 use core::num::NonZeroUsize;
 use core::ptr;
+use core::ptr::NonNull;
 
 pub trait Layout<T> {
     const LEN_SIZE: usize;
@@ -97,7 +98,7 @@ pub(crate) const unsafe fn set_len<T, L: Layout<T>>(layout: &mut L, len: usize) 
 /// Returns a raw const pointer to the vector's buffer.
 pub(crate) const fn data_ptr<T, L: Layout<T>>(layout: &L) -> *const T {
     if let Some(offset) = L::DATA_OFFSET {
-        unsafe { (&raw const *layout).cast::<u8>().add(offset).cast() }
+        unsafe { (&raw const *layout).byte_add(offset).cast() }
     } else {
         ptr::dangling()
     }
@@ -106,9 +107,17 @@ pub(crate) const fn data_ptr<T, L: Layout<T>>(layout: &L) -> *const T {
 /// Returns a raw mutable pointer to the vector's buffer.
 pub(crate) const fn data_mut_ptr<T, L: Layout<T>>(layout: &mut L) -> *mut T {
     if let Some(offset) = L::DATA_OFFSET {
-        unsafe { (&raw mut *layout).cast::<u8>().add(offset).cast() }
+        unsafe { (&raw mut *layout).byte_add(offset).cast() }
     } else {
         ptr::dangling_mut()
+    }
+}
+
+pub(crate) const fn data_non_null<T, L: Layout<T>>(layout: &mut L) -> NonNull<T> {
+    if let Some(offset) = L::DATA_OFFSET {
+        unsafe { NonNull::from_mut(layout).byte_add(offset).cast() }
+    } else {
+        NonNull::dangling()
     }
 }
 

@@ -18,6 +18,7 @@ pub type CopyInlineVec<T> = copy::InlineVec<T, BasicLayout>;
 /// - Create an [`InlineVec`] containing a given list of elements:
 ///
 /// ```
+/// # use hipvec::inline_vec;
 /// let v = inline_vec![1, 2, 3];
 /// assert_eq!(v[0], 1);
 /// assert_eq!(v[1], 2);
@@ -27,8 +28,9 @@ pub type CopyInlineVec<T> = copy::InlineVec<T, BasicLayout>;
 /// - Create an [`InlineVec`] from a given element and size:
 ///
 /// ```
+/// # use hipvec::inline_vec;
 /// let v = inline_vec![1; 3];
-/// assert_eq!(v, [1, 1, 1]);
+/// assert_eq!(v.as_slice(), [1, 1, 1]);
 /// ```
 ///
 /// Note that unlike array expressions this syntax supports all elements which implement [`Clone`]
@@ -77,6 +79,7 @@ macro_rules! inline_vec {
 /// - Create a [`CopyInlineVec`] containing a given list of elements:
 ///
 /// ```
+/// # use hipvec::copy_inline_vec;
 /// let v = copy_inline_vec![1, 2, 3];
 /// assert_eq!(v[0], 1);
 /// assert_eq!(v[1], 2);
@@ -86,8 +89,9 @@ macro_rules! inline_vec {
 /// - Create a [`CopyInlineVec`] from a given element and size:
 ///
 /// ```
+/// # use hipvec::copy_inline_vec;
 /// let v = copy_inline_vec![1; 3];
-/// assert_eq!(v, [1, 1, 1]);
+/// assert_eq!(v.as_slice(), [1, 1, 1]);
 /// ```
 ///
 /// Note that unlike array expressions this syntax supports all elements which implement [`Clone`]
