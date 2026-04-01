@@ -1,3 +1,4 @@
+use core::fmt;
 use core::ptr::NonNull;
 
 use const_default::ConstDefault;
@@ -533,11 +534,11 @@ where
     /// let mut vec = thin_vec![1, 2];
     /// let last = vec.push_mut(3);
     /// assert_eq!(*last, 3);
-    /// assert_eq!(vec, [1, 2, 3]);
+    /// assert_eq!(vec.as_slice(), [1, 2, 3]);
     ///
     /// let last = vec.push_mut(3);
     /// *last += 1;
-    /// assert_eq!(vec, [1, 2, 3, 4]);
+    /// assert_eq!(vec.as_slice(), [1, 2, 3, 4]);
     /// ```
     ///
     /// # Time complexity
@@ -630,8 +631,6 @@ where
     /// vec.extend_from_array([2, 3, 4]);
     /// assert_eq!(vec.as_slice(), [1, 2, 3, 4]);
     /// ```
-    ///
-    /// [`extend`]: Vec::extend
     pub fn extend_from_array<const N: usize>(&mut self, array: [T; N]) {
         self.base.extend_from_array(array)
     }
@@ -670,5 +669,11 @@ impl<T: Clone, P: ConstDefault, const N: usize> From<[T; N]> for ThinVec<T, P> {
         let mut this = Self::new();
         this.extend_from_array(array);
         this
+    }
+}
+
+impl<T: fmt::Debug, P> fmt::Debug for ThinVec<T, P> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.as_slice().fmt(f)
     }
 }

@@ -1,3 +1,4 @@
+use core::fmt;
 use core::ptr::NonNull;
 
 use const_default::ConstDefault;
@@ -686,6 +687,12 @@ impl<T: Copy, P: ConstDefault, const N: usize> From<&[T; N]> for ThinVec<T, P> {
 
 impl<T: Copy, P: ConstDefault, const N: usize> From<[T; N]> for ThinVec<T, P> {
     fn from(array: [T; N]) -> Self {
-        Self::from(&array)
+        Self::from(array.as_slice())
+    }
+}
+
+impl<T: fmt::Debug, P> fmt::Debug for ThinVec<T, P> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.as_slice().fmt(f)
     }
 }
