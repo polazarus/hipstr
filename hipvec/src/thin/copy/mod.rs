@@ -7,21 +7,21 @@ use super::base::Base;
 use crate::common::methods;
 
 #[repr(transparent)]
-pub struct ThinVec<T, P> {
+pub struct ThinVec<T: Copy, P> {
     base: Base<T, P>,
 }
 
-impl<T, P> Default for ThinVec<T, P> {
+impl<T: Copy, P> Default for ThinVec<T, P> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T, P> ConstDefault for ThinVec<T, P> {
+impl<T: Copy, P> ConstDefault for ThinVec<T, P> {
     const DEFAULT: Self = Self::new();
 }
 
-impl<T, P> ThinVec<T, P> {
+impl<T: Copy, P> ThinVec<T, P> {
     /// Constructs a new, empty vector.
     ///
     /// The vector will not allocate until elements are pushed onto it.
@@ -402,10 +402,7 @@ impl<T, P> ThinVec<T, P> {
     }
 }
 
-impl<T, P> ThinVec<T, P>
-where
-    P: ConstDefault,
-{
+impl<T: Copy, P: ConstDefault> ThinVec<T, P> {
     /// Constructs a new, empty vector with at least the specified capacity.
     ///
     /// The vector will be able to hold at least `capacity` elements without
@@ -640,9 +637,10 @@ where
     /// # Examples
     ///
     /// ```
-    /// let mut vec = vec![1];
+    /// # use hipvec::copy_thin_vec;
+    /// let mut vec = copy_thin_vec![1];
     /// vec.extend_from_slice(&[2, 3, 4]);
-    /// assert_eq!(vec, [1, 2, 3, 4]);
+    /// assert_eq!(vec.as_slice(), [1, 2, 3, 4]);
     /// ```
     ///
     /// [`extend`]: Vec::extend
@@ -651,6 +649,8 @@ where
     }
 
     /// Appends all elements of the array to the `Vec`.
+    ///
+    /// The elements are moved and not cloned.
     ///
     /// # Panics
     ///
@@ -664,10 +664,18 @@ where
     /// vec.extend_from_array([2, 3, 4]);
     /// assert_eq!(vec.as_slice(), [1, 2, 3, 4]);
     /// ```
-    ///
-    /// [`extend`]: Vec::extend
+    #[inline]
     pub fn extend_from_array<const N: usize>(&mut self, array: [T; N]) {
         self.base.extend_from_array(array)
+    }
+}
+
+// no Drop for ThinVec<T, P> when T is copy
+// the allocation is dropped by `Base`
+
+impl<T: Copy, P: ConstDefault> Clone for ThinVec<T, P> {
+    fn clone(&self) -> Self {
+        Self::from(self.as_slice())
     }
 }
 
@@ -687,11 +695,13 @@ impl<T: Copy, P: ConstDefault, const N: usize> From<&[T; N]> for ThinVec<T, P> {
 
 impl<T: Copy, P: ConstDefault, const N: usize> From<[T; N]> for ThinVec<T, P> {
     fn from(array: [T; N]) -> Self {
-        Self::from(array.as_slice())
+        let mut this = Self::new();
+        this.extend_from_array(array);
+        this
     }
 }
 
-impl<T: fmt::Debug, P> fmt::Debug for ThinVec<T, P> {
+impl<T: fmt::Debug + Copy, P> fmt::Debug for ThinVec<T, P> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.as_slice().fmt(f)
     }

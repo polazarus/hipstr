@@ -339,12 +339,19 @@ impl<T, P> ThinVec<T, P> {
         self.base.spare_capacity_mut()
     }
 
-    /// Sets the length of the vector.
+    /// Forces the length of the vector to `new_len`.
     ///
     /// # Safety
     ///
-    /// The caller must ensure that `len` does not exceed the current capacity and that the new
-    /// elements are properly initialized.
+    /// - `new_len` must not exceed the current capacity of the vector.
+    /// - If `new_len` is greater than the current length, the new elements must be properly initialized.
+    ///
+    /// # Examples
+    ///
+    /// See [`spare_capacity_mut()`] for an example with safe
+    /// initialization of capacity elements and use of this method.
+    ///
+    /// [`spare_capacity_mut()`]: Self::spare_capacity_mut
     #[inline]
     pub unsafe fn set_len(&mut self, len: usize) {
         unsafe { self.base.set_len(len) };
@@ -375,16 +382,28 @@ impl<T, P> ThinVec<T, P> {
         self.base.pop()
     }
 
+    /// Removes and returns the last element from a vector if the predicate
+    /// returns `true`, or [`None`] if the predicate returns false or the vector
+    /// is empty (the predicate will not be called in that case).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipvec::thin_vec;
+    /// let mut vec = thin_vec![1, 2, 3, 4];
+    /// let pred = |x: &mut i32| *x % 2 == 0;
+    ///
+    /// assert_eq!(vec.pop_if(pred), Some(4));
+    /// assert_eq!(vec.as_slice(), &[1, 2, 3]);
+    /// assert_eq!(vec.pop_if(pred), None);
+    /// ```
     #[inline]
     pub fn pop_if(&mut self, predicate: impl FnOnce(&mut T) -> bool) -> Option<T> {
         self.base.pop_if(predicate)
     }
 }
 
-impl<T, P> ThinVec<T, P>
-where
-    P: ConstDefault,
-{
+impl<T, P: ConstDefault> ThinVec<T, P> {
     /// Constructs a new, empty vector with at least the specified capacity.
     ///
     /// The vector will be able to hold at least `capacity` elements without
@@ -608,6 +627,24 @@ where
         self.base.insert_mut(index, value)
     }
 
+    /// Clones and appends all elements in a slice to the `Vec`.
+    ///
+    /// The `other` slice is traversed in-order.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new capacity overflows or if the reallocations fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipvec::thin_vec;
+    /// let mut vec = thin_vec![1];
+    /// vec.extend_from_slice(&[2, 3, 4]);
+    /// assert_eq!(vec.as_slice(), [1, 2, 3, 4]);
+    /// ```
+    ///
+    /// [`extend`]: Vec::extend
     pub fn extend_from_slice(&mut self, slice: &[T])
     where
         T: Clone,
@@ -631,6 +668,8 @@ where
     /// vec.extend_from_array([2, 3, 4]);
     /// assert_eq!(vec.as_slice(), [1, 2, 3, 4]);
     /// ```
+    #[inline]
+
     pub fn extend_from_array<const N: usize>(&mut self, array: [T; N]) {
         self.base.extend_from_array(array)
     }
