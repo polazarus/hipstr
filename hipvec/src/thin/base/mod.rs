@@ -153,6 +153,14 @@ impl<T, P> Base<T, P> {
         methods::pop_if!(self, predicate)
     }
 
+    pub fn remove(&mut self, index: usize) -> T {
+        methods::remove!(self, index)
+    }
+
+    pub fn swap_remove(&mut self, index: usize) -> T {
+        methods::swap_remove!(self, index)
+    }
+
     pub const fn prefix(&self) -> Option<&P> {
         if let Some(header) = self.header() {
             Some(&header.prefix)

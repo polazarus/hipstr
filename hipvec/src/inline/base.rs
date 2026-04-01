@@ -109,6 +109,14 @@ impl<T, L: Layout<T>> Base<T, L> {
         methods::pop!(self)
     }
 
+    pub const fn remove(&mut self, index: usize) -> T {
+        methods::remove!(self, index)
+    }
+
+    pub const fn swap_remove(&mut self, index: usize) -> T {
+        methods::swap_remove!(self, index)
+    }
+
     pub const fn insert(&mut self, index: usize, value: T) {
         methods::insert!(self, index, value)
     }

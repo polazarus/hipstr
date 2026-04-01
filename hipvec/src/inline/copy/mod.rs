@@ -503,6 +503,62 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
         self.base.pop()
     }
 
+    /// Removes and returns the element at position `index` within the vector,
+    /// shifting all elements after it to the left.
+    ///
+    /// Note: Because this shifts over the remaining elements, it has a
+    /// worst-case performance of *O*(*n*). If you don't need the order of elements
+    /// to be preserved, use [`swap_remove`] instead.
+    ///
+    /// [`swap_remove`]: Self::swap_remove
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index` is out of bounds.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipvec::copy_inline_vec;
+    /// let mut v = copy_inline_vec![b'a', b'b', b'c'];
+    /// assert_eq!(v.remove(1), b'b');
+    /// assert_eq!(v.as_slice(), [b'a', b'c']);
+    /// ```
+    #[inline]
+    pub const fn remove(&mut self, index: usize) -> T {
+        self.base.remove(index)
+    }
+
+    /// Removes an element from the vector and returns it.
+    ///
+    /// The removed element is replaced by the last element of the vector.
+    ///
+    /// This does not preserve ordering of the remaining elements, but is *O*(1).
+    /// If you need to preserve the element order, use [`remove`] instead.
+    ///
+    /// [`remove`]: Self::remove
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index` is out of bounds.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipvec::copy_inline_vec;
+    /// let mut v = copy_inline_vec![0, 1, 2, 3];
+    ///
+    /// assert_eq!(v.swap_remove(1), 1);
+    /// assert_eq!(v.as_slice(), [0, 3, 2]);
+    ///
+    /// assert_eq!(v.swap_remove(0), 0);
+    /// assert_eq!(v.as_slice(), [2, 3]);
+    /// ```
+    #[inline]
+    pub const fn swap_remove(&mut self, index: usize) -> T {
+        self.base.swap_remove(index)
+    }
+
     /// Inserts an element at `index`, shifting later elements to the right.
     ///
     /// # Examples

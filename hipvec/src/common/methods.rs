@@ -324,7 +324,27 @@ macro_rules! remove_unchecked_impl {
     }};
 }
 
-macro_rules! swap_remove_impl {
+macro_rules! remove {
+    ($self:ident, $index:expr) => {{
+        let len = $self.len();
+        let index = $index;
+        assert!(index < len, "index out of bounds");
+
+        // SAFETY:
+        // - index checked above
+        // - type invariant ensures that the element is initialized
+        // - the length is decremented after the element is removed
+        unsafe {
+            let ptr = $self.as_mut_ptr().add(index);
+            let value = ptr.read();
+            ptr.copy_from(ptr.add(1), len - index - 1);
+            $self.set_len(len - 1);
+            value
+        }
+    }};
+}
+
+macro_rules! swap_remove {
     ($self:ident, $index:expr) => {{
         let len = $self.len();
         let index = $index;
@@ -403,9 +423,10 @@ pub(crate) use pop_if;
 pub(crate) use push;
 pub(crate) use push_mut;
 pub(crate) use push_within_capacity;
+pub(crate) use remove;
 pub(crate) use remove_unchecked_impl;
 pub(crate) use resize_impl;
 pub(crate) use spare_capacity_mut;
 pub(crate) use split_off_impl;
-pub(crate) use swap_remove_impl;
+pub(crate) use swap_remove;
 pub(crate) use truncate;

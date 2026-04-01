@@ -1,10 +1,13 @@
-use core::fmt;
 use core::ptr::NonNull;
+use core::{fmt, ops};
 
 use const_default::ConstDefault;
 
 use super::base::Base;
 use crate::common::methods;
+
+#[cfg(test)]
+mod tests;
 
 #[repr(transparent)]
 pub struct ThinVec<T: Copy, P> {
@@ -400,6 +403,62 @@ impl<T: Copy, P> ThinVec<T, P> {
     pub fn pop_if(&mut self, predicate: impl FnOnce(&mut T) -> bool) -> Option<T> {
         self.base.pop_if(predicate)
     }
+
+    /// Removes and returns the element at position `index` within the vector,
+    /// shifting all elements after it to the left.
+    ///
+    /// Note: Because this shifts over the remaining elements, it has a
+    /// worst-case performance of *O*(*n*). If you don't need the order of elements
+    /// to be preserved, use [`swap_remove`] instead.
+    ///
+    /// [`swap_remove`]: Self::swap_remove
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index` is out of bounds.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipvec::copy_thin_vec;
+    /// let mut v = copy_thin_vec![b'a', b'b', b'c'];
+    /// assert_eq!(v.remove(1), b'b');
+    /// assert_eq!(v.as_slice(), [b'a', b'c']);
+    /// ```
+    #[inline]
+    pub fn remove(&mut self, index: usize) -> T {
+        self.base.remove(index)
+    }
+
+    /// Removes an element from the vector and returns it.
+    ///
+    /// The removed element is replaced by the last element of the vector.
+    ///
+    /// This does not preserve ordering of the remaining elements, but is *O*(1).
+    /// If you need to preserve the element order, use [`remove`] instead.
+    ///
+    /// [`remove`]: Self::remove
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index` is out of bounds.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipvec::copy_thin_vec;
+    /// let mut v = copy_thin_vec!["foo", "bar", "baz", "qux"];
+    ///
+    /// assert_eq!(v.swap_remove(1), "bar");
+    /// assert_eq!(v.as_slice(), ["foo", "qux", "baz"]);
+    ///
+    /// assert_eq!(v.swap_remove(0), "foo");
+    /// assert_eq!(v.as_slice(), ["baz", "qux"]);
+    /// ```
+    #[inline]
+    pub fn swap_remove(&mut self, index: usize) -> T {
+        self.base.swap_remove(index)
+    }
 }
 
 impl<T: Copy, P: ConstDefault> ThinVec<T, P> {
@@ -681,9 +740,9 @@ impl<T: Copy, P: ConstDefault> Clone for ThinVec<T, P> {
 
 impl<T: Copy, P: ConstDefault> From<&[T]> for ThinVec<T, P> {
     fn from(slice: &[T]) -> Self {
-        let mut vec = Self::new();
-        vec.extend_from_slice(slice);
-        vec
+        let mut this = Self::new();
+        this.extend_from_slice(slice);
+        this
     }
 }
 
@@ -706,3 +765,34 @@ impl<T: fmt::Debug + Copy, P> fmt::Debug for ThinVec<T, P> {
         self.as_slice().fmt(f)
     }
 }
+
+impl<T: Copy, P> ops::Deref for ThinVec<T, P> {
+    type Target = [T];
+    fn deref(&self) -> &Self::Target {
+        self.as_slice()
+    }
+}
+
+impl<T: Copy, P> ops::DerefMut for ThinVec<T, P> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.as_mut_slice()
+    }
+}
+
+// TODO drain
+// TODO dedup
+// TODO dedup_by
+// TODO dedup_by_key
+// TODO extend_from_within
+// TODO extract_if
+// TODO into_chunks
+// TODO into_flattened
+// TODO push_within_capacity
+// TODO resize
+// TODO resize_with
+// TODO retain
+// TODO retain_mut
+// TODO shrink_to
+// TODO shrink_to_fit
+// TODO splice
+// TODO split_off

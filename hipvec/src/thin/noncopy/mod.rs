@@ -1,11 +1,14 @@
-use core::fmt;
 use core::ptr::NonNull;
+use core::{fmt, ops};
 
 use const_default::ConstDefault;
 
 use super::base::Base;
 use crate::common::methods;
 use crate::common::utils::drop_raw_slice;
+
+#[cfg(test)]
+mod tests;
 
 #[repr(transparent)]
 pub struct ThinVec<T, P> {
@@ -401,6 +404,62 @@ impl<T, P> ThinVec<T, P> {
     pub fn pop_if(&mut self, predicate: impl FnOnce(&mut T) -> bool) -> Option<T> {
         self.base.pop_if(predicate)
     }
+
+    /// Removes and returns the element at position `index` within the vector,
+    /// shifting all elements after it to the left.
+    ///
+    /// Note: Because this shifts over the remaining elements, it has a
+    /// worst-case performance of *O*(*n*). If you don't need the order of elements
+    /// to be preserved, use [`swap_remove`] instead.
+    ///
+    /// [`swap_remove`]: Self::swap_remove
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index` is out of bounds.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipvec::thin_vec;
+    /// let mut v = thin_vec![b'a', b'b', b'c'];
+    /// assert_eq!(v.remove(1), b'b');
+    /// assert_eq!(v.as_slice(), [b'a', b'c']);
+    /// ```
+    #[inline]
+    pub fn remove(&mut self, index: usize) -> T {
+        self.base.remove(index)
+    }
+
+    /// Removes an element from the vector and returns it.
+    ///
+    /// The removed element is replaced by the last element of the vector.
+    ///
+    /// This does not preserve ordering of the remaining elements, but is *O*(1).
+    /// If you need to preserve the element order, use [`remove`] instead.
+    ///
+    /// [`remove`]: Self::remove
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index` is out of bounds.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipvec::thin_vec;
+    /// let mut v = thin_vec!["foo", "bar", "baz", "qux"];
+    ///
+    /// assert_eq!(v.swap_remove(1), "bar");
+    /// assert_eq!(v.as_slice(), ["foo", "qux", "baz"]);
+    ///
+    /// assert_eq!(v.swap_remove(0), "foo");
+    /// assert_eq!(v.as_slice(), ["baz", "qux"]);
+    /// ```
+    #[inline]
+    pub fn swap_remove(&mut self, index: usize) -> T {
+        self.base.swap_remove(index)
+    }
 }
 
 impl<T, P: ConstDefault> ThinVec<T, P> {
@@ -517,7 +576,7 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     ///
     /// # Panics
     ///
-    /// Panics if the new capacity overflows or if the allocation fails.
+    /// Panics if the new capacity overflows or if the reallocation fails.
     ///
     /// # Examples
     ///
@@ -669,7 +728,6 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     /// assert_eq!(vec.as_slice(), [1, 2, 3, 4]);
     /// ```
     #[inline]
-
     pub fn extend_from_array<const N: usize>(&mut self, array: [T; N]) {
         self.base.extend_from_array(array)
     }
@@ -714,5 +772,18 @@ impl<T: Clone, P: ConstDefault, const N: usize> From<[T; N]> for ThinVec<T, P> {
 impl<T: fmt::Debug, P> fmt::Debug for ThinVec<T, P> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.as_slice().fmt(f)
+    }
+}
+
+impl<T: Copy, P> ops::Deref for ThinVec<T, P> {
+    type Target = [T];
+    fn deref(&self) -> &Self::Target {
+        self.as_slice()
+    }
+}
+
+impl<T: Copy, P> ops::DerefMut for ThinVec<T, P> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.as_mut_slice()
     }
 }
