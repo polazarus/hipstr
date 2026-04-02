@@ -460,6 +460,76 @@ impl<T: Copy, P> ThinVec<T, P> {
     pub fn swap_remove(&mut self, index: usize) -> T {
         self.base.swap_remove(index)
     }
+
+    /// Shortens the vector, keeping the first `len` elements and dropping
+    /// the rest.
+    ///
+    /// If `len` is greater or equal to the vector's current length, this has
+    /// no effect.
+    ///
+    /// The [`drain`] method can emulate `truncate`, but causes the excess
+    /// elements to be returned instead of dropped.
+    ///
+    /// Note that this method has no effect on the allocated capacity
+    /// of the vector.
+    ///
+    /// # Examples
+    ///
+    /// Truncating a five element vector to two elements:
+    ///
+    /// ```
+    /// # use hipvec::copy_thin_vec;
+    /// let mut vec = copy_thin_vec![1, 2, 3, 4, 5];
+    /// vec.truncate(2);
+    /// assert_eq!(vec, [1, 2]);
+    /// ```
+    ///
+    /// No truncation occurs when `len` is greater than the vector's current
+    /// length:
+    ///
+    /// ```
+    /// # use hipvec::copy_thin_vec;
+    /// let mut vec = copy_thin_vec![1, 2, 3];
+    /// vec.truncate(8);
+    /// assert_eq!(vec, [1, 2, 3]);
+    /// ```
+    ///
+    /// Truncating when `len == 0` is equivalent to calling the [`clear`]
+    /// method.
+    ///
+    /// ```
+    /// # use hipvec::copy_thin_vec;
+    /// let mut vec = copy_thin_vec![1, 2, 3];
+    /// vec.truncate(0);
+    /// assert_eq!(vec, []);
+    /// ```
+    ///
+    /// [`clear`]: Self::clear
+    /// [`drain`]: Self::drain
+    #[inline]
+    pub const fn truncate(&mut self, new_len: usize) {
+        self.base.truncate_copy(new_len);
+    }
+
+    /// Clears the vector, removing all values.
+    ///
+    /// Note that this method has no effect on the allocated capacity
+    /// of the vector.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipvec::copy_thin_vec;
+    /// let mut vec = copy_thin_vec![1, 2, 3];
+    ///
+    /// vec.clear();
+    ///
+    /// assert!(vec.is_empty());
+    /// ```
+    #[inline]
+    pub const fn clear(&mut self) {
+        self.base.clear_copy();
+    }
 }
 
 impl<T: Copy, P: ConstDefault> ThinVec<T, P> {
@@ -782,6 +852,7 @@ impl<T: Copy, P> ops::DerefMut for ThinVec<T, P> {
 
 impl_vector!(impl(T: Copy, P: ConstDefault) MutVector<Item=T> for ThinVec<T, P>);
 
+// TODO append
 // TODO drain
 // TODO dedup
 // TODO dedup_by

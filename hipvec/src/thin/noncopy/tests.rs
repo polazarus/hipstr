@@ -137,7 +137,7 @@ fn remove_panic() {
 
 #[test]
 fn swap_remove() {
-    let mut v: ThinVec<i32> = crate::thin_vec![10, 20, 30, 40];
+    let mut v: ThinVec<i32> = thin_vec![10, 20, 30, 40];
     let removed = v.swap_remove(1);
     assert_eq!(removed, 20);
     assert_eq!(v.as_slice(), &[10, 40, 30]);
@@ -145,7 +145,7 @@ fn swap_remove() {
 
 #[test]
 fn swap_remove_first() {
-    let mut v: ThinVec<i32> = crate::thin_vec![10, 20, 30, 40];
+    let mut v: ThinVec<i32> = thin_vec![10, 20, 30, 40];
     let removed = v.swap_remove(0);
     assert_eq!(removed, 10);
     assert_eq!(v.as_slice(), &[40, 20, 30]);
@@ -153,7 +153,7 @@ fn swap_remove_first() {
 
 #[test]
 fn swap_remove_last() {
-    let mut v: ThinVec<i32> = crate::thin_vec![10, 20, 30, 40];
+    let mut v: ThinVec<i32> = thin_vec![10, 20, 30, 40];
     let removed = v.swap_remove(v.len() - 1);
     assert_eq!(removed, 40);
     assert_eq!(v.as_slice(), &[10, 20, 30]);
@@ -162,6 +162,40 @@ fn swap_remove_last() {
 #[test]
 #[should_panic(expected = "index out of bounds")]
 fn swap_remove_panic() {
-    let mut v: ThinVec<i32> = crate::thin_vec![1, 2, 3];
+    let mut v: ThinVec<i32> = thin_vec![1, 2, 3];
     let _ = v.swap_remove(3);
+}
+
+#[test]
+fn truncate() {
+    let mut v: ThinVec<i32> = thin_vec![1, 2, 3, 4, 5];
+    let capacity = v.capacity();
+    let ptr = v.as_ptr();
+
+    v.truncate(10);
+    assert_eq!(v.as_slice(), [1, 2, 3, 4, 5]);
+    assert_eq!(v.capacity(), capacity);
+    assert_eq!(v.as_ptr(), ptr);
+
+    v.truncate(3);
+    assert_eq!(v.as_slice(), [1, 2, 3]);
+    assert_eq!(v.capacity(), capacity);
+    assert_eq!(v.as_ptr(), ptr);
+
+    v.truncate(0);
+    assert!(v.is_empty());
+    assert_eq!(v.capacity(), capacity);
+    assert_eq!(v.as_ptr(), ptr);
+}
+
+#[test]
+fn clear() {
+    let mut v: ThinVec<i32> = thin_vec![0; 100];
+    let old_capacity = v.capacity();
+    let ptr = v.as_ptr();
+    v.clear();
+
+    assert!(v.is_empty());
+    assert_eq!(v.capacity(), old_capacity);
+    assert_eq!(v.as_ptr(), ptr);
 }

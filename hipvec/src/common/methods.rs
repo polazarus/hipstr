@@ -65,6 +65,25 @@ macro_rules! truncate {
     }};
 }
 
+macro_rules! truncate_copy {
+    ($self:ident, $new_len:expr) => {{
+        let old_len = $self.len();
+        let new_len = $new_len;
+
+        if false {
+            const fn is_copy<V, T: Copy>(_: fn(&V) -> *const T) {}
+            is_copy(Self::as_ptr);
+        }
+
+        if new_len < old_len {
+            // SAFETY: strict decrease
+            unsafe {
+                $self.set_len(new_len);
+            }
+        }
+    }};
+}
+
 /// `pop` impl, requires `len`, `set_len`, and `as_mut_ptr`
 macro_rules! pop {
     ($self:ident) => {{
@@ -295,6 +314,11 @@ macro_rules! extend_from_slice_copy {
         let slice_len = slice.len();
         $self.reserve(slice_len);
 
+        if false {
+            const fn is_copy<V, T: Copy>(_: fn(&V) -> *const T) {}
+            is_copy(Self::as_ptr);
+        }
+
         unsafe {
             $self
                 .as_mut_ptr()
@@ -430,3 +454,4 @@ pub(crate) use spare_capacity_mut;
 pub(crate) use split_off_impl;
 pub(crate) use swap_remove;
 pub(crate) use truncate;
+pub(crate) use truncate_copy;

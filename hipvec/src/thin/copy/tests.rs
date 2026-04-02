@@ -165,3 +165,37 @@ fn swap_remove_panic() {
     let mut v: CopyThinVec<i32> = copy_thin_vec![1, 2, 3];
     let _ = v.swap_remove(3);
 }
+
+#[test]
+fn truncate() {
+    let mut v: CopyThinVec<i32> = copy_thin_vec![1, 2, 3, 4, 5];
+    let capacity = v.capacity();
+    let ptr = v.as_ptr();
+
+    v.truncate(10);
+    assert_eq!(v.as_slice(), [1, 2, 3, 4, 5]);
+    assert_eq!(v.capacity(), capacity);
+    assert_eq!(v.as_ptr(), ptr);
+
+    v.truncate(3);
+    assert_eq!(v.as_slice(), [1, 2, 3]);
+    assert_eq!(v.capacity(), capacity);
+    assert_eq!(v.as_ptr(), ptr);
+
+    v.truncate(0);
+    assert!(v.is_empty());
+    assert_eq!(v.capacity(), capacity);
+    assert_eq!(v.as_ptr(), ptr);
+}
+
+#[test]
+fn clear() {
+    let mut v: CopyThinVec<i32> = copy_thin_vec![0; 100];
+    let old_capacity = v.capacity();
+    let ptr = v.as_ptr();
+    v.clear();
+
+    assert!(v.is_empty());
+    assert_eq!(v.capacity(), old_capacity);
+    assert_eq!(v.as_ptr(), ptr);
+}

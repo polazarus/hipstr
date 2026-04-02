@@ -161,6 +161,30 @@ impl<T, P> Base<T, P> {
         methods::swap_remove!(self, index)
     }
 
+    pub fn truncate(&mut self, new_len: usize) {
+        methods::truncate!(self, new_len);
+    }
+
+    #[inline]
+    pub fn clear(&mut self) {
+        self.truncate(0);
+    }
+
+    pub const fn truncate_copy(&mut self, new_len: usize)
+    where
+        T: Copy,
+    {
+        methods::truncate_copy!(self, new_len);
+    }
+
+    #[inline]
+    pub const fn clear_copy(&mut self)
+    where
+        T: Copy,
+    {
+        self.truncate_copy(0);
+    }
+
     pub const fn prefix(&self) -> Option<&P> {
         if let Some(header) = self.header() {
             Some(&header.prefix)

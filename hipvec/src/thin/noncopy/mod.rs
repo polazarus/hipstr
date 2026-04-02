@@ -461,6 +461,76 @@ impl<T, P> ThinVec<T, P> {
     pub fn swap_remove(&mut self, index: usize) -> T {
         self.base.swap_remove(index)
     }
+
+    /// Shortens the vector, keeping the first `len` elements and dropping
+    /// the rest.
+    ///
+    /// If `len` is greater or equal to the vector's current length, this has
+    /// no effect.
+    ///
+    /// The [`drain`] method can emulate `truncate`, but causes the excess
+    /// elements to be returned instead of dropped.
+    ///
+    /// Note that this method has no effect on the allocated capacity
+    /// of the vector.
+    ///
+    /// # Examples
+    ///
+    /// Truncating a five element vector to two elements:
+    ///
+    /// ```
+    /// # use hipvec::thin_vec;
+    /// let mut vec = thin_vec![1, 2, 3, 4, 5];
+    /// vec.truncate(2);
+    /// assert_eq!(vec, [1, 2]);
+    /// ```
+    ///
+    /// No truncation occurs when `len` is greater than the vector's current
+    /// length:
+    ///
+    /// ```
+    /// # use hipvec::thin_vec;
+    /// let mut vec = thin_vec![1, 2, 3];
+    /// vec.truncate(8);
+    /// assert_eq!(vec, [1, 2, 3]);
+    /// ```
+    ///
+    /// Truncating when `len == 0` is equivalent to calling the [`clear`]
+    /// method.
+    ///
+    /// ```
+    /// # use hipvec::thin_vec;
+    /// let mut vec = thin_vec![1, 2, 3];
+    /// vec.truncate(0);
+    /// assert_eq!(vec, []);
+    /// ```
+    ///
+    /// [`clear`]: Self::clear
+    /// [`drain`]: Self::drain
+    #[inline]
+    pub fn truncate(&mut self, new_len: usize) {
+        self.base.truncate(new_len);
+    }
+
+    /// Clears the vector, removing all values.
+    ///
+    /// Note that this method has no effect on the allocated capacity
+    /// of the vector.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipvec::thin_vec;
+    /// let mut vec = thin_vec![1, 2, 3];
+    ///
+    /// vec.clear();
+    ///
+    /// assert!(vec.is_empty());
+    /// ```
+    #[inline]
+    pub fn clear(&mut self) {
+        self.base.clear();
+    }
 }
 
 impl<T, P: ConstDefault> ThinVec<T, P> {
