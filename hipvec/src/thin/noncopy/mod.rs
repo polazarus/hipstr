@@ -6,6 +6,7 @@ use const_default::ConstDefault;
 use super::base::Base;
 use crate::common::methods;
 use crate::common::utils::drop_raw_slice;
+use crate::traits::impl_vector;
 
 #[cfg(test)]
 mod tests;
@@ -787,3 +788,5 @@ impl<T: Copy, P> ops::DerefMut for ThinVec<T, P> {
         self.as_mut_slice()
     }
 }
+
+impl_vector!(impl(T: Clone, P: ConstDefault) MutVector<Item=T> for ThinVec<T, P>);

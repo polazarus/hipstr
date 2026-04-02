@@ -5,6 +5,7 @@ use const_default::ConstDefault;
 
 use super::base::Base;
 use crate::common::methods;
+use crate::traits::impl_vector;
 
 #[cfg(test)]
 mod tests;
@@ -779,6 +780,8 @@ impl<T: Copy, P> ops::DerefMut for ThinVec<T, P> {
     }
 }
 
+impl_vector!(impl(T: Copy, P: ConstDefault) MutVector<Item=T> for ThinVec<T, P>);
+
 // TODO drain
 // TODO dedup
 // TODO dedup_by
@@ -796,3 +799,5 @@ impl<T: Copy, P> ops::DerefMut for ThinVec<T, P> {
 // TODO shrink_to_fit
 // TODO splice
 // TODO split_off
+// TODO clear
+// TODO truncate

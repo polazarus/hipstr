@@ -2,6 +2,8 @@ use const_default::ConstDefault;
 
 pub(crate) mod methods;
 pub(crate) mod utils;
+#[cfg(test)]
+pub(crate) mod tests;
 
 #[derive(Default, Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(usize)]

@@ -211,16 +211,17 @@ where
 
     pub fn reserve(&mut self, additional: usize) {
         let old_cap = self.capacity();
+        let len = self.len();
 
         // Compute the required capacity, checking for overflow.
-        let req_cap = old_cap.checked_add(additional).expect("capacity overflow");
+        let req_cap = len.checked_add(additional).expect("capacity overflow");
 
-        // Exponential growth to avoid frequent reallocations.
-        // The doubling cannot overflow because the old cap is less than isize::MAX
-        let floor_cap = cmp::max(old_cap * 2, Self::MIN_CAPACITY);
+        if req_cap > old_cap {
+            // Exponential growth to avoid frequent reallocations.
+            // The doubling cannot overflow because the old cap is less than isize::MAX
+            let floor_cap = cmp::max(old_cap * 2, Self::MIN_CAPACITY);
 
-        let new_cap = cmp::max(req_cap, floor_cap);
-        if new_cap > old_cap {
+            let new_cap = cmp::max(req_cap, floor_cap);
             unsafe {
                 self.set_capacity(new_cap);
             }
@@ -229,10 +230,11 @@ where
 
     pub fn reserve_exact(&mut self, additional: usize) {
         let old_cap = self.capacity();
-        let new_cap = old_cap.checked_add(additional).expect("capacity overflow");
-        if new_cap > old_cap {
+        let len = self.len();
+        let req_cap = len.checked_add(additional).expect("capacity overflow");
+        if req_cap > old_cap {
             unsafe {
-                self.set_capacity(new_cap);
+                self.set_capacity(req_cap);
             }
         }
     }
