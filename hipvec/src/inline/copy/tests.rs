@@ -1,7 +1,6 @@
-use super::*;
+use crate::copy_inline_vec as inline_vec;
+use crate::inline::CopyInlineVec as Inline;
 use crate::inline::layouts::{BasicLayout, Layout};
-
-type Inline<T> = InlineVec<T, BasicLayout>;
 
 #[test]
 fn niche() {
@@ -17,6 +16,14 @@ fn new() {
     l.push(1);
     assert_eq!(l.len(), 1);
     assert_eq!(l.as_slice(), &[1]);
+}
+
+#[test]
+fn as_ptr() {
+    let mut l = Inline::<u8>::new();
+    let p = l.as_ptr();
+    assert_eq!(p, l.as_mut_ptr());
+    assert_eq!(p, l.as_non_null().as_ptr());
 }
 
 #[test]
@@ -60,6 +67,87 @@ fn slice() {
     slice[1] = 5;
     slice[2] = 6;
     assert_eq!(l.as_slice(), &[4, 5, 6]);
+}
+
+#[test]
+fn push_mut() {
+    let mut l = Inline::<u8>::with_capacity(1);
+    let p = l.as_ptr();
+    let x = l.push_mut(42);
+    assert_eq!(x, &42);
+    assert_eq!(&raw const *x, p);
+    *x += 1;
+    assert_eq!(l.as_slice(), &[43]);
+}
+
+#[test]
+#[should_panic(expected = "new length exceeds capacity")]
+fn push_mut_panic() {
+    let mut l = Inline::<u8>::new();
+    let cap = l.capacity();
+    for i in 0..cap {
+        let _ = l.push_mut(i as u8);
+    }
+    let _ = l.push_mut(0);
+}
+
+#[test]
+fn insert() {
+    let mut v = Inline::new();
+    v.insert(0, 2_u8);
+    assert_eq!(v.as_slice(), [2]);
+    v.insert(0, 1);
+    assert_eq!(v.as_slice(), [1, 2]);
+    v.insert(2, 4);
+    assert_eq!(v.as_slice(), [1, 2, 4]);
+    v.insert(2, 3);
+    assert_eq!(v.as_slice(), [1, 2, 3, 4]);
+}
+
+#[test]
+#[should_panic(expected = "new length exceeds capacity")]
+fn insert_panic_overflow() {
+    let mut v: Inline<u8> = Inline::new();
+    for i in 0..v.capacity() {
+        v.insert(0, (i + 1) as u8);
+    }
+    v.insert(0, 0);
+}
+
+#[test]
+#[should_panic(expected = "index out of bounds")]
+fn insert_panic_out_of_bounds() {
+    let mut v = inline_vec![1_u8, 2];
+    v.insert(4, 5);
+}
+
+#[test]
+fn insert_mut() {
+    let mut v = Inline::new();
+    {
+        let r = v.insert_mut(0, 42_u8);
+        assert_eq!(*r, 42);
+        *r = 2;
+        assert_eq!(v.as_slice(), [2]);
+    }
+    {
+        let r = v.insert_mut(0, 42);
+        assert_eq!(*r, 42);
+        *r = 1;
+        assert_eq!(v.as_slice(), [1, 2]);
+    }
+    let _ = v.insert_mut(2, 4);
+    assert_eq!(v.as_slice(), [1, 2, 4]);
+    let _ = v.insert_mut(2, 3);
+    assert_eq!(v.as_slice(), [1, 2, 3, 4]);
+}
+
+#[test]
+fn drop() {
+    if false {
+        fn is_copy<T: Copy>(_: T) {}
+        is_copy(Inline::<u8>::new());
+    }
 }
 
 #[test]
@@ -109,10 +197,30 @@ fn from_array_panic() {
 
 #[test]
 fn clear() {
-    let mut l = Inline::<i32>::from([1, 2, 3]);
+    let mut l = Inline::<u8>::from([1, 2, 3]);
+    
     l.clear();
     assert!(l.is_empty());
-    assert_eq!(l.len(), 0);
+
+    l.clear();
+    assert!(l.is_empty());
+
+    let mut l = Inline::<u8>::new();
+    l.clear();
+    assert!(l.is_empty());
+}
+
+#[test]
+fn truncate() {
+    let mut l = inline_vec![1_u8, 2, 3, 4];
+    l.truncate(6);
+    assert_eq!(l.as_slice(), [1, 2, 3, 4]);
+
+    l.truncate(2);
+    assert_eq!(l.as_slice(), [1, 2]);
+
+    l.truncate(0);
+    assert!(l.is_empty());
 }
 
 #[test]
@@ -219,33 +327,33 @@ fn with_capacity_panic() {
 }
 
 #[test]
-fn copy_inline_vec_empty() {
-    let l: Inline<i32> = crate::copy_inline_vec![];
+fn inline_vec_empty() {
+    let l: Inline<i32> = inline_vec![];
     assert!(l.is_empty());
 }
 
 #[test]
-fn copy_inline_vec_list() {
-    let l: Inline<i32> = crate::copy_inline_vec![1, 2, 3];
+fn inline_vec_list() {
+    let l: Inline<i32> = inline_vec![1, 2, 3];
     assert_eq!(l.as_slice(), &[1, 2, 3]);
 }
 
 #[test]
-fn copy_inline_vec_list_trailing_comma() {
-    let l: Inline<i32> = crate::copy_inline_vec![1, 2, 3,];
+fn inline_vec_list_trailing_comma() {
+    let l: Inline<i32> = inline_vec![1, 2, 3,];
     assert_eq!(l.as_slice(), &[1, 2, 3]);
 }
 
 #[test]
-fn copy_inline_vec_repeat() {
-    let l: Inline<i32> = crate::copy_inline_vec![7; 3];
+fn inline_vec_repeat() {
+    let l: Inline<i32> = inline_vec![7; 3];
     assert_eq!(l.as_slice(), &[7, 7, 7]);
 }
 
 #[test]
-fn copy_inline_vec_repeat_zero() {
+fn inline_vec_repeat_zero() {
     let mut side_effect = 0usize;
-    let l: Inline<i32> = crate::copy_inline_vec![{ side_effect += 1; 42 }; 0];
+    let l: Inline<i32> = inline_vec![{ side_effect += 1; 42 }; 0];
     assert!(l.is_empty());
     assert_eq!(side_effect, 1);
 }

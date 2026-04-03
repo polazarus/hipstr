@@ -65,14 +65,15 @@ macro_rules! truncate {
     }};
 }
 
+/// `truncate` impl for Copy types, requires `len`, `set_len`, and `as_mut_ptr`
 macro_rules! truncate_copy {
     ($self:ident, $new_len:expr) => {{
         let old_len = $self.len();
         let new_len = $new_len;
 
         if false {
-            const fn is_copy<V, T: Copy>(_: fn(&V) -> *const T) {}
-            is_copy(Self::as_ptr);
+            const fn is_copy<V, T: Copy>(_: fn(&mut V) -> *mut T) {}
+            is_copy(Self::as_mut_ptr);
         }
 
         if new_len < old_len {
@@ -159,51 +160,16 @@ macro_rules! push_within_capacity {
     }};
 }
 
-macro_rules! push {
-    ($self:ident, $value:expr) => {{
-        $self.reserve(1);
-        let len = $self.len();
-        // SAFETY: capacity is guaranteed to be greater than length after reserve
-        unsafe {
-            let ptr = $self.as_mut_ptr().add(len);
-            ptr.write($value);
-            $self.set_len(len + 1);
-        }
-    }};
-}
-
 macro_rules! push_mut {
     ($self:ident, $value:expr) => {{
         $self.reserve(1);
         let len = $self.len();
         // SAFETY: capacity is guaranteed to be greater than length after reserve
         unsafe {
+            $self.set_len(len + 1);
             let ptr = $self.as_mut_ptr().add(len);
             ptr.write($value);
-            $self.set_len(len + 1);
             &mut *ptr
-        }
-    }};
-}
-
-/// `insert` impl, requires `len`, `reserve`, `set_len`, and `as_mut_ptr`
-macro_rules! insert {
-    ($self:ident, $index:expr, $value:expr) => {{
-        let index = $index;
-        let value = $value;
-        let len = $self.len();
-        assert!(index <= len, "index out of bounds");
-
-        $self.reserve(1);
-
-        // SAFETY: index is checked above
-        unsafe {
-            let ptr = $self.as_mut_ptr().add(index);
-            if index < len {
-                ptr.add(1).copy_from(ptr, len - index);
-            }
-            ptr.write(value);
-            $self.set_len(len + 1);
         }
     }};
 }
@@ -220,12 +186,12 @@ macro_rules! insert_mut {
 
         // SAFETY: index is checked above
         unsafe {
+            $self.set_len(len + 1);
             let ptr = $self.as_mut_ptr().add(index);
             if index < len {
                 ptr.add(1).copy_from(ptr, len - index);
             }
             ptr.write(value);
-            $self.set_len(len + 1);
             &mut *ptr
         }
     }};
@@ -394,7 +360,7 @@ macro_rules! swap_remove {
 /// requirements:
 /// - for `self`, `len`, `reserve`, `set_len`, `as_mut_ptr`, and `reserve`
 /// - for `other`, `len`, `set_len`, and `as_ptr`
-macro_rules! append_impl {
+macro_rules! append {
     ($self:ident, $other:ident) => {{
         let other_len = $other.len();
         $self.reserve(other_len);
@@ -434,17 +400,15 @@ macro_rules! split_off_impl {
     }};
 }
 
-pub(crate) use append_impl;
+pub(crate) use append;
 pub(crate) use extend_from_array;
 pub(crate) use extend_from_slice;
 pub(crate) use extend_from_slice_copy;
 pub(crate) use from_array_impl;
 pub(crate) use from_slice_clone_impl;
-pub(crate) use insert;
 pub(crate) use insert_mut;
 pub(crate) use pop;
 pub(crate) use pop_if;
-pub(crate) use push;
 pub(crate) use push_mut;
 pub(crate) use push_within_capacity;
 pub(crate) use remove;

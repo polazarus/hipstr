@@ -444,6 +444,8 @@ impl<T, L: Layout<T>> InlineVec<T, L> {
     /// let mut vec = InlineVec::<i32>::new();
     /// vec.reserve(vec.capacity() + 1);
     /// ```
+    #[inline]
+    #[track_caller]
     pub const fn reserve(&mut self, additional: usize) {
         self.base.reserve(additional);
     }
@@ -466,23 +468,60 @@ impl<T, L: Layout<T>> InlineVec<T, L> {
     /// let mut vec = InlineVec::<i32>::new();
     /// vec.reserve_exact(vec.capacity() + 1);
     /// ```
+    #[inline]
+    #[track_caller]
     pub const fn reserve_exact(&mut self, additional: usize) {
         self.base.reserve_exact(additional);
     }
 
-    /// Appends an element to the end of the vector.
+    /// Appends an element to the back of a collection.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new length would exceed [`CAPACITY`].
+    ///
+    /// [`CAPACITY`]: Self::CAPACITY
     ///
     /// # Examples
     ///
     /// ```
-    /// # use hipvec::inline::InlineVec;
-    /// let mut vec = InlineVec::<i32>::new();
-    /// vec.push(7);
-    /// assert_eq!(vec.as_slice(), &[7]);
+    /// # use hipvec::inline_vec;
+    /// let mut vec = inline_vec![1, 2];
+    /// vec.push(3);
+    /// assert_eq!(vec, [1, 2, 3]);
     /// ```
     #[inline]
+    #[track_caller]
     pub const fn push(&mut self, value: T) {
         self.base.push(value);
+    }
+
+    /// Appends an element to the back of a collection, returning a reference to it.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new length would exceed [`CAPACITY`].
+    ///
+    /// [`CAPACITY`]: Self::CAPACITY
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipvec::inline_vec;
+    /// let mut vec = inline_vec![1_u8, 2];
+    /// let last = vec.push_mut(3);
+    /// assert_eq!(*last, 3);
+    /// assert_eq!(vec, [1, 2, 3]);
+    ///
+    /// let last = vec.push_mut(3);
+    /// *last += 1;
+    /// assert_eq!(vec, [1, 2, 3, 4]);
+    /// ```
+    #[inline]
+    #[must_use]
+    #[track_caller]
+    pub const fn push_mut(&mut self, value: T) -> &mut T {
+        self.base.push_mut(value)
     }
 
     /// Removes and returns the last element, if any.
@@ -499,6 +538,26 @@ impl<T, L: Layout<T>> InlineVec<T, L> {
     #[inline]
     pub const fn pop(&mut self) -> Option<T> {
         self.base.pop()
+    }
+
+    /// Removes and returns the last element from a vector if the predicate
+    /// returns `true`, or [`None`] if the predicate returns false or the vector
+    /// is empty (the predicate will not be called in that case).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipvec::inline_vec;
+    /// let mut vec = inline_vec![1_u8, 2, 3, 4];
+    /// let pred = |x: &mut u8| *x % 2 == 0;
+    ///
+    /// assert_eq!(vec.pop_if(pred), Some(4));
+    /// assert_eq!(vec.as_slice(), [1, 2, 3]);
+    /// assert_eq!(vec.pop_if(pred), None);
+    /// ```
+    #[inline]
+    pub fn pop_if(&mut self, f: impl FnOnce(&mut T) -> bool) -> Option<T> {
+        self.base.pop_if(f)
     }
 
     /// Removes and returns the element at position `index` within the vector,
@@ -523,6 +582,7 @@ impl<T, L: Layout<T>> InlineVec<T, L> {
     /// assert_eq!(v.as_slice(), [b'a', b'c']);
     /// ```
     #[inline]
+    #[track_caller]
     pub const fn remove(&mut self, index: usize) -> T {
         self.base.remove(index)
     }
@@ -553,11 +613,18 @@ impl<T, L: Layout<T>> InlineVec<T, L> {
     /// assert_eq!(v.as_slice(), [2, 3]);
     /// ```
     #[inline]
+    #[track_caller]
     pub const fn swap_remove(&mut self, index: usize) -> T {
         self.base.swap_remove(index)
     }
 
     /// Inserts an element at `index`, shifting later elements to the right.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index` is out of bounds or if the new length would exceed [`CAPACITY`].
+    ///
+    /// [`CAPACITY`]: Self::CAPACITY
     ///
     /// # Examples
     ///
@@ -568,8 +635,35 @@ impl<T, L: Layout<T>> InlineVec<T, L> {
     /// assert_eq!(vec.as_slice(), &[1, 2, 3]);
     /// ```
     #[inline]
+    #[track_caller]
     pub const fn insert(&mut self, index: usize, value: T) {
         self.base.insert(index, value);
+    }
+
+    /// Inserts an element at position `index` within the vector, shifting all
+    /// elements after it to the right, and returning a reference to the new
+    /// element.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index` is out of bounds or if the new length would exceed [`CAPACITY`].
+    ///
+    /// [`CAPACITY`]: Self::CAPACITY
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipvec::inline_vec;
+    /// let mut vec = inline_vec![1_u8, 3, 5, 9];
+    /// let x = vec.insert_mut(3, 6);
+    /// *x += 1;
+    /// assert_eq!(vec, [1, 3, 5, 7, 9]);
+    /// ```
+    #[inline]
+    #[must_use]
+    #[track_caller]
+    pub const fn insert_mut(&mut self, index: usize, value: T) -> &mut T {
+        self.base.insert_mut(index, value)
     }
 
     /// Shortens the vector, keeping the first `new_len` elements.
@@ -586,6 +680,7 @@ impl<T, L: Layout<T>> InlineVec<T, L> {
     /// vec.truncate(5);
     /// assert_eq!(vec.as_slice(), &[1, 2]);
     /// ```
+    #[inline]
     pub fn truncate(&mut self, new_len: usize) {
         self.base.truncate(new_len)
     }
@@ -600,19 +695,47 @@ impl<T, L: Layout<T>> InlineVec<T, L> {
     /// vec.clear();
     /// assert!(vec.is_empty());
     /// ```
+    #[inline]
     pub fn clear(&mut self) {
         *self = Self::new();
+    }
+
+    /// Appends all elements of the array to the vector.
+    ///
+    /// The elements are moved and not cloned.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new length would exceed [`CAPACITY`].
+    ///
+    /// [`CAPACITY`]: Self::CAPACITY
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipvec::inline_vec;
+    /// let mut vec = inline_vec![1_u8];
+    /// vec.extend_from_array([2, 3, 4]);
+    /// assert_eq!(vec.as_slice(), [1, 2, 3, 4]);
+    /// ```
+    #[inline]
+    #[track_caller]
+    pub const fn extend_from_array<const N: usize>(&mut self, array: [T; N]) {
+        self.base.extend_from_array(array);
     }
 }
 
 impl<T: Clone, L: Layout<T>> InlineVec<T, L> {
     // const fn from_slice:
     // not available since it needs to clone elements
+
     /// Clones and appends all elements in a slice to the vector.
     ///
     /// # Panics
     ///
-    /// Panics if the new length exceeds the capacity.
+    /// Panics if the new length would exceed [`CAPACITY`].
+    ///
+    /// [`CAPACITY`]: Self::CAPACITY
     ///
     /// # Examples
     ///
@@ -623,6 +746,7 @@ impl<T: Clone, L: Layout<T>> InlineVec<T, L> {
     /// assert_eq!(vec.as_slice(), &[1, 2, 3, 4]);
     /// ```
     #[inline]
+    #[track_caller]
     pub fn extend_from_slice(&mut self, value: &[T]) {
         self.base.extend_from_slice(value);
     }

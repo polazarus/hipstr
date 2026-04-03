@@ -9,6 +9,7 @@ use core::ptr::NonNull;
 
 use super::layouts::{self, Layout};
 use crate::common::methods;
+use crate::traits::MutVector;
 
 pub(super) struct Base<T, L: Layout<T>> {
     repr: L,
@@ -90,6 +91,7 @@ impl<T, L: Layout<T>> Base<T, L> {
         L::CAPACITY
     }
 
+    #[track_caller]
     pub const fn reserve(&mut self, additional: usize) {
         let len = self.len();
         let new_len = len + additional;
@@ -97,28 +99,49 @@ impl<T, L: Layout<T>> Base<T, L> {
     }
 
     #[inline]
+    #[track_caller]
     pub const fn reserve_exact(&mut self, additional: usize) {
         self.reserve(additional);
     }
 
+    #[inline]
+    #[track_caller]
     pub const fn push(&mut self, value: T) {
-        methods::push!(self, value)
+        let _ = self.push_mut(value);
+    }
+
+    #[track_caller]
+    pub const fn push_mut(&mut self, value: T) -> &mut T {
+        methods::push_mut!(self, value)
     }
 
     pub const fn pop(&mut self) -> Option<T> {
         methods::pop!(self)
     }
 
+    pub fn pop_if(&mut self, f: impl FnOnce(&mut T) -> bool) -> Option<T> {
+        methods::pop_if!(self, f)
+    }
+
+    #[track_caller]
     pub const fn remove(&mut self, index: usize) -> T {
         methods::remove!(self, index)
     }
 
+    #[track_caller]
     pub const fn swap_remove(&mut self, index: usize) -> T {
         methods::swap_remove!(self, index)
     }
 
+    #[inline]
+    #[track_caller]
     pub const fn insert(&mut self, index: usize, value: T) {
-        methods::insert!(self, index, value)
+        let _ = self.insert_mut(index, value);
+    }
+
+    #[track_caller]
+    pub const fn insert_mut(&mut self, index: usize, value: T) -> &mut T {
+        methods::insert_mut!(self, index, value)
     }
 
     pub const fn spare_capacity_mut(&mut self) -> &mut [core::mem::MaybeUninit<T>] {
@@ -141,6 +164,7 @@ impl<T, L: Layout<T>> Base<T, L> {
         }
     }
 
+    #[track_caller]
     pub fn extend_from_slice(&mut self, slice: &[T])
     where
         T: Clone,
@@ -148,11 +172,27 @@ impl<T, L: Layout<T>> Base<T, L> {
         methods::extend_from_slice!(self, slice);
     }
 
+    #[track_caller]
     pub const fn extend_from_slice_copy(&mut self, slice: &[T])
     where
         T: Copy,
     {
         methods::extend_from_slice_copy!(self, slice);
+    }
+
+    #[track_caller]
+    pub const fn extend_from_array<const N: usize>(&mut self, array: [T; N]) {
+        methods::extend_from_array!(self, array)
+    }
+
+    #[track_caller]
+    pub const fn const_append(&mut self, other: &mut Self) {
+        methods::append!(self, other);
+    }
+
+    #[track_caller]
+    pub fn append(&mut self, other: &mut dyn MutVector<Item = T>) {
+        methods::append!(self, other);
     }
 }
 

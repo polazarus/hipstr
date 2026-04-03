@@ -70,6 +70,11 @@ macro_rules! impl_vector {
             }
 
             #[inline]
+            fn spare_capacity_mut(&mut self) -> &mut [core::mem::MaybeUninit<Self::Item>] {
+                self.spare_capacity_mut()
+            }
+
+            #[inline]
             unsafe fn set_len(&mut self, new_len: usize) {
                 unsafe { self.set_len(new_len); }
             }
@@ -88,6 +93,21 @@ macro_rules! impl_vector {
             fn push(&mut self, value: Self::Item) {
                 self.push(value);
             }
+
+            #[inline]
+            fn pop(&mut self) -> Option<Self::Item> {
+                self.pop()
+            }
+
+            #[inline]
+            fn truncate(&mut self, new_len: usize) {
+                self.truncate(new_len);
+            }
+
+            #[inline]
+            fn clear(&mut self) {
+                self.clear();
+            }
         }
     };
 }
@@ -104,10 +124,14 @@ impl_vector!(impl(T) MutVector<Item=T> for alloc::vec::Vec<T>);
 pub unsafe trait MutVector: Vector {
     fn as_mut_ptr(&mut self) -> *mut Self::Item;
     fn as_mut_slice(&mut self) -> &mut [Self::Item];
+    fn spare_capacity_mut(&mut self) -> &mut [core::mem::MaybeUninit<Self::Item>];
     unsafe fn set_len(&mut self, new_len: usize);
     fn reserve(&mut self, additional: usize);
     fn reserve_exact(&mut self, additional: usize);
     fn push(&mut self, value: Self::Item);
+    fn pop(&mut self) -> Option<Self::Item>;
+    fn truncate(&mut self, new_len: usize);
+    fn clear(&mut self);
 }
 
 pub(crate) use impl_vector;
