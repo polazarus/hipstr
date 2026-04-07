@@ -166,12 +166,6 @@ impl<T: Copy, P> ThinVec<T, P> {
     /// may still invalidate this pointer.
     /// See the second example below for how this guarantee can be used.
     ///
-    /// The method also guarantees that, as long as `T` is not zero-sized and the capacity is
-    /// nonzero, the pointer may be passed into [`dealloc`] with a layout of
-    /// `Layout::array::<T>(capacity)` in order to deallocate the backing memory. If this is done,
-    /// be careful not to run the destructor of the `Vec`, as dropping it will result in
-    /// double-frees. Wrapping the `Vec` in a [`ManuallyDrop`] is the typical way to achieve this.
-    ///
     /// # Examples
     ///
     /// ```
@@ -362,11 +356,6 @@ impl<T: Copy, P> ThinVec<T, P> {
 
     /// Removes the last element from a vector and returns it, or [`None`] if it
     /// is empty.
-    ///
-    /// If you'd like to pop the first element, consider using
-    /// [`VecDeque::pop_front`] instead.
-    ///
-    /// [`VecDeque::pop_front`]: crate::collections::VecDeque::pop_front
     ///
     /// # Examples
     ///
@@ -720,7 +709,7 @@ impl<T: Copy, P: ConstDefault> ThinVec<T, P> {
     ///
     /// # Time complexity
     ///
-    /// Takes *O*([`Vec::len`]) time. All items after the insertion index must be
+    /// Takes *O*(length) time. All items after the insertion index must be
     /// shifted to the right. In the worst case, all elements are shifted when
     /// the insertion index is 0.
     #[inline]
@@ -748,7 +737,7 @@ impl<T: Copy, P: ConstDefault> ThinVec<T, P> {
     ///
     /// # Time complexity
     ///
-    /// Takes *O*([`Vec::len`]) time. All items after the insertion index must be
+    /// Takes *O*(length) time. All items after the insertion index must be
     /// shifted to the right. In the worst case, all elements are shifted when
     /// the insertion index is 0.
     #[inline]
@@ -756,7 +745,7 @@ impl<T: Copy, P: ConstDefault> ThinVec<T, P> {
         self.base.insert_mut(index, value)
     }
 
-    /// Copies and appends all elements in a slice to the `Vec`.
+    /// Copies and appends all elements in a slice to the vector.
     ///
     /// The `other` slice is traversed in-order.
     ///
@@ -772,13 +761,11 @@ impl<T: Copy, P: ConstDefault> ThinVec<T, P> {
     /// vec.extend_from_slice(&[2, 3, 4]);
     /// assert_eq!(vec.as_slice(), [1, 2, 3, 4]);
     /// ```
-    ///
-    /// [`extend`]: Vec::extend
     pub fn extend_from_slice(&mut self, slice: &[T]) {
         methods::extend_from_slice_copy!(self, slice);
     }
 
-    /// Appends all elements of the array to the `Vec`.
+    /// Appends all elements of the array to the vector.
     ///
     /// The elements are moved and not cloned.
     ///
@@ -851,24 +838,3 @@ impl<T: Copy, P> ops::DerefMut for ThinVec<T, P> {
 }
 
 impl_vector!(impl(T: Copy, P: ConstDefault) MutVector<Item=T> for ThinVec<T, P>);
-
-// TODO append
-// TODO drain
-// TODO dedup
-// TODO dedup_by
-// TODO dedup_by_key
-// TODO extend_from_within
-// TODO extract_if
-// TODO into_chunks
-// TODO into_flattened
-// TODO push_within_capacity
-// TODO resize
-// TODO resize_with
-// TODO retain
-// TODO retain_mut
-// TODO shrink_to
-// TODO shrink_to_fit
-// TODO splice
-// TODO split_off
-// TODO clear
-// TODO truncate
