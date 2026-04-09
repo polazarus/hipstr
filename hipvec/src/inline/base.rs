@@ -11,7 +11,7 @@ use super::layouts::{self, Layout};
 use crate::common::methods;
 use crate::traits::MutVector;
 
-pub(super) struct Base<T, L: Layout<T>> {
+pub(crate) struct Base<T, L: Layout<T>> {
     repr: L,
     phantom: PhantomData<T>,
 }

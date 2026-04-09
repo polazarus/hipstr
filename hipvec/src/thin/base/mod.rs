@@ -1,18 +1,15 @@
 //! Internal representation of thin vectors.
 
 use core::cmp;
-use core::num::NonZeroUsize;
 use core::ptr::{self, NonNull};
 
 use const_default::ConstDefault;
 
+pub use crate::common::header::ThinHeader as Header;
 use crate::common::methods;
+use crate::common::tagged_pointer::TaggedPointer;
 
-mod header;
-pub use header::Header;
-
-const TAG: usize = 0x10;
-const NZ_TAG: NonZeroUsize = NonZeroUsize::new(TAG).unwrap();
+const TAG: usize = 0b10;
 
 const fn min_non_zero_cap(size: usize) -> usize {
     if size == 1 {
@@ -24,8 +21,8 @@ const fn min_non_zero_cap(size: usize) -> usize {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct Base<T, P>(NonNull<Header<T, P>>);
+#[derive(Debug)]
+pub struct Base<T, P>(TaggedPointer<Header<T, P>, TAG>);
 
 impl<T, P> Default for Base<T, P> {
     fn default() -> Self {
@@ -39,13 +36,8 @@ impl<T, P> ConstDefault for Base<T, P> {
 
 impl<T, P> Base<T, P> {
     #[inline]
-    const fn unmasked(&self) -> Option<NonNull<Header<T, P>>> {
-        NonNull::new(unsafe { self.0.as_ptr().byte_sub(TAG) })
-    }
-
-    #[inline]
     const fn header(&self) -> Option<&Header<T, P>> {
-        if let Some(header) = self.unmasked() {
+        if let Some(header) = self.0.as_non_null() {
             unsafe { Some(header.as_ref()) }
         } else {
             None
@@ -54,7 +46,7 @@ impl<T, P> Base<T, P> {
 
     #[inline]
     const fn header_mut(&mut self) -> Option<&mut Header<T, P>> {
-        if let Some(mut header) = self.unmasked() {
+        if let Some(mut header) = self.0.as_non_null() {
             unsafe { Some(header.as_mut()) }
         } else {
             None
@@ -63,7 +55,7 @@ impl<T, P> Base<T, P> {
 
     #[inline]
     pub const fn new() -> Self {
-        const { Self(NonNull::without_provenance(NZ_TAG)) }
+        const { Self(TaggedPointer::null()) }
     }
 
     #[inline]
@@ -106,7 +98,7 @@ impl<T, P> Base<T, P> {
 
     #[inline]
     pub const fn as_ptr(&self) -> *const T {
-        if let Some(header) = self.unmasked() {
+        if let Some(header) = self.0.as_non_null() {
             unsafe { Header::data(header).as_ptr().cast_const() }
         } else {
             ptr::dangling()
@@ -115,7 +107,7 @@ impl<T, P> Base<T, P> {
 
     #[inline]
     pub const fn as_mut_ptr(&mut self) -> *mut T {
-        if let Some(header) = self.unmasked() {
+        if let Some(header) = self.0.as_non_null() {
             unsafe { Header::data(header).as_ptr() }
         } else {
             ptr::dangling_mut()
@@ -124,7 +116,7 @@ impl<T, P> Base<T, P> {
 
     #[inline]
     pub const fn as_non_null(&mut self) -> NonNull<T> {
-        if let Some(header) = self.unmasked() {
+        if let Some(header) = self.0.as_non_null() {
             unsafe { Header::data(header) }
         } else {
             NonNull::dangling()
@@ -218,17 +210,15 @@ where
         };
 
         let ptr = unsafe { alloc::alloc::alloc(layout) };
-        if ptr.is_null() {
+        let Some(ptr) = NonNull::new(ptr) else {
             alloc::alloc::handle_alloc_error(layout);
-        }
+        };
         let header_ptr = ptr.cast::<Header<T, P>>();
         unsafe {
             header_ptr.write(Header::with_capacity(capacity));
         }
 
-        let tagged = unsafe { header_ptr.byte_add(TAG) };
-        let nonnull = NonNull::new(tagged).unwrap();
-        Self(nonnull)
+        Self(header_ptr.into())
     }
 
     const MIN_CAPACITY: usize = const { min_non_zero_cap(size_of::<T>()) };
@@ -276,18 +266,17 @@ where
         let (new_layout, new_cap) = Header::<T, P>::layout(new_cap).expect("capacity overflow");
 
         if new_cap != old_cap {
-            if let Some(ptr) = self.unmasked() {
+            if let Some(ptr) = self.0.as_non_null() {
                 let ptr: *mut Header<T, P> = unsafe {
                     alloc::alloc::realloc(ptr.as_ptr().cast(), old_layout, new_layout.size()).cast()
                 };
-                if ptr.is_null() {
+                let Some(mut ptr) = NonNull::new(ptr) else {
                     alloc::alloc::handle_alloc_error(new_layout);
-                }
+                };
                 unsafe {
-                    (*ptr).cap = new_cap;
+                    ptr.as_mut().cap = new_cap;
                 }
-                let tagged = unsafe { ptr.byte_add(TAG) };
-                self.0 = NonNull::new(tagged).unwrap();
+                self.0 = ptr.into(); // transform the pointer back into a tagged pointer
             } else {
                 *self = Self::with_capacity(new_cap);
             }
@@ -318,7 +307,7 @@ where
 
 impl<T, P> Drop for Base<T, P> {
     fn drop(&mut self) {
-        if let Some(header) = self.unmasked() {
+        if let Some(header) = self.0.as_non_null() {
             let layout = Header::<T, P>::layout(unsafe { header.as_ref().cap })
                 .unwrap()
                 .0;
@@ -335,6 +324,7 @@ mod tests {
 
     #[test]
     fn new() {
+        TaggedPointer::<Header<u8, ()>, TAG>::debug_check();
         let repr: Base<u8, ()> = Base::new();
         assert_eq!(repr.len(), 0);
         assert_eq!(repr.capacity(), 0);

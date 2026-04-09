@@ -7,7 +7,7 @@ use alloc::fmt;
 
 use const_default::ConstDefault;
 
-mod base;
+pub(crate) mod base;
 pub mod copy;
 pub mod noncopy;
 

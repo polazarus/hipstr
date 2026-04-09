@@ -181,4 +181,6 @@ macro_rules! symmetric_ord {
     }
 }
 
-pub(crate) use {symmetric_eq, symmetric_ord, trait_impls};
+pub(crate) use symmetric_eq;
+pub(crate) use symmetric_ord;
+pub(crate) use trait_impls;

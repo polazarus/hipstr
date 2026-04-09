@@ -1,9 +1,11 @@
 use const_default::ConstDefault;
 
+pub(crate) mod header;
 pub(crate) mod methods;
-pub(crate) mod utils;
+pub(crate) mod tagged_pointer;
 #[cfg(test)]
 pub(crate) mod tests;
+pub(crate) mod utils;
 
 #[derive(Default, Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(usize)]
@@ -24,3 +26,4 @@ macro_rules! __count {
         <[()]>::len(&[$($crate::__count!(@ $x)),*])
     };
 }
+

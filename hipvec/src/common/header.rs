@@ -1,28 +1,33 @@
 use core::alloc::Layout;
-use core::marker::PhantomData;
 use core::ptr::NonNull;
 
 use const_default::ConstDefault;
 
 use crate::common::ZeroUsize;
 
-/// A thin vector header with prefix.
+/// Common vector header with arbitrary associated data, called "prefix".
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(C)]
-pub struct Header<T, P> {
+pub struct Header<T, Prefix, Ptr: Copy> {
     /// Prefix.
-    pub prefix: P,
-    /// A pointer-sized zero used to ensure proper field alignment with `WideInner`
-    /// and differientate between the two.
-    pub _ptr: ZeroUsize,
+    pub prefix: Prefix,
+
+    /// Data pointer if any.
+    pub ptr: Ptr,
+
     /// Capacity.
     pub cap: usize,
+
     /// Length.
     pub len: usize,
-    pub _phantom: PhantomData<[T]>,
+
+    _phantom: core::marker::PhantomData<T>,
 }
 
-impl<T, P> Header<T, P> {
+pub type ThinHeader<T, Prefix> = Header<T, Prefix, ZeroUsize>;
+pub type WideHeader<T, Prefix> = Header<T, Prefix, Option<NonNull<T>>>;
+
+impl<T, Prefix> ThinHeader<T, Prefix> {
     const DATA_OFFSET: usize = {
         let layout = Layout::new::<Self>();
         let Ok(layout) = layout.align_to(align_of::<T>()) else {
@@ -34,14 +39,14 @@ impl<T, P> Header<T, P> {
 
     pub const fn with_capacity(capacity: usize) -> Self
     where
-        P: ConstDefault,
+        Prefix: ConstDefault,
     {
         Self {
-            prefix: P::DEFAULT,
-            _ptr: ZeroUsize::DEFAULT,
+            prefix: Prefix::DEFAULT,
+            ptr: ZeroUsize::DEFAULT,
             cap: capacity,
             len: 0,
-            _phantom: PhantomData,
+            _phantom: core::marker::PhantomData,
         }
     }
 
@@ -77,33 +82,47 @@ impl<T, P> Header<T, P> {
 
     /// Returns a pointer to the data, given a pointer to the header.
     #[inline]
-    pub(super) const unsafe fn data(header: NonNull<Self>) -> NonNull<T> {
+    pub const unsafe fn data(header: NonNull<Self>) -> NonNull<T> {
         unsafe { header.byte_add(Self::DATA_OFFSET).cast() }
     }
 }
 
-impl<T, P> ConstDefault for Header<T, P>
+impl<T, P> ConstDefault for ThinHeader<T, P>
 where
     P: ConstDefault,
 {
     const DEFAULT: Self = Self {
         prefix: P::DEFAULT,
-        _ptr: ZeroUsize::DEFAULT,
+        ptr: ZeroUsize::DEFAULT,
         cap: 0,
         len: 0,
-        _phantom: PhantomData,
+        _phantom: core::marker::PhantomData,
+    };
+}
+
+impl<T, P> ConstDefault for WideHeader<T, P>
+where
+    P: ConstDefault,
+{
+    const DEFAULT: Self = Self {
+        prefix: P::DEFAULT,
+        ptr: None,
+        cap: 0,
+        len: 0,
+        _phantom: core::marker::PhantomData,
     };
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use core::mem::offset_of;
 
     #[test]
-    fn data_offset() {
-        type HU8 = Header<u8, ()>;
-        type HU64 = Header<u64, ()>;
-        type HU128 = Header<u128, ()>;
+    fn thin_data_offset() {
+        type HU8 = ThinHeader<u8, ()>;
+        type HU64 = ThinHeader<u64, ()>;
+        type HU128 = ThinHeader<u128, ()>;
 
         assert_eq!(HU8::DATA_OFFSET, size_of::<HU8>());
         assert!(HU64::DATA_OFFSET >= size_of::<HU64>());
@@ -113,10 +132,10 @@ mod tests {
     }
 
     #[test]
-    fn layout() {
-        type HU8 = Header<u8, ()>;
-        type HU64 = Header<u64, ()>;
-        type HU128 = Header<u128, ()>;
+    fn thin_layout() {
+        type HU8 = ThinHeader<u8, ()>;
+        type HU64 = ThinHeader<u64, ()>;
+        type HU128 = ThinHeader<u128, ()>;
 
         for payload in [0, 1, 2, 3, 4, 7, 8, 15, 16, 31, 32] {
             let (layout, round_up_payload) = HU8::layout(payload).unwrap();
@@ -134,5 +153,15 @@ mod tests {
             assert!(layout.size().is_multiple_of(align_of::<u128>()));
             assert_eq!(layout.align(), align_of::<HU128>().max(align_of::<u128>()));
         }
+    }
+
+    #[test]
+    fn common() {
+        type THU8 = ThinHeader<u8, ()>;
+        type FHU8 = WideHeader<u8, ()>;
+        assert_eq!(offset_of!(THU8, prefix), offset_of!(FHU8, prefix));
+        assert_eq!(offset_of!(THU8, ptr), offset_of!(FHU8, ptr));
+        assert_eq!(offset_of!(THU8, len), offset_of!(FHU8, len));
+        assert_eq!(offset_of!(THU8, cap), offset_of!(FHU8, cap));
     }
 }
