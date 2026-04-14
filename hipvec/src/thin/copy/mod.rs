@@ -470,7 +470,7 @@ impl<T: Copy, P> ThinVec<T, P> {
     /// # use hipvec::copy_thin_vec;
     /// let mut vec = copy_thin_vec![1, 2, 3, 4, 5];
     /// vec.truncate(2);
-    /// assert_eq!(vec, [1, 2]);
+    /// assert_eq!(vec.as_slice(), [1, 2]);
     /// ```
     ///
     /// No truncation occurs when `len` is greater than the vector's current
@@ -480,7 +480,7 @@ impl<T: Copy, P> ThinVec<T, P> {
     /// # use hipvec::copy_thin_vec;
     /// let mut vec = copy_thin_vec![1, 2, 3];
     /// vec.truncate(8);
-    /// assert_eq!(vec, [1, 2, 3]);
+    /// assert_eq!(vec.as_slice(), [1, 2, 3]);
     /// ```
     ///
     /// Truncating when `len == 0` is equivalent to calling the [`clear`]
@@ -490,7 +490,7 @@ impl<T: Copy, P> ThinVec<T, P> {
     /// # use hipvec::copy_thin_vec;
     /// let mut vec = copy_thin_vec![1, 2, 3];
     /// vec.truncate(0);
-    /// assert_eq!(vec, []);
+    /// assert!(vec.is_empty());
     /// ```
     ///
     /// [`clear`]: Self::clear
@@ -811,11 +811,11 @@ impl<T: Copy, P: ConstDefault> ThinVec<T, P> {
     /// # use hipvec::copy_thin_vec;
     /// let mut vec = copy_thin_vec!["hello"];
     /// vec.resize(3, "world");
-    /// assert_eq!(vec, ["hello", "world", "world"]);
+    /// assert_eq!(vec.as_slice(), ["hello", "world", "world"]);
     ///
     /// let mut vec = copy_thin_vec!['a', 'b', 'c', 'd'];
     /// vec.resize(2, '_');
-    /// assert_eq!(vec, ['a', 'b']);
+    /// assert_eq!(vec.as_slice(), ['a', 'b']);
     /// ```
     #[inline]
     pub fn resize(&mut self, new_len: usize, value: T)
@@ -851,12 +851,12 @@ impl<T: Copy, P: ConstDefault> ThinVec<T, P> {
     /// # use hipvec::copy_thin_vec;
     /// let mut vec = copy_thin_vec![1, 2, 3];
     /// vec.resize_with(5, Default::default);
-    /// assert_eq!(vec, [1, 2, 3, 0, 0]);
+    /// assert_eq!(vec.as_slice(), [1, 2, 3, 0, 0]);
     ///
     /// let mut vec = copy_thin_vec![];
     /// let mut p = 1;
     /// vec.resize_with(4, || { p *= 2; p });
-    /// assert_eq!(vec, [2, 4, 8, 16]);
+    /// assert_eq!(vec.as_slice(), [2, 4, 8, 16]);
     /// ```
     #[inline]
     pub fn resize_with(&mut self, new_len: usize, f: impl FnMut() -> T) {

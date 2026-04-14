@@ -490,7 +490,7 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     /// # use hipvec::copy_inline_vec;
     /// let mut vec = copy_inline_vec![1, 2];
     /// vec.push(3);
-    /// assert_eq!(vec, [1, 2, 3]);
+    /// assert_eq!(vec.as_slice(), [1, 2, 3]);
     /// ```
     #[inline]
     #[track_caller]
@@ -513,11 +513,11 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     /// let mut vec = copy_inline_vec![1_u8, 2];
     /// let last = vec.push_mut(3);
     /// assert_eq!(*last, 3);
-    /// assert_eq!(vec, [1, 2, 3]);
+    /// assert_eq!(vec.as_slice(), [1, 2, 3]);
     ///
     /// let last = vec.push_mut(3);
     /// *last += 1;
-    /// assert_eq!(vec, [1, 2, 3, 4]);
+    /// assert_eq!(vec.as_slice(), [1, 2, 3, 4]);
     /// ```
     #[inline]
     #[must_use]
@@ -659,7 +659,7 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     /// let mut vec = inline_vec![1_u8, 3, 5, 9];
     /// let x = vec.insert_mut(3, 6);
     /// *x += 1;
-    /// assert_eq!(vec, [1, 3, 5, 7, 9]);
+    /// assert_eq!(vec.as_slice(), [1, 3, 5, 7, 9]);
     /// ```
     #[inline]
     #[must_use]
@@ -798,11 +798,11 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     /// # use hipvec::copy_inline_vec;
     /// let mut vec = copy_inline_vec![1_u8, 2];
     /// vec.resize(4, 0);
-    /// assert_eq!(vec, [1, 2, 0, 0]);
+    /// assert_eq!(vec.as_slice(), [1, 2, 0, 0]);
     ///
     /// let mut vec = copy_inline_vec![1_u16, 2, 3];
     /// vec.resize(2, 0);
-    /// assert_eq!(vec, [1, 2]);
+    /// assert_eq!(vec.as_slice(), [1, 2]);
     /// ```
     #[inline]
     #[track_caller]
@@ -841,12 +841,12 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     /// # use hipvec::copy_inline_vec;
     /// let mut vec = copy_inline_vec![1_u8, 2, 3];
     /// vec.resize_with(5, Default::default);
-    /// assert_eq!(vec, [1, 2, 3, 0, 0]);
+    /// assert_eq!(vec.as_slice(), [1, 2, 3, 0, 0]);
     ///
     /// let mut vec = copy_inline_vec![];
     /// let mut p = 1_u8;
     /// vec.resize_with(4, || { p *= 2; p });
-    /// assert_eq!(vec, [2, 4, 8, 16]);
+    /// assert_eq!(vec.as_slice(), [2, 4, 8, 16]);
     /// ```
     #[inline]
     #[track_caller]
