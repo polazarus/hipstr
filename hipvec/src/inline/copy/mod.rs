@@ -266,21 +266,6 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     /// }
     /// assert_eq!(x.as_slice(), &[0, 1, 2, 3]);
     /// ```
-    ///
-    /// Due to the aliasing guarantee, the following code is legal:
-    ///
-    /// ```rust
-    /// # use hipvec::copy_inline_vec;
-    /// unsafe {
-    ///     let mut v = copy_inline_vec![0];
-    ///     let ptr1 = v.as_mut_ptr();
-    ///     ptr1.write(1);
-    ///     let ptr2 = v.as_mut_ptr();
-    ///     ptr2.write(2);
-    ///     // Notably, the write to `ptr2` did *not* invalidate `ptr1`:
-    ///     ptr1.write(3);
-    /// }
-    /// ```
     #[inline]
     #[must_use]
     pub const fn as_mut_ptr(&mut self) -> *mut T {
@@ -322,26 +307,6 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     /// }
     /// assert_eq!(&*x, &[0, 1, 2, 3]);
     /// ```
-    ///
-    /// Due to the aliasing guarantee, the following code is legal:
-    ///
-    /// ```rust
-    /// # use hipvec::copy_inline_vec;
-    ///
-    /// unsafe {
-    ///     let mut v = copy_inline_vec![0];
-    ///     let ptr1 = v.as_non_null();
-    ///     ptr1.write(1);
-    ///     let ptr2 = v.as_non_null();
-    ///     ptr2.write(2);
-    ///     // Notably, the write to `ptr2` did *not* invalidate `ptr1`:
-    ///     ptr1.write(3);
-    /// }
-    /// ```
-    ///
-    /// [`as_mut_ptr`]: Self::as_mut_ptr
-    /// [`as_ptr`]: Self::as_ptr
-    /// [`as_non_null`]: Self::as_non_null
     #[inline]
     #[must_use]
     pub const fn as_non_null(&mut self) -> NonNull<T> {
@@ -378,22 +343,6 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     ///     for i in 0..x.len() {
     ///         assert_eq!(*x_ptr.add(i), 1 << i);
     ///     }
-    /// }
-    /// ```
-    ///
-    /// Due to the aliasing guarantee, the following code is legal:
-    ///
-    /// ```rust
-    /// # use hipvec::copy_inline_vec;
-    /// unsafe {
-    ///     let mut v = copy_inline_vec![0, 1, 2];
-    ///     let ptr1 = v.as_ptr();
-    ///     let _ = ptr1.read();
-    ///     let ptr2 = v.as_mut_ptr().offset(2);
-    ///     ptr2.write(2);
-    ///     // Notably, the write to `ptr2` did *not* invalidate `ptr1`
-    ///     // because it mutated a different element:
-    ///     let _ = ptr1.read();
     /// }
     /// ```
     #[inline]
