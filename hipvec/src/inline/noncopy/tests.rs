@@ -232,6 +232,59 @@ fn truncate() {
 }
 
 #[test]
+fn resize() {
+    let mut l = inline_vec![1_u8, 2];
+
+    l.resize(4, 9);
+    assert_eq!(l.as_slice(), [1, 2, 9, 9]);
+
+    l.resize(1, 0);
+    assert_eq!(l.as_slice(), [1]);
+
+    l.resize(0, 0);
+    assert!(l.is_empty());
+}
+
+#[test]
+#[cfg(feature = "std")]
+fn resize_drop() {
+    use std::sync::Mutex;
+
+    #[derive(Clone)]
+    struct X(#[allow(unused)] u8);
+    impl Drop for X {
+        fn drop(&mut self) {
+            *DROP_COUNT.lock().unwrap() += 1;
+        }
+    }
+
+    static TEST_MUTEX: Mutex<()> = Mutex::new(());
+    static DROP_COUNT: Mutex<usize> = Mutex::new(0);
+
+    let _mutex = TEST_MUTEX.lock().unwrap();
+
+    let mut l = inline_vec![X(1), X(2)];
+    l.resize(0, X(0));
+    assert_eq!(*DROP_COUNT.lock().unwrap(), 3);
+}
+
+#[test]
+fn resize_with() {
+    let mut next = 2_u8;
+    let mut l = inline_vec![1];
+
+    l.resize_with(4, || {
+        let value = next;
+        next += 2;
+        value
+    });
+    assert_eq!(l.as_slice(), [1, 2, 4, 6]);
+
+    l.resize_with(2, || unreachable!());
+    assert_eq!(l.as_slice(), [1, 2]);
+}
+
+#[test]
 fn remove() {
     let mut l = Inline::<i32>::from([10, 20, 30, 40]);
     let removed = l.remove(1);

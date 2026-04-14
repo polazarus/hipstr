@@ -199,3 +199,38 @@ fn clear() {
     assert_eq!(v.capacity(), old_capacity);
     assert_eq!(v.as_ptr(), ptr);
 }
+
+#[test]
+fn resize() {
+    let mut v: CopyThinVec<i32> = copy_thin_vec![1, 2];
+
+    v.resize(5, 9);
+    assert_eq!(v.as_slice(), [1, 2, 9, 9, 9]);
+
+    let capacity = v.capacity();
+    let ptr = v.as_ptr();
+    v.resize(2, 0);
+    assert_eq!(v.as_slice(), [1, 2]);
+    assert_eq!(v.capacity(), capacity);
+    assert_eq!(v.as_ptr(), ptr);
+}
+
+#[test]
+fn resize_with() {
+    let mut next = 1;
+    let mut v: CopyThinVec<i32> = copy_thin_vec![10];
+
+    v.resize_with(4, || {
+        let value = next;
+        next += 1;
+        value
+    });
+    assert_eq!(v.as_slice(), [10, 1, 2, 3]);
+
+    let capacity = v.capacity();
+    let ptr = v.as_ptr();
+    v.resize_with(2, || unreachable!());
+    assert_eq!(v.as_slice(), [10, 1]);
+    assert_eq!(v.capacity(), capacity);
+    assert_eq!(v.as_ptr(), ptr);
+}

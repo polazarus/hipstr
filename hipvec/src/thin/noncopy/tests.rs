@@ -1,3 +1,6 @@
+use alloc::format;
+use alloc::string::String;
+
 use crate::common::tests::pointer_stability;
 use crate::thin::ThinVec;
 use crate::thin_vec;
@@ -197,5 +200,57 @@ fn clear() {
 
     assert!(v.is_empty());
     assert_eq!(v.capacity(), old_capacity);
+    assert_eq!(v.as_ptr(), ptr);
+}
+
+#[test]
+fn resize() {
+    let mut v: ThinVec<String> = thin_vec![String::from("a"), String::from("b")];
+
+    v.resize(5, String::from("x"));
+    assert_eq!(
+        v.as_slice(),
+        &[
+            String::from("a"),
+            String::from("b"),
+            String::from("x"),
+            String::from("x"),
+            String::from("x"),
+        ]
+    );
+
+    let capacity = v.capacity();
+    let ptr = v.as_ptr();
+    v.resize(2, String::new());
+    assert_eq!(v.as_slice(), &[String::from("a"), String::from("b")]);
+    assert_eq!(v.capacity(), capacity);
+    assert_eq!(v.as_ptr(), ptr);
+}
+
+#[test]
+fn resize_with() {
+    let mut next = 1;
+    let mut v: ThinVec<String> = thin_vec![String::from("seed")];
+
+    v.resize_with(4, || {
+        let value = format!("v{next}");
+        next += 1;
+        value
+    });
+    assert_eq!(
+        v.as_slice(),
+        &[
+            String::from("seed"),
+            String::from("v1"),
+            String::from("v2"),
+            String::from("v3"),
+        ]
+    );
+
+    let capacity = v.capacity();
+    let ptr = v.as_ptr();
+    v.resize_with(2, || unreachable!());
+    assert_eq!(v.as_slice(), &[String::from("seed"), String::from("v1")]);
+    assert_eq!(v.capacity(), capacity);
     assert_eq!(v.as_ptr(), ptr);
 }

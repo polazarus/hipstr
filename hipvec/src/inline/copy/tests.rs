@@ -224,6 +224,36 @@ fn truncate() {
 }
 
 #[test]
+fn resize() {
+    let mut l = inline_vec![1_u8, 2];
+
+    l.resize(5, 9);
+    assert_eq!(l.as_slice(), [1, 2, 9, 9, 9]);
+
+    l.resize(3, 0);
+    assert_eq!(l.as_slice(), [1, 2, 9]);
+
+    l.resize(0, 0);
+    assert!(l.is_empty());
+}
+
+#[test]
+fn resize_with() {
+    let mut next = 2_u8;
+    let mut l = inline_vec![1_u8];
+
+    l.resize_with(4, || {
+        let value = next;
+        next += 2;
+        value
+    });
+    assert_eq!(l.as_slice(), [1, 2, 4, 6]);
+
+    l.resize_with(2, || unreachable!());
+    assert_eq!(l.as_slice(), [1, 2]);
+}
+
+#[test]
 fn remove() {
     let mut l = Inline::<i32>::from([10, 20, 30, 40]);
     let removed = l.remove(1);
