@@ -194,6 +194,27 @@ impl<T, L: Layout<T>> Base<T, L> {
     pub fn append(&mut self, other: &mut dyn MutVector<Item = T>) {
         methods::append!(self, other);
     }
+
+    #[track_caller]
+    pub fn resize(&mut self, new_len: usize, value: T)
+    where
+        T: Clone,
+    {
+        methods::resize!(self, new_len, value);
+    }
+
+    #[track_caller]
+    pub const fn resize_copy(&mut self, new_len: usize, value: T)
+    where
+        T: Copy,
+    {
+        methods::resize_copy!(self, new_len, value);
+    }
+
+    #[track_caller]
+    pub fn resize_with(&mut self, new_len: usize, f: impl FnMut() -> T) {
+        methods::resize_with!(self, new_len, f);
+    }
 }
 
 impl<T, L: Layout<T>> Copy for Base<T, L> where L: Copy {}

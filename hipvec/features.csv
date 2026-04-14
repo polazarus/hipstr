@@ -32,8 +32,8 @@ extract_if          ,  0,  0,  0,  0
 into_chunks         ,  0,  0,  0,  0
 into_flattened      ,  0,  0,  0,  0
 push_within_capacity,  0,  0,  0,  0
-resize              ,  0,  0,  0,  0
-resize_with         ,  0,  0,  0,  0
+resize              ,  1,  1,  1,  1
+resize_with         ,  1,  1,  1,  1
 retain              ,  0,  0,  0,  0
 retain_mut          ,  0,  0,  0,  0
 shrink_to           ,  0,  0,  0,  0

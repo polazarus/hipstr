@@ -789,6 +789,83 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     pub fn extend_from_array<const N: usize>(&mut self, array: [T; N]) {
         self.base.extend_from_array(array)
     }
+
+    /// Resizes the vector in-place so that `len` is equal to `new_len`.
+    ///
+    /// If `new_len` is greater than `len`, the vector is extended by the
+    /// difference, with each additional slot filled with `value`.
+    /// If `new_len` is less than `len`, the vector is simply truncated.
+    ///
+    /// This method requires `T` to implement [`Clone`],
+    /// in order to be able to clone the passed value.
+    /// If you need more flexibility (or want to rely on [`Default`] instead of
+    /// [`Clone`]), use [`resize_with`].
+    /// If you only need to resize to a smaller size, use [`truncate`].
+    ///
+    /// [`resize_with`]: Self::resize_with
+    /// [`truncate`]: Self::truncate
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new capacity overflows or if the reallocations fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipvec::thin_vec;
+    /// let mut vec = thin_vec!["hello"];
+    /// vec.resize(3, "world");
+    /// assert_eq!(vec, ["hello", "world", "world"]);
+    ///
+    /// let mut vec = thin_vec!['a', 'b', 'c', 'd'];
+    /// vec.resize(2, '_');
+    /// assert_eq!(vec, ['a', 'b']);
+    /// ```
+    #[inline]
+    pub fn resize(&mut self, new_len: usize, value: T)
+    where
+        T: Clone,
+    {
+        self.base.resize(new_len, value);
+    }
+
+    /// Resizes the vector in-place so that `len` is equal to `new_len`.
+    ///
+    /// If `new_len` is greater than `len`, the vector is extended by the
+    /// difference, with each additional slot filled with the result of
+    /// calling the closure `f`. The return values from `f` will end up
+    /// in the vector in the order they have been generated.
+    ///
+    /// If `new_len` is less than `len`, the vector is simply truncated.
+    ///
+    /// This method uses a closure to create new values on every push. If
+    /// you'd rather [`Clone`] a given value, use [`resize`]. If you
+    /// want to use the [`Default`] trait to generate values, you can
+    /// pass [`Default::default`] as the second argument.
+    ///
+    /// [`resize`]: Self::resize
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new capacity overflows or if the reallocations fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipvec::thin_vec;
+    /// let mut vec = thin_vec![1, 2, 3];
+    /// vec.resize_with(5, Default::default);
+    /// assert_eq!(vec, [1, 2, 3, 0, 0]);
+    ///
+    /// let mut vec = thin_vec![];
+    /// let mut p = 1;
+    /// vec.resize_with(4, || { p *= 2; p });
+    /// assert_eq!(vec, [2, 4, 8, 16]);
+    /// ```
+    #[inline]
+    pub fn resize_with(&mut self, new_len: usize, f: impl FnMut() -> T) {
+        self.base.resize_with(new_len, f);
+    }
 }
 
 impl<T, P> Drop for ThinVec<T, P> {

@@ -750,6 +750,89 @@ impl<T: Clone, L: Layout<T>> InlineVec<T, L> {
     pub fn extend_from_slice(&mut self, value: &[T]) {
         self.base.extend_from_slice(value);
     }
+
+    /// Resizes the vector in-place so that `len` is equal to `new_len`.
+    ///
+    /// If `new_len` is greater than `len`, the vector is extended by the
+    /// difference, with each additional slot filled with `value`.
+    /// If `new_len` is less than `len`, the vector is simply truncated.
+    ///
+    /// This method requires `T` to implement [`Clone`],
+    /// in order to be able to clone the passed value.
+    /// If you need more flexibility (or want to rely on [`Default`] instead of
+    /// [`Clone`]), use [`resize_with`].
+    /// If you only need to resize to a smaller size, use [`truncate`].
+    ///
+    /// [`resize_with`]: Self::resize_with
+    /// [`truncate`]: Self::truncate
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new length exceeds [`CAPACITY`].
+    ///
+    /// [`CAPACITY`]: Self::CAPACITY
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipvec::inline_vec;
+    /// let mut vec = inline_vec![1_u8, 2];
+    /// vec.resize(4, 0);
+    /// assert_eq!(vec, [1, 2, 0, 0]);
+    ///
+    /// let mut vec = inline_vec![1_u16, 2, 3];
+    /// vec.resize(2, 0);
+    /// assert_eq!(vec, [1, 2]);
+    /// ```
+    #[inline]
+    #[track_caller]
+    pub fn resize(&mut self, new_len: usize, value: T)
+    where
+        T: Clone,
+    {
+        self.base.resize(new_len, value);
+    }
+
+    /// Resizes the vector in-place so that `len` is equal to `new_len`.
+    ///
+    /// If `new_len` is greater than `len`, the vector is extended by the
+    /// difference, with each additional slot filled with the result of
+    /// calling the closure `f`. The return values from `f` will end up
+    /// in the vector in the order they have been generated.
+    ///
+    /// If `new_len` is less than `len`, the vector is simply truncated.
+    ///
+    /// This method uses a closure to create new values on every push. If
+    /// you'd rather [`Clone`] a given value, use [`resize`]. If you
+    /// want to use the [`Default`] trait to generate values, you can
+    /// pass [`Default::default`] as the second argument.
+    ///
+    /// [`resize`]: Self::resize
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new length exceeds [`CAPACITY`].
+    ///
+    /// [`CAPACITY`]: Self::CAPACITY
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipvec::inline_vec;
+    /// let mut vec = inline_vec![1_u8, 2, 3];
+    /// vec.resize_with(5, Default::default);
+    /// assert_eq!(vec, [1, 2, 3, 0, 0]);
+    ///
+    /// let mut vec = inline_vec![];
+    /// let mut p = 1_u8;
+    /// vec.resize_with(4, || { p *= 2; p });
+    /// assert_eq!(vec, [2, 4, 8, 16]);
+    /// ```
+    #[inline]
+    #[track_caller]
+    pub fn resize_with(&mut self, new_len: usize, f: impl FnMut() -> T) {
+        self.base.resize_with(new_len, f);
+    }
 }
 
 impl<T, L: Layout<T>> Drop for InlineVec<T, L> {

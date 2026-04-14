@@ -303,6 +303,24 @@ where
     pub fn extend_from_array<const N: usize>(&mut self, array: [T; N]) {
         methods::extend_from_array!(self, array);
     }
+
+    pub fn resize(&mut self, new_len: usize, value: T)
+    where
+        T: Clone,
+    {
+        methods::resize!(self, new_len, value);
+    }
+
+    pub fn resize_copy(&mut self, new_len: usize, value: T)
+    where
+        T: Copy,
+    {
+        methods::resize_copy!(self, new_len, value);
+    }
+
+    pub fn resize_with(&mut self, new_len: usize, f: impl FnMut() -> T) {
+        methods::resize_with!(self, new_len, f);
+    }
 }
 
 impl<T, P> Drop for Base<T, P> {

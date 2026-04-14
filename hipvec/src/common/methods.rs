@@ -1,7 +1,86 @@
+/// Resize implementation, requires `len`, `set_len`, and `as_mut_ptr`
+macro_rules! resize {
+    ($self:ident, $new_len:expr, $value:expr) => {{
+        use $crate::common::utils::SliceWriteGuard;
+
+        let old_len = $self.len();
+        let new_len = $new_len;
+        if old_len < new_len {
+            let additional = new_len - old_len;
+            // grow
+            $self.reserve(additional);
+
+            let base = $self.as_mut_ptr();
+
+            // SAFETY: valid write because the reserve call ensures there is enough capacity
+            let mut guard = unsafe { SliceWriteGuard::new(base.add(old_len), additional) };
+            for e in core::iter::repeat_n($value, additional) {
+                unsafe {
+                    guard.write(e);
+                }
+            }
+            guard.complete();
+            // SAFETY: the additioanl elements have been initialized
+            unsafe {
+                $self.set_len(new_len);
+            }
+        } else if old_len > new_len {
+            // truncate
+
+            // SAFETY: strict decrease
+            unsafe {
+                $self.set_len(new_len);
+            }
+
+            // SAFETY: type invariant
+            unsafe {
+                $crate::common::utils::drop_raw_slice(
+                    $self.as_mut_ptr().add(new_len),
+                    old_len - new_len,
+                );
+            }
+        }
+    }};
+}
+
+/// const compatible `resize` impl for Copy types, requires `len`, `set_len`, and `as_mut_ptr`
+macro_rules! resize_copy {
+    ($self:ident, $new_len:expr, $value:expr) => {{
+        let old_len = $self.len();
+        let new_len = $new_len;
+
+        if false {
+            const fn is_copy<V, T: Copy>(_: fn(&mut V) -> *mut T) {}
+            is_copy(Self::as_mut_ptr);
+        }
+
+        if new_len < old_len {
+            // SAFETY: strict decrease
+            unsafe {
+                $self.set_len(new_len);
+            }
+        } else if new_len > old_len {
+            let mut additional = new_len - old_len;
+            // grow
+            $self.reserve(additional);
+
+            // SAFETY: capacity is guaranteed to be greater than length by reserve
+            unsafe {
+                let ptr = $self.as_mut_ptr().add(old_len);
+                while additional > 0 {
+                    additional -= 1;
+                    ptr.add(additional).write($value);
+                }
+                $self.set_len(new_len);
+            }
+        }
+    }};
+}
+
 /// `resize_with` impl, requires `len`, `set_len` and `as_mut_ptr`
-macro_rules! resize_impl {
-    ($self:ident, $new_len:expr, $iter:expr) => {{
-        use $crate::common::SliceWriteGuard;
+macro_rules! resize_with {
+    ($self:ident, $new_len:expr, $f:expr) => {{
+        use $crate::common::utils::SliceWriteGuard;
 
         let old_len = $self.len();
         let new_len = $new_len;
@@ -14,7 +93,7 @@ macro_rules! resize_impl {
 
             // SAFETY: valid write because the reserve call ensures there is enough capacity
             let mut guard = unsafe { SliceWriteGuard::new(base.add(old_len), additional) };
-            for e in $iter.take(additional) {
+            for e in core::iter::repeat_with($f).take(additional) {
                 unsafe {
                     guard.write(e);
                 }
@@ -413,7 +492,9 @@ pub(crate) use push_mut;
 pub(crate) use push_within_capacity;
 pub(crate) use remove;
 pub(crate) use remove_unchecked_impl;
-pub(crate) use resize_impl;
+pub(crate) use resize;
+pub(crate) use resize_copy;
+pub(crate) use resize_with;
 pub(crate) use spare_capacity_mut;
 pub(crate) use split_off_impl;
 pub(crate) use swap_remove;
