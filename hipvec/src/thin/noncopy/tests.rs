@@ -1,3 +1,4 @@
+use alloc::boxed::Box;
 use alloc::format;
 use alloc::string::String;
 
@@ -105,6 +106,51 @@ fn reserve_exact() {
     assert!(v.capacity() >= 65);
     assert!(v.capacity() < 128);
     pointer_stability(&mut v);
+}
+
+#[test]
+fn append() {
+    let mut left: ThinVec<String> = thin_vec![String::from("a"), String::from("b")];
+    let mut right: ThinVec<String> = thin_vec![String::from("c"), String::from("d")];
+    left.append(&mut right);
+    assert_eq!(
+        left.as_slice(),
+        &[
+            String::from("a"),
+            String::from("b"),
+            String::from("c"),
+            String::from("d"),
+        ]
+    );
+    assert!(right.is_empty());
+
+    let mut left: ThinVec<String> = thin_vec![String::from("a"), String::from("b")];
+    let mut right = alloc::vec![String::from("c"), String::from("d")];
+    left.append(&mut right);
+    assert_eq!(
+        left.as_slice(),
+        &[
+            String::from("a"),
+            String::from("b"),
+            String::from("c"),
+            String::from("d"),
+        ]
+    );
+    assert!(right.is_empty());
+
+    let mut left: ThinVec<Box<u8>> = thin_vec![Box::new(1)];
+    let mut right = crate::inline::InlineVec::<Box<u8>>::new();
+    right.push(Box::new(2));
+    if right.capacity() > 1 {
+        right.push(Box::new(3));
+    }
+    left.append(&mut right);
+    if left.len() == 2 {
+        assert_eq!(left.as_slice(), &[Box::new(1), Box::new(2)]);
+    } else {
+        assert_eq!(left.as_slice(), &[Box::new(1), Box::new(2), Box::new(3)]);
+    }
+    assert!(right.is_empty());
 }
 
 #[test]

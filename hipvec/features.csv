@@ -22,7 +22,8 @@ truncate            ,  1,  1,  1,  1
 cmp                 ,  0,  0,  0,  0
 cmp_slice           ,  0,  0,  0,  0
 cmp_array           ,  0,  0,  0,  0
-append              ,  0,  0,  0,  0
+append              ,  1,  1,  1,  1
+const_append        ,  1,  1, na, na
 drain               ,  0,  0,  0,  0
 dedup               ,  0,  0,  0,  0
 dedup_by            ,  0,  0,  0,  0

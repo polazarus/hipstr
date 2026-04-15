@@ -6,7 +6,7 @@ use const_default::ConstDefault;
 use super::base::Base;
 use crate::common::methods;
 use crate::common::utils::drop_raw_slice;
-use crate::traits::impl_vector;
+use crate::traits::{MutVector, impl_vector};
 
 #[cfg(test)]
 mod tests;
@@ -788,6 +788,28 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
     #[inline]
     pub fn extend_from_array<const N: usize>(&mut self, array: [T; N]) {
         self.base.extend_from_array(array)
+    }
+
+    /// Moves all the elements of `other` into `self`, leaving `other` empty.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new capacity exceeds `isize::MAX` _bytes_.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipvec::thin_vec;
+    /// # use std::vec;
+    /// let mut vec = thin_vec![1, 2, 3];
+    /// let mut vec2 = vec![4, 5, 6];
+    /// vec.append(&mut vec2);
+    /// assert_eq!(vec.as_slice(), [1, 2, 3, 4, 5, 6]);
+    /// assert_eq!(vec2.as_slice(), []);
+    /// ```
+    #[inline]
+    pub fn append(&mut self, other: &mut impl MutVector<Item = T>) {
+        self.base.append(other);
     }
 
     /// Resizes the vector in-place so that `len` is equal to `new_len`.

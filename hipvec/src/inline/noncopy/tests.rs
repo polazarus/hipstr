@@ -1,3 +1,5 @@
+use alloc::boxed::Box;
+use alloc::string::String;
 use core::cell::Cell;
 
 use crate::inline::InlineVec as Inline;
@@ -369,6 +371,105 @@ fn extend_from_slice_panic() {
     let mut l = Inline::<i32>::new();
     let too_many = [0; <BasicLayout as Layout<i32>>::CAPACITY + 1];
     l.extend_from_slice(&too_many);
+}
+
+#[test]
+fn append() {
+    let cap = Inline::<Box<u8>>::new().capacity();
+    assert!(cap > 0);
+
+    let mut left = Inline::<Box<u8>>::new();
+    let mut expected = alloc::vec![];
+    if cap > 1 {
+        left.push(Box::new(1));
+        expected.push(Box::new(1));
+    }
+    let mut right = Inline::<Box<u8>>::new();
+    right.push(Box::new(2));
+    expected.push(Box::new(2));
+    left.append(&mut right);
+    assert_eq!(left.as_slice(), expected.as_slice());
+    assert!(right.is_empty());
+
+    let mut left = Inline::<Box<u8>>::new();
+    let mut expected = alloc::vec![];
+    if cap > 1 {
+        left.push(Box::new(3));
+        expected.push(Box::new(3));
+    }
+    let mut right = alloc::vec![Box::new(4)];
+    expected.push(Box::new(4));
+    left.append(&mut right);
+    assert_eq!(left.as_slice(), expected.as_slice());
+    assert!(right.is_empty());
+
+    let mut left = Inline::<Box<u8>>::new();
+    let mut expected = alloc::vec![];
+    if cap > 1 {
+        left.push(Box::new(5));
+        expected.push(Box::new(5));
+    }
+    let mut right = crate::thin_vec![Box::new(6)];
+    expected.push(Box::new(6));
+    left.append(&mut right);
+    assert_eq!(left.as_slice(), expected.as_slice());
+    assert!(right.is_empty());
+}
+
+#[test]
+#[should_panic(expected = "new length exceeds capacity")]
+fn append_panic() {
+    let mut left = Inline::<String>::new();
+    let cap = left.capacity();
+    for _ in 0..(cap / 2 + 1) {
+        left.push(String::from("l"));
+    }
+
+    let mut right = Inline::<String>::new();
+    for _ in 0..(cap - left.len() + 1) {
+        right.push(String::from("r"));
+    }
+
+    left.append(&mut right);
+}
+
+#[test]
+fn const_append() {
+    let cap = Inline::<Box<u8>>::new().capacity();
+    assert!(cap > 0);
+
+    let mut left = Inline::<Box<u8>>::new();
+    let mut expected = alloc::vec![];
+    if cap > 1 {
+        left.push(Box::new(1));
+        expected.push(Box::new(1));
+    }
+    let ptr = left.as_ptr();
+    let mut right = Inline::<Box<u8>>::new();
+    right.push(Box::new(2));
+    expected.push(Box::new(2));
+    left.const_append(&mut right);
+
+    assert_eq!(left.as_slice(), expected.as_slice());
+    assert_eq!(left.as_ptr(), ptr);
+    assert!(right.is_empty());
+}
+
+#[test]
+#[should_panic(expected = "new length exceeds capacity")]
+fn const_append_panic() {
+    let mut left = Inline::<String>::new();
+    let cap = left.capacity();
+    for _ in 0..(cap / 2 + 1) {
+        left.push(String::from("l"));
+    }
+
+    let mut right = Inline::<String>::new();
+    for _ in 0..(cap - left.len() + 1) {
+        right.push(String::from("r"));
+    }
+
+    left.const_append(&mut right);
 }
 
 #[test]

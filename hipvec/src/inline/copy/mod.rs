@@ -708,15 +708,61 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
         self.base.extend_from_array(array);
     }
 
+    /// Moves all the elements of `other` into `self`, leaving `other` empty.
+    ///
+    /// See [`const_append`] for a const specialization for inline vectors.
+    /// 
+    /// [`const_append`]: Self::append
+    /// 
+    /// # Panics
+    ///
+    /// Panics if the new length would exceed [`CAPACITY`].
+    ///
+    /// [`CAPACITY`]: Self::CAPACITY
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipvec::copy_inline_vec;
+    /// # use std::vec;
+    /// let mut vec = copy_inline_vec![1_u8, 2, 3];
+    /// let mut vec2 = vec![4_u8, 5, 6];
+    /// vec.append(&mut vec2);
+    /// assert_eq!(vec.as_slice(), [1, 2, 3, 4, 5, 6]);
+    /// assert_eq!(vec2.as_slice(), []);
+    /// ```
     #[inline]
     #[track_caller]
     pub fn append(&mut self, other: &mut impl MutVector<Item = T>) {
         self.base.append(other);
     }
 
+    /// Moves all the elements of `other` into `self`, leaving `other` empty.
+    /// 
+    /// This a const specialization if [`other`] is an inline vector.
+    /// See [`append`] for the general version.
+    /// 
+    /// [`append`]: Self::append
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new length would exceed [`CAPACITY`].
+    ///
+    /// [`CAPACITY`]: Self::CAPACITY
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipvec::copy_inline_vec;
+    /// let mut vec = copy_inline_vec![1_u8, 2, 3];
+    /// let mut vec2 = copy_inline_vec![4_u8, 5, 6];
+    /// vec.append(&mut vec2);
+    /// assert_eq!(vec.as_slice(), [1, 2, 3, 4, 5, 6]);
+    /// assert_eq!(vec2.as_slice(), []);
+    /// ```
     #[inline]
     #[track_caller]
-    pub fn const_append(&mut self, other: &mut Self) {
+    pub const fn const_append(&mut self, other: &mut Self) {
         self.base.const_append(&mut other.base);
     }
 

@@ -341,6 +341,73 @@ fn extend_from_slice_panic() {
 }
 
 #[test]
+fn append() {
+    let mut left = inline_vec![1_u8, 2, 3];
+    let mut right = inline_vec![4_u8, 5, 6];
+    left.append(&mut right);
+    assert_eq!(left.as_slice(), &[1, 2, 3, 4, 5, 6]);
+    assert!(right.is_empty());
+
+    let mut left = inline_vec![1_u8, 2, 3];
+    let mut right = alloc::vec![4_u8, 5, 6];
+    left.append(&mut right);
+    assert_eq!(left.as_slice(), &[1, 2, 3, 4, 5, 6]);
+    assert!(right.is_empty());
+
+    let mut left = inline_vec![1_u8, 2, 3];
+    let mut right = crate::copy_thin_vec![4_u8, 5, 6];
+    left.append(&mut right);
+    assert_eq!(left.as_slice(), &[1, 2, 3, 4, 5, 6]);
+    assert!(right.is_empty());
+}
+
+#[test]
+#[should_panic(expected = "new length exceeds capacity")]
+fn append_panic() {
+    let mut left = Inline::<u8>::new();
+    let cap = left.capacity();
+    for value in 0..(cap / 2 + 1) {
+        left.push(value as u8);
+    }
+
+    let mut right = Inline::<u8>::new();
+    for value in 0..(cap - left.len() + 1) {
+        right.push(value as u8);
+    }
+
+    left.append(&mut right);
+}
+
+#[test]
+fn const_append() {
+    let mut left = inline_vec![1_u8, 2, 3];
+    let ptr = left.as_ptr();
+    let mut right = inline_vec![4_u8, 5, 6];
+    left.const_append(&mut right);
+
+    assert_eq!(left.as_slice(), &[1, 2, 3, 4, 5, 6]);
+    assert_eq!(left.as_ptr(), ptr);
+    assert!(right.is_empty());
+}
+
+#[test]
+#[should_panic(expected = "new length exceeds capacity")]
+fn const_append_panic() {
+    let mut left = Inline::<u8>::new();
+    let cap = left.capacity();
+    for value in 0..(cap / 2 + 1) {
+        left.push(value as u8);
+    }
+
+    let mut right = Inline::<u8>::new();
+    for value in 0..(cap - left.len() + 1) {
+        right.push(value as u8);
+    }
+
+    left.const_append(&mut right);
+}
+
+#[test]
 fn with_capacity() {
     let l = Inline::<i32>::with_capacity(0);
     assert!(l.is_empty());

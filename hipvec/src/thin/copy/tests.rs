@@ -1,4 +1,5 @@
 use crate::common::tests::pointer_stability;
+use crate::copy_inline_vec;
 use crate::copy_thin_vec;
 use crate::thin::CopyThinVec;
 
@@ -102,6 +103,27 @@ fn reserve_exact() {
     assert!(v.capacity() >= 65);
     assert!(v.capacity() < 128);
     pointer_stability(&mut v);
+}
+
+#[test]
+fn append() {
+    let mut left: CopyThinVec<i32> = copy_thin_vec![1, 2, 3];
+    let mut right: CopyThinVec<i32> = copy_thin_vec![4, 5, 6];
+    left.append(&mut right);
+    assert_eq!(left.as_slice(), &[1, 2, 3, 4, 5, 6]);
+    assert!(right.is_empty());
+
+    let mut left: CopyThinVec<i32> = copy_thin_vec![1, 2, 3];
+    let mut right = alloc::vec![4, 5, 6];
+    left.append(&mut right);
+    assert_eq!(left.as_slice(), &[1, 2, 3, 4, 5, 6]);
+    assert!(right.is_empty());
+
+    let mut left: CopyThinVec<i32> = copy_thin_vec![1, 2, 3];
+    let mut right = copy_inline_vec![4, 5, 6];
+    left.append(&mut right);
+    assert_eq!(left.as_slice(), &[1, 2, 3, 4, 5, 6]);
+    assert!(right.is_empty());
 }
 
 #[test]

@@ -14,7 +14,7 @@ use super::base::Base;
 use super::layouts::Layout;
 use crate::common::utils::drop_raw_slice;
 use crate::inline::copy;
-use crate::traits::impl_vector;
+use crate::traits::{MutVector, impl_vector};
 
 #[cfg(test)]
 mod tests;
@@ -675,6 +675,64 @@ impl<T, L: Layout<T>> InlineVec<T, L> {
     #[track_caller]
     pub const fn extend_from_array<const N: usize>(&mut self, array: [T; N]) {
         self.base.extend_from_array(array);
+    }
+
+    /// Moves all the elements of `other` into `self`, leaving `other` empty.
+    ///
+    /// See [`const_append`] for a const specialization for inline vectors.
+    /// 
+    /// [`const_append`]: Self::append
+    /// 
+    /// # Panics
+    ///
+    /// Panics if the new length would exceed [`CAPACITY`].
+    ///
+    /// [`CAPACITY`]: Self::CAPACITY
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipvec::inline_vec;
+    /// # use std::vec;
+    /// let mut vec = inline_vec![1_u8, 2, 3];
+    /// let mut vec2 = vec![4_u8, 5, 6];
+    /// vec.append(&mut vec2);
+    /// assert_eq!(vec.as_slice(), [1, 2, 3, 4, 5, 6]);
+    /// assert_eq!(vec2.as_slice(), []);
+    /// ```
+    #[inline]
+    #[track_caller]
+    pub fn append(&mut self, other: &mut impl MutVector<Item = T>) {
+        self.base.append(other);
+    }
+
+    /// Moves all the elements of `other` into `self`, leaving `other` empty.
+    /// 
+    /// This a const specialization if [`other`] is an inline vector.
+    /// See [`append`] for the general version.
+    /// 
+    /// [`append`]: Self::append
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new length would exceed [`CAPACITY`].
+    ///
+    /// [`CAPACITY`]: Self::CAPACITY
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipvec::inline_vec;
+    /// let mut vec = inline_vec![1_u8, 2, 3];
+    /// let mut vec2 = inline_vec![4_u8, 5, 6];
+    /// vec.append(&mut vec2);
+    /// assert_eq!(vec.as_slice(), [1, 2, 3, 4, 5, 6]);
+    /// assert_eq!(vec2.as_slice(), []);
+    /// ```
+    #[inline]
+    #[track_caller]
+    pub const fn const_append(&mut self, other: &mut Self) {
+        self.base.const_append(&mut other.base);
     }
 }
 
