@@ -4,6 +4,7 @@ use core::{fmt, ops};
 use const_default::ConstDefault;
 
 use super::base::Base;
+use crate::common::drain::Drain;
 use crate::common::methods;
 use crate::common::utils::drop_raw_slice;
 use crate::traits::{MutableVector, impl_vector};
@@ -519,6 +520,46 @@ impl<T, P> ThinVec<T, P> {
     #[inline]
     pub fn clear(&mut self) {
         self.base.clear();
+    }
+
+    /// Removes the subslice indicated by the given range from the vector,
+    /// returning a double-ended iterator over the removed subslice.
+    ///
+    /// If the iterator is dropped before being fully consumed,
+    /// it drops the remaining removed elements.
+    ///
+    /// The returned iterator keeps a mutable borrow on the vector to optimize
+    /// its implementation.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the range is invalid.
+    ///
+    /// # Leaking
+    ///
+    /// If the returned iterator goes out of scope without being dropped (due to
+    /// [`mem::forget`], for example), the vector may have lost elements
+    /// arbitrarily, including elements outside the range.
+    ///
+    /// [`mem::forget`]: core::mem::forget
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipvec::thin_vec;
+    /// let mut v = thin_vec![1_u8, 2, 3];
+    /// let u: Vec<_> = v.drain(1..).collect();
+    /// assert_eq!(v.as_slice(), &[1]);
+    /// assert_eq!(u.as_slice(), &[2, 3]);
+    ///
+    /// // A full range clears the vector, like `clear()` does
+    /// v.drain(..);
+    /// assert_eq!(v.as_slice(), &[]);
+    /// ```
+    #[inline]
+    #[track_caller]
+    pub fn drain(&mut self, range: impl ops::RangeBounds<usize>) -> Drain<'_, Self> {
+        Drain::new(self, range).unwrap()
     }
 }
 

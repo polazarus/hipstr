@@ -12,6 +12,7 @@ use const_default::ConstDefault;
 
 use super::base::Base;
 use super::layouts::Layout;
+use crate::common::drain::Drain;
 use crate::common::utils::drop_raw_slice;
 use crate::inline::copy;
 use crate::traits::{MutableVector, impl_vector};
@@ -334,6 +335,10 @@ impl<T, L: Layout<T>> InlineVec<T, L> {
     /// as well as writing to those elements, may still invalidate this pointer.
     /// See the second example below for how this guarantee can be used.
     ///
+    /// [`as_ptr`]: Self::as_ptr
+    /// [`as_mut_ptr`]: Self::as_mut_ptr
+    /// [`as_non_null`]: Self::as_non_null
+    ///
     /// # Examples
     ///
     /// ```
@@ -653,6 +658,46 @@ impl<T, L: Layout<T>> InlineVec<T, L> {
         *self = Self::new();
     }
 
+    /// Removes the subslice indicated by the given range from the vector,
+    /// returning a double-ended iterator over the removed subslice.
+    ///
+    /// If the iterator is dropped before being fully consumed,
+    /// it drops the remaining removed elements.
+    ///
+    /// The returned iterator keeps a mutable borrow on the vector to optimize
+    /// its implementation.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the range is invalid.
+    ///
+    /// # Leaking
+    ///
+    /// If the returned iterator goes out of scope without being dropped (due to
+    /// [`mem::forget`], for example), the vector may have lost elements
+    /// arbitrarily, including elements outside the range.
+    ///
+    /// [`mem::forget`]: core::mem::forget
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipvec::inline_vec;
+    /// let mut v = inline_vec![1_u8, 2, 3];
+    /// let u: Vec<_> = v.drain(1..).collect();
+    /// assert_eq!(v.as_slice(), &[1]);
+    /// assert_eq!(u.as_slice(), &[2, 3]);
+    ///
+    /// // A full range clears the vector, like `clear()` does
+    /// v.drain(..);
+    /// assert_eq!(v.as_slice(), &[]);
+    /// ```
+    #[inline]
+    #[track_caller]
+    pub fn drain(&mut self, range: impl ops::RangeBounds<usize>) -> Drain<'_, Self> {
+        Drain::new(self, range).unwrap()
+    }
+
     /// Appends all elements of the array to the vector.
     ///
     /// The elements are moved and not cloned.
@@ -680,9 +725,9 @@ impl<T, L: Layout<T>> InlineVec<T, L> {
     /// Moves all the elements of `other` into `self`, leaving `other` empty.
     ///
     /// See [`const_append`] for a const specialization for inline vectors.
-    /// 
+    ///
     /// [`const_append`]: Self::append
-    /// 
+    ///
     /// # Panics
     ///
     /// Panics if the new length would exceed [`CAPACITY`].
@@ -702,15 +747,15 @@ impl<T, L: Layout<T>> InlineVec<T, L> {
     /// ```
     #[inline]
     #[track_caller]
-    pub fn append(&mut self, other: &mut impl MutVector<Item = T>) {
+    pub fn append(&mut self, other: &mut impl MutableVector<Item = T>) {
         self.base.append(other);
     }
 
     /// Moves all the elements of `other` into `self`, leaving `other` empty.
-    /// 
-    /// This a const specialization if [`other`] is an inline vector.
+    ///
+    /// This a const specialization if `other` is an inline vector.
     /// See [`append`] for the general version.
-    /// 
+    ///
     /// [`append`]: Self::append
     ///
     /// # Panics
@@ -905,4 +950,6 @@ impl<T: fmt::Debug, L: Layout<T>> fmt::Debug for InlineVec<T, L> {
     }
 }
 
-impl_vector!(impl(T: Clone, L: Layout<T>) MutVector<Item=T> for InlineVec<T, L>);
+impl_vector!(impl(T, L: Layout<T>) Vector<Item=T> for InlineVec<T, L>);
+impl_vector!(impl(T, L: Layout<T>) MutableVector<Item=T> for InlineVec<T, L>);
+impl_vector!(impl(T: Clone, L: Layout<T>) GrowableVector<Item=T> for InlineVec<T, L>);

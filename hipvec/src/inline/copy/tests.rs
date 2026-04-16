@@ -1,17 +1,17 @@
-use crate::copy_inline_vec as inline_vec;
-use crate::inline::CopyInlineVec as Inline;
+use crate::copy_inline_vec as v;
+use crate::inline::CopyInlineVec as V;
 use crate::inline::layouts::{BasicLayout, Layout};
 
 #[test]
 fn niche() {
-    assert_eq!(size_of::<Option<Inline<()>>>(), size_of::<Inline<()>>());
-    assert_eq!(size_of::<Option<Inline<i32>>>(), size_of::<Inline<i32>>());
-    assert_eq!(size_of::<Option<Inline<i128>>>(), size_of::<Inline<i128>>());
+    assert_eq!(size_of::<Option<V<()>>>(), size_of::<V<()>>());
+    assert_eq!(size_of::<Option<V<i32>>>(), size_of::<V<i32>>());
+    assert_eq!(size_of::<Option<V<i128>>>(), size_of::<V<i128>>());
 }
 
 #[test]
 fn new() {
-    let mut l = Inline::<i32>::new();
+    let mut l = V::<i32>::new();
     assert_eq!(l.len(), 0);
     l.push(1);
     assert_eq!(l.len(), 1);
@@ -20,7 +20,7 @@ fn new() {
 
 #[test]
 fn as_ptr() {
-    let mut l = Inline::<u8>::new();
+    let mut l = V::<u8>::new();
     let p = l.as_ptr();
     assert_eq!(p, l.as_mut_ptr());
     assert_eq!(p, l.as_non_null().as_ptr());
@@ -33,7 +33,7 @@ fn dst() {
 
     assert_eq!(size_of::<Dst>(), 0);
 
-    let mut l = Inline::<Dst>::new();
+    let mut l = V::<Dst>::new();
     assert_eq!(l.len(), 0);
 
     l.push(Dst);
@@ -50,13 +50,13 @@ fn dst() {
     assert_eq!(l.len(), 0);
 
     assert_eq!(<BasicLayout as Layout<()>>::CAPACITY, usize::MAX >> 1);
-    assert_eq!(Inline::<Dst>::CAPACITY, usize::MAX >> 1);
+    assert_eq!(V::<Dst>::CAPACITY, usize::MAX >> 1);
     assert_eq!(l.capacity(), usize::MAX >> 1);
 }
 
 #[test]
 fn slice() {
-    let mut l = Inline::<i32>::new();
+    let mut l = V::<i32>::new();
     l.push(1);
     l.push(2);
     l.push(3);
@@ -71,7 +71,7 @@ fn slice() {
 
 #[test]
 fn push_mut() {
-    let mut l = Inline::<u8>::with_capacity(1);
+    let mut l = V::<u8>::with_capacity(1);
     let p = l.as_ptr();
     let x = l.push_mut(42);
     assert_eq!(x, &42);
@@ -83,7 +83,7 @@ fn push_mut() {
 #[test]
 #[should_panic(expected = "new length exceeds capacity")]
 fn push_mut_panic() {
-    let mut l = Inline::<u8>::new();
+    let mut l = V::<u8>::new();
     let cap = l.capacity();
     for i in 0..cap {
         let _ = l.push_mut(i as u8);
@@ -93,7 +93,7 @@ fn push_mut_panic() {
 
 #[test]
 fn insert() {
-    let mut v = Inline::new();
+    let mut v = V::new();
     v.insert(0, 2_u8);
     assert_eq!(v.as_slice(), [2]);
     v.insert(0, 1);
@@ -107,7 +107,7 @@ fn insert() {
 #[test]
 #[should_panic(expected = "new length exceeds capacity")]
 fn insert_panic_overflow() {
-    let mut v: Inline<u8> = Inline::new();
+    let mut v: V<u8> = V::new();
     for i in 0..v.capacity() {
         v.insert(0, (i + 1) as u8);
     }
@@ -117,13 +117,13 @@ fn insert_panic_overflow() {
 #[test]
 #[should_panic(expected = "index out of bounds")]
 fn insert_panic_out_of_bounds() {
-    let mut v = inline_vec![1_u8, 2];
+    let mut v = v![1_u8, 2];
     v.insert(4, 5);
 }
 
 #[test]
 fn insert_mut() {
-    let mut v = Inline::new();
+    let mut v = V::new();
     {
         let r = v.insert_mut(0, 42_u8);
         assert_eq!(*r, 42);
@@ -146,21 +146,18 @@ fn insert_mut() {
 fn drop() {
     if false {
         fn is_copy<T: Copy>(_: T) {}
-        is_copy(Inline::<u8>::new());
+        is_copy(V::<u8>::new());
     }
 }
 
 #[test]
 fn capacity() {
-    let l = Inline::<i32>::new();
-    assert_eq!(
-        Inline::<i32>::CAPACITY,
-        <BasicLayout as Layout<i32>>::CAPACITY
-    );
-    assert_eq!(l.capacity(), Inline::<i32>::CAPACITY);
+    let l = V::<i32>::new();
+    assert_eq!(V::<i32>::CAPACITY, <BasicLayout as Layout<i32>>::CAPACITY);
+    assert_eq!(l.capacity(), V::<i32>::CAPACITY);
     assert_eq!(l.len(), 0);
 
-    let mut l = Inline::<i32>::new();
+    let mut l = V::<i32>::new();
     for i in 0..l.capacity() {
         l.push(i as i32);
         assert_eq!(l.len(), i + 1);
@@ -171,7 +168,7 @@ fn capacity() {
 #[test]
 #[should_panic(expected = "new length exceeds capacity")]
 fn push_panic() {
-    let mut l = Inline::<i32>::new();
+    let mut l = V::<i32>::new();
     for i in 0..=l.capacity() {
         l.push(i as i32);
     }
@@ -179,40 +176,40 @@ fn push_panic() {
 
 #[test]
 fn from_array() {
-    let l = Inline::<i32>::from([1, 2, 3]);
+    let l = V::<i32>::from([1, 2, 3]);
     assert_eq!(l.as_slice(), &[1, 2, 3]);
 }
 
 #[test]
 fn from_array_empty() {
-    let l = Inline::<i32>::from([]);
+    let l = V::<i32>::from([]);
     assert!(l.as_slice().is_empty());
 }
 
 #[test]
 #[should_panic(expected = "array length exceeds capacity")]
 fn from_array_panic() {
-    let _ = Inline::<i32>::from([0; <BasicLayout as Layout<i32>>::CAPACITY + 1]);
+    let _ = V::<i32>::from([0; <BasicLayout as Layout<i32>>::CAPACITY + 1]);
 }
 
 #[test]
 fn clear() {
-    let mut l = Inline::<u8>::from([1, 2, 3]);
-    
-    l.clear();
-    assert!(l.is_empty());
+    let mut l = V::<u8>::from([1, 2, 3]);
 
     l.clear();
     assert!(l.is_empty());
 
-    let mut l = Inline::<u8>::new();
+    l.clear();
+    assert!(l.is_empty());
+
+    let mut l = V::<u8>::new();
     l.clear();
     assert!(l.is_empty());
 }
 
 #[test]
 fn truncate() {
-    let mut l = inline_vec![1_u8, 2, 3, 4];
+    let mut l = v![1_u8, 2, 3, 4];
     l.truncate(6);
     assert_eq!(l.as_slice(), [1, 2, 3, 4]);
 
@@ -225,7 +222,7 @@ fn truncate() {
 
 #[test]
 fn resize() {
-    let mut l = inline_vec![1_u8, 2];
+    let mut l = v![1_u8, 2];
 
     l.resize(5, 9);
     assert_eq!(l.as_slice(), [1, 2, 9, 9, 9]);
@@ -238,9 +235,34 @@ fn resize() {
 }
 
 #[test]
+fn drain() {
+    let mut v: V<u8> = v![1, 2, 3, 4, 5];
+    let drain = v.drain(1..4);
+    assert_eq!(drain.as_slice(), [2, 3, 4]);
+    assert!(drain.eq([2, 3, 4]));
+    assert_eq!(v.as_slice(), [1, 5]);
+
+    let mut v: V<u8> = v![1, 2, 3, 4, 5];
+    assert!(v.drain(..).eq([1, 2, 3, 4, 5]));
+    assert!(v.is_empty());
+    assert_eq!(v.as_slice(), []);
+
+    let mut v: V<u8> = v![1, 2, 3, 4, 5];
+    assert_eq!(v.drain(2..2).count(), 0);
+    assert_eq!(v.as_slice(), [1, 2, 3, 4, 5]);
+}
+
+#[test]
+#[should_panic]
+fn drain_invalid_range_panics() {
+    let mut v: V<u8> = v![1, 2, 3, 4, 5];
+    let _ = v.drain(4..1);
+}
+
+#[test]
 fn resize_with() {
     let mut next = 2_u8;
-    let mut l = inline_vec![1_u8];
+    let mut l = v![1_u8];
 
     l.resize_with(4, || {
         let value = next;
@@ -255,7 +277,7 @@ fn resize_with() {
 
 #[test]
 fn remove() {
-    let mut l = Inline::<i32>::from([10, 20, 30, 40]);
+    let mut l = V::<i32>::from([10, 20, 30, 40]);
     let removed = l.remove(1);
     assert_eq!(removed, 20);
     assert_eq!(l.as_slice(), &[10, 30, 40]);
@@ -263,7 +285,7 @@ fn remove() {
 
 #[test]
 fn remove_first() {
-    let mut l = Inline::<i32>::from([10, 20, 30, 40]);
+    let mut l = V::<i32>::from([10, 20, 30, 40]);
     let removed = l.remove(0);
     assert_eq!(removed, 10);
     assert_eq!(l.as_slice(), &[20, 30, 40]);
@@ -271,7 +293,7 @@ fn remove_first() {
 
 #[test]
 fn remove_last() {
-    let mut l = Inline::<i32>::from([10, 20, 30, 40]);
+    let mut l = V::<i32>::from([10, 20, 30, 40]);
     let removed = l.remove(l.len() - 1);
     assert_eq!(removed, 40);
     assert_eq!(l.as_slice(), &[10, 20, 30]);
@@ -280,13 +302,13 @@ fn remove_last() {
 #[test]
 #[should_panic(expected = "index out of bounds")]
 fn remove_panic() {
-    let mut l = Inline::<i32>::from([1, 2, 3]);
+    let mut l = V::<i32>::from([1, 2, 3]);
     let _ = l.remove(3);
 }
 
 #[test]
 fn swap_remove() {
-    let mut l = Inline::<i32>::from([10, 20, 30, 40]);
+    let mut l = V::<i32>::from([10, 20, 30, 40]);
     let removed = l.swap_remove(1);
     assert_eq!(removed, 20);
     assert_eq!(l.as_slice(), &[10, 40, 30]);
@@ -294,7 +316,7 @@ fn swap_remove() {
 
 #[test]
 fn swap_remove_first() {
-    let mut l = Inline::<i32>::from([10, 20, 30, 40]);
+    let mut l = V::<i32>::from([10, 20, 30, 40]);
     let removed = l.swap_remove(0);
     assert_eq!(removed, 10);
     assert_eq!(l.as_slice(), &[40, 20, 30]);
@@ -302,7 +324,7 @@ fn swap_remove_first() {
 
 #[test]
 fn swap_remove_last() {
-    let mut l = Inline::<i32>::from([10, 20, 30, 40]);
+    let mut l = V::<i32>::from([10, 20, 30, 40]);
     let removed = l.swap_remove(l.len() - 1);
     assert_eq!(removed, 40);
     assert_eq!(l.as_slice(), &[10, 20, 30]);
@@ -311,19 +333,19 @@ fn swap_remove_last() {
 #[test]
 #[should_panic(expected = "index out of bounds")]
 fn swap_remove_panic() {
-    let mut l = Inline::<i32>::from([1, 2, 3]);
+    let mut l = V::<i32>::from([1, 2, 3]);
     let _ = l.swap_remove(3);
 }
 
 #[test]
 fn from_slice() {
-    let l = Inline::<i32>::from([1, 2, 3].as_slice());
+    let l = V::<i32>::from([1, 2, 3].as_slice());
     assert_eq!(l.as_slice(), &[1, 2, 3]);
 }
 
 #[test]
 fn extend_from_slice() {
-    let mut l = Inline::<i32>::from([1, 2]);
+    let mut l = V::<i32>::from([1, 2]);
 
     l.extend_from_slice(&[3, 4]);
     assert_eq!(l.as_slice(), &[1, 2, 3, 4]);
@@ -335,26 +357,26 @@ fn extend_from_slice() {
 #[test]
 #[should_panic(expected = "new length exceeds capacity")]
 fn extend_from_slice_panic() {
-    let mut l = Inline::<i32>::new();
+    let mut l = V::<i32>::new();
     let too_many = [0; <BasicLayout as Layout<i32>>::CAPACITY + 1];
     l.extend_from_slice(&too_many);
 }
 
 #[test]
 fn append() {
-    let mut left = inline_vec![1_u8, 2, 3];
-    let mut right = inline_vec![4_u8, 5, 6];
+    let mut left = v![1_u8, 2, 3];
+    let mut right = v![4_u8, 5, 6];
     left.append(&mut right);
     assert_eq!(left.as_slice(), &[1, 2, 3, 4, 5, 6]);
     assert!(right.is_empty());
 
-    let mut left = inline_vec![1_u8, 2, 3];
+    let mut left = v![1_u8, 2, 3];
     let mut right = alloc::vec![4_u8, 5, 6];
     left.append(&mut right);
     assert_eq!(left.as_slice(), &[1, 2, 3, 4, 5, 6]);
     assert!(right.is_empty());
 
-    let mut left = inline_vec![1_u8, 2, 3];
+    let mut left = v![1_u8, 2, 3];
     let mut right = crate::copy_thin_vec![4_u8, 5, 6];
     left.append(&mut right);
     assert_eq!(left.as_slice(), &[1, 2, 3, 4, 5, 6]);
@@ -364,13 +386,13 @@ fn append() {
 #[test]
 #[should_panic(expected = "new length exceeds capacity")]
 fn append_panic() {
-    let mut left = Inline::<u8>::new();
+    let mut left = V::<u8>::new();
     let cap = left.capacity();
     for value in 0..(cap / 2 + 1) {
         left.push(value as u8);
     }
 
-    let mut right = Inline::<u8>::new();
+    let mut right = V::<u8>::new();
     for value in 0..(cap - left.len() + 1) {
         right.push(value as u8);
     }
@@ -380,9 +402,9 @@ fn append_panic() {
 
 #[test]
 fn const_append() {
-    let mut left = inline_vec![1_u8, 2, 3];
+    let mut left = v![1_u8, 2, 3];
     let ptr = left.as_ptr();
-    let mut right = inline_vec![4_u8, 5, 6];
+    let mut right = v![4_u8, 5, 6];
     left.const_append(&mut right);
 
     assert_eq!(left.as_slice(), &[1, 2, 3, 4, 5, 6]);
@@ -393,13 +415,13 @@ fn const_append() {
 #[test]
 #[should_panic(expected = "new length exceeds capacity")]
 fn const_append_panic() {
-    let mut left = Inline::<u8>::new();
+    let mut left = V::<u8>::new();
     let cap = left.capacity();
     for value in 0..(cap / 2 + 1) {
         left.push(value as u8);
     }
 
-    let mut right = Inline::<u8>::new();
+    let mut right = V::<u8>::new();
     for value in 0..(cap - left.len() + 1) {
         right.push(value as u8);
     }
@@ -409,48 +431,48 @@ fn const_append_panic() {
 
 #[test]
 fn with_capacity() {
-    let l = Inline::<i32>::with_capacity(0);
+    let l = V::<i32>::with_capacity(0);
     assert!(l.is_empty());
-    assert_eq!(l.capacity(), Inline::<i32>::CAPACITY);
+    assert_eq!(l.capacity(), V::<i32>::CAPACITY);
 
-    let l = Inline::<i32>::with_capacity(Inline::<i32>::CAPACITY);
+    let l = V::<i32>::with_capacity(V::<i32>::CAPACITY);
     assert!(l.is_empty());
 }
 
 #[test]
 #[should_panic(expected = "required capacity exceeds maximum")]
 fn with_capacity_panic() {
-    let _ = Inline::<i32>::with_capacity(Inline::<i32>::CAPACITY + 1);
+    let _ = V::<i32>::with_capacity(V::<i32>::CAPACITY + 1);
 }
 
 #[test]
 fn inline_vec_empty() {
-    let l: Inline<i32> = inline_vec![];
+    let l: V<i32> = v![];
     assert!(l.is_empty());
 }
 
 #[test]
 fn inline_vec_list() {
-    let l: Inline<i32> = inline_vec![1, 2, 3];
+    let l: V<i32> = v![1, 2, 3];
     assert_eq!(l.as_slice(), &[1, 2, 3]);
 }
 
 #[test]
 fn inline_vec_list_trailing_comma() {
-    let l: Inline<i32> = inline_vec![1, 2, 3,];
+    let l: V<i32> = v![1, 2, 3,];
     assert_eq!(l.as_slice(), &[1, 2, 3]);
 }
 
 #[test]
 fn inline_vec_repeat() {
-    let l: Inline<i32> = inline_vec![7; 3];
+    let l: V<i32> = v![7; 3];
     assert_eq!(l.as_slice(), &[7, 7, 7]);
 }
 
 #[test]
 fn inline_vec_repeat_zero() {
     let mut side_effect = 0usize;
-    let l: Inline<i32> = inline_vec![{ side_effect += 1; 42 }; 0];
+    let l: V<i32> = v![{ side_effect += 1; 42 }; 0];
     assert!(l.is_empty());
     assert_eq!(side_effect, 1);
 }

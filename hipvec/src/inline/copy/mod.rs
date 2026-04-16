@@ -14,6 +14,7 @@ use const_default::ConstDefault;
 
 use super::base::Base;
 use super::layouts::Layout;
+use crate::common::drain::Drain;
 use crate::inline::noncopy;
 use crate::traits::{MutableVector, impl_vector};
 
@@ -651,6 +652,46 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
         self.truncate(0);
     }
 
+    /// Removes the subslice indicated by the given range from the vector,
+    /// returning a double-ended iterator over the removed subslice.
+    ///
+    /// If the iterator is dropped before being fully consumed,
+    /// it drops the remaining removed elements.
+    ///
+    /// The returned iterator keeps a mutable borrow on the vector to optimize
+    /// its implementation.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the range is invalid.
+    ///
+    /// # Leaking
+    ///
+    /// If the returned iterator goes out of scope without being dropped (due to
+    /// [`mem::forget`], for example), the vector may have lost elements
+    /// arbitrarily, including elements outside the range.
+    ///
+    /// [`mem::forget`]: core::mem::forget
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipvec::copy_inline_vec;
+    /// let mut v = copy_inline_vec![1_u8, 2, 3];
+    /// let u: Vec<_> = v.drain(1..).collect();
+    /// assert_eq!(v.as_slice(), &[1]);
+    /// assert_eq!(u.as_slice(), &[2, 3]);
+    ///
+    /// // A full range clears the vector, like `clear()` does
+    /// v.drain(..);
+    /// assert_eq!(v.as_slice(), &[]);
+    /// ```
+    #[inline]
+    #[track_caller]
+    pub fn drain(&mut self, range: impl ops::RangeBounds<usize>) -> Drain<'_, Self> {
+        Drain::new(self, range).unwrap()
+    }
+
     #[inline]
     #[track_caller]
     pub const fn from_slice(slice: &[T]) -> Self {
@@ -708,9 +749,9 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     /// Moves all the elements of `other` into `self`, leaving `other` empty.
     ///
     /// See [`const_append`] for a const specialization for inline vectors.
-    /// 
+    ///
     /// [`const_append`]: Self::append
-    /// 
+    ///
     /// # Panics
     ///
     /// Panics if the new length would exceed [`CAPACITY`].
@@ -735,10 +776,10 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     }
 
     /// Moves all the elements of `other` into `self`, leaving `other` empty.
-    /// 
+    ///
     /// This a const specialization if [`other`] is an inline vector.
     /// See [`append`] for the general version.
-    /// 
+    ///
     /// [`append`]: Self::append
     ///
     /// # Panics

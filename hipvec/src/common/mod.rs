@@ -8,6 +8,8 @@ pub(crate) mod tests;
 pub(crate) mod utils;
 pub(crate) mod range;
 
+pub mod drain;
+
 pub use range::RangeError;
 
 #[derive(Default, Copy, Clone, PartialEq, Eq, Debug)]

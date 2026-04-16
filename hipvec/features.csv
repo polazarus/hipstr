@@ -23,8 +23,8 @@ cmp                 ,  0,  0,  0,  0
 cmp_slice           ,  0,  0,  0,  0
 cmp_array           ,  0,  0,  0,  0
 append              ,  1,  1,  1,  1
-const_append        ,  1,  1, na, na
-drain               ,  0,  0,  0,  0
+const_append        ,  1,  1,   ,   
+drain               ,  1,  1,  1,  1
 dedup               ,  0,  0,  0,  0
 dedup_by            ,  0,  0,  0,  0
 dedup_by_key        ,  0,  0,  0,  0
@@ -41,5 +41,3 @@ shrink_to           ,  0,  0,  0,  0
 shrink_to_fit       ,  0,  0,  0,  0
 splice              ,  0,  0,  0,  0
 split_off           ,  0,  0,  0,  0
-
-

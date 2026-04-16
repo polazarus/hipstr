@@ -1,54 +1,53 @@
 use crate::common::tests::pointer_stability;
-use crate::copy_inline_vec;
-use crate::copy_thin_vec;
-use crate::thin::CopyThinVec;
+use crate::thin::CopyThinVec as V;
+use crate::{copy_inline_vec, copy_thin_vec as v};
 
 #[test]
 fn new_and_default() {
-    let new: CopyThinVec<i32> = CopyThinVec::new();
+    let new: V<i32> = V::new();
     assert!(new.is_empty());
     assert_eq!(new.len(), 0);
 
-    let default: CopyThinVec<i32> = CopyThinVec::default();
+    let default: V<i32> = V::default();
     assert!(default.is_empty());
     assert_eq!(default.len(), 0);
 }
 
 #[test]
 fn with_capacity() {
-    let v: CopyThinVec<i32> = CopyThinVec::with_capacity(0);
+    let v: V<i32> = V::with_capacity(0);
     assert!(v.is_empty());
     assert_eq!(v.capacity(), 0);
 
-    let v: CopyThinVec<i32> = CopyThinVec::with_capacity(8);
+    let v: V<i32> = V::with_capacity(8);
     assert!(v.is_empty());
     assert!(v.capacity() >= 8);
 }
 
 #[test]
 fn from_array_and_slice() {
-    let from_array: CopyThinVec<i32> = CopyThinVec::from([1, 2, 3]);
+    let from_array: V<i32> = V::from([1, 2, 3]);
     assert_eq!(from_array.as_slice(), &[1, 2, 3]);
 
-    let from_slice: CopyThinVec<i32> = CopyThinVec::from([4, 5, 6].as_slice());
+    let from_slice: V<i32> = V::from([4, 5, 6].as_slice());
     assert_eq!(from_slice.as_slice(), &[4, 5, 6]);
 }
 
 #[test]
 fn macro_constructors() {
-    let empty: CopyThinVec<i32> = copy_thin_vec![];
+    let empty: V<i32> = v![];
     assert!(empty.is_empty());
 
-    let list: CopyThinVec<i32> = copy_thin_vec![1, 2, 3,];
+    let list: V<i32> = v![1, 2, 3,];
     assert_eq!(list.as_slice(), &[1, 2, 3]);
 
-    let repeated: CopyThinVec<i32> = copy_thin_vec![7; 3];
+    let repeated: V<i32> = v![7; 3];
     assert_eq!(repeated.as_slice(), &[7, 7, 7]);
 }
 
 #[test]
 fn push_pop() {
-    let mut v: CopyThinVec<i32> = CopyThinVec::new();
+    let mut v: V<i32> = V::new();
     assert_eq!(v.pop(), None);
 
     v.push(10);
@@ -66,13 +65,13 @@ fn push_pop() {
 
 #[test]
 fn as_slice() {
-    let v: CopyThinVec<i32> = copy_thin_vec![1, 2, 3];
+    let v: V<i32> = v![1, 2, 3];
     assert_eq!(v.as_slice(), &[1, 2, 3]);
 }
 
 #[test]
 fn deref() {
-    let v: CopyThinVec<i32> = copy_thin_vec![1, 2, 3];
+    let v: V<i32> = v![1, 2, 3];
     let slice: &[i32] = &v;
     assert_eq!(slice, &[1, 2, 3]);
     assert_eq!(slice.as_ptr(), v.as_slice().as_ptr());
@@ -80,12 +79,12 @@ fn deref() {
 
 #[test]
 fn reserve() {
-    let mut v: CopyThinVec<i32> = CopyThinVec::with_capacity(0);
+    let mut v: V<i32> = V::with_capacity(0);
     v.reserve(10);
     assert!(v.capacity() >= 10);
     pointer_stability(&mut v);
 
-    let mut v: CopyThinVec<i32> = CopyThinVec::with_capacity(64);
+    let mut v: V<i32> = V::with_capacity(64);
     v.reserve(65);
     assert!(v.capacity() >= 128);
     pointer_stability(&mut v);
@@ -93,12 +92,12 @@ fn reserve() {
 
 #[test]
 fn reserve_exact() {
-    let mut v: CopyThinVec<i32> = CopyThinVec::with_capacity(0);
+    let mut v: V<i32> = V::with_capacity(0);
     v.reserve_exact(10);
     assert!(v.capacity() >= 10);
     pointer_stability(&mut v);
 
-    let mut v: CopyThinVec<i32> = CopyThinVec::with_capacity(64);
+    let mut v: V<i32> = V::with_capacity(64);
     v.reserve_exact(65);
     assert!(v.capacity() >= 65);
     assert!(v.capacity() < 128);
@@ -107,19 +106,19 @@ fn reserve_exact() {
 
 #[test]
 fn append() {
-    let mut left: CopyThinVec<i32> = copy_thin_vec![1, 2, 3];
-    let mut right: CopyThinVec<i32> = copy_thin_vec![4, 5, 6];
+    let mut left: V<i32> = v![1, 2, 3];
+    let mut right: V<i32> = v![4, 5, 6];
     left.append(&mut right);
     assert_eq!(left.as_slice(), &[1, 2, 3, 4, 5, 6]);
     assert!(right.is_empty());
 
-    let mut left: CopyThinVec<i32> = copy_thin_vec![1, 2, 3];
+    let mut left: V<i32> = v![1, 2, 3];
     let mut right = alloc::vec![4, 5, 6];
     left.append(&mut right);
     assert_eq!(left.as_slice(), &[1, 2, 3, 4, 5, 6]);
     assert!(right.is_empty());
 
-    let mut left: CopyThinVec<i32> = copy_thin_vec![1, 2, 3];
+    let mut left: V<i32> = v![1, 2, 3];
     let mut right = copy_inline_vec![4, 5, 6];
     left.append(&mut right);
     assert_eq!(left.as_slice(), &[1, 2, 3, 4, 5, 6]);
@@ -128,7 +127,7 @@ fn append() {
 
 #[test]
 fn remove() {
-    let mut v: CopyThinVec<i32> = copy_thin_vec![10, 20, 30, 40];
+    let mut v: V<i32> = v![10, 20, 30, 40];
     let removed = v.remove(1);
     assert_eq!(removed, 20);
     assert_eq!(v.as_slice(), &[10, 30, 40]);
@@ -136,7 +135,7 @@ fn remove() {
 
 #[test]
 fn remove_first() {
-    let mut v: CopyThinVec<i32> = copy_thin_vec![10, 20, 30, 40];
+    let mut v: V<i32> = v![10, 20, 30, 40];
     let removed = v.remove(0);
     assert_eq!(removed, 10);
     assert_eq!(v.as_slice(), &[20, 30, 40]);
@@ -144,7 +143,7 @@ fn remove_first() {
 
 #[test]
 fn remove_last() {
-    let mut v: CopyThinVec<i32> = copy_thin_vec![10, 20, 30, 40];
+    let mut v: V<i32> = v![10, 20, 30, 40];
     let removed = v.remove(v.len() - 1);
     assert_eq!(removed, 40);
     assert_eq!(v.as_slice(), &[10, 20, 30]);
@@ -153,13 +152,13 @@ fn remove_last() {
 #[test]
 #[should_panic(expected = "index out of bounds")]
 fn remove_panic() {
-    let mut v: CopyThinVec<i32> = copy_thin_vec![1, 2, 3];
+    let mut v: V<i32> = v![1, 2, 3];
     let _ = v.remove(3);
 }
 
 #[test]
 fn swap_remove() {
-    let mut v: CopyThinVec<i32> = copy_thin_vec![10, 20, 30, 40];
+    let mut v: V<i32> = v![10, 20, 30, 40];
     let removed = v.swap_remove(1);
     assert_eq!(removed, 20);
     assert_eq!(v.as_slice(), &[10, 40, 30]);
@@ -167,7 +166,7 @@ fn swap_remove() {
 
 #[test]
 fn swap_remove_first() {
-    let mut v: CopyThinVec<i32> = copy_thin_vec![10, 20, 30, 40];
+    let mut v: V<i32> = v![10, 20, 30, 40];
     let removed = v.swap_remove(0);
     assert_eq!(removed, 10);
     assert_eq!(v.as_slice(), &[40, 20, 30]);
@@ -175,7 +174,7 @@ fn swap_remove_first() {
 
 #[test]
 fn swap_remove_last() {
-    let mut v: CopyThinVec<i32> = copy_thin_vec![10, 20, 30, 40];
+    let mut v: V<i32> = v![10, 20, 30, 40];
     let removed = v.swap_remove(v.len() - 1);
     assert_eq!(removed, 40);
     assert_eq!(v.as_slice(), &[10, 20, 30]);
@@ -184,13 +183,13 @@ fn swap_remove_last() {
 #[test]
 #[should_panic(expected = "index out of bounds")]
 fn swap_remove_panic() {
-    let mut v: CopyThinVec<i32> = copy_thin_vec![1, 2, 3];
+    let mut v: V<i32> = v![1, 2, 3];
     let _ = v.swap_remove(3);
 }
 
 #[test]
 fn truncate() {
-    let mut v: CopyThinVec<i32> = copy_thin_vec![1, 2, 3, 4, 5];
+    let mut v: V<i32> = v![1, 2, 3, 4, 5];
     let capacity = v.capacity();
     let ptr = v.as_ptr();
 
@@ -212,7 +211,7 @@ fn truncate() {
 
 #[test]
 fn clear() {
-    let mut v: CopyThinVec<i32> = copy_thin_vec![0; 100];
+    let mut v: V<i32> = v![0; 100];
     let old_capacity = v.capacity();
     let ptr = v.as_ptr();
     v.clear();
@@ -223,8 +222,33 @@ fn clear() {
 }
 
 #[test]
+fn drain() {
+    let mut v: V<i32> = v![1, 2, 3, 4, 5];
+    let drain = v.drain(1..4);
+    assert_eq!(drain.as_slice(), [2, 3, 4]);
+    assert!(drain.eq([2, 3, 4]));
+    assert_eq!(v.as_slice(), [1, 5]);
+
+    let mut v: V<i32> = v![1, 2, 3, 4, 5];
+    assert!(v.drain(..).eq([1, 2, 3, 4, 5]));
+    assert!(v.is_empty());
+    assert_eq!(v.as_slice(), []);
+
+    let mut v: V<i32> = v![1, 2, 3, 4, 5];
+    assert_eq!(v.drain(2..2).count(), 0);
+    assert_eq!(v.as_slice(), [1, 2, 3, 4, 5]);
+}
+
+#[test]
+#[should_panic]
+fn drain_invalid_range_panics() {
+    let mut v: V<i32> = v![1, 2, 3, 4, 5];
+    let _ = v.drain(4..1);
+}
+
+#[test]
 fn resize() {
-    let mut v: CopyThinVec<i32> = copy_thin_vec![1, 2];
+    let mut v: V<i32> = v![1, 2];
 
     v.resize(5, 9);
     assert_eq!(v.as_slice(), [1, 2, 9, 9, 9]);
@@ -240,7 +264,7 @@ fn resize() {
 #[test]
 fn resize_with() {
     let mut next = 1;
-    let mut v: CopyThinVec<i32> = copy_thin_vec![10];
+    let mut v: V<i32> = v![10];
 
     v.resize_with(4, || {
         let value = next;
