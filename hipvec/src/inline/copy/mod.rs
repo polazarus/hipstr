@@ -15,7 +15,7 @@ use const_default::ConstDefault;
 use super::base::Base;
 use super::layouts::Layout;
 use crate::inline::noncopy;
-use crate::traits::{MutVector, impl_vector};
+use crate::traits::{MutableVector, impl_vector};
 
 #[cfg(test)]
 mod tests;
@@ -647,11 +647,8 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     /// assert!(vec.is_empty());
     /// ```
     #[inline]
-    pub const fn clear(&mut self)
-    where
-        L: Copy,
-    {
-        *self = Self::new();
+    pub const fn clear(&mut self) {
+        self.truncate(0);
     }
 
     #[inline]
@@ -733,7 +730,7 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     /// ```
     #[inline]
     #[track_caller]
-    pub fn append(&mut self, other: &mut impl MutVector<Item = T>) {
+    pub fn append(&mut self, other: &mut impl MutableVector<Item = T>) {
         self.base.append(other);
     }
 
@@ -900,4 +897,6 @@ impl<T: fmt::Debug + Copy, L: Layout<T>> fmt::Debug for InlineVec<T, L> {
     }
 }
 
-impl_vector!(impl(T: Copy, L: Layout<T> + Copy) MutVector<Item=T> for InlineVec<T, L>);
+impl_vector!(impl(T: Copy, L: Layout<T>) Vector<Item=T> for InlineVec<T, L>);
+impl_vector!(impl(T: Copy, L: Layout<T> + Copy) GrowableVector<Item=T> for InlineVec<T, L>);
+impl_vector!(impl(T: Copy, L: Layout<T>) MutableVector<Item=T> for InlineVec<T, L>);

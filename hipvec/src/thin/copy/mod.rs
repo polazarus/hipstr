@@ -4,8 +4,7 @@ use core::{fmt, ops};
 use const_default::ConstDefault;
 
 use super::base::Base;
-use crate::common::methods;
-use crate::traits::{MutVector, impl_vector};
+use crate::traits::{GrowableVector, impl_vector};
 
 #[cfg(test)]
 mod tests;
@@ -804,7 +803,7 @@ impl<T: Copy, P: ConstDefault> ThinVec<T, P> {
     /// assert_eq!(vec2.as_slice(), []);
     /// ```
     #[inline]
-    pub fn append(&mut self, other: &mut impl MutVector<Item = T>) {
+    pub fn append(&mut self, other: &mut impl GrowableVector<Item = T>) {
         self.base.append(other);
     }
 
@@ -936,4 +935,6 @@ impl<T: Copy, P> ops::DerefMut for ThinVec<T, P> {
     }
 }
 
-impl_vector!(impl(T: Copy, P: ConstDefault) MutVector<Item=T> for ThinVec<T, P>);
+impl_vector!(impl(T: Copy, P) Vector<Item=T> for ThinVec<T, P>);
+impl_vector!(impl(T: Copy, P) MutableVector<Item=T> for ThinVec<T, P>);
+impl_vector!(impl(T: Copy, P: ConstDefault) GrowableVector<Item=T> for ThinVec<T, P>);

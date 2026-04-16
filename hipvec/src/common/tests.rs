@@ -1,7 +1,7 @@
-use crate::traits::MutVector;
+use crate::traits::GrowableVector;
 
 #[track_caller]
-pub fn pointer_stability<T: Copy + Default>(v: &mut impl MutVector<Item = T>) {
+pub fn pointer_stability<T: Copy + Default>(v: &mut impl GrowableVector<Item = T>) {
     let p = v.as_ptr();
     let len = v.len();
     let cap = v.capacity();

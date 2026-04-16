@@ -21,6 +21,34 @@ pub unsafe trait Vector {
     fn as_slice(&self) -> &[Self::Item];
 }
 
+/// Traits for mutable vector-like types.
+///
+/// # Safety
+///
+/// Implementors must ensure that the methods correctly reflect the properties of the vector, such
+/// as length, capacity, and pointer stability.
+pub unsafe trait MutableVector: Vector {
+    fn as_mut_ptr(&mut self) -> *mut Self::Item;
+    fn as_mut_slice(&mut self) -> &mut [Self::Item];
+    fn spare_capacity_mut(&mut self) -> &mut [core::mem::MaybeUninit<Self::Item>];
+    unsafe fn set_len(&mut self, new_len: usize);
+    fn pop(&mut self) -> Option<Self::Item>;
+    fn truncate(&mut self, new_len: usize);
+    fn clear(&mut self);
+}
+
+/// Traits for growable vector-like types.
+///
+/// # Safety
+///
+/// Implementors must ensure that the methods correctly reflect the properties of the vector, such
+/// as length, capacity, and pointer stability.
+pub unsafe trait GrowableVector: MutableVector {
+    fn reserve(&mut self, additional: usize);
+    fn reserve_exact(&mut self, additional: usize);
+    fn push(&mut self, value: Self::Item);
+}
+
 macro_rules! impl_vector {
     (impl$(( $($gen:tt)* ))? Vector<Item=$item:ty> for $ty:ty $(where $($where:tt)*)?) => {
         unsafe impl$(<$($gen)*>)? $crate::traits::Vector for $ty $(where $($where)*)?
@@ -53,12 +81,30 @@ macro_rules! impl_vector {
             }
         }
     };
-    (impl$(($($gen:tt)*))? MutVector<Item=$item:ty> for $ty:ty $(where $($where:tt)*)?) => {
-        $crate::traits::impl_vector!(impl$(($($gen)*))? Vector<Item=$item> for $ty $(where $($where)*)?);
-
-        unsafe impl$(<$($gen)*>)? $crate::traits::MutVector for $ty $(where $($where)*)?
+    (impl$(($($gen:tt)*))? GrowableVector<Item=$item:ty> for $ty:ty $(where $($where:tt)*)?) => {
+        unsafe impl$(<$($gen)*>)? $crate::traits::GrowableVector for $ty $(where $($where)*)?
         {
 
+            #[inline]
+            fn reserve(&mut self, additional: usize) {
+                self.reserve(additional);
+            }
+
+            #[inline]
+            fn reserve_exact(&mut self, additional: usize) {
+                self.reserve_exact(additional);
+            }
+
+            #[inline]
+            fn push(&mut self, value: Self::Item) {
+                self.push(value);
+            }
+
+        }
+    };
+    (impl$(($($gen:tt)*))? MutableVector<Item=$item:ty> for $ty:ty $(where $($where:tt)*)?) => {
+        unsafe impl$(<$($gen)*>)? $crate::traits::MutableVector for $ty $(where $($where)*)?
+        {
             #[inline]
             fn as_mut_ptr(&mut self) -> *mut Self::Item {
                 self.as_mut_ptr()
@@ -79,20 +125,6 @@ macro_rules! impl_vector {
                 unsafe { self.set_len(new_len); }
             }
 
-            #[inline]
-            fn reserve(&mut self, additional: usize) {
-                self.reserve(additional);
-            }
-
-            #[inline]
-            fn reserve_exact(&mut self, additional: usize) {
-                self.reserve_exact(additional);
-            }
-
-            #[inline]
-            fn push(&mut self, value: Self::Item) {
-                self.push(value);
-            }
 
             #[inline]
             fn pop(&mut self) -> Option<Self::Item> {
@@ -109,29 +141,16 @@ macro_rules! impl_vector {
                 self.clear();
             }
         }
-    };
+    }
 }
 
 #[cfg(feature = "alloc")]
-impl_vector!(impl(T) MutVector<Item=T> for alloc::vec::Vec<T>);
+impl_vector!(impl(T) Vector<Item=T> for alloc::vec::Vec<T>);
 
-/// Traits for mutable vector-like types.
-///
-/// # Safety
-///
-/// Implementors must ensure that the methods correctly reflect the properties of the vector, such
-/// as length, capacity, and pointer stability.
-pub unsafe trait MutVector: Vector {
-    fn as_mut_ptr(&mut self) -> *mut Self::Item;
-    fn as_mut_slice(&mut self) -> &mut [Self::Item];
-    fn spare_capacity_mut(&mut self) -> &mut [core::mem::MaybeUninit<Self::Item>];
-    unsafe fn set_len(&mut self, new_len: usize);
-    fn reserve(&mut self, additional: usize);
-    fn reserve_exact(&mut self, additional: usize);
-    fn push(&mut self, value: Self::Item);
-    fn pop(&mut self) -> Option<Self::Item>;
-    fn truncate(&mut self, new_len: usize);
-    fn clear(&mut self);
-}
+#[cfg(feature = "alloc")]
+impl_vector!(impl(T) MutableVector<Item=T> for alloc::vec::Vec<T>);
+
+#[cfg(feature = "alloc")]
+impl_vector!(impl(T) GrowableVector<Item=T> for alloc::vec::Vec<T>);
 
 pub(crate) use impl_vector;

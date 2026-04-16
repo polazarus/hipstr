@@ -9,7 +9,7 @@ use core::ptr::NonNull;
 
 use super::layouts::{self, Layout};
 use crate::common::methods;
-use crate::traits::MutVector;
+use crate::traits::MutableVector;
 
 pub(crate) struct Base<T, L: Layout<T>> {
     repr: L,
@@ -191,7 +191,7 @@ impl<T, L: Layout<T>> Base<T, L> {
     }
 
     #[track_caller]
-    pub fn append(&mut self, other: &mut dyn MutVector<Item = T>) {
+    pub fn append(&mut self, other: &mut dyn MutableVector<Item = T>) {
         methods::append!(self, other);
     }
 

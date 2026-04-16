@@ -8,7 +8,7 @@ use const_default::ConstDefault;
 pub use crate::common::header::ThinHeader as Header;
 use crate::common::methods;
 use crate::common::tagged_pointer::TaggedPointer;
-use crate::traits::MutVector;
+use crate::traits::MutableVector;
 
 const TAG: usize = 0b10;
 
@@ -178,7 +178,10 @@ impl<T, P> Base<T, P> {
         self.truncate_copy(0);
     }
 
-    pub fn append(&mut self, other: &mut impl MutVector<Item = T>) where P: ConstDefault{
+    pub fn append(&mut self, other: &mut impl MutableVector<Item = T>)
+    where
+        P: ConstDefault,
+    {
         methods::append!(self, other);
     }
 

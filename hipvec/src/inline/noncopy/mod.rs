@@ -14,7 +14,7 @@ use super::base::Base;
 use super::layouts::Layout;
 use crate::common::utils::drop_raw_slice;
 use crate::inline::copy;
-use crate::traits::{MutVector, impl_vector};
+use crate::traits::{MutableVector, impl_vector};
 
 #[cfg(test)]
 mod tests;
