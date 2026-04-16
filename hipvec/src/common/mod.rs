@@ -6,6 +6,9 @@ pub(crate) mod tagged_pointer;
 #[cfg(test)]
 pub(crate) mod tests;
 pub(crate) mod utils;
+pub(crate) mod range;
+
+pub use range::RangeError;
 
 #[derive(Default, Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(usize)]
