@@ -333,14 +333,18 @@ where
 
 impl<T, P> Drop for Base<T, P> {
     fn drop(&mut self) {
-        if let Some(header) = self.0.as_non_null() {
-            let layout = Header::<T, P>::layout(unsafe { header.as_ref().cap })
-                .unwrap()
-                .0;
+        if let Some(header) = self.0.as_non_null()
+            && let Some((layout, _)) = Header::<T, P>::layout(unsafe { header.as_ref().cap })
+        {
+            // SAFETY: type invariant says the pointer is valid and properly aligned, and the layout is correct
             unsafe {
                 alloc::alloc::dealloc(header.as_ptr().cast(), layout);
             }
         }
+        // ignore two cases:
+        // - the pointer is null, as it represents an empty vector with no allocated memory
+        // - the layout is invalid, as it can only occur if the capacity is corrupted, in
+        //   which case there's not much we can do anyway
     }
 }
 
