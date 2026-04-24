@@ -4,7 +4,7 @@ use core::num::NonZeroUsize;
 use core::ptr;
 use core::ptr::NonNull;
 
-pub trait Layout<T> {
+pub trait Layout<T>: Copy {
     const LEN_SIZE: usize;
     const CAPACITY: usize;
     const EMPTY: Self;

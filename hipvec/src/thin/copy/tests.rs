@@ -280,3 +280,55 @@ fn resize_with() {
     assert_eq!(v.capacity(), capacity);
     assert_eq!(v.as_ptr(), ptr);
 }
+
+#[test]
+fn splice() {
+    let mut v = v![1, 2, 3, 4, 5];
+    {
+        let splice = v.splice(1..4, [9, 8]);
+        assert!(splice.eq([2, 3, 4]));
+    }
+    assert_eq!(v.as_slice(), [1, 9, 8, 5]);
+
+    let mut v = v![1, 2, 3, 4, 5];
+    {
+        let splice = v.splice(1..3, [9, 8, 7, 6]);
+        assert!(splice.eq([2, 3]));
+    }
+    assert_eq!(v.as_slice(), [1, 9, 8, 7, 6, 4, 5]);
+
+    let mut v = v![1, 2, 3, 4, 5];
+    {
+        let splice = v.splice(1..4, [9, 8, 7, 6].into_iter().filter(|_| true));
+        assert!(splice.eq([2, 3, 4]));
+    }
+    assert_eq!(v.as_slice(), [1, 9, 8, 7, 6, 5]);
+
+    let mut v = v![1, 5];
+    {
+        let splice = v.splice(1..1, [2, 3, 4]);
+        assert!(splice.eq([]));
+    }
+    assert_eq!(v.as_slice(), [1, 2, 3, 4, 5]);
+
+    let mut v = v![1, 2, 3, 4, 5];
+    {
+        let splice = v.splice(.., [9, 8]);
+        assert!(splice.eq([1, 2, 3, 4, 5]));
+    }
+    assert_eq!(v.as_slice(), [9, 8]);
+
+    let mut v = v![1, 2, 3, 4, 5];
+    {
+        let splice = v.splice(.., []);
+        assert!(splice.eq([1, 2, 3, 4, 5]));
+    }
+    assert!(v.is_empty());
+}
+
+#[test]
+#[should_panic(expected = "start index 4 is greater than end index 1")]
+fn splice_invalid_range_panics() {
+    let mut v = v![1, 2, 3, 4, 5];
+    let _ = v.splice(4..1, [9, 8]);
+}

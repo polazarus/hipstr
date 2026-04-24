@@ -5,7 +5,8 @@ use const_default::ConstDefault;
 
 use super::base::Base;
 use crate::common::drain::Drain;
-use crate::common::methods;
+use crate::common::splice::Splice;
+use crate::common::{methods, unwrap_display};
 use crate::traits::{GrowableVector, impl_vector};
 
 #[cfg(test)]
@@ -558,7 +559,7 @@ impl<T: Copy, P> ThinVec<T, P> {
     #[inline]
     #[track_caller]
     pub fn drain(&mut self, range: impl ops::RangeBounds<usize>) -> Drain<'_, Self> {
-        Drain::new(self, range).unwrap()
+        unwrap_display(Drain::new(self, range))
     }
 }
 
@@ -924,6 +925,60 @@ impl<T: Copy, P: ConstDefault> ThinVec<T, P> {
     #[inline]
     pub fn resize_with(&mut self, new_len: usize, f: impl FnMut() -> T) {
         self.base.resize_with(new_len, f);
+    }
+
+    /// Creates a splicing iterator that replaces the specified range in the vector
+    /// with the given `replace_with` iterator and yields the removed items.
+    /// `replace_with` does not need to be the same length as `range`.
+    ///
+    /// `range` is removed even if the `Splice` iterator is not consumed before it is dropped.
+    ///
+    /// It is unspecified how many elements are removed from the vector
+    /// if the `Splice` value is leaked.
+    ///
+    /// The input iterator `replace_with` is only consumed when the `Splice` value is dropped.
+    ///
+    /// This is optimal if:
+    ///
+    /// * The tail (elements in the vector after `range`) is empty,
+    /// * or `replace_with` yields fewer or equal elements than `range`'s length
+    /// * or the lower bound of its `size_hint()` is exact.
+    ///
+    /// Otherwise, a temporary vector is allocated and the tail is moved twice.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the range has `start_bound > end_bound`, or, if the range is
+    /// bounded on either end and past the length of the vector.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipvec::copy_thin_vec;
+    /// let mut v = copy_thin_vec![1, 2, 3, 4];
+    /// let new = [7, 8, 9];
+    /// let u: Vec<_> = v.splice(1..3, new).collect();
+    /// assert_eq!(v.as_slice(), [1, 7, 8, 9, 4]);
+    /// assert_eq!(u.as_slice(), [2, 3]);
+    /// ```
+    ///
+    /// Using `splice` to insert new items into a vector efficiently at a specific position
+    /// indicated by an empty range:
+    ///
+    /// ```
+    /// # use hipvec::copy_thin_vec;
+    /// let mut v = copy_thin_vec![1, 5];
+    /// let new = [2, 3, 4];
+    /// v.splice(1..1, new);
+    /// assert_eq!(v.as_slice(), [1, 2, 3, 4, 5]);
+    /// ```
+    #[inline]
+    pub fn splice<I: Iterator<Item = T>>(
+        &mut self,
+        range: impl ops::RangeBounds<usize>,
+        replace_with: impl IntoIterator<IntoIter = I>,
+    ) -> Splice<'_, Self, I> {
+        unwrap_display(Splice::new(self, range, replace_with))
     }
 }
 

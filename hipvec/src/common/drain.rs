@@ -4,9 +4,8 @@ use core::iter::FusedIterator;
 use core::ops::{Range, RangeBounds};
 use core::{fmt, mem, ptr, slice};
 
-use crate::traits::MutableVector;
-
 use super::range::{self, RangeError};
+use crate::traits::MutableVector;
 
 /// A draining iterator for vectors.
 ///
@@ -20,10 +19,10 @@ use super::range::{self, RangeError};
 ///
 /// [`ThinVec::drain`]: crate::vecs::thin::ThinVec::drain
 pub struct Drain<'a, V: MutableVector> {
-    vec: &'a mut V,
-    tail_start: usize,
-    tail_len: usize,
-    range: Range<usize>,
+    pub(super) vec: &'a mut V,
+    pub(super) tail_start: usize,
+    pub(super) tail_len: usize,
+    pub(super) range: Range<usize>,
 }
 
 impl<'a, V: MutableVector> Drain<'a, V> {

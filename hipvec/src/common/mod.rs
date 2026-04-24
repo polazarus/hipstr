@@ -1,14 +1,17 @@
+use core::fmt;
+
 use const_default::ConstDefault;
 
 pub(crate) mod header;
 pub(crate) mod methods;
+pub(crate) mod range;
 pub(crate) mod tagged_pointer;
 #[cfg(test)]
 pub(crate) mod tests;
 pub(crate) mod utils;
-pub(crate) mod range;
 
 pub mod drain;
+pub mod splice;
 
 pub use range::RangeError;
 
@@ -32,3 +35,23 @@ macro_rules! __count {
     };
 }
 
+/// Panics with the provided displayable error message.
+///
+/// # Panics
+///
+/// Always panics with the provided error message.
+#[track_caller]
+#[inline]
+pub(crate) fn panic_display<T>(e: impl fmt::Display) -> T {
+    panic!("{e}");
+}
+
+/// Unwraps a `Result`, panicking with the error message if it is an `Err`.
+#[track_caller]
+#[inline]
+pub(crate) fn unwrap_display<T, E: fmt::Display>(result: Result<T, E>) -> T {
+    match result {
+        Ok(value) => value,
+        Err(e) => panic_display(e),
+    }
+}
