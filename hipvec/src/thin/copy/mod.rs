@@ -1013,8 +1013,13 @@ impl<T: Copy, P: ConstDefault> ThinVec<T, P> {
     }
 }
 
-// no Drop for ThinVec<T, P> when T is copy
-// the allocation is dropped by `Base`
+impl<T: Copy, P> Drop for ThinVec<T, P> {
+    fn drop(&mut self) {
+        unsafe {
+            self.base.drop();
+        }
+    }
+}
 
 impl<T: Copy, P: ConstDefault> Clone for ThinVec<T, P> {
     fn clone(&self) -> Self {

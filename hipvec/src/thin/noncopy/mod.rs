@@ -1021,6 +1021,7 @@ impl<T, P> Drop for ThinVec<T, P> {
     fn drop(&mut self) {
         unsafe {
             drop_raw_slice(self.as_mut_ptr(), self.len());
+            self.base.drop();
         }
     }
 }

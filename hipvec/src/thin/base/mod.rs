@@ -23,6 +23,7 @@ const fn min_non_zero_cap(size: usize) -> usize {
 }
 
 #[derive(Debug)]
+#[repr(transparent)]
 pub struct Base<T, P>(TaggedPointer<Header<T, P>, TAG>);
 
 impl<T, P> Default for Base<T, P> {
@@ -202,6 +203,31 @@ impl<T, P> Base<T, P> {
     pub const unsafe fn copy(&self) -> Self {
         Self(self.0)
     }
+
+    /// Drops the allocation if it exists.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the vector is not used after this method is called, and that the
+    /// allocation is not dropped elsewhere, to avoid double free or use after free.
+    #[inline]
+    pub unsafe fn drop(&mut self) {
+        if let Some(header) = self.0.as_non_null()
+            && let Some((layout, _)) = Header::<T, P>::layout(unsafe { header.as_ref().cap })
+        {
+            // SAFETY: type invariant says the pointer is valid and properly aligned, and the layout is correct
+            unsafe {
+                alloc::alloc::dealloc(header.as_ptr().cast(), layout);
+            }
+        }
+        // ignore two cases:
+        // - the pointer is null, as it represents an empty vector with no allocated memory
+        // - the layout is invalid, as it can only occur if the capacity is corrupted, in
+        //   which case there's not much we can do anyway
+
+        // reset the pointer for safety, should be removed by the compiler
+        *self = Self::new();
+    }
 }
 
 impl<T, P> Base<T, P>
@@ -332,23 +358,6 @@ where
 
     pub fn resize_with(&mut self, new_len: usize, f: impl FnMut() -> T) {
         methods::resize_with!(self, new_len, f);
-    }
-}
-
-impl<T, P> Drop for Base<T, P> {
-    fn drop(&mut self) {
-        if let Some(header) = self.0.as_non_null()
-            && let Some((layout, _)) = Header::<T, P>::layout(unsafe { header.as_ref().cap })
-        {
-            // SAFETY: type invariant says the pointer is valid and properly aligned, and the layout is correct
-            unsafe {
-                alloc::alloc::dealloc(header.as_ptr().cast(), layout);
-            }
-        }
-        // ignore two cases:
-        // - the pointer is null, as it represents an empty vector with no allocated memory
-        // - the layout is invalid, as it can only occur if the capacity is corrupted, in
-        //   which case there's not much we can do anyway
     }
 }
 
