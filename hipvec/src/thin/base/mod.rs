@@ -300,6 +300,10 @@ where
         methods::push_mut!(self, value)
     }
 
+    pub fn push_within_capacity(&mut self, value: T) -> Result<&mut T, T> {
+        methods::push_within_capacity!(self, value)
+    }
+
     pub fn insert(&mut self, index: usize, value: T) {
         let _ = self.insert_mut(index, value);
     }

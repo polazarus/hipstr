@@ -450,6 +450,34 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
         self.base.push(value);
     }
 
+    /// Appends an element and returns a reference to it if there is sufficient capacity,
+    /// otherwise an error is returned with the element.
+    ///
+    /// Unlike [`push`] this method will not panic if there is not enough capacity.
+    ///
+    /// [`push`]: Self::push
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipvec::copy_inline_vec;
+    /// let mut vec = copy_inline_vec![0_u8, 1];
+    /// let capacity = vec.capacity() as u8;
+    /// for i in 2..capacity {
+    ///   vec.push_within_capacity(i).unwrap();
+    /// }
+    ///
+    /// vec.push_within_capacity(capacity).unwrap_err();
+    /// ```
+    ///
+    /// # Time complexity
+    ///
+    /// Takes *O*(1) time.
+    #[inline]
+    pub const fn push_within_capacity(&mut self, value: T) -> Result<&mut T, T> {
+        self.base.push_within_capacity(value)
+    }
+
     /// Appends an element to the back of a collection, returning a reference to it.
     ///
     /// # Panics

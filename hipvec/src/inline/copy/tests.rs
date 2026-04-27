@@ -92,6 +92,16 @@ fn push_mut_panic() {
 }
 
 #[test]
+fn push_within_capacity() {
+    let mut l = V::<u8>::new();
+    let capacity = l.capacity() as u8;
+    for i in 0..capacity {
+        assert_eq!(l.push_within_capacity(i).unwrap(), &i);
+    }
+    assert_eq!(l.push_within_capacity(capacity), Err(capacity));
+}
+
+#[test]
 fn insert() {
     let mut v = V::new();
     v.insert(0, 2_u8);

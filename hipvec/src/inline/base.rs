@@ -115,6 +115,10 @@ impl<T, L: Layout<T>> Base<T, L> {
         methods::push_mut!(self, value)
     }
 
+    pub const fn push_within_capacity(&mut self, value: T) -> Result<&mut T, T> {
+        methods::push_within_capacity!(self, value)
+    }
+
     pub const fn pop(&mut self) -> Option<T> {
         methods::pop!(self)
     }

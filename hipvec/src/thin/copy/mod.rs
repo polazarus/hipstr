@@ -731,6 +731,37 @@ impl<T: Copy, P: ConstDefault> ThinVec<T, P> {
         self.base.push_mut(value)
     }
 
+    /// Appends an element and returns a reference to it if there is sufficient spare capacity,
+    /// otherwise an error is returned with the element.
+    ///
+    /// Unlike [`push`] this method will not reallocate when there's insufficient capacity.
+    /// The caller should use [`reserve`] or [`try_reserve`] to ensure that there is enough capacity.
+    ///
+    /// [`push`]: Self::push
+    /// [`reserve`]: Self::reserve
+    /// [`try_reserve`]: Self::try_reserve
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipvec::copy_thin_vec;
+    /// let mut vec = copy_thin_vec![0, 1];
+    /// let capacity = vec.capacity();
+    /// for i in 2..capacity {
+    ///   vec.push_within_capacity(i).unwrap();
+    /// }
+    ///
+    /// vec.push_within_capacity(capacity).unwrap_err();
+    /// ```
+    ///
+    /// # Time complexity
+    ///
+    /// Takes *O*(1) time.
+    #[inline]
+    pub fn push_within_capacity(&mut self, value: T) -> Result<&mut T, T> {
+        self.base.push_within_capacity(value)
+    }
+
     /// Inserts an element at position `index` within the vector, shifting all
     /// elements after it to the right.
     ///

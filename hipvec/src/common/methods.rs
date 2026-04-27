@@ -228,11 +228,11 @@ macro_rules! push_within_capacity {
         if len < $self.capacity() {
             // SAFETY: capacity is guaranteed to be greater than length
             unsafe {
+                $self.set_len(len + 1);
                 let ptr = $self.as_mut_ptr().add(len);
                 ptr.write($value);
-                $self.set_len(len + 1);
+                Ok(&mut *ptr)
             }
-            Ok(())
         } else {
             Err($value)
         }
