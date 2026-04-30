@@ -332,3 +332,16 @@ fn splice_invalid_range_panics() {
     let mut v = v![1, 2, 3, 4, 5];
     let _ = v.splice(4..1, [9, 8]);
 }
+
+#[test]
+fn extend() {
+    let mut v = V::<i32>::new();
+    v.extend(std::iter::empty());
+    assert!(v.as_slice().is_empty());
+
+    v.extend([1, 2, 3]);
+    assert_eq!(v.as_slice(), &[1, 2, 3]);
+
+    v.extend([4, 5, 6].into_iter().filter(|_| true));
+    assert_eq!(v.as_slice(), &[1, 2, 3, 4, 5, 6]);
+}

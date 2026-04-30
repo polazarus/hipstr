@@ -1,3 +1,4 @@
+use crate::common::TryReserveError;
 use crate::copy_inline_vec as v;
 use crate::inline::CopyInlineVec as V;
 use crate::inline::layouts::{BasicLayout, Layout};
@@ -537,4 +538,73 @@ fn splice() {
 fn splice_invalid_range_panics() {
     let mut v = v![1_u8, 2, 3, 4, 5];
     let _ = v.splice(4..1, [9, 8]);
+}
+
+#[test]
+fn extend() {
+    let mut v = V::<u8>::new();
+    v.extend(std::iter::empty());
+    assert!(v.as_slice().is_empty());
+
+    v.extend([1, 2, 3]);
+    assert_eq!(v.as_slice(), &[1, 2, 3]);
+
+    v.extend([4, 5, 6].into_iter().filter(|_| true));
+    assert_eq!(v.as_slice(), &[1, 2, 3, 4, 5, 6]);
+}
+
+#[test]
+fn reserve() {
+    let mut v = V::<u8>::new();
+    assert_eq!(v.capacity(), V::<u8>::CAPACITY);
+    v.reserve(5);
+    assert_eq!(v.capacity(), V::<u8>::CAPACITY);
+}
+
+#[test]
+#[should_panic(expected = "new length exceeds capacity")]
+fn reserve_panic() {
+    let mut v = V::<u8>::new();
+    let cap = v.capacity();
+    v.reserve(cap + 1);
+}
+
+#[test]
+fn reserve_exact() {
+    let mut v = V::<u8>::new();
+    assert_eq!(v.capacity(), V::<u8>::CAPACITY);
+    v.reserve_exact(5);
+    assert_eq!(v.capacity(), V::<u8>::CAPACITY);
+}
+
+#[test]
+#[should_panic(expected = "new length exceeds capacity")]
+fn reserve_exact_panic() {
+    let mut v = V::<u8>::new();
+    let cap = v.capacity();
+    v.reserve_exact(cap + 1);
+}
+
+#[test]
+fn try_reserve() {
+    let mut v = V::<u8>::new();
+    assert_eq!(v.capacity(), V::<u8>::CAPACITY);
+    assert_eq!(v.try_reserve(5), Ok(()));
+    assert_eq!(v.capacity(), V::<u8>::CAPACITY);
+    assert_eq!(
+        v.try_reserve(v.capacity() + 1),
+        Err(TryReserveError::CapacityOverflow)
+    );
+}
+
+#[test]
+fn try_reserve_exact() {
+    let mut v = V::<u8>::new();
+    assert_eq!(v.capacity(), V::<u8>::CAPACITY);
+    assert_eq!(v.try_reserve_exact(5), Ok(()));
+    assert_eq!(v.capacity(), V::<u8>::CAPACITY);
+    assert_eq!(
+        v.try_reserve_exact(v.capacity() + 1),
+        Err(TryReserveError::CapacityOverflow)
+    );
 }

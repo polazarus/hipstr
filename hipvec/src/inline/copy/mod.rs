@@ -16,7 +16,8 @@ use super::base::Base;
 use super::layouts::Layout;
 use crate::common::drain::Drain;
 use crate::common::splice::Splice;
-use crate::common::unwrap_display;
+use crate::common::traits::impl_extend;
+use crate::common::{TryReserveError, unwrap_display};
 use crate::inline::noncopy;
 use crate::traits::{MutableVector, impl_vector};
 
@@ -111,12 +112,11 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     /// ```
     #[inline]
     #[must_use]
+    #[track_caller]
     pub const fn with_capacity(capacity: usize) -> Self {
-        assert!(
-            capacity <= Self::CAPACITY,
-            "required capacity exceeds maximum"
-        );
-        Self::new()
+        Self {
+            base: Base::with_capacity(capacity),
+        }
     }
 
     /// Returns the number of elements in the vector.
@@ -425,7 +425,55 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     #[inline]
     #[track_caller]
     pub const fn reserve_exact(&mut self, additional: usize) {
-        self.base.reserve_exact(additional);
+        self.base.reserve(additional);
+    }
+
+    /// Checks if the capacity is sufficient for at least `additional` more
+    /// elements to be inserted in the given vector.
+    ///
+    /// This method is provided for compatibility with standard vecs.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TryReserveError::CapacityOverflow`] if `self.len() + additional > self.capacity()`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipvec::common::TryReserveError;
+    /// use hipvec::inline::CopyInlineVec;
+    ///
+    /// let mut vec = CopyInlineVec::<u8>::new();
+    /// assert_eq!(vec.try_reserve(CopyInlineVec::<u8>::CAPACITY), Ok(()));
+    /// assert_eq!(vec.try_reserve(CopyInlineVec::<u8>::CAPACITY), Err(TryReserveError::CapacityOverflow));
+    /// ```
+    #[inline]
+    pub const fn try_reserve(&mut self, additional: usize) -> Result<(), TryReserveError> {
+        self.base.try_reserve(additional)
+    }
+
+    /// Checks if the capacity is sufficient for at least `additional` more
+    /// elements to be inserted in the given vector.
+    ///
+    /// This method is provided for compatibility with standard vecs.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TryReserveError::CapacityOverflow`] if `self.len() + additional > self.capacity()`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipvec::common::TryReserveError;
+    /// use hipvec::inline::CopyInlineVec;
+    ///
+    /// let mut vec = CopyInlineVec::<u8>::new();
+    /// assert_eq!(vec.try_reserve_exact(CopyInlineVec::<u8>::CAPACITY), Ok(()));
+    /// assert_eq!(vec.try_reserve_exact(CopyInlineVec::<u8>::CAPACITY), Err(TryReserveError::CapacityOverflow));
+    /// ```
+    #[inline]
+    pub const fn try_reserve_exact(&mut self, additional: usize) -> Result<(), TryReserveError> {
+        self.base.try_reserve(additional)
     }
 
     /// Appends an element to the back of a collection.
@@ -722,14 +770,29 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
         unwrap_display(Drain::new(self, range))
     }
 
+    /// Creates a new vector containing the elements in a slice.
+    ///
+    /// This method is provided as a const alternative to the `From<&[T]>` trait implementations.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the length of the slice exceeds [`CAPACITY`].
+    ///
+    /// [`CAPACITY`]: Self::CAPACITY
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipvec::inline::CopyInlineVec;
+    /// let vec = CopyInlineVec::<i32>::from_slice(&[1, 2, 3]);
+    /// assert_eq!(vec.as_slice(), &[1, 2, 3]);
+    /// ```
     #[inline]
     #[track_caller]
     pub const fn from_slice(slice: &[T]) -> Self {
-        assert!(slice.len() <= L::CAPACITY, "slice length exceeds capacity");
-
-        let mut this = Self::new();
-        this.extend_from_slice(slice);
-        this
+        Self {
+            base: Base::from_slice_copy(slice),
+        }
     }
 
     /// Copies and appends all elements in a slice to the vector.
@@ -1025,3 +1088,5 @@ impl<T: Copy + fmt::Debug, L: Layout<T>> fmt::Debug for InlineVec<T, L> {
 impl_vector!(impl(T: Copy, L: Layout<T>) Vector<Item=T> for InlineVec<T, L>);
 impl_vector!(impl(T: Copy, L: Layout<T>) GrowableVector<Item=T> for InlineVec<T, L>);
 impl_vector!(impl(T: Copy, L: Layout<T>) MutableVector<Item=T> for InlineVec<T, L>);
+
+impl_extend!(InlineVec<T, L>, T, [T: Copy, L: Layout<T>], []);

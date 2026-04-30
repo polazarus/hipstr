@@ -6,8 +6,8 @@ use core::ptr::{self, NonNull};
 use const_default::ConstDefault;
 
 pub use crate::common::header::ThinHeader as Header;
-use crate::common::methods;
 use crate::common::tagged_pointer::TaggedPointer;
+use crate::common::{TryReserveError, TryReserveErrorExt, methods};
 use crate::traits::MutableVector;
 
 const TAG: usize = 0b10;
@@ -258,11 +258,17 @@ where
     const MIN_CAPACITY: usize = const { min_non_zero_cap(size_of::<T>()) };
 
     pub fn reserve(&mut self, additional: usize) {
+        self.try_reserve(additional).unwrap_or_oom();
+    }
+
+    pub fn try_reserve(&mut self, additional: usize) -> Result<(), TryReserveError> {
         let old_cap = self.capacity();
         let len = self.len();
 
         // Compute the required capacity, checking for overflow.
-        let req_cap = len.checked_add(additional).expect("capacity overflow");
+        let req_cap = len
+            .checked_add(additional)
+            .ok_or(TryReserveError::CapacityOverflow)?;
 
         if req_cap > old_cap {
             // Exponential growth to avoid frequent reallocations.
@@ -271,33 +277,42 @@ where
 
             let new_cap = cmp::max(req_cap, floor_cap);
             unsafe {
-                self.set_capacity(new_cap);
+                self.try_realloc(new_cap)?;
             }
         }
+        Ok(())
     }
 
     pub fn reserve_exact(&mut self, additional: usize) {
-        let old_cap = self.capacity();
-        let len = self.len();
-        let req_cap = len.checked_add(additional).expect("capacity overflow");
-        if req_cap > old_cap {
-            unsafe {
-                self.set_capacity(req_cap);
-            }
-        }
+        self.try_reserve_exact(additional).unwrap_or_oom();
     }
 
-    pub unsafe fn set_capacity(&mut self, new_cap: usize) {
+    pub fn try_reserve_exact(&mut self, additional: usize) -> Result<(), TryReserveError> {
+        let old_cap = self.capacity();
+        let len = self.len();
+        let req_cap = len
+            .checked_add(additional)
+            .ok_or(TryReserveError::CapacityOverflow)?;
+        if req_cap > old_cap {
+            unsafe {
+                self.try_realloc(req_cap)?;
+            }
+        }
+        Ok(())
+    }
+
+    pub unsafe fn try_realloc(&mut self, new_cap: usize) -> Result<(), TryReserveError> {
         if new_cap == 0 {
             *self = Self::new();
-            return;
+            return Ok(());
         }
 
         let old_cap = self.capacity();
         let old_layout = Header::<T, P>::layout(old_cap)
-            .expect("capacity overflow")
+            .ok_or(TryReserveError::CapacityOverflow)?
             .0;
-        let (new_layout, new_cap) = Header::<T, P>::layout(new_cap).expect("capacity overflow");
+        let (new_layout, new_cap) =
+            Header::<T, P>::layout(new_cap).ok_or(TryReserveError::CapacityOverflow)?;
 
         if new_cap != old_cap {
             if let Some(ptr) = self.0.as_non_null() {
@@ -305,7 +320,7 @@ where
                     alloc::alloc::realloc(ptr.as_ptr().cast(), old_layout, new_layout.size()).cast()
                 };
                 let Some(mut ptr) = NonNull::new(ptr) else {
-                    alloc::alloc::handle_alloc_error(new_layout);
+                    return Err(TryReserveError::AllocError { layout: new_layout });
                 };
                 unsafe {
                     ptr.as_mut().cap = new_cap;
@@ -315,6 +330,7 @@ where
                 *self = Self::with_capacity(new_cap);
             }
         }
+        Ok(())
     }
 
     #[inline]
@@ -336,6 +352,24 @@ where
 
     pub fn insert_mut(&mut self, index: usize, value: T) -> &mut T {
         methods::insert_mut!(self, index, value)
+    }
+
+    pub fn from_array<const N: usize>(array: [T; N]) -> Self {
+        methods::from_array!(array)
+    }
+
+    pub fn from_slice(slice: &[T]) -> Self
+    where
+        T: Clone,
+    {
+        methods::from_slice!(slice)
+    }
+
+    pub fn from_slice_copy(slice: &[T]) -> Self
+    where
+        T: Copy,
+    {
+        methods::from_slice_copy!(slice)
     }
 
     pub fn extend_from_array<const N: usize>(&mut self, array: [T; N]) {

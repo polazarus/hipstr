@@ -239,6 +239,7 @@ macro_rules! push_within_capacity {
     }};
 }
 
+/// `push_mut` impl, requires `len`, `capacity` `set_len`, and `as_mut_ptr`
 macro_rules! push_mut {
     ($self:ident, $value:expr) => {{
         $self.reserve(1);
@@ -298,7 +299,7 @@ macro_rules! extend_from_array {
 }
 
 /// `from_array` impl, requires `with_capacity`, `set_len`, and `as_mut_ptr`
-macro_rules! from_array_impl {
+macro_rules! from_array {
     ($array:expr) => {{
         let array = $array;
         let array_len = array.len();
@@ -316,10 +317,10 @@ macro_rules! from_array_impl {
     }};
 }
 
-/// `from_slice_clone` impl, requires `with_capacity`, `as_mut_ptr`, `set_len`
-macro_rules! from_slice_clone_impl {
+/// `from_slice` impl, requires `with_capacity`, `as_mut_ptr`, `set_len`
+macro_rules! from_slice {
     ($slice:expr) => {{
-        use $crate::common::guarded_slice_clone;
+        use $crate::common::utils::guarded_slice_clone;
         let slice = $slice;
         let len = slice.len();
         let mut this = Self::with_capacity(len);
@@ -327,6 +328,28 @@ macro_rules! from_slice_clone_impl {
         unsafe {
             guarded_slice_clone(this.as_mut_ptr(), slice.as_ptr(), len);
             this.set_len(len);
+        }
+        this
+    }};
+}
+
+/// `from_slice_copy` impl, requires `with_capacity`, `as_mut_ptr`, `set_len`
+macro_rules! from_slice_copy {
+    ($slice:expr) => {{
+        let slice = $slice;
+        let slice_len = slice.len();
+        let mut this = Self::with_capacity(slice_len);
+
+        if false {
+            const fn is_copy<V, T: Copy>(_: fn(&V) -> *const T) {}
+            is_copy(Self::as_ptr);
+        }
+
+        unsafe {
+            this.as_mut_ptr()
+                .add(this.len())
+                .copy_from_nonoverlapping(slice.as_ptr(), slice_len);
+            this.set_len(this.len() + slice_len);
         }
         this
     }};
@@ -483,8 +506,9 @@ pub(crate) use append;
 pub(crate) use extend_from_array;
 pub(crate) use extend_from_slice;
 pub(crate) use extend_from_slice_copy;
-pub(crate) use from_array_impl;
-pub(crate) use from_slice_clone_impl;
+pub(crate) use from_array;
+pub(crate) use from_slice;
+pub(crate) use from_slice_copy;
 pub(crate) use insert_mut;
 pub(crate) use pop;
 pub(crate) use pop_if;

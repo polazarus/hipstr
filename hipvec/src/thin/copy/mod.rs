@@ -6,7 +6,8 @@ use const_default::ConstDefault;
 use super::base::Base;
 use crate::common::drain::Drain;
 use crate::common::splice::Splice;
-use crate::common::{methods, unwrap_display};
+use crate::common::traits::impl_extend;
+use crate::common::{TryReserveError, methods, unwrap_display};
 use crate::traits::{GrowableVector, impl_vector};
 
 #[cfg(test)]
@@ -669,8 +670,91 @@ impl<T: Copy, P: ConstDefault> ThinVec<T, P> {
     /// vec.reserve_exact(10);
     /// assert!(vec.capacity() >= 11);
     /// ```
+    #[inline]
     pub fn reserve_exact(&mut self, additional: usize) {
         self.base.reserve_exact(additional);
+    }
+
+    /// Tries to reserve capacity for at least `additional` more elements to be inserted
+    /// in the given vector. The collection may reserve more space to speculatively avoid
+    /// frequent reallocations. After calling `try_reserve`, capacity will be
+    /// greater than or equal to `self.len() + additional` if it returns
+    /// `Ok(())`. Does nothing if capacity is already sufficient. This method
+    /// preserves the contents even if an error occurs.
+    ///
+    /// # Errors
+    ///
+    /// If the capacity overflows, or the allocator reports a failure, then an error
+    /// is returned.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipvec::common::TryReserveError;
+    /// use hipvec::thin::CopyThinVec;
+    ///
+    /// fn process_data(data: &[u32]) -> Result<CopyThinVec<u32>, TryReserveError> {
+    ///     let mut output = CopyThinVec::new();
+    ///
+    ///     // Pre-reserve the memory, exiting if we can't
+    ///     output.try_reserve(data.len())?;
+    ///
+    ///     // Now we know this can't OOM in the middle of our complex work
+    ///     output.extend(data.iter().map(|&val| {
+    ///         val * 2 + 5 // very complicated
+    ///     }));
+    ///
+    ///     Ok(output)
+    /// }
+    /// # process_data(&[1, 2, 3]).expect("why is the test harness OOMing on 12 bytes?");
+    /// ```
+    #[inline]
+    pub fn try_reserve(&mut self, additional: usize) -> Result<(), TryReserveError> {
+        self.base.try_reserve(additional)
+    }
+
+    /// Tries to reserve the minimum capacity for at least `additional`
+    /// elements to be inserted in the given vector. Unlike [`try_reserve`],
+    /// this will not deliberately over-allocate to speculatively avoid frequent
+    /// allocations. After calling `try_reserve_exact`, capacity will be greater
+    /// than or equal to `self.len() + additional` if it returns `Ok(())`.
+    /// Does nothing if the capacity is already sufficient.
+    ///
+    /// Note that the allocator may give the collection more space than it
+    /// requests. Therefore, capacity can not be relied upon to be precisely
+    /// minimal. Prefer [`try_reserve`] if future insertions are expected.
+    ///
+    /// [`try_reserve`]: Self::try_reserve
+    ///
+    /// # Errors
+    ///
+    /// If the capacity overflows, or the allocator reports a failure, then an error
+    /// is returned.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipvec::common::TryReserveError;
+    /// use hipvec::thin::CopyThinVec;
+    ///
+    /// fn process_data(data: &[u32]) -> Result<CopyThinVec<u32>, TryReserveError> {
+    ///     let mut output = CopyThinVec::new();
+    ///
+    ///     // Pre-reserve the memory, exiting if we can't
+    ///     output.try_reserve_exact(data.len())?;
+    ///
+    ///     // Now we know this can't OOM in the middle of our complex work
+    ///     output.extend(data.iter().map(|&val| {
+    ///         val * 2 + 5 // very complicated
+    ///     }));
+    ///
+    ///     Ok(output)
+    /// }
+    /// # process_data(&[1, 2, 3]).expect("why is the test harness OOMing on 12 bytes?");
+    /// ```
+    #[inline]
+    pub fn try_reserve_exact(&mut self, additional: usize) -> Result<(), TryReserveError> {
+        self.base.try_reserve_exact(additional)
     }
 
     /// Appends an element to the back of a collection.
@@ -1029,9 +1113,9 @@ impl<T: Copy, P: ConstDefault> Clone for ThinVec<T, P> {
 
 impl<T: Copy, P: ConstDefault> From<&[T]> for ThinVec<T, P> {
     fn from(slice: &[T]) -> Self {
-        let mut this = Self::new();
-        this.extend_from_slice(slice);
-        this
+        Self {
+            base: Base::from_slice_copy(slice),
+        }
     }
 }
 
@@ -1043,9 +1127,9 @@ impl<T: Copy, P: ConstDefault, const N: usize> From<&[T; N]> for ThinVec<T, P> {
 
 impl<T: Copy, P: ConstDefault, const N: usize> From<[T; N]> for ThinVec<T, P> {
     fn from(array: [T; N]) -> Self {
-        let mut this = Self::new();
-        this.extend_from_array(array);
-        this
+        Self {
+            base: Base::from_array(array),
+        }
     }
 }
 
@@ -1071,3 +1155,5 @@ impl<T: Copy, P> ops::DerefMut for ThinVec<T, P> {
 impl_vector!(impl(T: Copy, P) Vector<Item=T> for ThinVec<T, P>);
 impl_vector!(impl(T: Copy, P) MutableVector<Item=T> for ThinVec<T, P>);
 impl_vector!(impl(T: Copy, P: ConstDefault) GrowableVector<Item=T> for ThinVec<T, P>);
+
+impl_extend!(ThinVec<T, P>, T, [T: Copy, P: ConstDefault], []);

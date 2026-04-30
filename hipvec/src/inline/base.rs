@@ -8,7 +8,7 @@ use core::marker::PhantomData;
 use core::ptr::NonNull;
 
 use super::layouts::{self, Layout};
-use crate::common::methods;
+use crate::common::{TryReserveError, methods};
 use crate::traits::MutableVector;
 
 pub(crate) struct Base<T, L: Layout<T>> {
@@ -26,6 +26,34 @@ impl<T, L: Layout<T>> Base<T, L> {
     }
 
     #[inline]
+    #[track_caller]
+    pub const fn with_capacity(cap: usize) -> Self {
+        assert!(cap <= L::CAPACITY, "required capacity exceeds maximum");
+        Self::new()
+    }
+
+    #[track_caller]
+    pub fn from_slice(slice: &[T]) -> Self
+    where
+        T: Clone,
+    {
+        methods::from_slice!(slice)
+    }
+
+    #[track_caller]
+    pub const fn from_array<const N: usize>(array: [T; N]) -> Self {
+        methods::from_array!(array)
+    }
+
+    #[track_caller]
+    pub const fn from_slice_copy(slice: &[T]) -> Self
+    where
+        T: Copy,
+    {
+        methods::from_slice_copy!(slice)
+    }
+
+    #[inline]
     pub const fn len(&self) -> usize {
         layouts::len(&self.repr)
     }
@@ -33,21 +61,6 @@ impl<T, L: Layout<T>> Base<T, L> {
     #[inline]
     pub const fn is_empty(&self) -> bool {
         self.len() == 0
-    }
-
-    #[inline]
-    pub const fn from_array<const N: usize>(array: [T; N]) -> Self {
-        assert!(N <= L::CAPACITY, "array length exceeds capacity");
-
-        let mut base = Self::new();
-        unsafe {
-            base.set_len(N);
-            let dst = base.as_mut_ptr();
-            let src = array.as_ptr();
-            dst.copy_from_nonoverlapping(src, N);
-        }
-        core::mem::forget(array);
-        base
     }
 
     #[inline]
@@ -102,6 +115,23 @@ impl<T, L: Layout<T>> Base<T, L> {
     #[track_caller]
     pub const fn reserve_exact(&mut self, additional: usize) {
         self.reserve(additional);
+    }
+
+    pub const fn try_reserve(&mut self, additional: usize) -> Result<(), TryReserveError> {
+        let len = self.len();
+        let Some(new_len) = len.checked_add(additional) else {
+            return Err(TryReserveError::CapacityOverflow);
+        };
+        if new_len > L::CAPACITY {
+            Err(TryReserveError::CapacityOverflow)
+        } else {
+            Ok(())
+        }
+    }
+
+    #[inline]
+    pub const fn try_reserve_exact(&mut self, additional: usize) -> Result<(), TryReserveError> {
+        self.try_reserve(additional)
     }
 
     #[inline]

@@ -14,8 +14,9 @@ use super::base::Base;
 use super::layouts::Layout;
 use crate::common::drain::Drain;
 use crate::common::splice::Splice;
-use crate::common::unwrap_display;
+use crate::common::traits::impl_extend;
 use crate::common::utils::drop_raw_slice;
+use crate::common::{TryReserveError, unwrap_display};
 use crate::inline::copy;
 use crate::traits::{MutableVector, impl_vector};
 
@@ -109,12 +110,11 @@ impl<T, L: Layout<T>> InlineVec<T, L> {
     /// ```
     #[inline]
     #[must_use]
+    #[track_caller]
     pub const fn with_capacity(capacity: usize) -> Self {
-        assert!(
-            capacity <= Self::CAPACITY,
-            "required capacity exceeds maximum"
-        );
-        Self::new()
+        Self {
+            base: Base::with_capacity(capacity),
+        }
     }
 
     /// Returns the number of elements in the vector.
@@ -431,7 +431,55 @@ impl<T, L: Layout<T>> InlineVec<T, L> {
     #[inline]
     #[track_caller]
     pub const fn reserve_exact(&mut self, additional: usize) {
-        self.base.reserve_exact(additional);
+        self.base.reserve(additional);
+    }
+
+    /// Checks if the capacity is sufficient for at least `additional` more
+    /// elements to be inserted in the given vector.
+    ///
+    /// This method is provided for compatibility with standard vecs.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TryReserveError::CapacityOverflow`] if `self.len() + additional > self.capacity()`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipvec::common::TryReserveError;
+    /// use hipvec::inline::InlineVec;
+    ///
+    /// let mut vec = InlineVec::<u8>::new();
+    /// assert_eq!(vec.try_reserve(InlineVec::<u8>::CAPACITY), Ok(()));
+    /// assert_eq!(vec.try_reserve(InlineVec::<u8>::CAPACITY), Err(TryReserveError::CapacityOverflow));
+    /// ```
+    #[inline]
+    pub const fn try_reserve(&mut self, additional: usize) -> Result<(), TryReserveError> {
+        self.base.try_reserve(additional)
+    }
+
+    /// Checks if the capacity is sufficient for at least `additional` more
+    /// elements to be inserted in the given vector.
+    ///
+    /// This method is provided for compatibility with standard vecs.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TryReserveError::CapacityOverflow`] if `self.len() + additional > self.capacity()`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipvec::common::TryReserveError;
+    /// use hipvec::inline::InlineVec;
+    ///
+    /// let mut vec = InlineVec::<u8>::new();
+    /// assert_eq!(vec.try_reserve_exact(InlineVec::<u8>::CAPACITY), Ok(()));
+    /// assert_eq!(vec.try_reserve_exact(InlineVec::<u8>::CAPACITY), Err(TryReserveError::CapacityOverflow));
+    /// ```
+    #[inline]
+    pub const fn try_reserve_exact(&mut self, additional: usize) -> Result<(), TryReserveError> {
+        self.base.try_reserve(additional)
     }
 
     /// Appends an element to the back of a collection.
@@ -993,9 +1041,9 @@ impl<T, L: Layout<T>, const N: usize> From<[T; N]> for InlineVec<T, L> {
 
 impl<T: Clone, L: Layout<T>> From<&[T]> for InlineVec<T, L> {
     fn from(value: &[T]) -> Self {
-        let mut this = Self::new();
-        this.extend_from_slice(value);
-        this
+        Self {
+            base: Base::from_slice(value),
+        }
     }
 }
 
@@ -1009,9 +1057,7 @@ impl<T: Copy, L: Layout<T>> From<copy::InlineVec<T, L>> for InlineVec<T, L> {
 
 impl<T: Clone, L: Layout<T>> Clone for InlineVec<T, L> {
     fn clone(&self) -> Self {
-        let mut this = Self::new();
-        this.extend_from_slice(self.as_slice());
-        this
+        Self::from(self.as_slice())
     }
 }
 
@@ -1037,3 +1083,5 @@ impl<T: fmt::Debug, L: Layout<T>> fmt::Debug for InlineVec<T, L> {
 impl_vector!(impl(T, L: Layout<T>) Vector<Item=T> for InlineVec<T, L>);
 impl_vector!(impl(T, L: Layout<T>) MutableVector<Item=T> for InlineVec<T, L>);
 impl_vector!(impl(T: Clone, L: Layout<T>) GrowableVector<Item=T> for InlineVec<T, L>);
+
+impl_extend!(InlineVec<T, L>, T, [T, L: Layout<T>], []);
