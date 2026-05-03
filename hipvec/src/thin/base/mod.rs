@@ -382,6 +382,11 @@ where
         methods::extend_from_array!(self, array);
     }
 
+    #[track_caller]
+    pub fn split_off(&mut self, at: usize) -> Self {
+        methods::split_off!(self, at)
+    }
+
     pub fn resize(&mut self, new_len: usize, value: T)
     where
         T: Clone,

@@ -1,3 +1,4 @@
+feature             , ic, in, tc, tn
 append              ,  1,  1,  1,  1
 as_mut_ptr          ,  1,  1,  1,  1
 as_non_null         ,  1,  1,  1,  1
@@ -20,7 +21,6 @@ extend_from_array   ,  1,  1,  1,  1
 extend_from_slice   ,  1,  1,  1,  1
 extend_from_within  ,  0,  0,  0,  0
 extract_if          ,  0,  0,  0,  0
-feature             , ic, in, tc, tn
 from_array          ,  1,  1,  1,  1
 from_array_ref      ,  0,  0,  0,  0
 from_slice          ,  1,  1,  1,  1
@@ -42,7 +42,7 @@ retain_mut          ,  0,  0,  0,  0
 shrink_to           ,  0,  0,  0,  0
 shrink_to_fit       ,  0,  0,  0,  0
 splice              ,  1,  1,  1,  1
-split_off           ,  0,  0,  0,  0
+split_off           ,  1,  1,  1,  1
 truncate            ,  1,  1,  1,  1
 try_reserve         ,  1,  1,  1,  1
 try_reserve_exact   ,  1,  1,  1,  1

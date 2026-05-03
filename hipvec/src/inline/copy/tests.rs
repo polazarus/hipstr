@@ -198,7 +198,7 @@ fn from_array_empty() {
 }
 
 #[test]
-#[should_panic(expected = "array length exceeds capacity")]
+#[should_panic(expected = "required capacity exceeds maximum")]
 fn from_array_panic() {
     let _ = V::<i32>::from([0; <BasicLayout as Layout<i32>>::CAPACITY + 1]);
 }
@@ -229,6 +229,33 @@ fn truncate() {
 
     l.truncate(0);
     assert!(l.is_empty());
+}
+
+#[test]
+fn split_off() {
+    let mut l: V<u8> = v![1, 2, 3];
+    let cap = l.capacity();
+    let w = l.split_off(2);
+    assert_eq!(l.as_slice(), [1, 2]);
+    assert_eq!(w.as_slice(), [3]);
+    assert_eq!(l.capacity(), cap);
+
+    let mut l: V<u8> = v![1, 2, 3];
+    let w = l.split_off(0);
+    assert!(l.is_empty());
+    assert_eq!(w.as_slice(), [1, 2, 3]);
+
+    let mut l: V<u8> = v![1, 2, 3];
+    let w = l.split_off(3);
+    assert_eq!(l.as_slice(), [1, 2, 3]);
+    assert!(w.is_empty());
+}
+
+#[test]
+#[should_panic(expected = "index out of bounds")]
+fn split_off_panic() {
+    let mut l: V<u8> = v![1, 2, 3];
+    let _ = l.split_off(4);
 }
 
 #[test]

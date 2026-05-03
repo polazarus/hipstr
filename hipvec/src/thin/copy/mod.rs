@@ -966,6 +966,43 @@ impl<T: Copy, P: ConstDefault> ThinVec<T, P> {
         self.base.append(other);
     }
 
+    /// Splits the collection into two at the given index.
+    ///
+    /// Returns a newly allocated vector containing the elements in the range
+    /// `[at, len)`. After the call, the original vector will be left containing
+    /// the elements `[0, at)` with its previous capacity unchanged.
+    ///
+    /// - If you want to take ownership of the entire contents and capacity of
+    ///   the vector, see [`std::mem::take`] or [`std::mem::replace`].
+    /// - If you don't need the returned vector at all, see [`truncate`].
+    /// - If you want to take ownership of an arbitrary subslice, or you don't
+    ///   necessarily want to store the removed items in a vector, see [`drain`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if `at > len`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipvec::copy_thin_vec;
+    /// let mut v = copy_thin_vec!['a', 'b', 'c'];
+    /// let w = v.split_off(1);
+    /// assert_eq!(v.as_slice(), ['a']);
+    /// assert_eq!(w.as_slice(), ['b', 'c']);
+    /// ```
+    ///
+    /// [`truncate`]: Self::truncate
+    /// [`drain`]: Self::drain
+    #[inline]
+    #[track_caller]
+    #[must_use = "use .truncate() if you don't need the returned vector"]
+    pub fn split_off(&mut self, at: usize) -> Self {
+        Self {
+            base: self.base.split_off(at),
+        }
+    }
+
     /// Resizes the vector in-place so that `len` is equal to `new_len`.
     ///
     /// If `new_len` is greater than `len`, the vector is extended by the

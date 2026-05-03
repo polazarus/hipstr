@@ -222,6 +222,33 @@ fn clear() {
 }
 
 #[test]
+fn split_off() {
+    let mut v: V<i32> = v![1, 2, 3];
+    let cap = v.capacity();
+    let w = v.split_off(2);
+    assert_eq!(v.as_slice(), [1, 2]);
+    assert_eq!(w.as_slice(), [3]);
+    assert_eq!(v.capacity(), cap);
+
+    let mut v: V<i32> = v![1, 2, 3];
+    let w = v.split_off(0);
+    assert!(v.is_empty());
+    assert_eq!(w.as_slice(), [1, 2, 3]);
+
+    let mut v: V<i32> = v![1, 2, 3];
+    let w = v.split_off(3);
+    assert_eq!(v.as_slice(), [1, 2, 3]);
+    assert!(w.is_empty());
+}
+
+#[test]
+#[should_panic(expected = "index out of bounds")]
+fn split_off_panic() {
+    let mut v: V<i32> = v![1, 2, 3];
+    let _ = v.split_off(4);
+}
+
+#[test]
 fn drain() {
     let mut v: V<i32> = v![1, 2, 3, 4, 5];
     let drain = v.drain(1..4);

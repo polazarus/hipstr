@@ -221,6 +221,11 @@ impl<T, L: Layout<T>> Base<T, L> {
     }
 
     #[track_caller]
+    pub fn split_off(&mut self, at: usize) -> Self {
+        methods::split_off!(self, at)
+    }
+
+    #[track_caller]
     pub fn resize(&mut self, new_len: usize, value: T)
     where
         T: Clone,

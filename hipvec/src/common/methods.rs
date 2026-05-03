@@ -481,7 +481,7 @@ macro_rules! append {
 }
 
 /// `split_off` impl, requires `len`, `set_len`, and `as_ptr`, `as_mut_ptr` and `with_capacity`
-macro_rules! split_off_impl {
+macro_rules! split_off {
     ($self:expr, $at:expr) => {{
         let at = $at;
         let len = $self.len();
@@ -520,7 +520,7 @@ pub(crate) use resize;
 pub(crate) use resize_copy;
 pub(crate) use resize_with;
 pub(crate) use spare_capacity_mut;
-pub(crate) use split_off_impl;
+pub(crate) use split_off;
 pub(crate) use swap_remove;
 pub(crate) use truncate;
 pub(crate) use truncate_copy;
