@@ -444,8 +444,9 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     /// use hipvec::inline::CopyInlineVec;
     ///
     /// let mut vec = CopyInlineVec::<u8>::new();
-    /// assert_eq!(vec.try_reserve(CopyInlineVec::<u8>::CAPACITY), Ok(()));
-    /// assert_eq!(vec.try_reserve(CopyInlineVec::<u8>::CAPACITY), Err(TryReserveError::CapacityOverflow));
+    /// let capacity = vec.capacity();
+    /// assert_eq!(vec.try_reserve(capacity), Ok(()));
+    /// assert_eq!(vec.try_reserve(capacity + 1), Err(TryReserveError::CapacityOverflow));
     /// ```
     #[inline]
     pub const fn try_reserve(&mut self, additional: usize) -> Result<(), TryReserveError> {
@@ -468,8 +469,9 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     /// use hipvec::inline::CopyInlineVec;
     ///
     /// let mut vec = CopyInlineVec::<u8>::new();
-    /// assert_eq!(vec.try_reserve_exact(CopyInlineVec::<u8>::CAPACITY), Ok(()));
-    /// assert_eq!(vec.try_reserve_exact(CopyInlineVec::<u8>::CAPACITY), Err(TryReserveError::CapacityOverflow));
+    /// let capacity = vec.capacity();
+    /// assert_eq!(vec.try_reserve_exact(capacity), Ok(()));
+    /// assert_eq!(vec.try_reserve_exact(capacity + 1), Err(TryReserveError::CapacityOverflow));
     /// ```
     #[inline]
     pub const fn try_reserve_exact(&mut self, additional: usize) -> Result<(), TryReserveError> {
