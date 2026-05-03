@@ -96,9 +96,9 @@ impl<V: MutableVector> DoubleEndedIterator for Drain<'_, V> {
     }
 }
 
-impl<V: MutableVector> fmt::Debug for Drain<'_, V>
+impl<V> fmt::Debug for Drain<'_, V>
 where
-    V: fmt::Debug,
+    V: MutableVector + fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("Drain").field(self.vec).finish()

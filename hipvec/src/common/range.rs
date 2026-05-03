@@ -1,5 +1,6 @@
-use core::{error::Error, fmt, ops::{Bound, Range, RangeBounds}};
-
+use core::error::Error;
+use core::fmt;
+use core::ops::{Bound, Range, RangeBounds};
 
 /// Converts any generic range into a concrete `Range<usize>` given a length.
 ///
@@ -113,16 +114,34 @@ mod tests {
         assert_eq!(range(..=4, 10), Ok(0..5));
         assert_eq!(range(6.., 10), Ok(6..10));
         assert_eq!(range(.., 10), Ok(0..10));
-        assert_eq!(range((Bound::Excluded(2), Bound::Included(5)), 10), Ok(3..6));
+        assert_eq!(
+            range((Bound::Excluded(2), Bound::Included(5)), 10),
+            Ok(3..6)
+        );
     }
 
     #[test]
     fn invalid_range() {
-        assert_eq!(range((Bound::Excluded(usize::MAX), Bound::Unbounded), 10), Err(RangeError::StartOverflows));
-        assert_eq!(range((Bound::Unbounded, Bound::Included(usize::MAX)), 10), Err(RangeError::EndOverflows));
+        assert_eq!(
+            range((Bound::Excluded(usize::MAX), Bound::Unbounded), 10),
+            Err(RangeError::StartOverflows)
+        );
+        assert_eq!(
+            range((Bound::Unbounded, Bound::Included(usize::MAX)), 10),
+            Err(RangeError::EndOverflows)
+        );
 
-        assert_eq!(range(11..15, 10), Err(RangeError::StartOutOfBounds { start: 11, len: 10 }));
-        assert_eq!(range(8..12, 10), Err(RangeError::EndOutOfBounds { end: 12, len: 10 }));
-        assert_eq!(range(5..3, 10), Err(RangeError::StartGreaterThanEnd { start: 5, end: 3 }));
+        assert_eq!(
+            range(11..15, 10),
+            Err(RangeError::StartOutOfBounds { start: 11, len: 10 })
+        );
+        assert_eq!(
+            range(8..12, 10),
+            Err(RangeError::EndOutOfBounds { end: 12, len: 10 })
+        );
+        assert_eq!(
+            range(5..3, 10),
+            Err(RangeError::StartGreaterThanEnd { start: 5, end: 3 })
+        );
     }
 }

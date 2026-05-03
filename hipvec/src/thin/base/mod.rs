@@ -47,6 +47,10 @@ impl<T, P> Base<T, P> {
     }
 
     #[inline]
+    #[expect(
+        clippy::needless_pass_by_ref_mut,
+        reason = "type invariant requires mutable access to get mutable reference to header"
+    )]
     const fn header_mut(&mut self) -> Option<&mut Header<T, P>> {
         if let Some(mut header) = self.0.as_non_null() {
             unsafe { Some(header.as_mut()) }
@@ -75,6 +79,7 @@ impl<T, P> Base<T, P> {
     ///
     /// The caller must ensure that `len` does not exceed the current capacity and that the new
     /// elements are properly initialized.
+    #[cfg_attr(debug_assertions, track_caller)]
     pub const unsafe fn set_len(&mut self, len: usize) {
         if let Some(header) = self.header_mut() {
             assert!(len <= header.cap, "length exceeds capacity");
@@ -117,6 +122,7 @@ impl<T, P> Base<T, P> {
     }
 
     #[inline]
+    #[expect(clippy::needless_pass_by_ref_mut)]
     pub const fn as_non_null(&mut self) -> NonNull<T> {
         if let Some(header) = self.0.as_non_null() {
             unsafe { Header::data(header) }
@@ -139,7 +145,7 @@ impl<T, P> Base<T, P> {
         methods::spare_capacity_mut!(self)
     }
 
-    pub fn pop(&mut self) -> Option<T> {
+    pub const fn pop(&mut self) -> Option<T> {
         methods::pop!(self)
     }
 

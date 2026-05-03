@@ -115,8 +115,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use core::mem::offset_of;
+
+    use super::*;
 
     #[test]
     fn thin_data_offset() {

@@ -354,7 +354,8 @@ impl<T, P> ThinVec<T, P> {
     ///
     /// [`spare_capacity_mut()`]: Self::spare_capacity_mut
     #[inline]
-    pub unsafe fn set_len(&mut self, len: usize) {
+    #[cfg_attr(debug_assertions, track_caller)]
+    pub const unsafe fn set_len(&mut self, len: usize) {
         unsafe { self.base.set_len(len) };
     }
 
@@ -374,7 +375,7 @@ impl<T, P> ThinVec<T, P> {
     ///
     /// Takes *O*(1) time.
     #[inline]
-    pub fn pop(&mut self) -> Option<T> {
+    pub const fn pop(&mut self) -> Option<T> {
         self.base.pop()
     }
 

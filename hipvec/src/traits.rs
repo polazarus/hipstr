@@ -29,11 +29,23 @@ pub unsafe trait Vector {
 /// as length, capacity, and pointer stability.
 pub unsafe trait MutableVector: Vector {
     fn as_mut_ptr(&mut self) -> *mut Self::Item;
+
     fn as_mut_slice(&mut self) -> &mut [Self::Item];
+
     fn spare_capacity_mut(&mut self) -> &mut [core::mem::MaybeUninit<Self::Item>];
+
+    /// Sets the length of the vector to the new length.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the new length is less than or equal to the capacity of the vector,
+    /// and that the elements between the old length and the new length are properly initialized.
     unsafe fn set_len(&mut self, new_len: usize);
+
     fn pop(&mut self) -> Option<Self::Item>;
+
     fn truncate(&mut self, new_len: usize);
+
     fn clear(&mut self);
 }
 
@@ -44,8 +56,29 @@ pub unsafe trait MutableVector: Vector {
 /// Implementors must ensure that the methods correctly reflect the properties of the vector, such
 /// as length, capacity, and pointer stability.
 pub unsafe trait GrowableVector: MutableVector {
+    /// Reserves capacity for at least `additional` more elements to be inserted in the vector.
+    ///
+    /// The collection may reserve more space to avoid frequent reallocations.
+    ///
+    /// # Panics
+    ///
+    /// May panics if the new capacity would exceed some maximum allowed size.
     fn reserve(&mut self, additional: usize);
+
+    /// Reserves the minimum capacity for at least `additional` more elements to be inserted in the vector.
+    ///
+    /// The collection may reserve more space for technical reasons.
+    ///
+    /// # Panics
+    ///
+    /// May panics if the new capacity would exceed some maximum allowed size.
     fn reserve_exact(&mut self, additional: usize);
+
+    /// Appends an element to the back of the vector.
+    ///
+    /// # Panics
+    ///
+    /// May panics if the new length would exceed some maximum allowed size.
     fn push(&mut self, value: Self::Item);
 }
 

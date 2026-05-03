@@ -1,9 +1,7 @@
 //! Tagged pointers.
 
-use core::{
-    num::NonZeroUsize,
-    ptr::{self, NonNull},
-};
+use core::num::NonZeroUsize;
+use core::ptr::{self, NonNull};
 
 union Pivot<T> {
     ptr: NonNull<T>,
@@ -67,7 +65,7 @@ impl<T, const TAG: usize> TaggedPointer<T, TAG> {
     #[inline]
     pub const fn as_ptr(self) -> *mut T {
         if is_value(self.ptr, TAG) {
-            return ptr::null_mut();
+            ptr::null_mut()
         } else {
             unsafe { self.ptr.as_ptr().byte_sub(TAG) }
         }
@@ -83,16 +81,6 @@ impl<T, const TAG: usize> TaggedPointer<T, TAG> {
         Self::debug_check();
 
         Self::NULL
-    }
-}
-
-impl<T, const TAG: usize> From<*mut T> for TaggedPointer<T, TAG> {
-    #[inline]
-    fn from(ptr: *mut T) -> Self {
-        let ptr = unsafe { ptr.byte_add(TAG) };
-        Self {
-            ptr: NonNull::new(ptr).unwrap(),
-        }
     }
 }
 

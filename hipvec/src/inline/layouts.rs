@@ -127,6 +127,7 @@ const fn len_max(len_size: usize) -> usize {
 }
 
 /// A basic layout that can store any type, including ZSTs on 3 pointer-sized words.
+///
 /// It uses a non-zero integer to store the length allowing for a niche that Rust may exploit.
 /// This layout is simple and efficient for most cases.
 #[repr(C)]
@@ -155,36 +156,37 @@ impl BasicLayout {
 
         let size = size_of::<Self>();
         let element_size = size_of::<T>();
-        if element_size == 0 {
-            (usize::MAX >> 1, size_of::<usize>())
-        } else {
-            let mut count = size / element_size;
-            loop {
-                if count == 0 {
-                    break (0, 0);
-                }
 
-                let remainder = size - (count * element_size);
-                let len_size = remainder.next_power_of_two() >> 1;
-                let (len_size, full) = if len_size >= size_of::<usize>() {
-                    (size_of::<usize>(), true)
-                } else {
-                    (len_size, false)
-                };
-                // maximal length w.r.t the current len size (remove 1 bit for nonzero tagging)
-                let len_max = len_max(len_size);
+        // find the maximum count of elements that can fit in the layout
+        let Some(mut count) = size.checked_div(element_size) else {
+            return (usize::MAX >> 1, size_of::<usize>());
+        };
 
-                // count is encodable
-                if count <= len_max {
-                    break (count, len_size);
-                }
-
-                // not encodable, but the len size is already usize
-                if full {
-                    break (len_max, len_size);
-                }
-                count -= 1;
+        loop {
+            if count == 0 {
+                break (0, 0);
             }
+
+            let remainder = size - (count * element_size);
+            let len_size = remainder.next_power_of_two() >> 1;
+            let (len_size, full) = if len_size >= size_of::<usize>() {
+                (size_of::<usize>(), true)
+            } else {
+                (len_size, false)
+            };
+            // maximal length w.r.t the current len size (remove 1 bit for nonzero tagging)
+            let len_max = len_max(len_size);
+
+            // count is encodable
+            if count <= len_max {
+                break (count, len_size);
+            }
+
+            // not encodable, but the len size is already usize
+            if full {
+                break (len_max, len_size);
+            }
+            count -= 1;
         }
     }
 }

@@ -11,7 +11,7 @@ use super::layouts::{self, Layout};
 use crate::common::{TryReserveError, methods};
 use crate::traits::MutableVector;
 
-pub(crate) struct Base<T, L: Layout<T>> {
+pub struct Base<T, L: Layout<T>> {
     repr: L,
     phantom: PhantomData<T>,
 }
@@ -105,18 +105,14 @@ impl<T, L: Layout<T>> Base<T, L> {
     }
 
     #[track_caller]
+    #[expect(clippy::needless_pass_by_ref_mut, reason = "standard API consistency")]
     pub const fn reserve(&mut self, additional: usize) {
         let len = self.len();
         let new_len = len + additional;
         assert!(new_len <= L::CAPACITY, "new length exceeds capacity");
     }
 
-    #[inline]
-    #[track_caller]
-    pub const fn reserve_exact(&mut self, additional: usize) {
-        self.reserve(additional);
-    }
-
+    #[expect(clippy::needless_pass_by_ref_mut, reason = "standard API consistency")]
     pub const fn try_reserve(&mut self, additional: usize) -> Result<(), TryReserveError> {
         let len = self.len();
         let Some(new_len) = len.checked_add(additional) else {
@@ -127,11 +123,6 @@ impl<T, L: Layout<T>> Base<T, L> {
         } else {
             Ok(())
         }
-    }
-
-    #[inline]
-    pub const fn try_reserve_exact(&mut self, additional: usize) -> Result<(), TryReserveError> {
-        self.try_reserve(additional)
     }
 
     #[inline]
@@ -251,12 +242,9 @@ impl<T, L: Layout<T>> Base<T, L> {
     }
 }
 
-impl<T, L: Layout<T>> Copy for Base<T, L> where L: Copy {}
+impl<T, L: Layout<T>> Copy for Base<T, L> {}
 
-impl<T, L: Layout<T>> Clone for Base<T, L>
-where
-    L: Copy,
-{
+impl<T, L: Layout<T>> Clone for Base<T, L> {
     fn clone(&self) -> Self {
         *self
     }

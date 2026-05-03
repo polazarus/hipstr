@@ -7,7 +7,7 @@ use core::mem;
 /// - The pointer `ptr` must be valid for reads and writes of `len` elements of type `T`.
 /// - The `initialized` field must always be less than or equal to `len`.
 /// - The elements from `ptr` to `ptr.add(initialized)` (excluded) must be initialized.
-pub(crate) struct SliceWriteGuard<T> {
+pub struct SliceWriteGuard<T> {
     ptr: *mut T,
     #[cfg(debug_assertions)]
     len: usize,
@@ -75,7 +75,7 @@ impl<T> Drop for SliceWriteGuard<T> {
 /// of `len` elements of type `T`.
 #[inline]
 #[track_caller]
-pub(crate) unsafe fn guarded_slice_clone<T: Clone>(dst: *mut T, src: *const T, len: usize) {
+pub unsafe fn guarded_slice_clone<T: Clone>(dst: *mut T, src: *const T, len: usize) {
     let mut guard = unsafe { SliceWriteGuard::new(dst, len) };
 
     for i in 0..len {
@@ -98,7 +98,7 @@ pub(crate) unsafe fn guarded_slice_clone<T: Clone>(dst: *mut T, src: *const T, l
 ///
 /// The caller must ensure that the pointer is valid and that the length is correct.
 #[inline]
-pub(crate) unsafe fn drop_raw_slice<T>(ptr: *mut T, len: usize) {
+pub unsafe fn drop_raw_slice<T>(ptr: *mut T, len: usize) {
     if mem::needs_drop::<T>() {
         // SAFETY: precondition
         unsafe {

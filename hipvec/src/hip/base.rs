@@ -61,11 +61,11 @@ impl<T, Prefix> Sliced<T, Prefix> {
         }
     }
 
-    const fn from_thin<P>(mut thin: ThinBase<T, P>) -> Self {
+    const fn from_thin(mut thin: ThinBase<T, Prefix>) -> Self {
         let slice: *mut [T] = thin.as_mut_slice();
         Self {
-            owner: unsafe { transmute(thin) },
-            slice: slice,
+            owner: unsafe { transmute::<ThinBase<T, Prefix>, Owner<T, Prefix>>(thin) },
+            slice,
         }
     }
 
@@ -75,7 +75,9 @@ impl<T, Prefix> Sliced<T, Prefix> {
         if owner.ptr.is_some() {
             todo!("wide")
         } else {
-            Some(Either::Thin(unsafe { transmute(self.owner) }))
+            Some(Either::Thin(unsafe {
+                transmute::<Owner<T, Prefix>, ThinBase<T, Prefix>>(self.owner)
+            }))
         }
     }
 }
@@ -140,7 +142,7 @@ impl<T, Prefix> Base<T, Prefix> {
 
     const fn from_sliced(sliced: Sliced<T, Prefix>) -> Self {
         Self {
-            inner: unsafe { core::mem::transmute(sliced) },
+            inner: unsafe { transmute::<Sliced<T, Prefix>, Pivot>(sliced) },
             marker: PhantomData,
         }
     }
@@ -153,7 +155,7 @@ impl<T, Prefix> Base<T, Prefix> {
         debug_assert!(self.is_inline());
 
         // SAFETY: Type invariant
-        unsafe { transmute(self) }
+        unsafe { transmute::<&Self, &InlineBase<T>>(self) }
     }
 
     /// Retuns a mutable reference to the inline base.
