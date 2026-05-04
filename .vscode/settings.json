@@ -40,5 +40,10 @@
     "Zmiri"
   ],
   "rust-analyzer.check.features": "all",
-  "rust-analyzer.cargo.features": "all"
+  "rust-analyzer.cargo.features": "all",
+  "rust-analyzer.imports.granularity.group": "module",
+  "rust-analyzer.imports.granularity.enforce": true,
+  "rust-analyzer.imports.prefix": "plain",
+  "rust-analyzer.assist.preferSelf": true,
+  "rust-analyzer.check.command": "clippy"
 }
