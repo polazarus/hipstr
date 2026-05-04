@@ -296,6 +296,7 @@ fn drain() {
 
 #[test]
 #[should_panic]
+#[allow(clippy::reversed_empty_ranges)]
 fn drain_invalid_range_panics() {
     let mut v: V<i32> = v![1, 2, 3, 4, 5];
     let _ = v.drain(4..1);
@@ -413,6 +414,7 @@ fn splice_boxed() {
 
 #[test]
 #[should_panic(expected = "start index 4 is greater than end index 1")]
+#[allow(clippy::reversed_empty_ranges)]
 fn splice_invalid_range_panics() {
     let mut v = v![1, 2, 3, 4, 5];
     let _ = v.splice(4..1, [9, 8]);

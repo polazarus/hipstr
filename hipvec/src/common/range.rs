@@ -121,6 +121,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::reversed_empty_ranges)]
     fn invalid_range() {
         assert_eq!(
             range((Bound::Excluded(usize::MAX), Bound::Unbounded), 10),
