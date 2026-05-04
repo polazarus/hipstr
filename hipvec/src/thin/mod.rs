@@ -32,6 +32,39 @@ impl fmt::Debug for Reserved {
 pub type ThinVec<T> = noncopy::ThinVec<T, Reserved>;
 pub type CopyThinVec<T> = copy::ThinVec<T, Reserved>;
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[non_exhaustive]
+pub struct TryReserveError(TryReserveErrorKind);
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TryReserveErrorKind {
+    CapacityOverflow,
+    AllocError { layout: core::alloc::Layout },
+}
+
+impl fmt::Display for TryReserveError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0 {
+            TryReserveErrorKind::CapacityOverflow => write!(f, "capacity overflow"),
+            TryReserveErrorKind::AllocError { layout } => {
+                write!(f, "allocation error: layout {layout:?}")
+            }
+        }
+    }
+}
+
+pub(crate) fn unwrap_or_oom<T>(result: Result<T, TryReserveError>) -> T {
+    match result {
+        Ok(value) => value,
+        Err(TryReserveError(TryReserveErrorKind::CapacityOverflow)) => {
+            panic!("capacity overflow")
+        }
+        Err(TryReserveError(TryReserveErrorKind::AllocError { layout })) => {
+            alloc::alloc::handle_alloc_error(layout)
+        }
+    }
+}
+
 // TODO improve repetitions to use from iterator when available
 
 #[macro_export]

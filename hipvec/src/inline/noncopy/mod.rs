@@ -10,13 +10,14 @@ use core::{fmt, ops};
 
 use const_default::ConstDefault;
 
+pub use super::TryReserveError;
 use super::base::Base;
 use super::layouts::Layout;
 use crate::common::drain::Drain;
 use crate::common::splice::Splice;
 use crate::common::traits::impl_extend;
+use crate::common::unwrap_display;
 use crate::common::utils::drop_raw_slice;
-use crate::common::{TryReserveError, unwrap_display};
 use crate::inline::copy;
 use crate::traits::{MutableVector, impl_vector};
 
@@ -114,6 +115,24 @@ impl<T, L: Layout<T>> InlineVec<T, L> {
     pub const fn with_capacity(capacity: usize) -> Self {
         Self {
             base: Base::with_capacity(capacity),
+        }
+    }
+
+    /// Constructs a new, empty vector with at least the specified capacity.
+    ///
+    /// This method is provided for compatibility with standard vecs. Since [`CAPACITY`] is fixed at
+    /// compile time, this method will return an error if the requested capacity exceeds the inline capacity.
+    ///
+    /// [`CAPACITY`]: Self::CAPACITY
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the capacity exceeds the fixed [`CAPACITY`].
+    #[inline]
+    pub const fn try_with_capacity(capacity: usize) -> Result<Self, TryReserveError> {
+        match Base::try_with_capacity(capacity) {
+            Ok(base) => Ok(Self { base }),
+            Err(e) => Err(e),
         }
     }
 

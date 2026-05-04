@@ -5,9 +5,10 @@ use core::ptr::{self, NonNull};
 
 use const_default::ConstDefault;
 
+use super::{TryReserveError, TryReserveErrorKind, unwrap_or_oom};
 pub use crate::common::header::ThinHeader as Header;
+use crate::common::methods;
 use crate::common::tagged_pointer::TaggedPointer;
-use crate::common::{TryReserveError, TryReserveErrorExt, methods};
 use crate::traits::MutableVector;
 
 const TAG: usize = 0b10;
@@ -241,30 +242,34 @@ where
     P: ConstDefault,
 {
     pub fn with_capacity(capacity: usize) -> Self {
+        unwrap_or_oom(Self::try_with_capacity(capacity))
+    }
+
+    pub fn try_with_capacity(capacity: usize) -> Result<Self, TryReserveError> {
         if capacity == 0 {
-            return Self::new();
+            return Ok(Self::new());
         }
 
         let Some((layout, capacity)) = Header::<T, P>::layout(capacity) else {
-            panic!("capacity overflow");
+            return Err(TryReserveError(TryReserveErrorKind::CapacityOverflow));
         };
 
         let ptr = unsafe { alloc::alloc::alloc(layout) };
         let Some(ptr) = NonNull::new(ptr) else {
-            alloc::alloc::handle_alloc_error(layout);
+            return Err(TryReserveError(TryReserveErrorKind::AllocError { layout }));
         };
         let header_ptr = ptr.cast::<Header<T, P>>();
         unsafe {
             header_ptr.write(Header::with_capacity(capacity));
         }
 
-        Self(header_ptr.into())
+        Ok(Self(header_ptr.into()))
     }
 
     const MIN_CAPACITY: usize = const { min_non_zero_cap(size_of::<T>()) };
 
     pub fn reserve(&mut self, additional: usize) {
-        self.try_reserve(additional).unwrap_or_oom();
+        unwrap_or_oom(self.try_reserve(additional));
     }
 
     pub fn try_reserve(&mut self, additional: usize) -> Result<(), TryReserveError> {
@@ -274,7 +279,7 @@ where
         // Compute the required capacity, checking for overflow.
         let req_cap = len
             .checked_add(additional)
-            .ok_or(TryReserveError::CapacityOverflow)?;
+            .ok_or(TryReserveError(TryReserveErrorKind::CapacityOverflow))?;
 
         if req_cap > old_cap {
             // Exponential growth to avoid frequent reallocations.
@@ -290,7 +295,7 @@ where
     }
 
     pub fn reserve_exact(&mut self, additional: usize) {
-        self.try_reserve_exact(additional).unwrap_or_oom();
+        unwrap_or_oom(self.try_reserve_exact(additional));
     }
 
     pub fn try_reserve_exact(&mut self, additional: usize) -> Result<(), TryReserveError> {
@@ -298,7 +303,7 @@ where
         let len = self.len();
         let req_cap = len
             .checked_add(additional)
-            .ok_or(TryReserveError::CapacityOverflow)?;
+            .ok_or(TryReserveError(TryReserveErrorKind::CapacityOverflow))?;
         if req_cap > old_cap {
             unsafe {
                 self.try_realloc(req_cap)?;
@@ -315,10 +320,10 @@ where
 
         let old_cap = self.capacity();
         let old_layout = Header::<T, P>::layout(old_cap)
-            .ok_or(TryReserveError::CapacityOverflow)?
+            .ok_or(TryReserveError(TryReserveErrorKind::CapacityOverflow))?
             .0;
-        let (new_layout, new_cap) =
-            Header::<T, P>::layout(new_cap).ok_or(TryReserveError::CapacityOverflow)?;
+        let (new_layout, new_cap) = Header::<T, P>::layout(new_cap)
+            .ok_or(TryReserveError(TryReserveErrorKind::CapacityOverflow))?;
 
         if new_cap != old_cap {
             if let Some(ptr) = self.0.as_non_null() {
@@ -326,7 +331,9 @@ where
                     alloc::alloc::realloc(ptr.as_ptr().cast(), old_layout, new_layout.size()).cast()
                 };
                 let Some(mut ptr) = NonNull::new(ptr) else {
-                    return Err(TryReserveError::AllocError { layout: new_layout });
+                    return Err(TryReserveError(TryReserveErrorKind::AllocError {
+                        layout: new_layout,
+                    }));
                 };
                 unsafe {
                     ptr.as_mut().cap = new_cap;

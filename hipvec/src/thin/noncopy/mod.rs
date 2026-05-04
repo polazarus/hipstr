@@ -3,12 +3,13 @@ use core::{fmt, ops};
 
 use const_default::ConstDefault;
 
+use super::TryReserveError;
 use super::base::Base;
 use crate::common::drain::Drain;
 use crate::common::splice::Splice;
 use crate::common::traits::impl_extend;
 use crate::common::utils::drop_raw_slice;
-use crate::common::{TryReserveError, methods, unwrap_display};
+use crate::common::{methods, unwrap_display};
 use crate::traits::{MutableVector, impl_vector};
 
 #[cfg(test)]
@@ -622,6 +623,26 @@ impl<T, P: ConstDefault> ThinVec<T, P> {
         Self {
             base: Base::with_capacity(cap),
         }
+    }
+
+    /// Constructs a new, empty vector with at least the specified capacity.
+    ///
+    /// The vector will be able to hold at least `capacity` elements without
+    /// reallocating. This method is allowed to allocate for more elements than
+    /// `capacity`. If `capacity` is zero, the vector will not allocate.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the capacity exceeds `isize::MAX` _bytes_,
+    /// or if the allocator reports allocation failure.
+    #[inline]
+    pub fn try_with_capacity(capacity: usize) -> Result<Self, TryReserveError>
+    where
+        P: ConstDefault,
+    {
+        Ok(Self {
+            base: Base::try_with_capacity(capacity)?,
+        })
     }
 
     /// Reserves capacity for at least `additional` more elements to be inserted

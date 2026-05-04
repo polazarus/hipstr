@@ -1,4 +1,4 @@
-use crate::common::TryReserveError;
+use super::TryReserveError;
 use crate::copy_inline_vec as v;
 use crate::inline::CopyInlineVec as V;
 use crate::inline::layouts::{BasicLayout, Layout};
@@ -198,7 +198,7 @@ fn from_array_empty() {
 }
 
 #[test]
-#[should_panic(expected = "required capacity exceeds maximum")]
+#[should_panic(expected = "capacity overflow")]
 fn from_array_panic() {
     let _ = V::<i32>::from([0; <BasicLayout as Layout<i32>>::CAPACITY + 1]);
 }
@@ -618,10 +618,7 @@ fn try_reserve() {
     assert_eq!(v.capacity(), V::<u8>::CAPACITY);
     assert_eq!(v.try_reserve(5), Ok(()));
     assert_eq!(v.capacity(), V::<u8>::CAPACITY);
-    assert_eq!(
-        v.try_reserve(v.capacity() + 1),
-        Err(TryReserveError::CapacityOverflow)
-    );
+    assert_eq!(v.try_reserve(v.capacity() + 1), Err(TryReserveError()));
 }
 
 #[test]
@@ -632,6 +629,6 @@ fn try_reserve_exact() {
     assert_eq!(v.capacity(), V::<u8>::CAPACITY);
     assert_eq!(
         v.try_reserve_exact(v.capacity() + 1),
-        Err(TryReserveError::CapacityOverflow)
+        Err(TryReserveError())
     );
 }

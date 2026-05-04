@@ -7,8 +7,9 @@ use alloc::slice;
 use core::marker::PhantomData;
 use core::ptr::NonNull;
 
+use super::TryReserveError;
 use super::layouts::{self, Layout};
-use crate::common::{TryReserveError, methods};
+use crate::common::methods;
 use crate::traits::MutableVector;
 
 pub struct Base<T, L: Layout<T>> {
@@ -27,9 +28,21 @@ impl<T, L: Layout<T>> Base<T, L> {
 
     #[inline]
     #[track_caller]
-    pub const fn with_capacity(cap: usize) -> Self {
-        assert!(cap <= L::CAPACITY, "required capacity exceeds maximum");
-        Self::new()
+    pub const fn with_capacity(capacity: usize) -> Self {
+        let result = Self::try_with_capacity(capacity);
+        match result {
+            Ok(value) => value,
+            Err(e) => panic!("{}", e.message()),
+        }
+    }
+
+    #[inline]
+    pub const fn try_with_capacity(capacity: usize) -> Result<Self, TryReserveError> {
+        if capacity > L::CAPACITY {
+            Err(TryReserveError())
+        } else {
+            Ok(Self::new())
+        }
     }
 
     #[track_caller]
@@ -116,10 +129,10 @@ impl<T, L: Layout<T>> Base<T, L> {
     pub const fn try_reserve(&mut self, additional: usize) -> Result<(), TryReserveError> {
         let len = self.len();
         let Some(new_len) = len.checked_add(additional) else {
-            return Err(TryReserveError::CapacityOverflow);
+            return Err(TryReserveError());
         };
         if new_len > L::CAPACITY {
-            Err(TryReserveError::CapacityOverflow)
+            Err(TryReserveError())
         } else {
             Ok(())
         }

@@ -2,7 +2,7 @@ use alloc::boxed::Box;
 use alloc::string::String;
 use core::cell::Cell;
 
-use crate::common::TryReserveError;
+use super::TryReserveError;
 use crate::inline::InlineVec as V;
 use crate::inline::layouts::{BasicLayout, Layout};
 use crate::inline_vec as v;
@@ -564,7 +564,7 @@ fn with_capacity() {
 }
 
 #[test]
-#[should_panic(expected = "required capacity exceeds maximum")]
+#[should_panic(expected = "capacity overflow")]
 fn with_capacity_panic() {
     let _ = V::<i32>::with_capacity(V::<i32>::CAPACITY + 1);
 }
@@ -727,10 +727,7 @@ fn try_reserve() {
     assert_eq!(v.capacity(), V::<u8>::CAPACITY);
     assert_eq!(v.try_reserve(5), Ok(()));
     assert_eq!(v.capacity(), V::<u8>::CAPACITY);
-    assert_eq!(
-        v.try_reserve(v.capacity() + 1),
-        Err(TryReserveError::CapacityOverflow)
-    );
+    assert_eq!(v.try_reserve(v.capacity() + 1), Err(TryReserveError()));
 }
 
 #[test]
@@ -741,6 +738,6 @@ fn try_reserve_exact() {
     assert_eq!(v.capacity(), V::<u8>::CAPACITY);
     assert_eq!(
         v.try_reserve_exact(v.capacity() + 1),
-        Err(TryReserveError::CapacityOverflow)
+        Err(TryReserveError())
     );
 }
