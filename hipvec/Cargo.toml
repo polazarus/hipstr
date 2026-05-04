@@ -2,6 +2,12 @@
 name = "hipvec"
 version = "0.1.0"
 edition = "2024"
+description = "A collection of vector types"
+authors = ["Polazarus <polazarus@users.noreply.github.com>"]
+repository = "https://github.com/polazarus/hipstr"
+categories = ["memory-management", "data-structures"]
+license = "MIT OR Apache-2.0"
+rust-version = "1.95.0"
 
 [features]
 default = ["std"]
