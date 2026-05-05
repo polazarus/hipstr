@@ -16,8 +16,6 @@ use crate::traits::MutableVector;
 /// let mut v = thin_vec![0, 1, 2];
 /// let iter = v.drain(..);
 /// ```
-///
-/// [`ThinVec::drain`]: crate::vecs::thin::ThinVec::drain
 pub struct Drain<'a, V: MutableVector> {
     pub(super) vec: &'a mut V,
     pub(super) tail_start: usize,

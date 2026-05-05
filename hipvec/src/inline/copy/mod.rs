@@ -270,6 +270,10 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     /// may still invalidate this pointer.
     /// See the second example below for how this guarantee can be used.
     ///
+    /// [`as_ptr`]: Self::as_ptr
+    /// [`as_mut_ptr`]: Self::as_mut_ptr
+    /// [`as_non_null`]: Self::as_non_null
+    ///
     /// # Examples
     ///
     /// ```
@@ -310,6 +314,10 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     /// or references to specific elements you are planning on accessing through this pointer,
     /// may still invalidate this pointer.
     /// See the second example below for how this guarantee can be used.
+    ///
+    /// [`as_ptr`]: Self::as_ptr
+    /// [`as_mut_ptr`]: Self::as_mut_ptr
+    /// [`as_non_null`]: Self::as_non_null
     ///
     /// # Examples
     ///
@@ -353,6 +361,10 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     /// or mutable references to specific elements you are planning on accessing through this pointer,
     /// as well as writing to those elements, may still invalidate this pointer.
     /// See the second example below for how this guarantee can be used.
+    ///
+    /// [`as_ptr`]: Self::as_ptr
+    /// [`as_mut_ptr`]: Self::as_mut_ptr
+    /// [`as_non_null`]: Self::as_non_null
     ///
     /// # Examples
     ///
@@ -454,7 +466,7 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     ///
     /// # Errors
     ///
-    /// Returns [`TryReserveError::CapacityOverflow`] if `self.len() + additional > self.capacity()`.
+    /// Returns [`TryReserveError`] if `self.len() + additional > self.capacity()`.
     ///
     /// # Examples
     ///
@@ -479,7 +491,7 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     ///
     /// # Errors
     ///
-    /// Returns [`TryReserveError::CapacityOverflow`] if `self.len() + additional > self.capacity()`.
+    /// Returns [`TryReserveError`] if `self.len() + additional > self.capacity()`.
     ///
     /// # Examples
     ///
@@ -928,7 +940,7 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
 
     /// Moves all the elements of `other` into `self`, leaving `other` empty.
     ///
-    /// This a const specialization if [`other`] is an inline vector.
+    /// This a const specialization if `other` is an inline vector.
     /// See [`append`] for the general version.
     ///
     /// [`append`]: Self::append
