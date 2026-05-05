@@ -3,8 +3,7 @@ use alloc::format;
 use alloc::string::String;
 
 use crate::common::tests::pointer_stability;
-use crate::thin::ThinVec as V;
-use crate::thin_vec as v;
+use crate::thin::{ThinVec as V, thin_vec as v};
 
 #[test]
 fn new_and_default() {

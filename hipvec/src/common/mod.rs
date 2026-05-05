@@ -27,15 +27,6 @@ impl ConstDefault for ZeroUsize {
     const DEFAULT: Self = Self::ZeroUsize;
 }
 
-#[macro_export]
-#[doc(hidden)]
-macro_rules! __count {
-    (@ $_x:tt) => { () };
-    ($($x:tt),* $(,)? ) => {
-        <[()]>::len(&[$($crate::__count!(@ $x)),*])
-    };
-}
-
 /// Panics with the provided displayable error message.
 ///
 /// # Panics
@@ -55,4 +46,54 @@ pub(crate) fn unwrap_display<T, E: fmt::Display>(result: Result<T, E>) -> T {
         Ok(value) => value,
         Err(e) => panic_display(e),
     }
+}
+
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __count {
+    (@ $_x:tt) => { () };
+    ($($x:tt),* $(,)? ) => {
+        <[()]>::len(&[$($crate::__count!(@ $x)),*])
+    };
+}
+
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __vector {
+    ( const $ty:ty : $e:expr; $n:expr ) => {
+        {
+            let mut vec = <$ty>::with_capacity($n);
+            let mut n = $n;
+            let e = $e;
+            while n > 0 {
+                vec.push(e);
+                n -= 1;
+            }
+            vec
+        }
+    };
+
+    ( $ty:ty : ) => {
+        <$ty>::new()
+    };
+    ( $ty:ty : $($e:expr),* $(,)? ) => {
+        {
+            let mut vec = <$ty>::with_capacity($crate::__count!($($e),*));
+            $(
+                vec.push($e);
+            )*
+            vec
+        }
+    };
+    ( $ty:ty : $e:expr; $n:expr ) => {
+        {
+            let mut vec = <$ty>::with_capacity($n);
+            for e in core::iter::repeat_n($e, $n) {
+                vec.push(e);
+            }
+            vec
+        }
+    };
+
+
 }

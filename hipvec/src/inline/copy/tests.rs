@@ -1,7 +1,6 @@
 use super::TryReserveError;
-use crate::copy_inline_vec as v;
-use crate::inline::CopyInlineVec as V;
 use crate::inline::layouts::{BasicLayout, Layout};
+use crate::inline::{CopyInlineVec as V, copy_inline_vec as v};
 
 #[test]
 fn niche() {
@@ -416,7 +415,7 @@ fn append() {
     assert!(right.is_empty());
 
     let mut left = v![1_u8, 2, 3];
-    let mut right = crate::copy_thin_vec![4_u8, 5, 6];
+    let mut right = crate::thin::copy_thin_vec![4_u8, 5, 6];
     left.append(&mut right);
     assert_eq!(left.as_slice(), &[1, 2, 3, 4, 5, 6]);
     assert!(right.is_empty());

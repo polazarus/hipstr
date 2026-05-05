@@ -66,28 +66,20 @@ impl TryReserveError {
 /// side effects.
 ///
 /// [`InlineVec`]: crate::inline::InlineVec
+#[doc(inline)]
+pub use crate::__inline_vec as inline_vec;
+
+#[doc(hidden)]
 #[macro_export]
-macro_rules! inline_vec {
+macro_rules! __inline_vec {
     () => {
-        $crate::inline::InlineVec::new()
+        $crate::__vector!( $crate::inline::InlineVec<_> : )
     };
     ($e:expr; $n:expr) => {
-        {
-            let mut vec = $crate::inline::InlineVec::with_capacity($n);
-            for e in core::iter::repeat_n($e, $n) {
-                vec.push(e);
-            }
-            vec
-        }
+        $crate::__vector!( $crate::inline::InlineVec<_> : $e; $n )
     };
     ($($e:expr),* $(,)?) => {
-        {
-            let mut vec = $crate::inline::InlineVec::with_capacity($crate::__count!($($e),*));
-            $(
-                vec.push($e);
-            )*
-            vec
-        }
+        $crate::__vector!( $crate::inline::InlineVec<_> : $($e),* )
     };
 }
 
@@ -127,27 +119,19 @@ macro_rules! inline_vec {
 /// mindful of side effects.
 ///
 /// [`CopyInlineVec`]: crate::inline::CopyInlineVec
+#[doc(inline)]
+pub use crate::__copy_inline_vec as copy_inline_vec;
+
+#[doc(hidden)]
 #[macro_export]
-macro_rules! copy_inline_vec {
+macro_rules! __copy_inline_vec {
     () => {
-        $crate::inline::CopyInlineVec::new()
+        $crate::__vector!( $crate::inline::CopyInlineVec<_> : )
     };
     ($e:expr; $n:expr) => {
-        {
-            let mut vec = $crate::inline::CopyInlineVec::with_capacity($n);
-            for e in core::iter::repeat_n($e, $n) {
-                vec.push(e);
-            }
-            vec
-        }
+        $crate::__vector!( const $crate::inline::CopyInlineVec<_> : $e; $n )
     };
     ($($e:expr),* $(,)?) => {
-        {
-            let mut vec = $crate::inline::CopyInlineVec::with_capacity($crate::__count!($($e),*));
-            $(
-                vec.push($e);
-            )*
-            vec
-        }
+        $crate::__vector!( $crate::inline::CopyInlineVec<_> : $($e),* )
     };
 }

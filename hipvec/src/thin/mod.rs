@@ -65,54 +65,104 @@ pub(crate) fn unwrap_or_oom<T>(result: Result<T, TryReserveError>) -> T {
     }
 }
 
-// TODO improve repetitions to use from iterator when available
+/// Creates a [`ThinVec`] containing the arguments.
+///
+/// `thin_vec!` allows `ThinVec`s to be defined with the same syntax as array expressions. There
+/// are two forms of this macro:
+///
+/// - Create a [`ThinVec`] containing a given list of elements:
+///
+/// ```
+/// # use hipvec::thin_vec;
+/// let v = thin_vec![1, 2, 3];
+/// assert_eq!(v[0], 1);
+/// assert_eq!(v[1], 2);
+/// assert_eq!(v[2], 3);
+/// ```
+///
+/// - Create a [`ThinVec`] from a given element and size:
+///
+/// ```
+/// # use hipvec::thin_vec;
+/// let v = thin_vec![1; 3];
+/// assert_eq!(v.as_slice(), [1, 1, 1]);
+/// ```
+///
+/// Note that unlike array expressions this syntax supports all elements which implement [`Clone`]
+/// and the number of elements doesn't have to be a constant.
+///
+/// This will use `clone` to duplicate an expression, so one should be careful using this with types
+/// having a nonstandard `Clone` implementation. For example, `thin_vec![Rc::new(1); 2]` will
+/// create a thin vector of two references to the same boxed integer value, not two references
+/// pointing to independently boxed integers.
+///
+/// Also, note that `thin_vec![expr; 0]` is allowed, and produces an empty thin vector. This
+/// will still evaluate `expr`, however, and immediately drop the resulting value, so be mindful of
+/// side effects.
+#[doc(inline)]
+pub use crate::__thin_vec as thin_vec;
 
+#[doc(hidden)]
 #[macro_export]
-macro_rules! thin_vec {
+macro_rules! __thin_vec {
     () => {
-        $crate::thin::ThinVec::new()
+        $crate::__vector!( $crate::thin::ThinVec<_> : )
     };
     ($e:expr; $n:expr) => {
-        {
-            let mut vec = $crate::thin::ThinVec::with_capacity($n);
-            for e in core::iter::repeat_n($e, $n) {
-                vec.push(e);
-            }
-            vec
-        }
+        $crate::__vector!( $crate::thin::ThinVec<_> : $e; $n )
     };
     ($($e:expr),* $(,)?) => {
-        {
-            let mut vec = $crate::thin::ThinVec::with_capacity($crate::__count!($($e),*));
-            $(
-                vec.push($e);
-            )*
-            vec
-        }
+        $crate::__vector!( $crate::thin::ThinVec<_> : $($e),* )
     };
 }
 
+/// Creates a [`CopyThinVec`] containing the arguments.
+///
+/// `copy_thin_vec!` allows `CopyThinVec`s to be defined with the same syntax as array
+/// expressions. There are two forms of this macro:
+///
+/// - Create a [`CopyThinVec`] containing a given list of elements:
+///
+/// ```
+/// # use hipvec::copy_thin_vec;
+/// let v = copy_thin_vec![1, 2, 3];
+/// assert_eq!(v[0], 1);
+/// assert_eq!(v[1], 2);
+/// assert_eq!(v[2], 3);
+/// ```
+///
+/// - Create a [`CopyThinVec`] from a given element and size:
+///
+/// ```
+/// # use hipvec::copy_thin_vec;
+/// let v = copy_thin_vec![1; 3];
+/// assert_eq!(v.as_slice(), [1, 1, 1]);
+/// ```
+///
+/// Note that unlike array expressions this syntax supports all elements which implement [`Clone`]
+/// and the number of elements doesn't have to be a constant.
+///
+/// This will use `clone` to duplicate an expression, so one should be careful using this with types
+/// having a nonstandard `Clone` implementation. For example, `copy_thin_vec![Rc::new(1); 2]` will
+/// create a thin vector of two references to the same boxed integer value, not two references
+/// pointing to independently boxed integers.
+///
+/// Also, note that `copy_thin_vec![expr; 0]` is allowed, and produces an empty thin vector.
+/// This will still evaluate `expr`, however, and immediately drop the resulting value, so be
+/// mindful of side effects.
+#[doc(inline)]
+pub use crate::__copy_thin_vec as copy_thin_vec;
+
+#[doc(hidden)]
 #[macro_export]
-macro_rules! copy_thin_vec {
+macro_rules! __copy_thin_vec {
     () => {
-        $crate::thin::CopyThinVec::new()
+        $crate::__vector!( $crate::thin::CopyThinVec<_> : )
     };
     ($e:expr; $n:expr) => {
-        {
-            let mut vec = $crate::thin::CopyThinVec::with_capacity($n);
-            for e in core::iter::repeat_n($e, $n) {
-                vec.push(e);
-            }
-            vec
-        }
+        $crate::__vector!( $crate::thin::CopyThinVec<_> : $e; $n )
     };
     ($($e:expr),* $(,)?) => {
-        {
-            let mut vec = $crate::thin::CopyThinVec::with_capacity($crate::__count!($($e),*));
-            $(
-                vec.push($e);
-            )*
-            vec
-        }
+        $crate::__vector!( $crate::thin::CopyThinVec<_> : $($e),* )
     };
 }
