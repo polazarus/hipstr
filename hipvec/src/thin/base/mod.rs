@@ -1,7 +1,7 @@
 //! Internal representation of thin vectors.
 
-use core::cmp;
 use core::ptr::{self, NonNull};
+use core::{cmp, fmt};
 
 use const_default::ConstDefault;
 
@@ -9,6 +9,7 @@ use super::{TryReserveError, TryReserveErrorKind, unwrap_or_oom};
 pub use crate::common::header::ThinHeader as Header;
 use crate::common::methods;
 use crate::common::tagged_pointer::TaggedPointer;
+use crate::common::utils::drop_raw_slice;
 use crate::traits::MutableVector;
 
 const TAG: usize = 0b10;
@@ -25,7 +26,7 @@ const fn min_non_zero_cap(size: usize) -> usize {
 
 #[derive(Debug)]
 #[repr(transparent)]
-pub struct Base<T, P>(TaggedPointer<Header<T, P>, TAG>);
+pub struct Base<T, P>(pub(crate) TaggedPointer<Header<T, P>, TAG>);
 
 impl<T, P> Default for Base<T, P> {
     fn default() -> Self {
@@ -218,7 +219,7 @@ impl<T, P> Base<T, P> {
     /// The caller must ensure that the vector is not used after this method is called, and that the
     /// allocation is not dropped elsewhere, to avoid double free or use after free.
     #[inline]
-    pub unsafe fn drop(&mut self) {
+    pub unsafe fn drop_copy(&mut self) {
         if let Some(header) = self.0.as_non_null()
             && let Some((layout, _)) = Header::<T, P>::layout(unsafe { header.as_ref().cap })
         {
@@ -234,6 +235,54 @@ impl<T, P> Base<T, P> {
 
         // reset the pointer for safety, should be removed by the compiler
         *self = Self::new();
+    }
+
+    /// Drops the elements and the allocation if it exists.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the vector is not used after this method is called, and that the
+    /// allocation is not dropped elsewhere, to avoid double free or use after free.
+    #[inline]
+    pub unsafe fn drop(&mut self) {
+        if let Some(header) = self.0.as_non_null()
+            && let Some((layout, _)) = Header::<T, P>::layout(unsafe { header.as_ref().cap })
+        {
+            // SAFETY: type invariant says the slice is valid
+            unsafe {
+                let data_ptr = Header::data(header).as_ptr();
+                drop_raw_slice(data_ptr, header.as_ref().len);
+                // header.as_mut().len = 0;
+            }
+
+            // SAFETY: type invariant says the allocated pointer is valid and properly aligned, and the layout is correct
+            unsafe {
+                alloc::alloc::dealloc(header.as_ptr().cast(), layout);
+            }
+        }
+    }
+
+    pub fn with_fresh_prefix<P2>(mut self) -> Base<T, P2>
+    where
+        P2: ConstDefault,
+    {
+        if let Some(header) = self.0.as_non_null() {
+            if size_of::<P>() == size_of::<P2>() && align_of::<P>() == align_of::<P2>() {
+                let prefix = unsafe { &raw mut (*header.as_ptr()).prefix };
+                let prefix: *mut P2 = prefix.cast();
+                unsafe {
+                    prefix.write(P2::DEFAULT);
+                }
+                Base(self.0.cast())
+            } else {
+                let len = self.len();
+                let mut base: Base<T, P2> = Base::with_capacity(len);
+                methods::append!(&mut base, &mut self);
+                base
+            }
+        } else {
+            Base::new()
+        }
     }
 }
 
@@ -410,6 +459,25 @@ where
 
     pub fn resize_with(&mut self, new_len: usize, f: impl FnMut() -> T) {
         methods::resize_with!(self, new_len, f);
+    }
+}
+
+#[repr(transparent)]
+pub struct Reserved(#[allow(unused)] usize);
+
+impl Default for Reserved {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+impl ConstDefault for Reserved {
+    const DEFAULT: Self = Self(0);
+}
+
+impl fmt::Debug for Reserved {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("Reserved")
     }
 }
 

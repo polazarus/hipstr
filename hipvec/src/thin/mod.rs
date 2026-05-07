@@ -5,32 +5,14 @@
 
 use alloc::fmt;
 
-use const_default::ConstDefault;
-
-pub(crate) mod base;
+mod base;
 pub mod copy;
 pub mod noncopy;
 
-pub struct Reserved(#[allow(unused)] usize);
+pub(crate) use base::{Base, Reserved};
 
-impl Default for Reserved {
-    fn default() -> Self {
-        Self::DEFAULT
-    }
-}
-
-impl ConstDefault for Reserved {
-    const DEFAULT: Self = Self(0);
-}
-
-impl fmt::Debug for Reserved {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("Reserved")
-    }
-}
-
-pub type ThinVec<T> = noncopy::ThinVec<T, Reserved>;
-pub type CopyThinVec<T> = copy::ThinVec<T, Reserved>;
+pub use self::copy::ThinVec as CopyThinVec;
+pub use self::noncopy::ThinVec;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[non_exhaustive]

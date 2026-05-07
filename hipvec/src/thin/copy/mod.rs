@@ -1,10 +1,11 @@
+use core::mem::transmute;
 use core::ptr::NonNull;
 use core::{fmt, ops};
 
 use const_default::ConstDefault;
 
 use super::TryReserveError;
-use super::base::Base;
+use super::base::{Base, Reserved};
 use crate::common::drain::Drain;
 use crate::common::splice::Splice;
 use crate::common::traits::impl_extend;
@@ -15,21 +16,21 @@ use crate::traits::{GrowableVector, impl_vector};
 mod tests;
 
 #[repr(transparent)]
-pub struct ThinVec<T: Copy, P> {
-    base: Base<T, P>,
+pub struct ThinVec<T: Copy> {
+    base: Base<T, Reserved>,
 }
 
-impl<T: Copy, P> Default for ThinVec<T, P> {
+impl<T: Copy> Default for ThinVec<T> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T: Copy, P> ConstDefault for ThinVec<T, P> {
+impl<T: Copy> ConstDefault for ThinVec<T> {
     const DEFAULT: Self = Self::new();
 }
 
-impl<T: Copy, P> ThinVec<T, P> {
+impl<T: Copy> ThinVec<T> {
     /// Constructs a new, empty vector.
     ///
     /// The vector will not allocate until elements are pushed onto it.
@@ -564,9 +565,13 @@ impl<T: Copy, P> ThinVec<T, P> {
     pub fn drain(&mut self, range: impl ops::RangeBounds<usize>) -> Drain<'_, Self> {
         unwrap_display(Drain::new(self, range))
     }
+
+    pub(crate) fn into_base(self) -> Base<T, Reserved> {
+        unsafe { transmute::<Self, Base<T, Reserved>>(self) }
+    }
 }
 
-impl<T: Copy, P: ConstDefault> ThinVec<T, P> {
+impl<T: Copy> ThinVec<T> {
     /// Constructs a new, empty vector with at least the specified capacity.
     ///
     /// The vector will be able to hold at least `capacity` elements without
@@ -615,10 +620,7 @@ impl<T: Copy, P: ConstDefault> ThinVec<T, P> {
     /// assert_eq!(vec_units.capacity(), usize::MAX);
     /// ```
     #[inline]
-    pub fn with_capacity(cap: usize) -> Self
-    where
-        P: ConstDefault,
-    {
+    pub fn with_capacity(cap: usize) -> Self {
         Self {
             base: Base::with_capacity(cap),
         }
@@ -635,10 +637,7 @@ impl<T: Copy, P: ConstDefault> ThinVec<T, P> {
     /// Returns an error if the capacity exceeds `isize::MAX` _bytes_,
     /// or if the allocator reports allocation failure.
     #[inline]
-    pub fn try_with_capacity(capacity: usize) -> Result<Self, TryReserveError>
-    where
-        P: ConstDefault,
-    {
+    pub fn try_with_capacity(capacity: usize) -> Result<Self, TryReserveError> {
         Ok(Self {
             base: Base::try_with_capacity(capacity)?,
         })
@@ -1156,21 +1155,21 @@ impl<T: Copy, P: ConstDefault> ThinVec<T, P> {
     }
 }
 
-impl<T: Copy, P> Drop for ThinVec<T, P> {
+impl<T: Copy> Drop for ThinVec<T> {
     fn drop(&mut self) {
         unsafe {
-            self.base.drop();
+            self.base.drop_copy();
         }
     }
 }
 
-impl<T: Copy, P: ConstDefault> Clone for ThinVec<T, P> {
+impl<T: Copy> Clone for ThinVec<T> {
     fn clone(&self) -> Self {
         Self::from(self.as_slice())
     }
 }
 
-impl<T: Copy, P: ConstDefault> From<&[T]> for ThinVec<T, P> {
+impl<T: Copy> From<&[T]> for ThinVec<T> {
     fn from(slice: &[T]) -> Self {
         Self {
             base: Base::from_slice_copy(slice),
@@ -1178,13 +1177,13 @@ impl<T: Copy, P: ConstDefault> From<&[T]> for ThinVec<T, P> {
     }
 }
 
-impl<T: Copy, P: ConstDefault, const N: usize> From<&[T; N]> for ThinVec<T, P> {
+impl<T: Copy, const N: usize> From<&[T; N]> for ThinVec<T> {
     fn from(arr_ref: &[T; N]) -> Self {
         Self::from(arr_ref.as_slice())
     }
 }
 
-impl<T: Copy, P: ConstDefault, const N: usize> From<[T; N]> for ThinVec<T, P> {
+impl<T: Copy, const N: usize> From<[T; N]> for ThinVec<T> {
     fn from(array: [T; N]) -> Self {
         Self {
             base: Base::from_array(array),
@@ -1192,27 +1191,27 @@ impl<T: Copy, P: ConstDefault, const N: usize> From<[T; N]> for ThinVec<T, P> {
     }
 }
 
-impl<T: fmt::Debug + Copy, P> fmt::Debug for ThinVec<T, P> {
+impl<T: fmt::Debug + Copy> fmt::Debug for ThinVec<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.as_slice().fmt(f)
     }
 }
 
-impl<T: Copy, P> ops::Deref for ThinVec<T, P> {
+impl<T: Copy> ops::Deref for ThinVec<T> {
     type Target = [T];
     fn deref(&self) -> &Self::Target {
         self.as_slice()
     }
 }
 
-impl<T: Copy, P> ops::DerefMut for ThinVec<T, P> {
+impl<T: Copy> ops::DerefMut for ThinVec<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.as_mut_slice()
     }
 }
 
-impl_vector!(impl(T: Copy, P) Vector<Item=T> for ThinVec<T, P>);
-impl_vector!(impl(T: Copy, P) MutableVector<Item=T> for ThinVec<T, P>);
-impl_vector!(impl(T: Copy, P: ConstDefault) GrowableVector<Item=T> for ThinVec<T, P>);
+impl_vector!(impl(T: Copy) Vector<Item=T> for ThinVec<T>);
+impl_vector!(impl(T: Copy) MutableVector<Item=T> for ThinVec<T>);
+impl_vector!(impl(T: Copy) GrowableVector<Item=T> for ThinVec<T>);
 
-impl_extend!(ThinVec<T, P>, T, [T: Copy, P: ConstDefault], []);
+impl_extend!(ThinVec<T>, T, [T: Copy], []);
