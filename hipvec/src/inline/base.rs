@@ -12,12 +12,15 @@ use super::layouts::{self, Layout};
 use crate::common::methods;
 use crate::traits::MutableVector;
 
+#[repr(transparent)]
 pub struct Base<T, L: Layout<T>> {
     repr: L,
     phantom: PhantomData<T>,
 }
 
 impl<T, L: Layout<T>> Base<T, L> {
+    pub const CAPACITY: usize = L::CAPACITY;
+
     #[inline]
     pub const fn new() -> Self {
         Self {

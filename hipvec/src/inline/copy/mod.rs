@@ -386,7 +386,7 @@ impl<T: Copy, L: Layout<T>> InlineVec<T, L> {
     }
 
     /// The maximum number of elements the vector can hold.
-    pub const CAPACITY: usize = L::CAPACITY;
+    pub const CAPACITY: usize = Base::<T, L>::CAPACITY;
 
     /// Returns the maximum number of elements the vector can hold.
     ///
