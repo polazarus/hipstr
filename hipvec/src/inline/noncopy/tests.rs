@@ -3,8 +3,9 @@ use alloc::string::String;
 use core::cell::Cell;
 
 use super::TryReserveError;
+use crate::inline::InlineVec as V;
 use crate::inline::layouts::{BasicLayout, Layout};
-use crate::inline::{InlineVec as V, inline_vec as v};
+use crate::inline_vec as v;
 
 #[test]
 fn niche() {
@@ -490,7 +491,7 @@ fn append() {
         left.push(Box::new(5));
         expected.push(Box::new(5));
     }
-    let mut right = crate::thin::thin_vec![Box::new(6)];
+    let mut right = crate::thin_vec![Box::new(6)];
     expected.push(Box::new(6));
     left.append(&mut right);
     assert_eq!(left.as_slice(), expected.as_slice());

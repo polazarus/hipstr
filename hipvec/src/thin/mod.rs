@@ -9,7 +9,7 @@ mod base;
 pub mod copy;
 pub mod noncopy;
 
-pub(crate) use base::{Base, Reserved};
+pub(crate) use base::Base;
 
 pub use self::copy::ThinVec as CopyThinVec;
 pub use self::noncopy::ThinVec;
@@ -81,12 +81,8 @@ pub(crate) fn unwrap_or_oom<T>(result: Result<T, TryReserveError>) -> T {
 /// Also, note that `thin_vec![expr; 0]` is allowed, and produces an empty thin vector. This
 /// will still evaluate `expr`, however, and immediately drop the resulting value, so be mindful of
 /// side effects.
-#[doc(inline)]
-pub use crate::__thin_vec as thin_vec;
-
-#[doc(hidden)]
 #[macro_export]
-macro_rules! __thin_vec {
+macro_rules! thin_vec {
     () => {
         $crate::__vector!( $crate::thin::ThinVec<_> : )
     };
@@ -132,12 +128,8 @@ macro_rules! __thin_vec {
 /// Also, note that `copy_thin_vec![expr; 0]` is allowed, and produces an empty thin vector.
 /// This will still evaluate `expr`, however, and immediately drop the resulting value, so be
 /// mindful of side effects.
-#[doc(inline)]
-pub use crate::__copy_thin_vec as copy_thin_vec;
-
-#[doc(hidden)]
 #[macro_export]
-macro_rules! __copy_thin_vec {
+macro_rules! copy_thin_vec {
     () => {
         $crate::__vector!( $crate::thin::CopyThinVec<_> : )
     };

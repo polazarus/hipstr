@@ -1,6 +1,7 @@
 use crate::common::tests::pointer_stability;
-use crate::inline::copy_inline_vec;
-use crate::thin::{CopyThinVec as V, copy_thin_vec as v};
+use crate::copy_inline_vec;
+use crate::copy_thin_vec as v;
+use crate::thin::CopyThinVec as V;
 
 #[test]
 fn new_and_default() {

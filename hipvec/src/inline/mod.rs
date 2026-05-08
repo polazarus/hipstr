@@ -66,12 +66,8 @@ impl TryReserveError {
 /// side effects.
 ///
 /// [`InlineVec`]: crate::inline::InlineVec
-#[doc(inline)]
-pub use crate::__inline_vec as inline_vec;
-
-#[doc(hidden)]
 #[macro_export]
-macro_rules! __inline_vec {
+macro_rules! inline_vec {
     () => {
         $crate::__vector!( $crate::inline::InlineVec<_> : )
     };
@@ -119,12 +115,8 @@ macro_rules! __inline_vec {
 /// mindful of side effects.
 ///
 /// [`CopyInlineVec`]: crate::inline::CopyInlineVec
-#[doc(inline)]
-pub use crate::__copy_inline_vec as copy_inline_vec;
-
-#[doc(hidden)]
 #[macro_export]
-macro_rules! __copy_inline_vec {
+macro_rules! copy_inline_vec {
     () => {
         $crate::__vector!( $crate::inline::CopyInlineVec<_> : )
     };

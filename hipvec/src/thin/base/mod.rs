@@ -194,24 +194,6 @@ impl<T, P> Base<T, P> {
         methods::append!(self, other);
     }
 
-    pub const fn prefix(&self) -> Option<&P> {
-        if let Some(header) = self.header() {
-            Some(&header.prefix)
-        } else {
-            None
-        }
-    }
-
-    /// Creates a bitwise copy of the vector handle.
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure that the original and the copy may be used simultaneously without
-    /// violating Rust's aliasing rules.
-    pub const unsafe fn copy(&self) -> Self {
-        Self(self.0)
-    }
-
     /// Drops the allocation if it exists.
     ///
     /// # Safety
