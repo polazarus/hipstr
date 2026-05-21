@@ -82,6 +82,12 @@ impl<T, const TAG: usize> TaggedPointer<T, TAG> {
 
         Self::NULL
     }
+
+    pub fn cast<U>(&self) -> TaggedPointer<U, TAG> {
+        TaggedPointer {
+            ptr: self.ptr.cast(),
+        }
+    }
 }
 
 /// Converts a non-null pointer to a new tagged pointer.

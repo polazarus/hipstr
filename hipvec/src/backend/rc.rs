@@ -8,6 +8,7 @@ use const_default::ConstDefault;
 use super::{Counter, UpdateResult};
 
 /// Non-atomic (thread-unsafe) counter.
+#[repr(transparent)]
 pub struct Count(pub(crate) Cell<usize>);
 
 unsafe impl Counter for Count {

@@ -16,7 +16,7 @@ pub use self::noncopy::ThinVec;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[non_exhaustive]
-pub struct TryReserveError(TryReserveErrorKind);
+pub struct TryReserveError(pub(crate) TryReserveErrorKind);
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum TryReserveErrorKind {

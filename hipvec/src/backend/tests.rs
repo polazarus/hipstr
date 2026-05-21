@@ -4,10 +4,11 @@ use const_default::ConstDefault;
 
 use super::*;
 
-pub type PanickyUnique = BackendImpl<Unique, PanicOnOverflow>;
+pub type PanickyUnique = BackendImpl<Unique, true>;
 
-pub type BoundedRc<const MAX: usize> = BackendImpl<BoundedCount<MAX>, PanicOnOverflow>;
+pub type BoundedRc<const MAX: usize> = BackendImpl<BoundedCount<MAX>, true>;
 
+#[repr(C)]
 pub struct BoundedCount<const MAX: usize>(Cell<usize>);
 
 impl<const MAX: usize> ConstDefault for BoundedCount<MAX> {

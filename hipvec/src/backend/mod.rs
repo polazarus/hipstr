@@ -15,69 +15,42 @@ mod seal {
 #[cfg(test)]
 pub mod tests;
 
-use self::seal::Sealed;
-
 #[cfg(target_has_atomic = "ptr")]
 pub use arc::*;
+use const_default::ConstDefault;
 pub use rc::Count;
 pub use unique::One;
 
-use const_default::ConstDefault;
+use self::seal::Sealed;
 
 #[cfg(target_has_atomic = "ptr")]
-pub type Arc = BackendImpl<AtomicCount, PanicOnOverflow>;
+pub type Arc = BackendImpl<AtomicCount, true>;
 
-pub type Rc = BackendImpl<Count, PanicOnOverflow>;
+pub type Rc = BackendImpl<Count, true>;
 
-pub type Unique = BackendImpl<One, CloneOnOverflow>;
+pub type Unique = BackendImpl<One, false>;
 
 /// Sealed marker trait for allocated backend.
 pub trait Backend: Sealed + 'static {
+    /// The counter type.
     type Counter: Counter;
-    type OverflowBehavior: OverflowBehavior;
+
+    /// Whether to panic when the counter overflows.
+    const PANIC_ON_OVERFLOW: bool;
 }
 
-impl<C: Counter, B: OverflowBehavior> Backend for BackendImpl<C, B> {
-    type Counter = C;
-    type OverflowBehavior = B;
-}
-
+/// Actual backend configuration type.
 #[derive(Clone, Copy, Debug)]
-pub struct BackendImpl<C: Counter, B: OverflowBehavior>(pub(crate) C, PhantomData<B>);
+#[repr(transparent)]
+pub struct BackendImpl<C: Counter, const PANIC_ON_OVERFLOW: bool>(PhantomData<C>);
 
-impl<C: Counter, B: OverflowBehavior> Sealed for BackendImpl<C, B> {}
+impl<C: Counter, const PANIC_ON_OVERFLOW: bool> Backend for BackendImpl<C, PANIC_ON_OVERFLOW> {
+    type Counter = C;
 
-impl<C: Counter, B: OverflowBehavior> ConstDefault for BackendImpl<C, B> {
-    const DEFAULT: Self = Self(C::DEFAULT, PhantomData);
+    const PANIC_ON_OVERFLOW: bool = PANIC_ON_OVERFLOW;
 }
 
-/// Overflow behavior for smart pointers.
-///
-/// This trait is sealed and cannot be implemented outside this crate.
-pub trait OverflowBehavior: Sealed + 'static {}
-
-/// Clone on overflow behavior for the smart pointer.
-///
-/// This is the behavior intended for [`Unique`].
-///
-/// [`Unique`]: crate::Unique
-pub struct CloneOnOverflow(PhantomData<()>);
-
-impl Sealed for CloneOnOverflow {}
-
-impl OverflowBehavior for CloneOnOverflow {}
-
-/// Panic on overflow behavior for the smart pointer.
-///
-/// This is the usual behavior for [`Arc`] and [`Rc`].
-///
-/// [`Arc`]: crate::Arc
-/// [`Rc`]: crate::Rc
-pub struct PanicOnOverflow(PhantomData<()>);
-
-impl Sealed for PanicOnOverflow {}
-
-impl OverflowBehavior for PanicOnOverflow {}
+impl<C: Counter, const PANIC_ON_OVERFLOW: bool> Sealed for BackendImpl<C, PANIC_ON_OVERFLOW> {}
 
 /// Counter update result.
 #[must_use]

@@ -463,19 +463,20 @@ macro_rules! swap_remove {
 /// - for `self`, `len`, `reserve`, `set_len`, `as_mut_ptr`, and `reserve`
 /// - for `other`, `len`, `set_len`, and `as_ptr`
 macro_rules! append {
-    ($self:ident, $other:ident) => {{
-        let other_len = $other.len();
-        $self.reserve(other_len);
+    ($self:expr, $other:expr) => {{
+        let this: &mut _ = $self;
+        let other: &mut _ = $other;
+        let other_len = other.len();
+        this.reserve(other_len);
 
-        let self_len = $self.len();
+        let self_len = this.len();
         // SAFETY: capacity ≥ new length by `reserve`
         unsafe {
-            $other.set_len(0);
-            $self
-                .as_mut_ptr()
+            other.set_len(0);
+            this.as_mut_ptr()
                 .add(self_len)
-                .copy_from_nonoverlapping($other.as_ptr(), other_len);
-            $self.set_len(self_len + other_len);
+                .copy_from_nonoverlapping(other.as_ptr(), other_len);
+            this.set_len(self_len + other_len);
         }
     }};
 }

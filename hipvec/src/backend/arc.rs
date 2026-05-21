@@ -8,6 +8,7 @@ use loom::sync::atomic::{AtomicUsize, Ordering, fence};
 use super::{Counter, UpdateResult};
 
 /// Atomic (thread-safe) counter.
+#[repr(transparent)]
 pub struct AtomicCount(pub(crate) AtomicUsize);
 
 unsafe impl Counter for AtomicCount {
