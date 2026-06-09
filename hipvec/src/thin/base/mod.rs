@@ -12,18 +12,38 @@ use crate::common::tagged_pointer::TaggedPointer;
 use crate::common::utils::drop_raw_slice;
 use crate::traits::MutableVector;
 
+/// Tag for the tagged pointer in `Base`.
+///
+/// This tag is chosen to be `0b10` to avoid conflicts with the null pointer, to
+/// be distinct from the inline tag (0b1), while ensuring even a null pointer is
+/// actually non-zero and as such providing a useful niche for Rust layout
+/// optimisations.
 const TAG: usize = 0b10;
 
+/// Returns the minimum non-zero capacity for a given element size.
+///
+/// The implementation is purely heuristic based on the following observations:
+/// - for small element sizes, the header is relatively large compared to the
+///   elements, so we need a larger minimum capacity to avoid wasting too much
+///   memory
+/// - for larger element sizes, the header is relatively smaller, so we can
+///   afford a smaller minimum capacity.
 const fn min_non_zero_cap(size: usize) -> usize {
     if size == 1 {
-        8
+        // the header is 3 machine words, let's round up the allocation to 4 machine words
+        // efficient if the allocator rounds up to powers of two, and still small enough to avoid wasting too much memory
+        size_of::<usize>()
     } else if size <= 1024 {
-        4
+        // for larger element sizes, the header is relatively smaller, so we can
+        // afford to have a smaller minimum capacity
+        size_of::<usize>() / 2
     } else {
+        // for very large element sizes, the header is negligible, so we can allow a minimum capacity of 1
         1
     }
 }
 
+/// Internal representation of a thin vector.
 #[derive(Debug)]
 #[repr(transparent)]
 pub struct Base<T, P>(pub(crate) TaggedPointer<Header<T, P>, TAG>);
@@ -39,6 +59,8 @@ impl<T, P> ConstDefault for Base<T, P> {
 }
 
 impl<T, P> Base<T, P> {
+    /// Returns a reference to the header if the pointer is non-null, or `None`
+    /// if the pointer is null, that is, if the vector is empty.
     #[inline]
     const fn header(&self) -> Option<&Header<T, P>> {
         if let Some(header) = self.0.as_non_null() {
@@ -48,6 +70,8 @@ impl<T, P> Base<T, P> {
         }
     }
 
+    /// Returns a mutable reference to the header if the pointer is non-null, or `None`
+    /// if the pointer is null, that is, if the vector is empty.
     #[inline]
     #[expect(
         clippy::needless_pass_by_ref_mut,
@@ -61,11 +85,14 @@ impl<T, P> Base<T, P> {
         }
     }
 
+    /// Returns a new empty thin vector, with no actual allocation, that is, the
+    /// underlying pointer is null.
     #[inline]
     pub const fn new() -> Self {
         const { Self(TaggedPointer::null()) }
     }
 
+    /// Returns a new thin vector with the given capacity, that is, with an actual allocation if the capacity is non-zero.
     #[inline]
     pub const fn len(&self) -> usize {
         if let Some(header) = self.header() {
@@ -75,7 +102,17 @@ impl<T, P> Base<T, P> {
         }
     }
 
-    /// Sets the length
+    /// Returns `true` if the vector is empty, that is, if its length is zero.
+    #[inline]
+    pub const fn is_empty(&self) -> bool {
+        // one cannot simply check if the pointer is null to determine if the
+        // vector is empty, because an empty vector can still have a non-null
+        // pointer if it has a non-zero capacity, so actually need to check the
+        // length instead
+        self.len() == 0
+    }
+
+    /// Sets the length of the vector.
     ///
     /// # Safety
     ///
@@ -91,11 +128,7 @@ impl<T, P> Base<T, P> {
         }
     }
 
-    #[inline]
-    pub const fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
+    /// Returns the capacity of the vector, that is, the maximum number of elements it can hold without reallocating.
     #[inline]
     pub const fn capacity(&self) -> usize {
         if let Some(header) = self.header() {
@@ -105,6 +138,10 @@ impl<T, P> Base<T, P> {
         }
     }
 
+    /// Returns a pointer to the data, that is, the first element of the vector,
+    /// or a dangling pointer if the vector is empty.
+    ///
+    /// Note that the pointer is guaranteed to be non-null.
     #[inline]
     pub const fn as_ptr(&self) -> *const T {
         if let Some(header) = self.0.as_non_null() {
@@ -114,6 +151,10 @@ impl<T, P> Base<T, P> {
         }
     }
 
+    /// Returns a mutable pointer to the data, that is, the first element of the vector,
+    /// or a dangling pointer if the vector is empty.
+    ///
+    /// Note that the pointer is guaranteed to be non-null.
     #[inline]
     pub const fn as_mut_ptr(&mut self) -> *mut T {
         if let Some(header) = self.0.as_non_null() {
@@ -123,6 +164,8 @@ impl<T, P> Base<T, P> {
         }
     }
 
+    /// Returns a non-null pointer to the data, that is, the first element of
+    /// the vector, or a dangling pointer if the vector is empty.
     #[inline]
     #[expect(clippy::needless_pass_by_ref_mut)]
     pub const fn as_non_null(&mut self) -> NonNull<T> {
@@ -132,46 +175,73 @@ impl<T, P> Base<T, P> {
             NonNull::dangling()
         }
     }
+
+    /// Returns a slice of the initialized elements in the vector.
     #[inline]
     pub const fn as_slice(&self) -> &[T] {
         unsafe { core::slice::from_raw_parts(self.as_ptr(), self.len()) }
     }
 
+    /// Returns a mutable slice of the initialized elements in the vector.
     #[inline]
     pub const fn as_mut_slice(&mut self) -> &mut [T] {
         unsafe { core::slice::from_raw_parts_mut(self.as_mut_ptr(), self.len()) }
     }
 
+    /// Returns a slice of the uninitialized elements in the vector, that is, the spare capacity.
     #[inline]
     pub const fn spare_capacity_mut(&mut self) -> &mut [core::mem::MaybeUninit<T>] {
         methods::spare_capacity_mut!(self)
     }
 
+    /// Removes and returns the last element of the vector, or `None` if it is empty.
     pub const fn pop(&mut self) -> Option<T> {
         methods::pop!(self)
     }
 
+    /// Removes and returns the last element of the vector if it satisfies the
+    /// given predicate, or `None` if it is empty or if the last element does
+    /// not satisfy the predicate.
     pub fn pop_if(&mut self, predicate: impl FnOnce(&mut T) -> bool) -> Option<T> {
         methods::pop_if!(self, predicate)
     }
 
+    /// Removes and returns the element at the given index, shifting all elements after it to the left.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index` is out of bounds, that is, if `index >= self.len()`.
     pub fn remove(&mut self, index: usize) -> T {
         methods::remove!(self, index)
     }
 
+    /// Removes and returns the element at the given index, replacing it with the last element of the vector.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index` is out of bounds, that is, if `index >= self.len()`.
     pub fn swap_remove(&mut self, index: usize) -> T {
         methods::swap_remove!(self, index)
     }
 
+    /// Truncates the vector to the given length, dropping the elements that are removed.
+    ///
+    /// If `new_len` is greater than the current length, this method does nothing.
+    /// If `new_len` is less than the current length, this method drops the elements in the range `[new_len, self.len())` and sets the length to `new_len`.
     pub fn truncate(&mut self, new_len: usize) {
         methods::truncate!(self, new_len);
     }
 
+    /// Clears the vector by truncating it to zero, dropping all elements.
     #[inline]
     pub fn clear(&mut self) {
         self.truncate(0);
     }
 
+    /// Truncates the vector to the given length.
+    ///
+    /// If `new_len` is greater than the current length, this method does nothing.
+    /// If `new_len` is less than the current length, this method and sets the length to `new_len`.
     pub const fn truncate_copy(&mut self, new_len: usize)
     where
         T: Copy,
@@ -179,6 +249,7 @@ impl<T, P> Base<T, P> {
         methods::truncate_copy!(self, new_len);
     }
 
+    /// Clears the vector by truncating it to zero.
     #[inline]
     pub const fn clear_copy(&mut self)
     where
@@ -187,6 +258,7 @@ impl<T, P> Base<T, P> {
         self.truncate_copy(0);
     }
 
+    /// Appends all elements from another vector to the end of this vector, consuming the other vector.
     pub fn append(&mut self, other: &mut impl MutableVector<Item = T>)
     where
         P: ConstDefault,
