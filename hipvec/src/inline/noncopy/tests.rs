@@ -229,7 +229,7 @@ fn from_array_empty() {
 }
 
 #[test]
-#[should_panic(expected = "required capacity exceeds maximum")]
+#[should_panic(expected = "capacity overflow")]
 fn from_array_panic() {
     let _ = V::<i32>::from([0; <BasicLayout as Layout<i32>>::CAPACITY + 1]);
 }

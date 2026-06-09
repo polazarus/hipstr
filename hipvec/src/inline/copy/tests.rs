@@ -479,7 +479,7 @@ fn with_capacity() {
 }
 
 #[test]
-#[should_panic(expected = "required capacity exceeds maximum")]
+#[should_panic(expected = "capacity overflow")]
 fn with_capacity_panic() {
     let _ = V::<i32>::with_capacity(V::<i32>::CAPACITY + 1);
 }
