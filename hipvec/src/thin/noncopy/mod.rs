@@ -9,7 +9,7 @@ use super::base::{Base, Reserved};
 use crate::common::drain::Drain;
 use crate::common::splice::Splice;
 use crate::common::traits::impl_extend;
-use crate::common::{methods, unwrap_display};
+use crate::common::unwrap_display;
 use crate::traits::{MutableVector, impl_vector};
 
 #[cfg(test)]
@@ -942,7 +942,7 @@ impl<T> ThinVec<T> {
     where
         T: Clone,
     {
-        methods::extend_from_slice!(self, slice);
+        self.base.extend_from_slice(slice);
     }
 
     /// Appends all elements of the array to the vector.

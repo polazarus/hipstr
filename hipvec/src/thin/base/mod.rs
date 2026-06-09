@@ -420,6 +420,20 @@ where
         methods::extend_from_array!(self, array);
     }
 
+    pub fn extend_from_slice(&mut self, slice: &[T])
+    where
+        T: Clone,
+    {
+        methods::extend_from_slice!(self, slice);
+    }
+
+    pub fn extend_from_slice_copy(&mut self, slice: &[T])
+    where
+        T: Copy,
+    {
+        methods::extend_from_slice_copy!(self, slice);
+    }
+
     #[track_caller]
     pub fn split_off(&mut self, at: usize) -> Self {
         methods::split_off!(self, at)
