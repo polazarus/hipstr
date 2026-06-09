@@ -1,4 +1,7 @@
+use alloc::boxed::Box;
+use alloc::vec::Vec;
 use core::alloc::Layout;
+use core::marker::PhantomData;
 use core::ptr::NonNull;
 
 use const_default::ConstDefault;
@@ -87,6 +90,19 @@ impl<T, Prefix> ThinHeader<T, Prefix> {
     }
 }
 
+impl<T, P: ConstDefault> Header<T, P, Option<NonNull<T>>> {
+    pub(crate) fn from_wide(vec: Vec<T>) -> Box<Self> {
+        let (ptr, cap, len) = vec.into_raw_parts();
+        Box::new(Self {
+            prefix: P::DEFAULT,
+            ptr: NonNull::new(ptr),
+            cap,
+            len,
+            _phantom: PhantomData,
+        })
+    }
+}
+
 impl<T, P> ConstDefault for ThinHeader<T, P>
 where
     P: ConstDefault,
@@ -96,7 +112,7 @@ where
         ptr: ZeroUsize::DEFAULT,
         cap: 0,
         len: 0,
-        _phantom: core::marker::PhantomData,
+        _phantom: PhantomData,
     };
 }
 

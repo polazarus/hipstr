@@ -1,5 +1,8 @@
+use alloc::vec::Vec;
+
 use const_default::ConstDefault;
 
+use super::Repr;
 use super::base::{Base, Mut};
 use crate::backend::Backend;
 use crate::thin;
@@ -65,6 +68,11 @@ impl<'a, T, B: Backend> HipVec<'a, T, B> {
             base: self.base.mutate_unchecked(),
         }
     }
+
+    #[inline]
+    pub const fn repr(&self) -> Repr {
+        self.base.repr()
+    }
 }
 
 impl<'a, T: Clone, B: Backend> HipVec<'a, T, B> {
@@ -113,5 +121,13 @@ impl<'a, 'b, T, B: Backend> RefMut<'a, 'b, T, B> {
     #[inline]
     pub fn push(&mut self, value: T) {
         let _ = self.base.push_mut(value);
+    }
+}
+
+impl<'a, T, B: Backend> From<Vec<T>> for HipVec<'a, T, B> {
+    fn from(value: Vec<T>) -> Self {
+        Self {
+            base: Base::from_wide(value),
+        }
     }
 }

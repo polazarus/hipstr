@@ -1,5 +1,6 @@
 //! Tagged pointers.
 
+use alloc::boxed::Box;
 use core::num::NonZeroUsize;
 use core::ptr::{self, NonNull};
 
@@ -108,6 +109,14 @@ impl<T, const TAG: usize> From<NonNull<T>> for TaggedPointer<T, TAG> {
         Self::debug_check();
         let ptr = unsafe { ptr.byte_add(TAG) };
         Self { ptr }
+    }
+}
+
+impl<T, const TAG: usize> From<Box<T>> for TaggedPointer<T, TAG> {
+    #[inline]
+    fn from(b: Box<T>) -> Self {
+        let p = Box::into_raw(b);
+        Self::from(unsafe { NonNull::new_unchecked(p) })
     }
 }
 

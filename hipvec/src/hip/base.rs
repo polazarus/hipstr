@@ -1,8 +1,10 @@
+use alloc::vec::Vec;
 use core::marker::PhantomData;
 use core::mem::{MaybeUninit, offset_of, transmute};
 use core::num::NonZeroUsize;
 use core::ptr::NonNull;
 
+use super::{Owned, Repr};
 use crate::backend::{self, Backend, Counter, UpdateResult};
 use crate::common::header::Header;
 use crate::common::tagged_pointer::TaggedPointer;
@@ -71,16 +73,8 @@ impl<T, P: Counter> Owner<T, P> {
         unsafe { transmute::<thin::Base<T, P>, Owner<T, P>>(thin) }
     }
 
-    pub(crate) const fn split_mut(&mut self) -> Option<OwnerMut<'_, T, P>> {
-        if let Some(header) = self.0.as_non_null() {
-            Some(if unsafe { header.as_ref().ptr.is_none() } {
-                OwnerMut::Thin(unsafe { self.as_thin_mut_unchecked() })
-            } else {
-                todo!()
-            })
-        } else {
-            None
-        }
+    pub(crate) fn from_wide(vec: Vec<T>) -> Self {
+        Self(TaggedPointer::from(Header::from_wide(vec)))
     }
 
     const unsafe fn as_thin_mut_unchecked(&mut self) -> &mut thin::Base<T, P> {
@@ -139,6 +133,15 @@ impl<T, P: Counter> Owner<T, P> {
 
     const fn is_none(&self) -> bool {
         self.0.as_non_null().is_none()
+    }
+
+    const fn set_len(&self, new_len: usize) {
+        if let Some(mut header) = self.0.as_non_null() {
+            let header = unsafe { header.as_mut() };
+            header.len = new_len;
+        } else {
+            debug_assert!(new_len == 0, "cannot set non-zero length on a none owner");
+        }
     }
 }
 
@@ -230,6 +233,29 @@ impl<T, C: Counter> Sliced<T, C> {
     const fn has_owner(&self) -> bool {
         self.owner.is_some()
     }
+
+    #[inline]
+    const fn repr(&self) -> Option<Owned> {
+        if self.owner.is_some() {
+            let header = unsafe { self.owner.0.as_non_null().unwrap().as_ref() };
+            if header.ptr.is_none() {
+                Some(Owned::Thin)
+            } else {
+                Some(Owned::Wide)
+            }
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    fn from_wide(vec: Vec<T>) -> Self {
+        let slice = NonNull::from_ref(vec.as_slice());
+        Self {
+            owner: Owner::from_wide(vec),
+            slice,
+        }
+    }
 }
 
 const _: () = {
@@ -275,16 +301,28 @@ impl<'a, T, B: Backend> Base<'a, T, B> {
         self.lsw() & SLICE_TAG_MASK == SLICE_TAG
     }
 
-    pub const fn is_alloced(&self) -> bool {
-        self.lsw() & SLICE_TAG_MASK == SLICE_TAG && self.lsw() & !SLICE_TAG_MASK != 0
-    }
+    #[inline]
+    pub const fn repr(&self) -> Repr {
+        if self.is_inline() {
+            Repr::Inline
+        } else {
+            debug_assert!(self.is_sliced(), "must be sliced");
 
-    pub const fn is_borrowed(&self) -> bool {
-        self.lsw() & SLICE_TAG_MASK == SLICE_TAG && self.lsw() & !SLICE_TAG_MASK == 0
+            let allocated = unsafe { self.sliced_unchecked() };
+            if let Some(repr) = allocated.repr() {
+                Repr::Owned(repr)
+            } else {
+                Repr::Borrowed
+            }
+        }
     }
 
     pub const fn from_borrowed_slice(slice: &[T]) -> Self {
         Self::from_sliced(Sliced::borrowed(NonNull::from_ref(slice)))
+    }
+
+    pub fn from_wide(vec: Vec<T>) -> Self {
+        Self::from_sliced(Sliced::from_wide(vec))
     }
 
     const fn from_sliced(sliced: Sliced<T, B::Counter>) -> Self {
@@ -473,6 +511,7 @@ impl<'a, T, B: Backend> Base<'a, T, B> {
         }
     }
 
+    #[allow(clippy::wrong_self_convention)]
     pub fn to_mut_slice(&mut self) -> &mut [T]
     where
         T: Clone,
@@ -482,6 +521,7 @@ impl<'a, T, B: Backend> Base<'a, T, B> {
         unsafe { self.as_mut_slice_unchecked() }
     }
 
+    #[allow(clippy::wrong_self_convention)]
     pub fn to_mut_slice_copy(&mut self) -> &mut [T]
     where
         T: Copy,
@@ -577,12 +617,13 @@ impl<'a, 'b, T, B: Backend> Mut<'a, 'b, T, B> {
     }
 
     #[inline]
-    pub unsafe fn set_len(&mut self, new_len: usize) {
+    pub const unsafe fn set_len(&mut self, new_len: usize) {
         if self.base.is_inline() {
             unsafe { self.base.inline_mut_unchecked().set_len(new_len) }
         } else {
             let sliced = unsafe { self.base.sliced_unchecked_mut() };
             debug_assert!(sliced.has_owner() || new_len == 0);
+            sliced.owner.set_len(new_len);
             slice_set_len(&mut sliced.slice, new_len);
         }
     }
@@ -625,26 +666,37 @@ impl<'a, 'b, T, B: Backend> Mut<'a, 'b, T, B> {
             }
         } else {
             let sliced = unsafe { self.base.sliced_unchecked_mut() };
-            if let Some(owner) = sliced.owner.split_mut() {
-                match owner {
-                    OwnerMut::Thin(thin) => {
-                        thin.try_reserve(additional)?;
-                    }
-                    OwnerMut::Wide() => {
-                        // TODO
-                        unimplemented!()
-                    }
+            match sliced.repr() {
+                Some(Owned::Thin) => {
+                    let thin = unsafe { sliced.owner.as_thin_mut_unchecked() };
+                    thin.try_reserve(additional)?;
+                    sliced.slice = NonNull::from_ref(thin.as_slice());
                 }
-            } else {
-                let thin = thin::Base::with_capacity(required);
-                *sliced = Sliced::from_thin(thin);
+                Some(Owned::Wide) => {
+                    let mut thin: thin::Base<T, <B as Backend>::Counter> =
+                        thin::Base::with_capacity(required);
+                    unsafe {
+                        thin.as_mut_ptr().copy_from_nonoverlapping(
+                            sliced.slice.as_ptr().cast(),
+                            sliced.slice.len(),
+                        );
+                        thin.set_len(sliced.slice.len());
+                        sliced.owner.set_len(0);
+                        sliced.slice = NonNull::from_ref(&[]);
+                    }
+                    *sliced = Sliced::from_thin(thin);
+                }
+                None => {
+                    let thin = thin::Base::with_capacity(required);
+                    *sliced = Sliced::from_thin(thin);
+                }
             }
         }
         Ok(())
     }
 }
 
-fn slice_set_len<T>(slice: &mut NonNull<[T]>, new_len: usize) {
+const fn slice_set_len<T>(slice: &mut NonNull<[T]>, new_len: usize) {
     let ptr: NonNull<T> = slice.cast();
     let new_slice = NonNull::slice_from_raw_parts(ptr, new_len);
     *slice = new_slice;
