@@ -12,6 +12,7 @@ pub(crate) mod traits;
 pub(crate) mod utils;
 
 pub mod drain;
+pub mod markers;
 pub mod splice;
 
 pub use range::RangeError;

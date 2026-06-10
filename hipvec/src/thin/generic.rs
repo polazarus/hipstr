@@ -1,3 +1,6 @@
+#![doc(hidden)]
+
+use core::marker::PhantomData;
 use core::mem::transmute;
 use core::ptr::NonNull;
 use core::{fmt, ops};
@@ -7,30 +10,29 @@ use const_default::ConstDefault;
 use super::TryReserveError;
 use super::base::{Base, Reserved};
 use crate::common::drain::Drain;
+use crate::common::markers::{self, Copyness};
 use crate::common::splice::Splice;
 use crate::common::traits::impl_extend;
 use crate::common::unwrap_display;
-use crate::traits::{GrowableVector, impl_vector};
-
-#[cfg(test)]
-mod tests;
+use crate::traits::{MutableVector, impl_vector};
 
 #[repr(transparent)]
-pub struct ThinVec<T: Copy> {
+pub struct ThinVec<T, M: Copyness = markers::NonCopy> {
     base: Base<T, Reserved>,
+    marker: PhantomData<M>,
 }
 
-impl<T: Copy> Default for ThinVec<T> {
+impl<T, M: Copyness> Default for ThinVec<T, M> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T: Copy> ConstDefault for ThinVec<T> {
+impl<T, M: Copyness> ConstDefault for ThinVec<T, M> {
     const DEFAULT: Self = Self::new();
 }
 
-impl<T: Copy> ThinVec<T> {
+impl<T, M: Copyness> ThinVec<T, M> {
     /// Constructs a new, empty vector.
     ///
     /// The vector will not allocate until elements are pushed onto it.
@@ -39,12 +41,15 @@ impl<T: Copy> ThinVec<T> {
     ///
     /// ```
     /// # #![allow(unused_mut)]
-    /// # use hipvec::thin::CopyThinVec;
-    /// let mut vec: CopyThinVec<i32> = CopyThinVec::new();
+    /// # use hipvec::thin::ThinVec;
+    /// let mut vec: ThinVec<i32> = ThinVec::new();
     /// ```
     #[inline]
     pub const fn new() -> Self {
-        Self { base: Base::new() }
+        Self {
+            base: Base::new(),
+            marker: PhantomData,
+        }
     }
 
     /// Returns the number of elements in the vector, also referred to as its 'length'.
@@ -52,8 +57,8 @@ impl<T: Copy> ThinVec<T> {
     /// # Examples
     ///
     /// ```
-    /// # use hipvec::copy_thin_vec;
-    /// let a = copy_thin_vec![1, 2, 3];
+    /// # use hipvec::thin_vec;
+    /// let a = thin_vec![1, 2, 3];
     /// assert_eq!(a.len(), 3);
     /// ```
     #[inline]
@@ -66,8 +71,8 @@ impl<T: Copy> ThinVec<T> {
     /// # Examples
     ///
     /// ```
-    /// # use hipvec::thin::CopyThinVec;
-    /// let mut v = CopyThinVec::new();
+    /// # use hipvec::thin::ThinVec;
+    /// let mut v = ThinVec::new();
     /// assert!(v.is_empty());
     ///
     /// v.push(1);
@@ -84,8 +89,8 @@ impl<T: Copy> ThinVec<T> {
     /// # Examples
     ///
     /// ```
-    /// # use hipvec::thin::CopyThinVec;
-    /// let mut vec: CopyThinVec<i32> = CopyThinVec::with_capacity(10);
+    /// # use hipvec::thin::ThinVec;
+    /// let mut vec: ThinVec<i32> = ThinVec::with_capacity(10);
     /// vec.push(42);
     /// assert!(vec.capacity() >= 10);
     /// ```
@@ -119,8 +124,8 @@ impl<T: Copy> ThinVec<T> {
     /// # Examples
     ///
     /// ```
-    /// # use hipvec::copy_thin_vec;
-    /// let x = copy_thin_vec![1, 2, 4];
+    /// # use hipvec::thin_vec;
+    /// let x = thin_vec![1, 2, 4];
     /// let x_ptr = x.as_ptr();
     ///
     /// unsafe {
@@ -133,9 +138,9 @@ impl<T: Copy> ThinVec<T> {
     /// Due to the aliasing guarantee, the following code is legal:
     ///
     /// ```rust
-    ///  # use hipvec::copy_thin_vec;
+    ///  # use hipvec::thin_vec;
     /// unsafe {
-    ///     let mut v = copy_thin_vec![0, 1, 2];
+    ///     let mut v = thin_vec![0, 1, 2];
     ///     let ptr1 = v.as_ptr();
     ///     let _ = ptr1.read();
     ///     let ptr2 = v.as_mut_ptr().offset(2);
@@ -174,10 +179,10 @@ impl<T: Copy> ThinVec<T> {
     /// # Examples
     ///
     /// ```
-    /// # use hipvec::thin::CopyThinVec;
+    /// # use hipvec::thin::ThinVec;
     /// // Allocate vector big enough for 4 elements.
     /// let size = 4;
-    /// let mut x: CopyThinVec<i32> = CopyThinVec::with_capacity(size);
+    /// let mut x: ThinVec<i32> = ThinVec::with_capacity(size);
     /// let x_ptr = x.as_mut_ptr();
     ///
     /// // Initialize elements via raw pointer writes, then set length.
@@ -193,9 +198,9 @@ impl<T: Copy> ThinVec<T> {
     /// Due to the aliasing guarantee, the following code is legal:
     ///
     /// ```rust
-    /// # use hipvec::copy_thin_vec;
+    /// # use hipvec::thin_vec;
     /// unsafe {
-    ///     let mut v = copy_thin_vec![0];
+    ///     let mut v = thin_vec![0];
     ///     let ptr1 = v.as_mut_ptr();
     ///     ptr1.write(1);
     ///     let ptr2 = v.as_mut_ptr();
@@ -233,10 +238,10 @@ impl<T: Copy> ThinVec<T> {
     /// # Examples
     ///
     /// ```
-    /// # use hipvec::{copy_thin_vec, thin::CopyThinVec};
+    /// # use hipvec::{thin_vec, thin::ThinVec};
     /// // Allocate vector big enough for 4 elements.
     /// let size = 4;
-    /// let mut x: CopyThinVec<i32> = CopyThinVec::with_capacity(size);
+    /// let mut x: ThinVec<i32> = ThinVec::with_capacity(size);
     /// let x_ptr = x.as_non_null();
     ///
     /// // Initialize elements via raw pointer writes, then set length.
@@ -252,10 +257,10 @@ impl<T: Copy> ThinVec<T> {
     /// Due to the aliasing guarantee, the following code is legal:
     ///
     /// ```rust
-    /// # use hipvec::{copy_thin_vec, thin::CopyThinVec};
+    /// # use hipvec::{thin_vec, thin::ThinVec};
     ///
     /// unsafe {
-    ///     let mut v = copy_thin_vec![0];
+    ///     let mut v = thin_vec![0];
     ///     let ptr1 = v.as_non_null();
     ///     ptr1.write(1);
     ///     let ptr2 = v.as_non_null();
@@ -280,14 +285,14 @@ impl<T: Copy> ThinVec<T> {
     /// # Examples
     ///
     /// ```
-    /// # use hipvec::copy_thin_vec;
+    /// # use hipvec::thin_vec;
     /// use std::io::{self, Write};
-    /// let buffer = copy_thin_vec![1, 2, 3, 5, 8];
+    /// let buffer = thin_vec![1, 2, 3, 5, 8];
     /// io::sink().write(buffer.as_slice()).unwrap();
     /// ```
     #[inline]
     pub const fn as_slice(&self) -> &[T] {
-        self.base.as_slice()
+        unsafe { core::slice::from_raw_parts(self.as_ptr(), self.len()) }
     }
 
     /// Extracts a mutable slice of the entire vector.
@@ -297,14 +302,14 @@ impl<T: Copy> ThinVec<T> {
     /// # Examples
     ///
     /// ```
-    /// # use hipvec::copy_thin_vec;
+    /// # use hipvec::thin_vec;
     /// use std::io::{self, Read};
-    /// let mut buffer = copy_thin_vec![0; 3];
+    /// let mut buffer = thin_vec![0; 3];
     /// io::repeat(0b101).read_exact(buffer.as_mut_slice()).unwrap();
     /// ```
     #[inline]
     pub const fn as_mut_slice(&mut self) -> &mut [T] {
-        self.base.as_mut_slice()
+        unsafe { core::slice::from_raw_parts_mut(self.as_mut_ptr(), self.len()) }
     }
 
     /// Returns the remaining spare capacity of the vector as a slice of
@@ -319,9 +324,9 @@ impl<T: Copy> ThinVec<T> {
     /// # Examples
     ///
     /// ```
-    /// # use hipvec::thin::CopyThinVec;
+    /// # use hipvec::thin::ThinVec;
     /// // Allocate vector big enough for 10 elements.
-    /// let mut v = CopyThinVec::with_capacity(10);
+    /// let mut v = ThinVec::with_capacity(10);
     ///
     /// // Fill in the first 3 elements.
     /// let uninit = v.spare_capacity_mut();
@@ -366,8 +371,8 @@ impl<T: Copy> ThinVec<T> {
     /// # Examples
     ///
     /// ```
-    /// # use hipvec::copy_thin_vec;
-    /// let mut vec = copy_thin_vec![1, 2, 3];
+    /// # use hipvec::thin_vec;
+    /// let mut vec = thin_vec![1, 2, 3];
     /// assert_eq!(vec.pop(), Some(3));
     /// assert_eq!(vec.as_slice(), &[1, 2]);
     /// ```
@@ -387,8 +392,8 @@ impl<T: Copy> ThinVec<T> {
     /// # Examples
     ///
     /// ```
-    /// # use hipvec::copy_thin_vec;
-    /// let mut vec = copy_thin_vec![1, 2, 3, 4];
+    /// # use hipvec::thin_vec;
+    /// let mut vec = thin_vec![1, 2, 3, 4];
     /// let pred = |x: &mut i32| *x % 2 == 0;
     ///
     /// assert_eq!(vec.pop_if(pred), Some(4));
@@ -416,8 +421,8 @@ impl<T: Copy> ThinVec<T> {
     /// # Examples
     ///
     /// ```
-    /// # use hipvec::copy_thin_vec;
-    /// let mut v = copy_thin_vec![b'a', b'b', b'c'];
+    /// # use hipvec::thin_vec;
+    /// let mut v = thin_vec![b'a', b'b', b'c'];
     /// assert_eq!(v.remove(1), b'b');
     /// assert_eq!(v.as_slice(), [b'a', b'c']);
     /// ```
@@ -442,8 +447,8 @@ impl<T: Copy> ThinVec<T> {
     /// # Examples
     ///
     /// ```
-    /// # use hipvec::copy_thin_vec;
-    /// let mut v = copy_thin_vec!["foo", "bar", "baz", "qux"];
+    /// # use hipvec::thin_vec;
+    /// let mut v = thin_vec!["foo", "bar", "baz", "qux"];
     ///
     /// assert_eq!(v.swap_remove(1), "bar");
     /// assert_eq!(v.as_slice(), ["foo", "qux", "baz"]);
@@ -473,8 +478,8 @@ impl<T: Copy> ThinVec<T> {
     /// Truncating a five element vector to two elements:
     ///
     /// ```
-    /// # use hipvec::copy_thin_vec;
-    /// let mut vec = copy_thin_vec![1, 2, 3, 4, 5];
+    /// # use hipvec::thin_vec;
+    /// let mut vec = thin_vec![1, 2, 3, 4, 5];
     /// vec.truncate(2);
     /// assert_eq!(vec.as_slice(), [1, 2]);
     /// ```
@@ -483,8 +488,8 @@ impl<T: Copy> ThinVec<T> {
     /// length:
     ///
     /// ```
-    /// # use hipvec::copy_thin_vec;
-    /// let mut vec = copy_thin_vec![1, 2, 3];
+    /// # use hipvec::thin_vec;
+    /// let mut vec = thin_vec![1, 2, 3];
     /// vec.truncate(8);
     /// assert_eq!(vec.as_slice(), [1, 2, 3]);
     /// ```
@@ -493,8 +498,8 @@ impl<T: Copy> ThinVec<T> {
     /// method.
     ///
     /// ```
-    /// # use hipvec::copy_thin_vec;
-    /// let mut vec = copy_thin_vec![1, 2, 3];
+    /// # use hipvec::thin_vec;
+    /// let mut vec = thin_vec![1, 2, 3];
     /// vec.truncate(0);
     /// assert!(vec.is_empty());
     /// ```
@@ -502,8 +507,8 @@ impl<T: Copy> ThinVec<T> {
     /// [`clear`]: Self::clear
     /// [`drain`]: Self::drain
     #[inline]
-    pub const fn truncate(&mut self, new_len: usize) {
-        self.base.truncate_copy(new_len);
+    pub fn truncate(&mut self, new_len: usize) {
+        self.base.truncate(new_len);
     }
 
     /// Clears the vector, removing all values.
@@ -514,16 +519,16 @@ impl<T: Copy> ThinVec<T> {
     /// # Examples
     ///
     /// ```
-    /// # use hipvec::copy_thin_vec;
-    /// let mut vec = copy_thin_vec![1, 2, 3];
+    /// # use hipvec::thin_vec;
+    /// let mut vec = thin_vec![1, 2, 3];
     ///
     /// vec.clear();
     ///
     /// assert!(vec.is_empty());
     /// ```
     #[inline]
-    pub const fn clear(&mut self) {
-        self.base.clear_copy();
+    pub fn clear(&mut self) {
+        self.base.clear();
     }
 
     /// Removes the subslice indicated by the given range from the vector,
@@ -550,8 +555,8 @@ impl<T: Copy> ThinVec<T> {
     /// # Examples
     ///
     /// ```
-    /// # use hipvec::copy_thin_vec;
-    /// let mut v = copy_thin_vec![1_u8, 2, 3];
+    /// # use hipvec::thin_vec;
+    /// let mut v = thin_vec![1_u8, 2, 3];
     /// let u: Vec<_> = v.drain(1..).collect();
     /// assert_eq!(v.as_slice(), &[1]);
     /// assert_eq!(u.as_slice(), &[2, 3]);
@@ -571,7 +576,7 @@ impl<T: Copy> ThinVec<T> {
     }
 }
 
-impl<T: Copy> ThinVec<T> {
+impl<T, M: Copyness> ThinVec<T, M> {
     /// Constructs a new, empty vector with at least the specified capacity.
     ///
     /// The vector will be able to hold at least `capacity` elements without
@@ -596,8 +601,8 @@ impl<T: Copy> ThinVec<T> {
     /// # Examples
     ///
     /// ```
-    /// # use hipvec::thin::CopyThinVec;
-    /// let mut vec = CopyThinVec::with_capacity(10);
+    /// # use hipvec::thin::ThinVec;
+    /// let mut vec = ThinVec::with_capacity(10);
     ///
     /// // The vector contains no items, even though it has capacity for more
     /// assert_eq!(vec.len(), 0);
@@ -616,13 +621,14 @@ impl<T: Copy> ThinVec<T> {
     /// assert!(vec.capacity() >= 11);
     ///
     /// // A vector of a zero-sized type with a non-zero capacity will always "over-allocate".
-    /// let vec_units = CopyThinVec::<()>::with_capacity(10);
+    /// let vec_units = ThinVec::<()>::with_capacity(10);
     /// assert_eq!(vec_units.capacity(), usize::MAX);
     /// ```
     #[inline]
     pub fn with_capacity(cap: usize) -> Self {
         Self {
             base: Base::with_capacity(cap),
+            marker: PhantomData,
         }
     }
 
@@ -640,6 +646,7 @@ impl<T: Copy> ThinVec<T> {
     pub fn try_with_capacity(capacity: usize) -> Result<Self, TryReserveError> {
         Ok(Self {
             base: Base::try_with_capacity(capacity)?,
+            marker: PhantomData,
         })
     }
 
@@ -656,8 +663,8 @@ impl<T: Copy> ThinVec<T> {
     /// # Examples
     ///
     /// ```
-    /// # use hipvec::copy_thin_vec;
-    /// let mut vec = copy_thin_vec![1];
+    /// # use hipvec::thin_vec;
+    /// let mut vec = thin_vec![1];
     /// vec.reserve(10);
     /// assert!(vec.capacity() >= 11);
     /// ```
@@ -686,12 +693,11 @@ impl<T: Copy> ThinVec<T> {
     /// # Examples
     ///
     /// ```
-    /// # use hipvec::copy_thin_vec;
-    /// let mut vec = copy_thin_vec![1];
+    /// # use hipvec::thin_vec;
+    /// let mut vec = thin_vec![1];
     /// vec.reserve_exact(10);
     /// assert!(vec.capacity() >= 11);
     /// ```
-    #[inline]
     pub fn reserve_exact(&mut self, additional: usize) {
         self.base.reserve_exact(additional);
     }
@@ -712,10 +718,10 @@ impl<T: Copy> ThinVec<T> {
     ///
     /// ```
     /// use hipvec::common::TryReserveError;
-    /// use hipvec::thin::CopyThinVec;
+    /// use hipvec::thin::ThinVec;
     ///
-    /// fn process_data(data: &[u32]) -> Result<CopyThinVec<u32>, TryReserveError> {
-    ///     let mut output = CopyThinVec::new();
+    /// fn process_data(data: &[u32]) -> Result<ThinVec<u32>, TryReserveError> {
+    ///     let mut output = ThinVec::new();
     ///
     ///     // Pre-reserve the memory, exiting if we can't
     ///     output.try_reserve(data.len())?;
@@ -756,10 +762,10 @@ impl<T: Copy> ThinVec<T> {
     ///
     /// ```
     /// use hipvec::common::TryReserveError;
-    /// use hipvec::thin::CopyThinVec;
+    /// use hipvec::thin::ThinVec;
     ///
-    /// fn process_data(data: &[u32]) -> Result<CopyThinVec<u32>, TryReserveError> {
-    ///     let mut output = CopyThinVec::new();
+    /// fn process_data(data: &[u32]) -> Result<ThinVec<u32>, TryReserveError> {
+    ///     let mut output = ThinVec::new();
     ///
     ///     // Pre-reserve the memory, exiting if we can't
     ///     output.try_reserve_exact(data.len())?;
@@ -787,8 +793,8 @@ impl<T: Copy> ThinVec<T> {
     /// # Examples
     ///
     /// ```
-    /// # use hipvec::copy_thin_vec;
-    /// let mut vec = copy_thin_vec![1, 2];
+    /// # use hipvec::thin_vec;
+    /// let mut vec = thin_vec![1, 2];
     /// vec.push(3);
     /// assert_eq!(vec.as_slice(), [1, 2, 3]);
     /// ```
@@ -813,9 +819,9 @@ impl<T: Copy> ThinVec<T> {
     /// # Examples
     ///
     /// ```
-    /// # use hipvec::copy_thin_vec;
+    /// # use hipvec::thin_vec;
     ///
-    /// let mut vec = copy_thin_vec![1, 2];
+    /// let mut vec = thin_vec![1, 2];
     /// let last = vec.push_mut(3);
     /// assert_eq!(*last, 3);
     /// assert_eq!(vec.as_slice(), [1, 2, 3]);
@@ -849,8 +855,8 @@ impl<T: Copy> ThinVec<T> {
     /// # Examples
     ///
     /// ```
-    /// # use hipvec::copy_thin_vec;
-    /// let mut vec = copy_thin_vec![0, 1];
+    /// # use hipvec::thin_vec;
+    /// let mut vec = thin_vec![0, 1];
     /// let capacity = vec.capacity();
     /// for i in 2..capacity {
     ///   vec.push_within_capacity(i).unwrap();
@@ -877,8 +883,8 @@ impl<T: Copy> ThinVec<T> {
     /// # Examples
     ///
     /// ```
-    /// # use hipvec::copy_thin_vec;
-    /// let mut vec = copy_thin_vec!['a', 'b', 'c'];
+    /// # use hipvec::thin_vec;
+    /// let mut vec = thin_vec!['a', 'b', 'c'];
     /// vec.insert(1, 'd');
     /// assert_eq!(vec.as_slice(), ['a', 'd', 'b', 'c']);
     /// vec.insert(4, 'e');
@@ -906,8 +912,8 @@ impl<T: Copy> ThinVec<T> {
     /// # Examples
     ///
     /// ```
-    /// # use hipvec::copy_thin_vec;
-    /// let mut vec = copy_thin_vec![1, 3, 5, 9];
+    /// # use hipvec::thin_vec;
+    /// let mut vec = thin_vec![1, 3, 5, 9];
     /// let x = vec.insert_mut(3, 6);
     /// *x += 1;
     /// assert_eq!(vec.as_slice(), [1, 3, 5, 7, 9]);
@@ -923,26 +929,6 @@ impl<T: Copy> ThinVec<T> {
         self.base.insert_mut(index, value)
     }
 
-    /// Copies and appends all elements in a slice to the vector.
-    ///
-    /// The `other` slice is traversed in-order.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the new capacity overflows or if the reallocations fails.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use hipvec::copy_thin_vec;
-    /// let mut vec = copy_thin_vec![1];
-    /// vec.extend_from_slice(&[2, 3, 4]);
-    /// assert_eq!(vec.as_slice(), [1, 2, 3, 4]);
-    /// ```
-    pub fn extend_from_slice(&mut self, slice: &[T]) {
-        self.base.extend_from_slice_copy(slice);
-    }
-
     /// Appends all elements of the array to the vector.
     ///
     /// The elements are moved and not cloned.
@@ -954,8 +940,8 @@ impl<T: Copy> ThinVec<T> {
     /// # Examples
     ///
     /// ```
-    /// # use hipvec::copy_thin_vec;
-    /// let mut vec = copy_thin_vec![1];
+    /// # use hipvec::thin_vec;
+    /// let mut vec = thin_vec![1];
     /// vec.extend_from_array([2, 3, 4]);
     /// assert_eq!(vec.as_slice(), [1, 2, 3, 4]);
     /// ```
@@ -973,16 +959,16 @@ impl<T: Copy> ThinVec<T> {
     /// # Examples
     ///
     /// ```
-    /// # use hipvec::copy_thin_vec;
+    /// # use hipvec::thin_vec;
     /// # use std::vec;
-    /// let mut vec = copy_thin_vec![1, 2, 3];
+    /// let mut vec = thin_vec![1, 2, 3];
     /// let mut vec2 = vec![4, 5, 6];
     /// vec.append(&mut vec2);
     /// assert_eq!(vec.as_slice(), [1, 2, 3, 4, 5, 6]);
     /// assert_eq!(vec2.as_slice(), []);
     /// ```
     #[inline]
-    pub fn append(&mut self, other: &mut impl GrowableVector<Item = T>) {
+    pub fn append(&mut self, other: &mut impl MutableVector<Item = T>) {
         self.base.append(other);
     }
 
@@ -1005,8 +991,8 @@ impl<T: Copy> ThinVec<T> {
     /// # Examples
     ///
     /// ```
-    /// # use hipvec::copy_thin_vec;
-    /// let mut v = copy_thin_vec!['a', 'b', 'c'];
+    /// # use hipvec::thin_vec;
+    /// let mut v = thin_vec!['a', 'b', 'c'];
     /// let w = v.split_off(1);
     /// assert_eq!(v.as_slice(), ['a']);
     /// assert_eq!(w.as_slice(), ['b', 'c']);
@@ -1020,6 +1006,7 @@ impl<T: Copy> ThinVec<T> {
     pub fn split_off(&mut self, at: usize) -> Self {
         Self {
             base: self.base.split_off(at),
+            marker: PhantomData,
         }
     }
 
@@ -1045,12 +1032,12 @@ impl<T: Copy> ThinVec<T> {
     /// # Examples
     ///
     /// ```
-    /// # use hipvec::copy_thin_vec;
-    /// let mut vec = copy_thin_vec!["hello"];
+    /// # use hipvec::thin_vec;
+    /// let mut vec = thin_vec!["hello"];
     /// vec.resize(3, "world");
     /// assert_eq!(vec.as_slice(), ["hello", "world", "world"]);
     ///
-    /// let mut vec = copy_thin_vec!['a', 'b', 'c', 'd'];
+    /// let mut vec = thin_vec!['a', 'b', 'c', 'd'];
     /// vec.resize(2, '_');
     /// assert_eq!(vec.as_slice(), ['a', 'b']);
     /// ```
@@ -1059,7 +1046,7 @@ impl<T: Copy> ThinVec<T> {
     where
         T: Clone,
     {
-        self.base.resize_copy(new_len, value);
+        self.base.resize(new_len, value);
     }
 
     /// Resizes the vector in-place so that `len` is equal to `new_len`.
@@ -1085,12 +1072,12 @@ impl<T: Copy> ThinVec<T> {
     /// # Examples
     ///
     /// ```
-    /// # use hipvec::copy_thin_vec;
-    /// let mut vec = copy_thin_vec![1, 2, 3];
+    /// # use hipvec::thin_vec;
+    /// let mut vec = thin_vec![1, 2, 3];
     /// vec.resize_with(5, Default::default);
     /// assert_eq!(vec.as_slice(), [1, 2, 3, 0, 0]);
     ///
-    /// let mut vec = copy_thin_vec![];
+    /// let mut vec = thin_vec![];
     /// let mut p = 1;
     /// vec.resize_with(4, || { p *= 2; p });
     /// assert_eq!(vec.as_slice(), [2, 4, 8, 16]);
@@ -1127,8 +1114,8 @@ impl<T: Copy> ThinVec<T> {
     /// # Examples
     ///
     /// ```
-    /// # use hipvec::copy_thin_vec;
-    /// let mut v = copy_thin_vec![1, 2, 3, 4];
+    /// # use hipvec::thin_vec;
+    /// let mut v = thin_vec![1, 2, 3, 4];
     /// let new = [7, 8, 9];
     /// let u: Vec<_> = v.splice(1..3, new).collect();
     /// assert_eq!(v.as_slice(), [1, 7, 8, 9, 4]);
@@ -1139,8 +1126,8 @@ impl<T: Copy> ThinVec<T> {
     /// indicated by an empty range:
     ///
     /// ```
-    /// # use hipvec::copy_thin_vec;
-    /// let mut v = copy_thin_vec![1, 5];
+    /// # use hipvec::thin_vec;
+    /// let mut v = thin_vec![1, 5];
     /// let new = [2, 3, 4];
     /// v.splice(1..1, new);
     /// assert_eq!(v.as_slice(), [1, 2, 3, 4, 5]);
@@ -1155,63 +1142,134 @@ impl<T: Copy> ThinVec<T> {
     }
 }
 
-impl<T: Copy> Drop for ThinVec<T> {
+impl<T: Clone> ThinVec<T, markers::NonCopy> {
+    /// Clones and appends all elements in a slice to the vector.
+    ///
+    /// The `other` slice is traversed in-order.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new capacity overflows or if the reallocations fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipvec::thin_vec;
+    /// let mut vec = thin_vec![1];
+    /// vec.extend_from_slice(&[2, 3, 4]);
+    /// assert_eq!(vec.as_slice(), [1, 2, 3, 4]);
+    /// ```
+    pub fn extend_from_slice(&mut self, slice: &[T]) {
+        self.base.extend_from_slice(slice);
+    }
+}
+
+impl<T: Copy> ThinVec<T, markers::Copy> {
+    /// Copies and appends all elements in a slice to the vector.
+    ///
+    /// The `other` slice is traversed in-order.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new capacity overflows or if the reallocations fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipvec::thin_vec;
+    /// let mut vec = thin_vec![1];
+    /// vec.extend_from_slice(&[2, 3, 4]);
+    /// assert_eq!(vec.as_slice(), [1, 2, 3, 4]);
+    /// ```
+    pub fn extend_from_slice(&mut self, slice: &[T]) {
+        self.base.extend_from_slice_copy(slice);
+    }
+}
+
+impl<T, M: Copyness> Drop for ThinVec<T, M> {
     fn drop(&mut self) {
         unsafe {
-            self.base.drop_copy();
+            if M::COPY {
+                self.base.drop_container();
+            } else {
+                self.base.drop();
+            }
         }
     }
 }
 
-impl<T: Copy> Clone for ThinVec<T> {
+impl<T: Clone> Clone for ThinVec<T, markers::NonCopy> {
     fn clone(&self) -> Self {
         Self::from(self.as_slice())
     }
 }
 
-impl<T: Copy> From<&[T]> for ThinVec<T> {
+impl<T: Copy> Clone for ThinVec<T, markers::Copy> {
+    fn clone(&self) -> Self {
+        Self::from(self.as_slice())
+    }
+}
+
+impl<T: Clone> From<&[T]> for ThinVec<T, markers::NonCopy> {
     fn from(slice: &[T]) -> Self {
         Self {
-            base: Base::from_slice_copy(slice),
+            base: Base::from_slice(slice),
+            marker: PhantomData,
         }
     }
 }
 
-impl<T: Copy, const N: usize> From<&[T; N]> for ThinVec<T> {
+impl<T: Copy> From<&[T]> for ThinVec<T, markers::Copy> {
+    fn from(slice: &[T]) -> Self {
+        Self {
+            base: Base::from_slice_copy(slice),
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<T: Clone, const N: usize> From<&[T; N]> for ThinVec<T, markers::NonCopy> {
     fn from(arr_ref: &[T; N]) -> Self {
         Self::from(arr_ref.as_slice())
     }
 }
 
-impl<T: Copy, const N: usize> From<[T; N]> for ThinVec<T> {
+impl<T: Copy, const N: usize> From<&[T; N]> for ThinVec<T, markers::Copy> {
+    fn from(arr_ref: &[T; N]) -> Self {
+        Self::from(arr_ref.as_slice())
+    }
+}
+
+impl<T, M: Copyness, const N: usize> From<[T; N]> for ThinVec<T, M> {
     fn from(array: [T; N]) -> Self {
         Self {
             base: Base::from_array(array),
+            marker: PhantomData,
         }
     }
 }
 
-impl<T: fmt::Debug + Copy> fmt::Debug for ThinVec<T> {
+impl<T: fmt::Debug, M: Copyness> fmt::Debug for ThinVec<T, M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.as_slice().fmt(f)
     }
 }
 
-impl<T: Copy> ops::Deref for ThinVec<T> {
+impl<T, M: Copyness> ops::Deref for ThinVec<T, M> {
     type Target = [T];
     fn deref(&self) -> &Self::Target {
         self.as_slice()
     }
 }
 
-impl<T: Copy> ops::DerefMut for ThinVec<T> {
+impl<T, M: Copyness> ops::DerefMut for ThinVec<T, M> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.as_mut_slice()
     }
 }
 
-impl_vector!(impl(T: Copy) Vector<Item=T> for ThinVec<T>);
-impl_vector!(impl(T: Copy) MutableVector<Item=T> for ThinVec<T>);
-impl_vector!(impl(T: Copy) GrowableVector<Item=T> for ThinVec<T>);
+impl_vector!(impl(T, M: Copyness) Vector<Item=T> for ThinVec<T, M>);
+impl_vector!(impl(T, M: Copyness) MutableVector<Item=T> for ThinVec<T, M>);
+impl_vector!(impl(T, M: Copyness) GrowableVector<Item=T> for ThinVec<T, M>);
 
-impl_extend!(ThinVec<T>, T, [T: Copy], []);
+impl_extend!(ThinVec<T, M>, T, [T, M: Copyness], []);

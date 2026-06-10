@@ -116,7 +116,7 @@ impl<T, P: Counter> Owner<T, P> {
                     unsafe {
                         if header.as_ref().ptr.is_none() {
                             // thin
-                            self.as_thin_mut_unchecked().drop_copy();
+                            self.as_thin_mut_unchecked().drop_container();
                         } else {
                             // wide
                             todo!()

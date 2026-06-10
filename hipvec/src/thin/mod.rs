@@ -6,13 +6,22 @@
 use alloc::fmt;
 
 mod base;
-pub mod copy;
-pub mod noncopy;
+mod generic;
+
+#[cfg(test)]
+mod copy_tests;
+
+#[cfg(test)]
+mod noncopy_tests;
 
 pub(crate) use base::Base;
 
-pub use self::copy::ThinVec as CopyThinVec;
-pub use self::noncopy::ThinVec;
+use crate::common::markers;
+
+pub use self::generic::ThinVec as GenericThinVec;
+
+pub type ThinVec<T> = self::generic::ThinVec<T, markers::NonCopy>;
+pub type CopyThinVec<T> = self::generic::ThinVec<T, markers::Copy>;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[non_exhaustive]

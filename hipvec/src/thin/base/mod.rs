@@ -273,7 +273,7 @@ impl<T, P> Base<T, P> {
     /// The caller must ensure that the vector is not used after this method is called, and that the
     /// allocation is not dropped elsewhere, to avoid double free or use after free.
     #[inline]
-    pub unsafe fn drop_copy(&mut self) {
+    pub unsafe fn drop_container(&mut self) {
         if let Some(header) = self.0.as_non_null()
             && let Some((layout, _)) = Header::<T, P>::layout(unsafe { header.as_ref().cap })
         {
@@ -314,6 +314,9 @@ impl<T, P> Base<T, P> {
                 alloc::alloc::dealloc(header.as_ptr().cast(), layout);
             }
         }
+
+        // reset the pointer for safety, should be removed by the compiler
+        *self = Self::new();
     }
 
     pub fn with_fresh_prefix<P2>(mut self) -> Base<T, P2>
