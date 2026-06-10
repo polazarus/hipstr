@@ -1,3 +1,5 @@
+use alloc::vec::Vec;
+
 use const_default::ConstDefault;
 
 use super::Repr;
@@ -18,15 +20,29 @@ impl<'a, T: Copy, B: Backend> HipVec<'a, T, B> {
         Self { base: Base::new() }
     }
 
+    /// Creates a new `HipVec` from a borrowed slice.
+    ///
+    /// The resulting `HipVec` will have a borrowed representation, and will not own the data.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipvec::hip::{HipVec, Repr};
+    /// use hipvec::backend::Arc;
+    /// let slice = &[1, 2, 3];
+    /// let hip_vec: HipVec<u8, Arc> = HipVec::borrowed(slice);
+    /// assert_eq!(hip_vec.as_slice(), slice);
+    /// assert_eq!(hip_vec.repr(), Repr::Borrowed);
+    /// ```
     pub const fn borrowed(slice: &'a [T]) -> Self {
         Self {
             base: Base::from_borrowed_slice(slice),
         }
     }
 
-    pub fn with_capacity(capacity: usize) -> Self {
+    fn from_wide(vec: Vec<T>) -> Self {
         Self {
-            base: Base::with_capacity(capacity),
+            base: Base::from_wide(vec),
         }
     }
 

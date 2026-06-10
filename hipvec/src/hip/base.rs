@@ -4,7 +4,7 @@ use core::mem::{MaybeUninit, offset_of, transmute};
 use core::num::NonZeroUsize;
 use core::ptr::NonNull;
 
-use super::{Owned, Repr};
+use super::{OwnedRepr, Repr};
 use crate::backend::{self, Backend, Counter, UpdateResult};
 use crate::common::header::Header;
 use crate::common::tagged_pointer::TaggedPointer;
@@ -235,13 +235,13 @@ impl<T, C: Counter> Sliced<T, C> {
     }
 
     #[inline]
-    const fn repr(&self) -> Option<Owned> {
+    const fn repr(&self) -> Option<OwnedRepr> {
         if self.owner.is_some() {
             let header = unsafe { self.owner.0.as_non_null().unwrap().as_ref() };
             if header.ptr.is_none() {
-                Some(Owned::Thin)
+                Some(OwnedRepr::Thin)
             } else {
-                Some(Owned::Wide)
+                Some(OwnedRepr::Wide)
             }
         } else {
             None
@@ -667,12 +667,12 @@ impl<'a, 'b, T, B: Backend> Mut<'a, 'b, T, B> {
         } else {
             let sliced = unsafe { self.base.sliced_unchecked_mut() };
             match sliced.repr() {
-                Some(Owned::Thin) => {
+                Some(OwnedRepr::Thin) => {
                     let thin = unsafe { sliced.owner.as_thin_mut_unchecked() };
                     thin.try_reserve(additional)?;
                     sliced.slice = NonNull::from_ref(thin.as_slice());
                 }
-                Some(Owned::Wide) => {
+                Some(OwnedRepr::Wide) => {
                     let mut thin: thin::Base<T, <B as Backend>::Counter> =
                         thin::Base::with_capacity(required);
                     unsafe {

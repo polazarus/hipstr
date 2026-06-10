@@ -239,7 +239,7 @@ macro_rules! push_within_capacity {
     }};
 }
 
-/// `push_mut` impl, requires `len`, `capacity` `set_len`, and `as_mut_ptr`
+/// `push_mut` impl, requires `reserve`, `len`, `capacity` `set_len`, and `as_mut_ptr`
 macro_rules! push_mut {
     ($self:ident, $value:expr) => {{
         $self.reserve(1);
