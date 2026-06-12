@@ -1013,45 +1013,6 @@ impl<T, M: Copyness> ThinVec<T, M> {
     /// Resizes the vector in-place so that `len` is equal to `new_len`.
     ///
     /// If `new_len` is greater than `len`, the vector is extended by the
-    /// difference, with each additional slot filled with `value`.
-    /// If `new_len` is less than `len`, the vector is simply truncated.
-    ///
-    /// This method requires `T` to implement [`Clone`],
-    /// in order to be able to clone the passed value.
-    /// If you need more flexibility (or want to rely on [`Default`] instead of
-    /// [`Clone`]), use [`resize_with`].
-    /// If you only need to resize to a smaller size, use [`truncate`].
-    ///
-    /// [`resize_with`]: Self::resize_with
-    /// [`truncate`]: Self::truncate
-    ///
-    /// # Panics
-    ///
-    /// Panics if the new capacity overflows or if the reallocations fails.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use hipvec::thin_vec;
-    /// let mut vec = thin_vec!["hello"];
-    /// vec.resize(3, "world");
-    /// assert_eq!(vec.as_slice(), ["hello", "world", "world"]);
-    ///
-    /// let mut vec = thin_vec!['a', 'b', 'c', 'd'];
-    /// vec.resize(2, '_');
-    /// assert_eq!(vec.as_slice(), ['a', 'b']);
-    /// ```
-    #[inline]
-    pub fn resize(&mut self, new_len: usize, value: T)
-    where
-        T: Clone,
-    {
-        self.base.resize(new_len, value);
-    }
-
-    /// Resizes the vector in-place so that `len` is equal to `new_len`.
-    ///
-    /// If `new_len` is greater than `len`, the vector is extended by the
     /// difference, with each additional slot filled with the result of
     /// calling the closure `f`. The return values from `f` will end up
     /// in the vector in the order they have been generated.
@@ -1143,6 +1104,45 @@ impl<T, M: Copyness> ThinVec<T, M> {
 }
 
 impl<T: Clone> ThinVec<T, markers::NonCopy> {
+    /// Resizes the vector in-place so that `len` is equal to `new_len`.
+    ///
+    /// If `new_len` is greater than `len`, the vector is extended by the
+    /// difference, with each additional slot filled with `value`.
+    /// If `new_len` is less than `len`, the vector is simply truncated.
+    ///
+    /// This method requires `T` to implement [`Clone`],
+    /// in order to be able to clone the passed value.
+    /// If you need more flexibility (or want to rely on [`Default`] instead of
+    /// [`Clone`]), use [`resize_with`].
+    /// If you only need to resize to a smaller size, use [`truncate`].
+    ///
+    /// [`resize_with`]: Self::resize_with
+    /// [`truncate`]: Self::truncate
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new capacity overflows or if the reallocations fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipvec::thin_vec;
+    /// let mut vec = thin_vec!["hello"];
+    /// vec.resize(3, "world");
+    /// assert_eq!(vec.as_slice(), ["hello", "world", "world"]);
+    ///
+    /// let mut vec = thin_vec!['a', 'b', 'c', 'd'];
+    /// vec.resize(2, '_');
+    /// assert_eq!(vec.as_slice(), ['a', 'b']);
+    /// ```
+    #[inline]
+    pub fn resize(&mut self, new_len: usize, value: T)
+    where
+        T: Clone,
+    {
+        self.base.resize(new_len, value);
+    }
+
     /// Clones and appends all elements in a slice to the vector.
     ///
     /// The `other` slice is traversed in-order.
@@ -1165,6 +1165,42 @@ impl<T: Clone> ThinVec<T, markers::NonCopy> {
 }
 
 impl<T: Copy> ThinVec<T, markers::Copy> {
+    /// Resizes the vector in-place so that `len` is equal to `new_len`.
+    ///
+    /// If `new_len` is greater than `len`, the vector is extended by the
+    /// difference, with each additional slot filled with `value`.
+    /// If `new_len` is less than `len`, the vector is simply truncated.
+    ///
+    /// This method requires `T` to implement [`Clone`],
+    /// in order to be able to clone the passed value.
+    /// If you need more flexibility (or want to rely on [`Default`] instead of
+    /// [`Clone`]), use [`resize_with`].
+    /// If you only need to resize to a smaller size, use [`truncate`].
+    ///
+    /// [`resize_with`]: Self::resize_with
+    /// [`truncate`]: Self::truncate
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new capacity overflows or if the reallocations fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipvec::copy_thin_vec;
+    /// let mut vec = copy_thin_vec!["hello"];
+    /// vec.resize(3, "world");
+    /// assert_eq!(vec.as_slice(), ["hello", "world", "world"]);
+    ///
+    /// let mut vec = copy_thin_vec!['a', 'b', 'c', 'd'];
+    /// vec.resize(2, '_');
+    /// assert_eq!(vec.as_slice(), ['a', 'b']);
+    /// ```
+    #[inline]
+    pub fn resize(&mut self, new_len: usize, value: T) {
+        self.base.resize_copy(new_len, value);
+    }
+
     /// Copies and appends all elements in a slice to the vector.
     ///
     /// The `other` slice is traversed in-order.
@@ -1176,8 +1212,8 @@ impl<T: Copy> ThinVec<T, markers::Copy> {
     /// # Examples
     ///
     /// ```
-    /// # use hipvec::thin_vec;
-    /// let mut vec = thin_vec![1];
+    /// # use hipvec::copy_thin_vec;
+    /// let mut vec = copy_thin_vec![1];
     /// vec.extend_from_slice(&[2, 3, 4]);
     /// assert_eq!(vec.as_slice(), [1, 2, 3, 4]);
     /// ```
