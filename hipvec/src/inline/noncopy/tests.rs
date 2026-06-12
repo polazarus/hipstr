@@ -1,5 +1,3 @@
-use alloc::boxed::Box;
-use alloc::string::String;
 use core::cell::Cell;
 
 use super::TryReserveError;
@@ -107,7 +105,9 @@ fn push_within_capacity() {
 }
 
 #[test]
+#[cfg(feature = "alloc")]
 fn push_within_capacity_boxed() {
+    use alloc::boxed::Box;
     let mut l = V::<Box<usize>>::new();
     let capacity = l.capacity();
     for i in 0..capacity {
@@ -456,12 +456,15 @@ fn extend_from_slice_panic() {
 }
 
 #[test]
+#[cfg(feature = "alloc")]
 fn append() {
+    use alloc::boxed::Box;
+    use alloc::vec;
     let cap = V::<Box<u8>>::new().capacity();
     assert!(cap > 0);
 
     let mut left = V::<Box<u8>>::new();
-    let mut expected = alloc::vec![];
+    let mut expected = vec![];
     if cap > 1 {
         left.push(Box::new(1));
         expected.push(Box::new(1));
@@ -474,19 +477,19 @@ fn append() {
     assert!(right.is_empty());
 
     let mut left = V::<Box<u8>>::new();
-    let mut expected = alloc::vec![];
+    let mut expected = vec![];
     if cap > 1 {
         left.push(Box::new(3));
         expected.push(Box::new(3));
     }
-    let mut right = alloc::vec![Box::new(4)];
+    let mut right = vec![Box::new(4)];
     expected.push(Box::new(4));
     left.append(&mut right);
     assert_eq!(left.as_slice(), expected.as_slice());
     assert!(right.is_empty());
 
     let mut left = V::<Box<u8>>::new();
-    let mut expected = alloc::vec![];
+    let mut expected = vec![];
     if cap > 1 {
         left.push(Box::new(5));
         expected.push(Box::new(5));
@@ -501,22 +504,25 @@ fn append() {
 #[test]
 #[should_panic(expected = "new length exceeds capacity")]
 fn append_panic() {
-    let mut left = V::<String>::new();
+    let mut left = V::<u128>::new();
     let cap = left.capacity();
     for _ in 0..(cap / 2 + 1) {
-        left.push(String::from("l"));
+        left.push(0);
     }
 
-    let mut right = V::<String>::new();
+    let mut right = V::<u128>::new();
     for _ in 0..(cap - left.len() + 1) {
-        right.push(String::from("r"));
+        right.push(0);
     }
 
     left.append(&mut right);
 }
 
 #[test]
+#[cfg(feature = "alloc")]
 fn const_append() {
+    use alloc::boxed::Box;
+
     let cap = V::<Box<u8>>::new().capacity();
     assert!(cap > 0);
 
@@ -540,15 +546,15 @@ fn const_append() {
 #[test]
 #[should_panic(expected = "new length exceeds capacity")]
 fn const_append_panic() {
-    let mut left = V::<String>::new();
+    let mut left = V::<u128>::new();
     let cap = left.capacity();
     for _ in 0..(cap / 2 + 1) {
-        left.push(String::from("l"));
+        left.push(0);
     }
 
-    let mut right = V::<String>::new();
+    let mut right = V::<u128>::new();
     for _ in 0..(cap - left.len() + 1) {
-        right.push(String::from("r"));
+        right.push(0);
     }
 
     left.const_append(&mut right);
@@ -648,7 +654,10 @@ fn splice() {
 }
 
 #[test]
+#[cfg(feature = "alloc")]
 fn splice_boxed() {
+    use alloc::boxed::Box;
+
     let mut v: V<Box<u8>> = v![Box::new(1)];
     {
         let splice = v.splice(.., [Box::new(2)]);
@@ -668,7 +677,7 @@ fn splice_invalid_range_panics() {
 #[test]
 fn extend() {
     let mut v = V::<u8>::new();
-    v.extend(std::iter::empty());
+    v.extend(core::iter::empty());
     assert!(v.as_slice().is_empty());
 
     v.extend([1, 2, 3]);
@@ -679,9 +688,12 @@ fn extend() {
 }
 
 #[test]
+#[cfg(feature = "alloc")]
 fn extend_boxed() {
+    use alloc::boxed::Box;
+
     let mut v = V::<Box<i32>>::new();
-    v.extend(std::iter::empty());
+    v.extend(core::iter::empty());
     assert!(v.as_slice().is_empty());
 
     v.extend([Box::new(1)]);

@@ -7,7 +7,15 @@ use core::{fmt, mem, ptr, slice};
 use super::range::{self, RangeError};
 use crate::traits::MutableVector;
 
+#[cfg(test)]
+#[cfg(feature = "alloc")]
+mod alloc_tests;
+#[cfg(test)]
+mod tests;
+
 /// A draining iterator for vectors.
+///
+/// This struct is created by the drain methods of all the vectors in this crate.
 ///
 /// # Example
 ///
@@ -15,6 +23,8 @@ use crate::traits::MutableVector;
 /// use hipvec::thin_vec;
 /// let mut v = thin_vec![0, 1, 2];
 /// let iter = v.drain(..);
+/// assert!(iter.eq([0, 1, 2]));
+/// assert!(v.is_empty());
 /// ```
 pub struct Drain<'a, V: MutableVector> {
     pub(super) vec: &'a mut V,
@@ -60,6 +70,17 @@ impl<'a, V: MutableVector> Drain<'a, V> {
     #[must_use]
     pub fn as_slice(&self) -> &[V::Item] {
         unsafe { slice::from_raw_parts(self.vec.as_ptr().add(self.range.start), self.range.len()) }
+    }
+
+    /// Returns the remaining items of this iterator as a mutable slice.
+    #[must_use]
+    fn as_mut_slice(&mut self) -> &mut [V::Item] {
+        unsafe {
+            slice::from_raw_parts_mut(
+                self.vec.as_mut_ptr().add(self.range.start),
+                self.range.len(),
+            )
+        }
     }
 }
 
@@ -107,11 +128,7 @@ impl<V: MutableVector> Drop for Drain<'_, V> {
     fn drop(&mut self) {
         if mem::needs_drop::<V::Item>() {
             unsafe {
-                let slice = slice::from_raw_parts_mut(
-                    self.vec.as_mut_ptr().add(self.range.start),
-                    self.range.len(),
-                );
-                ptr::drop_in_place(slice);
+                ptr::drop_in_place(self.as_mut_slice());
             }
         }
 

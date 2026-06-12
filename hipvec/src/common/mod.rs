@@ -2,9 +2,11 @@ use core::fmt;
 
 use const_default::ConstDefault;
 
+#[cfg(feature = "alloc")]
 pub(crate) mod header;
 pub(crate) mod methods;
 pub(crate) mod range;
+#[cfg(feature = "alloc")]
 pub(crate) mod tagged_pointer;
 #[cfg(test)]
 pub(crate) mod tests;

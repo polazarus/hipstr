@@ -3,9 +3,9 @@
 //! Beware this module should not be publicly accessible as is:
 //!
 //! The `Base` struct is copyable, even if the elements are not copyable.
-use alloc::slice;
 use core::marker::PhantomData;
 use core::ptr::NonNull;
+use core::slice;
 
 use super::TryReserveError;
 use super::layouts::{self, Layout};

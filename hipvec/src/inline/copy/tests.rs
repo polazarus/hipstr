@@ -408,7 +408,11 @@ fn append() {
     left.append(&mut right);
     assert_eq!(left.as_slice(), &[1, 2, 3, 4, 5, 6]);
     assert!(right.is_empty());
+}
 
+#[test]
+#[cfg(feature = "alloc")]
+fn append_alloc() {
     let mut left = v![1_u8, 2, 3];
     let mut right = alloc::vec![4_u8, 5, 6];
     left.append(&mut right);
@@ -572,7 +576,7 @@ fn splice_invalid_range_panics() {
 #[test]
 fn extend() {
     let mut v = V::<u8>::new();
-    v.extend(std::iter::empty());
+    v.extend(core::iter::empty());
     assert!(v.as_slice().is_empty());
 
     v.extend([1, 2, 3]);
