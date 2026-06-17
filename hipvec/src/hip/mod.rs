@@ -1,5 +1,6 @@
 pub(crate) mod base;
 pub mod copy;
+mod generic;
 pub mod noncopy;
 
 /// Representation of the owned, allocated vector.

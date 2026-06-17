@@ -77,4 +77,4 @@ harness = false
 members = ["./hipvec"]
 
 [workspace.lints.clippy]
-pedantic = "warn"
+pedantic = { level = "warn", priority = -1 }

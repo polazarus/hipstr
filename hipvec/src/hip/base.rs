@@ -102,10 +102,7 @@ impl<T, P: Counter> Owner<T, P> {
         }
     }
 
-    unsafe fn drop_container(&mut self)
-    where
-        T: Copy,
-    {
+    unsafe fn drop_container(&mut self) {
         if let Some(header) = self.0.as_non_null() {
             match unsafe { header.as_ref().prefix.decr() } {
                 UpdateResult::Done => {
@@ -199,10 +196,7 @@ impl<T, C: Counter> Sliced<T, C> {
         }
     }
 
-    unsafe fn drop_copy(&mut self)
-    where
-        T: Copy,
-    {
+    unsafe fn drop_container(&mut self) {
         self.slice = NonNull::from_ref(&[]);
 
         unsafe {
@@ -476,16 +470,13 @@ impl<'a, T, B: Backend> Base<'a, T, B> {
         }
     }
 
-    pub unsafe fn drop_copy(&mut self)
-    where
-        T: Copy,
-    {
+    pub unsafe fn drop_container(&mut self) {
         match self.sliced_or_inline() {
             SlicedOrInlineMut::Inline(inline) => unsafe {
                 inline.set_len(0);
             },
             SlicedOrInlineMut::Sliced(sliced) => unsafe {
-                sliced.drop_copy();
+                sliced.drop_container();
             },
         }
     }
