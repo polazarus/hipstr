@@ -124,7 +124,7 @@ pub(super) struct Pivot {
 }
 
 unsafe impl<B: Backend + Sync> Sync for HipByt<'_, B> {}
-unsafe impl<B: Backend + Send> Send for HipByt<'_, B> {}
+unsafe impl<B: Backend + Send + Sync> Send for HipByt<'_, B> {}
 
 /// Equivalent union representation.
 ///
