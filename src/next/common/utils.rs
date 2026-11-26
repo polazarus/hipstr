@@ -9,7 +9,7 @@ use core::mem;
 /// - The elements from `ptr` to `ptr.add(initialized)` (excluded) must be initialized.
 pub struct SliceWriteGuard<T> {
     ptr: *mut T,
-    #[cfg(debug_assertions)]
+    /// Only read by debug assertions (which are type-checked in every build).
     len: usize,
     initialized: usize,
 }
@@ -17,7 +17,6 @@ pub struct SliceWriteGuard<T> {
 impl<T> SliceWriteGuard<T> {
     /// Creates a new `SliceWriteGuard` from a raw pointer and a length.
     ///
-    /// The length is only stored in debug builds for assertions.
     ///
     /// # Safety
     ///
@@ -26,7 +25,6 @@ impl<T> SliceWriteGuard<T> {
     pub const unsafe fn new(ptr: *mut T, len: usize) -> Self {
         Self {
             ptr,
-            #[cfg(debug_assertions)]
             len,
             initialized: 0,
         }
