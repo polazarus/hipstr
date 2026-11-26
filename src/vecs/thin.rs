@@ -1,21 +1,21 @@
 //! Thin vector implementation.
 #![allow(unused)]
 
-use alloc::alloc::{alloc, dealloc, realloc, Layout};
+use alloc::alloc::{Layout, alloc, dealloc, realloc};
 use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::iter::FusedIterator;
 use core::marker::PhantomData;
-use core::mem::{offset_of, ManuallyDrop, MaybeUninit};
+use core::mem::{ManuallyDrop, MaybeUninit, offset_of};
 use core::ops::{Bound, Range, RangeBounds};
 use core::ptr::NonNull;
 use core::{cmp, fmt, mem, ops, panic, ptr, slice};
 
 use crate::common::drain::Drain;
 use crate::common::{
-    check_alloc, guarded_slice_clone, maybe_uninit_write_copy_of_slice, panic_display, traits,
-    RangeError,
+    RangeError, check_alloc, guarded_slice_clone, maybe_uninit_write_copy_of_slice, panic_display,
+    traits,
 };
 use crate::{common, macros};
 

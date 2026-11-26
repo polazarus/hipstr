@@ -3,7 +3,7 @@
 use alloc::string::ToString;
 
 use borsh::io::{Error, ErrorKind};
-use borsh::{io, BorshDeserialize, BorshSerialize};
+use borsh::{BorshDeserialize, BorshSerialize, io};
 
 use super::HipStr;
 use crate::backend::Backend;

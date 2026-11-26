@@ -33,7 +33,7 @@ use core::fmt;
 use core::marker::PhantomData;
 
 use serde::de::{Error, Unexpected, Visitor};
-use serde::{de, Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de};
 
 use super::HipStr;
 use crate::backend::Backend;

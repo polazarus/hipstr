@@ -9,12 +9,12 @@ use core::num::NonZeroI32;
 use core::ops::Bound;
 use core::{iter, ptr};
 
-use crate::common::traits::tests::test_mut_vector;
 use crate::common::traits::MutVector;
+use crate::common::traits::tests::test_mut_vector;
 use crate::common::{self, RangeError};
-use crate::vecs::thin::{Reserved, ThinVec as GenericThinVec};
 use crate::vecs::ThinVec;
-use crate::{thin_vec, Arc};
+use crate::vecs::thin::{Reserved, ThinVec as GenericThinVec};
+use crate::{Arc, thin_vec};
 
 #[test]
 fn new() {

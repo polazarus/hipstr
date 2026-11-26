@@ -1,6 +1,6 @@
 //! Representation for borrowed slice.
 
-use core::mem::{offset_of, size_of, MaybeUninit};
+use core::mem::{MaybeUninit, offset_of, size_of};
 use core::num::NonZeroU8;
 
 use super::TAG_BORROWED;

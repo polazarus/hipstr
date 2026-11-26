@@ -6,7 +6,7 @@ use core::cmp::Ordering;
 
 use super::*;
 use crate::backend::PanickyUnique;
-use crate::{smart_thin_vec, thin_vec, Arc, Rc, Unique};
+use crate::{Arc, Rc, Unique, smart_thin_vec, thin_vec};
 
 #[test]
 fn new() {

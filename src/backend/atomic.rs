@@ -1,8 +1,8 @@
 #[cfg(not(loom))]
-use core::sync::atomic::{fence, AtomicUsize, Ordering};
+use core::sync::atomic::{AtomicUsize, Ordering, fence};
 
 #[cfg(loom)]
-use loom::sync::atomic::{fence, AtomicUsize, Ordering};
+use loom::sync::atomic::{AtomicUsize, Ordering, fence};
 
 use super::*;
 

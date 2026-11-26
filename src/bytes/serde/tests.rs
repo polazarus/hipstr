@@ -1,6 +1,6 @@
 use serde::Deserialize;
 use serde_test::{
-    assert_de_tokens, assert_de_tokens_error, assert_ser_tokens, assert_tokens, Token,
+    Token, assert_de_tokens, assert_de_tokens_error, assert_ser_tokens, assert_tokens,
 };
 
 use super::borrow_deserialize;

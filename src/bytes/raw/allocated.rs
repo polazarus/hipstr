@@ -2,7 +2,7 @@
 
 use alloc::vec::Vec;
 use core::marker::PhantomData;
-use core::mem::{forget, ManuallyDrop, MaybeUninit};
+use core::mem::{ManuallyDrop, MaybeUninit, forget};
 use core::ops::{Deref, DerefMut, Range};
 use core::panic::{RefUnwindSafe, UnwindSafe};
 use core::ptr::NonNull;

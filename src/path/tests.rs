@@ -4,8 +4,8 @@ use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::path::Path;
 
-use crate::os_string::HipOsStr;
 use crate::HipPath;
+use crate::os_string::HipOsStr;
 
 type H<'borrow> = HipPath<'borrow>;
 

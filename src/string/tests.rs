@@ -604,7 +604,10 @@ fn test_from_utf8() {
     let err = H::from_utf8(bytes.clone()).unwrap_err();
     assert!(ptr::eq(err.as_bytes(), bytes.as_slice()));
     assert_eq!(err.utf8_error().valid_up_to(), 3);
-    assert_eq!(format!("{err:?}"), "FromUtf8Error { bytes: [97, 98, 99, 128], error: Utf8Error { valid_up_to: 3, error_len: Some(1) } }");
+    assert_eq!(
+        format!("{err:?}"),
+        "FromUtf8Error { bytes: [97, 98, 99, 128], error: Utf8Error { valid_up_to: 3, error_len: Some(1) } }"
+    );
     assert_eq!(
         format!("{err}"),
         "invalid utf-8 sequence of 1 bytes from index 3"

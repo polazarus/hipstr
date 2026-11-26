@@ -5,7 +5,7 @@
 use alloc::vec::Vec;
 use core::hint::unreachable_unchecked;
 use core::marker::PhantomData;
-use core::mem::{align_of, forget, replace, size_of, transmute, ManuallyDrop, MaybeUninit};
+use core::mem::{ManuallyDrop, MaybeUninit, align_of, forget, replace, size_of, transmute};
 use core::num::NonZeroU8;
 use core::ops::Range;
 

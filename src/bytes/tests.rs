@@ -12,7 +12,7 @@ use std::collections::HashSet;
 // cspell:ignore fastrand
 use fastrand::Rng;
 
-use super::{simplify_range, SliceErrorKind};
+use super::{SliceErrorKind, simplify_range};
 use crate::HipByt as H;
 
 type S<'a> = &'a [u8];
@@ -536,7 +536,10 @@ fn test_try_slice_start_out_of_bounds() {
     assert_eq!(err.end(), 6);
     assert_eq!(err.range(), 7..6);
     assert!(ptr::eq(err.source(), &H_ABCDEF));
-    assert_eq!(format!("{err:?}"), "SliceError { kind: StartOutOfBounds, start: 7, end: 6, bytes: [97, 98, 99, 100, 101, 102] }");
+    assert_eq!(
+        format!("{err:?}"),
+        "SliceError { kind: StartOutOfBounds, start: 7, end: 6, bytes: [97, 98, 99, 100, 101, 102] }"
+    );
     assert_eq!(
         format!("{err}"),
         "range start index 7 out of bounds for slice of length 6"
@@ -563,7 +566,10 @@ fn test_try_slice_end_out_of_bounds() {
 fn test_try_slice_start_greater_than_end() {
     let err = H_ABCDEF.try_slice(1..0).unwrap_err();
     assert_eq!(err.kind(), SliceErrorKind::StartGreaterThanEnd);
-    assert_eq!(format!("{err:?}"), "SliceError { kind: StartGreaterThanEnd, start: 1, end: 0, bytes: [97, 98, 99, 100, 101, 102] }");
+    assert_eq!(
+        format!("{err:?}"),
+        "SliceError { kind: StartGreaterThanEnd, start: 1, end: 0, bytes: [97, 98, 99, 100, 101, 102] }"
+    );
     assert_eq!(format!("{err}"), "range starts at 1 but ends at 0");
     assert_eq!(err.clone(), err);
 }

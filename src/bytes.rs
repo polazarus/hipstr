@@ -14,10 +14,10 @@ use core::ops::{Bound, Deref, DerefMut, Range, RangeBounds};
 use core::ptr;
 
 use raw::borrowed::Borrowed;
-use raw::{Split, SplitMut, Tag, Union, INLINE_CAPACITY};
+use raw::{INLINE_CAPACITY, Split, SplitMut, Tag, Union};
 
-use self::raw::try_range_of;
 pub use self::raw::HipByt;
+use self::raw::try_range_of;
 use crate::backend::Backend;
 use crate::vecs::InlineVec;
 
