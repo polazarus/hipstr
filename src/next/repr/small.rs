@@ -15,7 +15,7 @@
 //! - borrowed values hold at most `isize::MAX` elements (any real slice of a
 //!   non-zero-sized type);
 //! - the length word is never zero (empty values are inline), which gives
-//!   `Option<Pair>` a niche.
+//!   `Option<Small>` a niche.
 
 use alloc::vec::Vec;
 use core::marker::PhantomData;
@@ -27,10 +27,10 @@ use super::owner::Owner;
 use super::{Kind, Repr, capacity_overflow};
 use crate::next::backend::Backend;
 use crate::next::inline::base::Base as InlineBase;
-use crate::next::inline::layouts::PairLayout;
+use crate::next::inline::layouts::SmallLayout;
 use crate::next::thin::TryReserveError;
 
-type Inline<T> = InlineBase<T, PairLayout>;
+type Inline<T> = InlineBase<T, SmallLayout>;
 
 const SHIFT: u32 = usize::BITS - 2;
 const TAG_MASK: usize = 0b11 << SHIFT;
@@ -85,21 +85,23 @@ const _: () = {
 
 /// 2-word copy-on-write sequence (see the module documentation).
 #[repr(transparent)]
-pub struct Pair<'a, T: Copy, B: Backend> {
+pub struct Small<'a, T: Copy, B: Backend> {
     pivot: Pivot,
     marker: PhantomData<(&'a [T], Owner<T, B>)>,
 }
 
 const _: () = {
-    type P = Pair<'static, u8, crate::next::backend::Rc>;
+    type P = Small<'static, u8, crate::next::backend::Rc>;
     assert!(size_of::<P>() == 2 * size_of::<usize>());
     assert!(size_of::<Option<P>>() == size_of::<P>());
 };
 
 // SAFETY: see `Wide`
-unsafe impl<T: Copy + Send + Sync, B: Backend> Send for Pair<'_, T, B> where B::Counter: Send + Sync {}
+unsafe impl<T: Copy + Send + Sync, B: Backend> Send for Small<'_, T, B> where B::Counter: Send + Sync
+{}
 // SAFETY: see `Wide`
-unsafe impl<T: Copy + Send + Sync, B: Backend> Sync for Pair<'_, T, B> where B::Counter: Send + Sync {}
+unsafe impl<T: Copy + Send + Sync, B: Backend> Sync for Small<'_, T, B> where B::Counter: Send + Sync
+{}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Tag {
@@ -108,7 +110,7 @@ enum Tag {
     Borrowed,
 }
 
-impl<'a, T: Copy, B: Backend> Pair<'a, T, B> {
+impl<'a, T: Copy, B: Backend> Small<'a, T, B> {
     const fn from_inline(inline: Inline<T>) -> Self {
         Self {
             // SAFETY: same size, the length word of an inline is tagged 0b11
@@ -255,13 +257,13 @@ impl<'a, T: Copy, B: Backend> Pair<'a, T, B> {
     }
 }
 
-impl<T: Copy, B: Backend> Default for Pair<'_, T, B> {
+impl<T: Copy, B: Backend> Default for Small<'_, T, B> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T: Copy, B: Backend> Clone for Pair<'_, T, B> {
+impl<T: Copy, B: Backend> Clone for Small<'_, T, B> {
     fn clone(&self) -> Self {
         if self.tag() == Tag::Heap && self.heap().w0.try_clone().is_none() {
             return Self::from_slice(self.as_slice());
@@ -273,7 +275,7 @@ impl<T: Copy, B: Backend> Clone for Pair<'_, T, B> {
     }
 }
 
-impl<T: Copy, B: Backend> Drop for Pair<'_, T, B> {
+impl<T: Copy, B: Backend> Drop for Small<'_, T, B> {
     fn drop(&mut self) {
         if self.tag() == Tag::Heap {
             // SAFETY: this handle is dropped
@@ -283,7 +285,7 @@ impl<T: Copy, B: Backend> Drop for Pair<'_, T, B> {
 }
 
 // SAFETY: see the trait's contract, upheld by `try_reserve`
-unsafe impl<'a, T: Copy + 'a, B: Backend> Repr<'a, T> for Pair<'a, T, B> {
+unsafe impl<'a, T: Copy + 'a, B: Backend> Repr<'a, T> for Small<'a, T, B> {
     const WORDS: usize = 2;
     const INLINE_CAPACITY: usize = Inline::<T>::CAPACITY;
     const MAX_LEN: usize = MAX_HEAP_LEN;

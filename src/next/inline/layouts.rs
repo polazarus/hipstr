@@ -266,9 +266,9 @@ impl<T, const REST: usize> Layout<T> for HighLayout<REST> {
 /// The 3-word layout.
 pub type BasicLayout = LowLayout<2>;
 /// The 1-word layout.
-pub type WordLayout = LowLayout<0>;
+pub type TinyLayout = LowLayout<0>;
 /// The 2-word layout.
-pub type PairLayout = HighLayout<1>;
+pub type SmallLayout = HighLayout<1>;
 
 #[cfg(test)]
 mod tests {
@@ -284,9 +284,9 @@ mod tests {
     fn capacities_u8() {
         let w = size_of::<usize>();
         assert_eq!(<BasicLayout as Layout<u8>>::CAPACITY, 3 * w - 1);
-        assert_eq!(<PairLayout as Layout<u8>>::CAPACITY, 2 * w - 1);
-        assert_eq!(<WordLayout as Layout<u8>>::CAPACITY, w - 1);
-        assert_eq!(<PairLayout as Layout<()>>::CAPACITY, usize::MAX >> 2);
+        assert_eq!(<SmallLayout as Layout<u8>>::CAPACITY, 2 * w - 1);
+        assert_eq!(<TinyLayout as Layout<u8>>::CAPACITY, w - 1);
+        assert_eq!(<SmallLayout as Layout<()>>::CAPACITY, usize::MAX >> 2);
     }
 
     #[test]

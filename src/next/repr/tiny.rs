@@ -17,10 +17,10 @@ use super::owner::Owner;
 use super::{Kind, Repr, capacity_overflow};
 use crate::next::backend::Backend;
 use crate::next::inline::base::Base as InlineBase;
-use crate::next::inline::layouts::WordLayout;
+use crate::next::inline::layouts::TinyLayout;
 use crate::next::thin::TryReserveError;
 
-type Inline<T> = InlineBase<T, WordLayout>;
+type Inline<T> = InlineBase<T, TinyLayout>;
 
 const _: () = {
     assert!(size_of::<Inline<u8>>() == size_of::<usize>());

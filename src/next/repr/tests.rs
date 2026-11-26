@@ -265,16 +265,16 @@ macro_rules! suite {
 type WideRc<'a> = Wide<'a, u8, Rc>;
 type WideArc<'a> = Wide<'a, u8, Arc>;
 type WideUnique<'a> = Wide<'a, u8, Unique>;
-type PairRc<'a> = Pair<'a, u8, Rc>;
-type PairArc<'a> = Pair<'a, u8, Arc>;
-type PairUnique<'a> = Pair<'a, u8, Unique>;
+type SmallRc<'a> = Small<'a, u8, Rc>;
+type SmallArc<'a> = Small<'a, u8, Arc>;
+type SmallUnique<'a> = Small<'a, u8, Unique>;
 
 suite!(wide_rc, WideRc<'static>, shares = true);
 suite!(wide_arc, WideArc<'static>, shares = true);
 suite!(wide_unique, WideUnique<'static>, shares = false);
-suite!(pair_rc, PairRc<'static>, shares = true);
-suite!(pair_arc, PairArc<'static>, shares = true);
-suite!(pair_unique, PairUnique<'static>, shares = false);
+suite!(small_rc, SmallRc<'static>, shares = true);
+suite!(small_arc, SmallArc<'static>, shares = true);
+suite!(small_unique, SmallUnique<'static>, shares = false);
 suite!(tiny_rc, Tiny<u8, Rc>, shares = true);
 suite!(tiny_arc, Tiny<u8, Arc>, shares = true);
 suite!(tiny_unique, Tiny<u8, Unique>, shares = false);
@@ -283,17 +283,17 @@ suite!(tiny_unique, Tiny<u8, Unique>, shares = false);
 fn sizes() {
     let w = size_of::<usize>();
     assert_eq!(size_of::<WideRc<'static>>(), 3 * w);
-    assert_eq!(size_of::<PairRc<'static>>(), 2 * w);
+    assert_eq!(size_of::<SmallRc<'static>>(), 2 * w);
     assert_eq!(size_of::<Tiny<u8, Rc>>(), w);
     assert_eq!(size_of::<Option<WideRc<'static>>>(), 3 * w);
-    assert_eq!(size_of::<Option<PairRc<'static>>>(), 2 * w);
+    assert_eq!(size_of::<Option<SmallRc<'static>>>(), 2 * w);
     assert_eq!(size_of::<Option<Tiny<u8, Rc>>>(), w);
     assert_eq!(
         <WideRc<'static> as Repr<'static, u8>>::INLINE_CAPACITY,
         3 * w - 1
     );
     assert_eq!(
-        <PairRc<'static> as Repr<'static, u8>>::INLINE_CAPACITY,
+        <SmallRc<'static> as Repr<'static, u8>>::INLINE_CAPACITY,
         2 * w - 1
     );
     assert_eq!(<Tiny<u8, Rc> as Repr<'static, u8>>::INLINE_CAPACITY, w - 1);
@@ -303,16 +303,16 @@ fn sizes() {
 fn send_sync() {
     fn is_send_sync<T: Send + Sync>() {}
     is_send_sync::<WideArc<'static>>();
-    is_send_sync::<PairArc<'static>>();
+    is_send_sync::<SmallArc<'static>>();
     is_send_sync::<Tiny<u8, Arc>>();
     is_send_sync::<WideUnique<'static>>();
-    is_send_sync::<PairUnique<'static>>();
+    is_send_sync::<SmallUnique<'static>>();
 }
 
 #[test]
 fn const_construction() {
     const F: WideRc<'static> = Wide::borrowed(b"hello world, this is longer than inline");
-    const P: PairRc<'static> = Pair::borrowed(b"hello world, longer");
+    const P: SmallRc<'static> = Small::borrowed(b"hello world, longer");
     const E: Tiny<u8, Rc> = Tiny::new();
     assert_eq!(F.len(), 39);
     assert_eq!(P.as_slice(), b"hello world, longer");

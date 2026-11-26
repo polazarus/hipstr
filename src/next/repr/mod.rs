@@ -1,10 +1,10 @@
 //! The three representations, behind one [`Repr`] trait.
 //!
-//! | Repr     | Size    | Inline (`u8`, 64-bit) | Borrowed | Heap        | Slicing |
-//! |----------|---------|-----------------------|----------|-------------|---------|
-//! | [`Wide`] | 3 words | 23                    | yes      | thin + vec  | yes     |
-//! | [`Pair`] | 2 words | 15                    | yes      | thin + vec  | no      |
-//! | [`Tiny`] | 1 word  | 7                     | no       | thin + vec  | no      |
+//! | Repr      | Size    | Inline (`u8`, 64-bit) | Borrowed | Heap       | Slicing |
+//! |-----------|---------|-----------------------|----------|------------|---------|
+//! | [`Wide`]  | 3 words | 23                    | yes      | thin + vec | yes     |
+//! | [`Small`] | 2 words | 15                    | yes      | thin + vec | no      |
+//! | [`Tiny`]  | 1 word  | 7                     | no       | thin + vec | no      |
 //!
 //! All three share the heap handle [`Owner`](owner::Owner) and the inline
 //! vector machinery; they only differ by how they pack the cases into words.
@@ -24,14 +24,14 @@ pub use owner::HeapKind;
 use crate::next::thin::TryReserveError;
 
 pub mod owner;
-pub mod pair;
+pub mod small;
 pub mod tiny;
 pub mod wide;
 
 #[cfg(test)]
 mod tests;
 
-pub use pair::Pair;
+pub use small::Small;
 pub use tiny::Tiny;
 pub use wide::Wide;
 

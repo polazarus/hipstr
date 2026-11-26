@@ -18,7 +18,7 @@ Breaking rewrite of `hipstr` in place (single crate).
 
 ## Public names
 
-| Family | 3 words (`Wide`) | 2 words (`Pair`) | 1 word (`Tiny`) |
+| Family | 3 words (`Wide`) | 2 words (`Small`) | 1 word (`Tiny`) |
 |---|---|---|---|
 | str   | `HipStr<'a>`   | `SmallStr<'a>`   | `TinyStr`   |
 | bytes | `HipByt<'a>`   | `SmallByt<'a>`   | `TinyByt`   |
@@ -33,17 +33,17 @@ variants (`LocalHipStr`, `LocalSmallStr`, `LocalTinyStr`, …) use `Rc`.
 | Repr | Size | Inline | Borrowed | Heap | Slicing |
 |---|---|---|---|---|---|
 | `Wide` | 3 words | ≤ 23 B | yes (`'a`) | thin + vec  | yes, O(1) shared |
-| `Pair` | 2 words | ≤ 15 B | yes (`'a`) | thin + vec  | no |
+| `Small` | 2 words | ≤ 15 B | yes (`'a`) | thin + vec  | no |
 | `Tiny` | 1 word  | ≤ 7 B  | **no**     | thin + vec  | no |
 
-(Byte counts for 64-bit.) Small reprs convert to `Wide` in O(1) on the heap path
+(Byte counts for 64-bit.) The 2- and 1-word reprs convert to `Wide` in O(1) on the heap path
 (`into_wide()`), then slice there.
 
 Heap kinds: **thin** (elements right after the header) and **vec** (header pointing at
 an adopted `Vec` buffer).
 
 Layout constraints to prove with const asserts: exact size, `Option<_>` niche,
-both endiannesses (Miri covers s390x / powerpc64). `Pair` borrowed pointers to
+both endiannesses (Miri covers s390x / powerpc64). `Small` borrowed pointers to
 `u8` are unaligned, so its tag must live in the high bits of the length word.
 
 ## Module plan
@@ -57,7 +57,7 @@ src/
     thin.rs     data right after the header
     tagged.rs   tagged pointer on the strict-provenance API
     range.rs, drain.rs, splice.rs
-  repr/         Repr trait + wide.rs / pair.rs / tiny.rs
+  repr/         Repr trait + wide.rs / small.rs / tiny.rs
   enc/          Bytes / Utf8 / OsStr / Path markers: validation + std conversions
   hip.rs        Hip<'a, E, R, B> and its encoding-agnostic methods
   bytes/ string/ os_string/ path/   encoding-specific methods, generic over R, B
@@ -76,12 +76,12 @@ src/
      path lives in `hipvec`'s `hip/base.rs` and moves over with phase 2.
 2. **Three reprs** — layouts + asserts first (1-/2-word tagging is the main risk),
    then the `Repr` trait.
-   - *Status:* done in `src/next/repr/` (`Wide`, `Pair`, `Tiny` + shared heap `Owner`).
+   - *Status:* done in `src/next/repr/` (`Wide`, `Small`, `Tiny` + shared heap `Owner`).
      The `Repr` trait has 4 raw primitives (`try_reserve`, `capacity`, `as_mut_ptr`,
      `set_len`); `push`/`extend_from_slice`/`truncate`/… are written once on top.
      Tests: one generic suite × 3 reprs × 3 backends, incl. a differential test vs
      `Vec<u8>`.
-   - `Pair` tag lives in the top 2 bits of the length word (`11` inline, `10` heap,
+   - `Small` tag lives in the top 2 bits of the length word (`11` inline, `10` heap,
      `0x` borrowed): heap length ≤ 2^62−1 (2^30−1 on 32-bit), borrowed ≤ `isize::MAX`.
    - Inline layouts generalised (`LowLayout`, `HighLayout`); fixed a capacity bug that
      lost one inline byte (u8: 22 → 23 in 3 words).
@@ -105,7 +105,7 @@ src/
 
 ## Open questions
 
-  Repr names: `Wide` (3 words) / `Pair` (2 words) / `Tiny` (1 word).
+  Repr names: `Wide` (3 words) / `Small` (2 words) / `Tiny` (1 word).
 - `Unique` backend semantics on clone (deep copy, as today?). *Implemented as deep copy.*
 - Vec-heap growth maps `Vec::try_reserve` errors to "capacity overflow" (the allocation
   error kind is unstable), so OOM on that path panics instead of aborting.
