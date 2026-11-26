@@ -12,8 +12,9 @@ use std::collections::HashSet;
 // cspell:ignore fastrand
 use fastrand::Rng;
 
-use super::{SliceErrorKind, simplify_range};
+use super::SliceErrorKind;
 use crate::HipByt as H;
+use crate::slice::simplify as simplify_range;
 
 type S<'a> = &'a [u8];
 type Owned = Vec<u8>;
@@ -98,7 +99,8 @@ fn test_with_capacity() {
     let p = h.as_ptr();
     assert_eq!(h, EMPTY_SLICE);
     assert!(h.is_empty());
-    assert_eq!(h.capacity(), 42);
+    // at least: thin heaps round the capacity up to fill their allocation
+    assert!(h.capacity() >= 42);
     for _ in 0..42 {
         h.push_slice(A);
     }
@@ -618,16 +620,18 @@ fn test_empty_slice() {
 
 #[test]
 fn test_into_vec() {
+    // `into_vec` is infallible: O(1) when the value uniquely owns an adopted
+    // vector starting at its first byte, a copy otherwise.
     {
         // static
         let a = H::borrowed(ABC);
-        assert!(a.into_vec().is_err());
+        assert_eq!(a.into_vec(), ABC);
     }
 
     {
         // inline
         let a = H::from(ABC);
-        assert!(a.into_vec().is_err());
+        assert_eq!(a.into_vec(), ABC);
     }
 
     let v = vec![42; INLINE_CAPACITY + 2];
@@ -636,16 +640,18 @@ fn test_into_vec() {
         let v = v.clone();
         let p = v.as_ptr();
         let a = H::from(v);
-        let v = a.into_vec().unwrap();
+        let v = a.into_vec();
         assert_eq!(p, v.as_ptr());
         assert_eq!(INLINE_CAPACITY + 2, v.len());
     }
 
     {
-        // allocated, shared
+        // allocated, shared: copy
         let a = H::from(v.clone());
-        let _b = a.clone();
-        assert!(a.into_vec().is_err());
+        let b = a.clone();
+        let w = a.into_vec();
+        assert_ne!(w.as_ptr(), b.as_ptr());
+        assert_eq!(w, v);
     }
 
     {
@@ -653,15 +659,15 @@ fn test_into_vec() {
         let v = v.clone();
         let p = v.as_ptr();
         let a = H::from(v).slice(0..=INLINE_CAPACITY);
-        let v = a.into_vec().unwrap();
+        let v = a.into_vec();
         assert_eq!(v.len(), INLINE_CAPACITY + 1);
         assert_eq!(v.as_ptr(), p);
     }
 
     {
-        // allocated, unique, sliced at start
+        // allocated, unique, sliced elsewhere: copy
         let a = H::from(v).slice(1..5);
-        assert!(a.into_vec().is_err());
+        assert_eq!(a.into_vec(), [42; 4]);
     }
 }
 
@@ -687,7 +693,8 @@ fn test_capacity_allocated() {
     assert_eq!(a.capacity(), 42);
 
     let b = a.slice(1..);
-    assert_eq!(b.capacity(), 42);
+    // shared (with `a`): writing would copy, so the capacity is the length
+    assert_eq!(b.capacity(), b.len());
 }
 
 #[test]
@@ -806,7 +813,7 @@ fn test_shrink_to() {
     let h2 = h.clone();
     h.truncate(INLINE_CAPACITY + 1);
     assert_eq!(h.as_ptr(), h2.as_ptr());
-    assert!(h.capacity() >= INLINE_CAPACITY + 2);
+    // shared (with `h2`): `capacity()` is the length, the buffer is larger
     h.shrink_to(INLINE_CAPACITY + 2);
     assert_ne!(h.as_ptr(), h2.as_ptr());
     assert!(h.capacity() >= INLINE_CAPACITY + 2);
@@ -1167,36 +1174,36 @@ fn test_simplify_range() {
 
     assert_eq!(
         simplify_range(11..13, 10),
-        Err((11, 13, SliceErrorKind::StartOutOfBounds))
+        Err((SliceErrorKind::StartOutOfBounds, 11..13))
     );
     assert_eq!(
         simplify_range((Bound::Included(11), Bound::Excluded(13)), 10),
-        Err((11, 13, SliceErrorKind::StartOutOfBounds))
+        Err((SliceErrorKind::StartOutOfBounds, 11..13))
     );
     assert_eq!(
         simplify_range(11..=12, 10),
-        Err((11, 13, SliceErrorKind::StartOutOfBounds))
+        Err((SliceErrorKind::StartOutOfBounds, 11..13))
     );
     assert_eq!(
         simplify_range((Bound::Included(11), Bound::Included(12)), 10),
-        Err((11, 13, SliceErrorKind::StartOutOfBounds))
+        Err((SliceErrorKind::StartOutOfBounds, 11..13))
     );
     assert_eq!(
         simplify_range(11.., 10),
-        Err((11, 10, SliceErrorKind::StartOutOfBounds))
+        Err((SliceErrorKind::StartOutOfBounds, 11..10))
     );
     assert_eq!(
         simplify_range((Bound::Included(11), Bound::Unbounded), 10),
-        Err((11, 10, SliceErrorKind::StartOutOfBounds))
+        Err((SliceErrorKind::StartOutOfBounds, 11..10))
     );
 
     assert_eq!(
         simplify_range(9..8, 10),
-        Err((9, 8, SliceErrorKind::StartGreaterThanEnd))
+        Err((SliceErrorKind::StartGreaterThanEnd, 9..8))
     );
     assert_eq!(
         simplify_range(9..=7, 10),
-        Err((9, 8, SliceErrorKind::StartGreaterThanEnd))
+        Err((SliceErrorKind::StartGreaterThanEnd, 9..8))
     );
 }
 
@@ -1272,7 +1279,7 @@ fn test_spare_capacity_mut() {
     assert_eq!(h.spare_capacity_mut().len(), INLINE_CAPACITY - ABC.len());
 
     let mut h = H::with_capacity(42);
-    assert_eq!(h.spare_capacity_mut().len(), 42);
+    assert!(h.spare_capacity_mut().len() >= 42); // rounded up
 }
 
 #[test]

@@ -41,7 +41,7 @@ fn test_with_capacity() {
     let p = h.as_ptr();
     assert_eq!(h, *EMPTY_SLICE);
     assert!(h.is_empty());
-    assert_eq!(h.capacity(), 42);
+    assert!(h.capacity() >= 42); // rounded up to fill the allocation
     for _ in 0..42 {
         h.push(A);
     }
@@ -342,7 +342,7 @@ fn test_into_str() {
     let ho = HipOsStr::from(s);
     assert!(ho.is_allocated());
     let hs = ho.clone().into_str().unwrap();
-    assert!(core::ptr::eq(ho.as_os_str(), hs.as_str().as_ref()));
+    assert!(core::ptr::eq(ho.as_os_str(), OsStr::new(hs.as_str())));
 
     #[cfg(windows)]
     {
@@ -368,7 +368,7 @@ fn test_to_str() {
     let ho = HipOsStr::from(s);
     assert!(ho.is_allocated());
     let hs = ho.to_str().unwrap();
-    assert!(core::ptr::eq(ho.as_os_str(), hs.as_str().as_ref()));
+    assert!(core::ptr::eq(ho.as_os_str(), OsStr::new(hs)));
 
     #[cfg(windows)]
     {
@@ -394,7 +394,7 @@ fn test_to_str_lossy() {
     let ho = HipOsStr::from(s);
     assert!(ho.is_allocated());
     let hs = ho.to_str_lossy();
-    assert!(core::ptr::eq(ho.as_os_str(), hs.as_str().as_ref()));
+    assert!(core::ptr::eq(ho.as_os_str(), OsStr::new(hs.as_str())));
 
     #[cfg(windows)]
     {
@@ -422,7 +422,7 @@ fn test_to_str_lossy() {
 ///
 /// The range must be at "os char" boundary.
 unsafe fn sl<'a>(h: &'a HipOsStr, r: Range<usize>) -> &'a OsStr {
-    unsafe { OsStr::from_encoded_bytes_unchecked(&h.0[r]) }
+    unsafe { OsStr::from_encoded_bytes_unchecked(&h.as_encoded_bytes()[r]) }
 }
 
 #[test]

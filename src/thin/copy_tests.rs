@@ -1,0 +1,376 @@
+use crate::common::tests::pointer_stability;
+use crate::inline::inline_vec;
+use crate::thin::{ThinVec as V, thin_vec as v};
+
+#[test]
+fn new_and_default() {
+    let new: V<i32> = V::new();
+    assert!(new.is_empty());
+    assert_eq!(new.len(), 0);
+
+    let default: V<i32> = V::default();
+    assert!(default.is_empty());
+    assert_eq!(default.len(), 0);
+}
+
+#[test]
+fn with_capacity() {
+    let v: V<i32> = V::with_capacity(0);
+    assert!(v.is_empty());
+    assert_eq!(v.capacity(), 0);
+
+    let v: V<i32> = V::with_capacity(8);
+    assert!(v.is_empty());
+    assert!(v.capacity() >= 8);
+}
+
+#[test]
+fn from_array_and_slice() {
+    let from_array: V<i32> = V::from([1, 2, 3]);
+    assert_eq!(from_array.as_slice(), &[1, 2, 3]);
+
+    let from_slice: V<i32> = V::from([4, 5, 6].as_slice());
+    assert_eq!(from_slice.as_slice(), &[4, 5, 6]);
+}
+
+#[test]
+fn macro_constructors() {
+    let empty: V<i32> = v![];
+    assert!(empty.is_empty());
+
+    let list: V<i32> = v![1, 2, 3,];
+    assert_eq!(list.as_slice(), &[1, 2, 3]);
+
+    let repeated: V<i32> = v![7; 3];
+    assert_eq!(repeated.as_slice(), &[7, 7, 7]);
+}
+
+#[test]
+fn push_pop() {
+    let mut v: V<i32> = V::new();
+    assert_eq!(v.pop(), None);
+
+    v.push(10);
+    v.push(20);
+    v.push(30);
+    assert_eq!(v.as_slice(), &[10, 20, 30]);
+
+    assert_eq!(v.pop(), Some(30));
+    assert_eq!(v.pop(), Some(20));
+    assert_eq!(v.pop(), Some(10));
+    assert_eq!(v.pop(), None);
+
+    assert!(v.is_empty());
+}
+
+#[test]
+fn as_slice() {
+    let v: V<i32> = v![1, 2, 3];
+    assert_eq!(v.as_slice(), &[1, 2, 3]);
+}
+
+#[test]
+fn deref() {
+    let v: V<i32> = v![1, 2, 3];
+    let slice: &[i32] = &v;
+    assert_eq!(slice, &[1, 2, 3]);
+    assert_eq!(slice.as_ptr(), v.as_slice().as_ptr());
+}
+
+#[test]
+fn reserve() {
+    let mut v: V<i32> = V::with_capacity(0);
+    v.reserve(10);
+    assert!(v.capacity() >= 10);
+    pointer_stability(&mut v);
+
+    let mut v: V<i32> = V::with_capacity(64);
+    v.reserve(65);
+    assert!(v.capacity() >= 128);
+    pointer_stability(&mut v);
+}
+
+#[test]
+fn reserve_exact() {
+    let mut v: V<i32> = V::with_capacity(0);
+    v.reserve_exact(10);
+    assert!(v.capacity() >= 10);
+    pointer_stability(&mut v);
+
+    let mut v: V<i32> = V::with_capacity(64);
+    v.reserve_exact(65);
+    assert!(v.capacity() >= 65);
+    assert!(v.capacity() < 128);
+    pointer_stability(&mut v);
+}
+
+#[test]
+fn append() {
+    let mut left: V<i16> = v![1, 2, 3];
+    let mut right: V<i16> = v![4, 5, 6];
+    left.append(&mut right);
+    assert_eq!(left.as_slice(), &[1, 2, 3, 4, 5, 6]);
+    assert!(right.is_empty());
+
+    let mut left: V<i16> = v![1, 2, 3];
+    let mut right = alloc::vec![4, 5, 6];
+    left.append(&mut right);
+    assert_eq!(left.as_slice(), &[1, 2, 3, 4, 5, 6]);
+    assert!(right.is_empty());
+
+    let mut left: V<i16> = v![1, 2, 3];
+    let mut right = inline_vec![4, 5, 6];
+    left.append(&mut right);
+    assert_eq!(left.as_slice(), &[1, 2, 3, 4, 5, 6]);
+    assert!(right.is_empty());
+}
+
+#[test]
+fn remove() {
+    let mut v: V<i32> = v![10, 20, 30, 40];
+    let removed = v.remove(1);
+    assert_eq!(removed, 20);
+    assert_eq!(v.as_slice(), &[10, 30, 40]);
+}
+
+#[test]
+fn remove_first() {
+    let mut v: V<i32> = v![10, 20, 30, 40];
+    let removed = v.remove(0);
+    assert_eq!(removed, 10);
+    assert_eq!(v.as_slice(), &[20, 30, 40]);
+}
+
+#[test]
+fn remove_last() {
+    let mut v: V<i32> = v![10, 20, 30, 40];
+    let removed = v.remove(v.len() - 1);
+    assert_eq!(removed, 40);
+    assert_eq!(v.as_slice(), &[10, 20, 30]);
+}
+
+#[test]
+#[should_panic(expected = "index out of bounds")]
+fn remove_panic() {
+    let mut v: V<i32> = v![1, 2, 3];
+    let _ = v.remove(3);
+}
+
+#[test]
+fn swap_remove() {
+    let mut v: V<i32> = v![10, 20, 30, 40];
+    let removed = v.swap_remove(1);
+    assert_eq!(removed, 20);
+    assert_eq!(v.as_slice(), &[10, 40, 30]);
+}
+
+#[test]
+fn swap_remove_first() {
+    let mut v: V<i32> = v![10, 20, 30, 40];
+    let removed = v.swap_remove(0);
+    assert_eq!(removed, 10);
+    assert_eq!(v.as_slice(), &[40, 20, 30]);
+}
+
+#[test]
+fn swap_remove_last() {
+    let mut v: V<i32> = v![10, 20, 30, 40];
+    let removed = v.swap_remove(v.len() - 1);
+    assert_eq!(removed, 40);
+    assert_eq!(v.as_slice(), &[10, 20, 30]);
+}
+
+#[test]
+#[should_panic(expected = "index out of bounds")]
+fn swap_remove_panic() {
+    let mut v: V<i32> = v![1, 2, 3];
+    let _ = v.swap_remove(3);
+}
+
+#[test]
+fn truncate() {
+    let mut v: V<i32> = v![1, 2, 3, 4, 5];
+    let capacity = v.capacity();
+    let ptr = v.as_ptr();
+
+    v.truncate(10);
+    assert_eq!(v.as_slice(), [1, 2, 3, 4, 5]);
+    assert_eq!(v.capacity(), capacity);
+    assert_eq!(v.as_ptr(), ptr);
+
+    v.truncate(3);
+    assert_eq!(v.as_slice(), [1, 2, 3]);
+    assert_eq!(v.capacity(), capacity);
+    assert_eq!(v.as_ptr(), ptr);
+
+    v.truncate(0);
+    assert!(v.is_empty());
+    assert_eq!(v.capacity(), capacity);
+    assert_eq!(v.as_ptr(), ptr);
+}
+
+#[test]
+fn clear() {
+    let mut v: V<i32> = v![0; 100];
+    let old_capacity = v.capacity();
+    let ptr = v.as_ptr();
+    v.clear();
+
+    assert!(v.is_empty());
+    assert_eq!(v.capacity(), old_capacity);
+    assert_eq!(v.as_ptr(), ptr);
+}
+
+#[test]
+fn split_off() {
+    let mut v: V<i32> = v![1, 2, 3];
+    let cap = v.capacity();
+    let w = v.split_off(2);
+    assert_eq!(v.as_slice(), [1, 2]);
+    assert_eq!(w.as_slice(), [3]);
+    assert_eq!(v.capacity(), cap);
+
+    let mut v: V<i32> = v![1, 2, 3];
+    let w = v.split_off(0);
+    assert!(v.is_empty());
+    assert_eq!(w.as_slice(), [1, 2, 3]);
+
+    let mut v: V<i32> = v![1, 2, 3];
+    let w = v.split_off(3);
+    assert_eq!(v.as_slice(), [1, 2, 3]);
+    assert!(w.is_empty());
+}
+
+#[test]
+#[should_panic(expected = "index out of bounds")]
+fn split_off_panic() {
+    let mut v: V<i32> = v![1, 2, 3];
+    let _ = v.split_off(4);
+}
+
+#[test]
+fn drain() {
+    let mut v: V<i32> = v![1, 2, 3, 4, 5];
+    let drain = v.drain(1..4);
+    assert_eq!(drain.as_slice(), [2, 3, 4]);
+    assert!(drain.eq([2, 3, 4]));
+    assert_eq!(v.as_slice(), [1, 5]);
+
+    let mut v: V<i32> = v![1, 2, 3, 4, 5];
+    assert!(v.drain(..).eq([1, 2, 3, 4, 5]));
+    assert!(v.is_empty());
+    assert!(v.as_slice().is_empty());
+
+    let mut v: V<i32> = v![1, 2, 3, 4, 5];
+    assert_eq!(v.drain(2..2).count(), 0);
+    assert_eq!(v.as_slice(), [1, 2, 3, 4, 5]);
+}
+
+#[test]
+#[should_panic]
+#[allow(clippy::reversed_empty_ranges)]
+fn drain_invalid_range_panics() {
+    let mut v: V<i32> = v![1, 2, 3, 4, 5];
+    let _ = v.drain(4..1);
+}
+
+#[test]
+fn resize() {
+    let mut v: V<i32> = v![1, 2];
+
+    v.resize(5, 9);
+    assert_eq!(v.as_slice(), [1, 2, 9, 9, 9]);
+
+    let capacity = v.capacity();
+    let ptr = v.as_ptr();
+    v.resize(2, 0);
+    assert_eq!(v.as_slice(), [1, 2]);
+    assert_eq!(v.capacity(), capacity);
+    assert_eq!(v.as_ptr(), ptr);
+}
+
+#[test]
+fn resize_with() {
+    let mut next = 1;
+    let mut v: V<i32> = v![10];
+
+    v.resize_with(4, || {
+        let value = next;
+        next += 1;
+        value
+    });
+    assert_eq!(v.as_slice(), [10, 1, 2, 3]);
+
+    let capacity = v.capacity();
+    let ptr = v.as_ptr();
+    v.resize_with(2, || unreachable!());
+    assert_eq!(v.as_slice(), [10, 1]);
+    assert_eq!(v.capacity(), capacity);
+    assert_eq!(v.as_ptr(), ptr);
+}
+
+#[test]
+fn splice() {
+    let mut v = v![1, 2, 3, 4, 5];
+    {
+        let splice = v.splice(1..4, [9, 8]);
+        assert!(splice.eq([2, 3, 4]));
+    }
+    assert_eq!(v.as_slice(), [1, 9, 8, 5]);
+
+    let mut v = v![1, 2, 3, 4, 5];
+    {
+        let splice = v.splice(1..3, [9, 8, 7, 6]);
+        assert!(splice.eq([2, 3]));
+    }
+    assert_eq!(v.as_slice(), [1, 9, 8, 7, 6, 4, 5]);
+
+    let mut v = v![1, 2, 3, 4, 5];
+    {
+        let splice = v.splice(1..4, [9, 8, 7, 6].into_iter().filter(|_| true));
+        assert!(splice.eq([2, 3, 4]));
+    }
+    assert_eq!(v.as_slice(), [1, 9, 8, 7, 6, 5]);
+
+    let mut v = v![1, 5];
+    {
+        let splice = v.splice(1..1, [2, 3, 4]);
+        assert!(splice.count() == 0);
+    }
+    assert_eq!(v.as_slice(), [1, 2, 3, 4, 5]);
+
+    let mut v = v![1, 2, 3, 4, 5];
+    {
+        let splice = v.splice(.., [9, 8]);
+        assert!(splice.eq([1, 2, 3, 4, 5]));
+    }
+    assert_eq!(v.as_slice(), [9, 8]);
+
+    let mut v = v![1, 2, 3, 4, 5];
+    {
+        let splice = v.splice(.., []);
+        assert!(splice.eq([1, 2, 3, 4, 5]));
+    }
+    assert!(v.is_empty());
+}
+
+#[test]
+#[should_panic(expected = "start index 4 is greater than end index 1")]
+#[allow(clippy::reversed_empty_ranges)]
+fn splice_invalid_range_panics() {
+    let mut v = v![1, 2, 3, 4, 5];
+    let _ = v.splice(4..1, [9, 8]);
+}
+
+#[test]
+fn extend() {
+    let mut v = V::<i32>::new();
+    v.extend(core::iter::empty());
+    assert!(v.as_slice().is_empty());
+
+    v.extend([1, 2, 3]);
+    assert_eq!(v.as_slice(), &[1, 2, 3]);
+
+    v.extend([4, 5, 6].into_iter().filter(|_| true));
+    assert_eq!(v.as_slice(), &[1, 2, 3, 4, 5, 6]);
+}

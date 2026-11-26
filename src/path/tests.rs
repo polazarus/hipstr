@@ -22,11 +22,11 @@ fn test_new_default() {
     let empty_path: &Path = "".as_ref();
     let new = H::new();
     assert_eq!(new, empty_path);
-    assert!(new.0.is_empty());
+    assert!(new.as_os_str().is_empty());
 
     let new = H::default();
     assert_eq!(new, empty_path);
-    assert!(new.0.is_empty());
+    assert!(new.as_os_str().is_empty());
 }
 
 #[test]
@@ -53,7 +53,7 @@ fn test_from_string() {
     assert!(!hs.is_borrowed());
     assert!(!hs.is_inline());
     assert!(hs.is_allocated());
-    assert_eq!(hs.0.len(), 42);
+    assert_eq!(hs.as_os_str().len(), 42);
     assert_eq!(hs.as_os_str(), s.as_str());
 }
 
@@ -63,9 +63,9 @@ fn test_borrowed() {
     let path = H::borrowed(s);
     assert!(path.is_borrowed());
     assert!(!path.is_inline());
-    assert_eq!(path.0.len(), s.len());
+    assert_eq!(path.as_os_str().len(), s.len());
     assert_eq!(path.as_os_str(), s);
-    assert_eq!(path.0.as_ptr(), s.as_ptr());
+    assert_eq!(path.as_os_str().as_encoded_bytes().as_ptr(), s.as_ptr());
 }
 
 #[test]
@@ -81,9 +81,9 @@ fn test_from_static() {
     assert!(path.is_borrowed());
     assert!(!path.is_inline());
     assert!(!path.is_allocated());
-    assert_eq!(path.0.len(), s.len());
+    assert_eq!(path.as_os_str().len(), s.len());
     assert_eq!(path.as_os_str(), s);
-    assert_eq!(path.0.as_ptr(), s.as_ptr());
+    assert_eq!(path.as_os_str().as_encoded_bytes().as_ptr(), s.as_ptr());
 }
 
 #[test]
@@ -95,7 +95,7 @@ fn test_from_slice() {
         let path = H::from(&s[..size]);
         assert_eq!(size <= INLINE_CAPACITY, path.is_inline());
         assert_eq!(size > INLINE_CAPACITY, path.is_allocated());
-        assert_eq!(path.0.len(), size);
+        assert_eq!(path.as_os_str().len(), size);
     }
 }
 
@@ -138,7 +138,7 @@ fn test_clone() {
         let b = a.clone();
         drop(a);
         assert_eq!(b.as_os_str(), "abc");
-        assert_eq!(s.as_ptr(), b.0.as_ptr());
+        assert_eq!(s.as_ptr(), b.as_os_str().as_encoded_bytes().as_ptr());
     }
 
     // inline
@@ -159,7 +159,7 @@ fn test_clone() {
         let b = a.clone();
         drop(a);
         assert_eq!(b.as_os_str(), "a".repeat(42).as_str());
-        assert_eq!(b.0.as_ptr(), p);
+        assert_eq!(b.as_os_str().as_encoded_bytes().as_ptr(), p);
     }
 }
 
@@ -203,7 +203,7 @@ fn test_as_borrowed() {
 #[test]
 fn test_into_os_string() {
     let h = H::from("A".repeat(42));
-    let os_string = h.into_os_string().unwrap();
+    let os_string = h.into_os_string();
     assert_eq!(os_string.len(), 42);
     assert_eq!(os_string.as_encoded_bytes(), [b'A'; 42]);
 }
@@ -211,7 +211,7 @@ fn test_into_os_string() {
 #[test]
 fn test_into_path_buf() {
     let h = H::from("A".repeat(42));
-    let path_buf = h.into_path_buf().unwrap();
+    let path_buf = h.into_path_buf();
     assert_eq!(path_buf.as_os_str().len(), 42);
     assert_eq!(path_buf, Path::new(&"A".repeat(42)));
 }
@@ -244,7 +244,7 @@ fn test_into_str() {
 #[test]
 fn test_capacity() {
     let a = H::borrowed("abc");
-    assert_eq!(a.capacity(), a.0.len());
+    assert_eq!(a.capacity(), a.as_os_str().len());
 
     let a = H::from("abc");
     assert_eq!(a.capacity(), H::inline_capacity());
@@ -298,7 +298,7 @@ fn test_mutate_allocated() {
         a.mutate().push("0123456789");
         assert!(a.is_allocated());
         assert_eq!(a, Path::new("abcdefghijklmnopqrstuvwxyz/0123456789"));
-        assert_eq!(a.0.as_ptr(), p);
+        assert_eq!(a.as_os_str().as_encoded_bytes().as_ptr(), p);
     }
 
     {
@@ -312,7 +312,10 @@ fn test_mutate_allocated() {
         assert!(a.is_allocated());
         assert_eq!(a, Path::new("abcdefghijklmnopqrstuvwxyz/0123456789"));
         assert_eq!(b, Path::new("abcdefghijklmnopqrstuvwxyz"));
-        assert_ne!(a.0.as_ptr(), b.0.as_ptr());
+        assert_ne!(
+            a.as_os_str().as_encoded_bytes().as_ptr(),
+            b.as_os_str().as_encoded_bytes().as_ptr()
+        );
     }
 }
 
@@ -334,9 +337,9 @@ fn test_to_owned() {
 
     let a = H::from(&r[..]);
     drop(r);
-    let p = a.0.as_ptr();
+    let p = a.as_os_str().as_encoded_bytes().as_ptr();
     let a = a.into_owned();
-    assert_eq!(a.0.as_ptr(), p);
+    assert_eq!(a.as_os_str().as_encoded_bytes().as_ptr(), p);
 }
 
 #[test]

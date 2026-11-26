@@ -117,8 +117,25 @@ src/
        `BStr` hash differently) — strings now only get `AsRef<BStr>` + comparisons.
      - Fixed vs `main`: borsh decoding pre-allocated the untrusted length prefix (up to
        4 GiB); it now goes through borsh's `Vec<u8>` decoder and adopts its buffer.
-   - *Step 3c:* swap — remove the old modules, move `src/next` to the crate root,
-     port the old test suites and doc examples.
+   - *Step 3c (done):* swap — old modules removed, `src/next` moved to the crate root
+     (vector machinery private: `common`, `inline`, `thin`, `traits`), old test suites
+     and 88 doc blocks ported (139 doctests), loom tests rebuilt on the public types.
+     - Old API restored where missing: the comparison grid (arrays, `Box`, `Cow`,
+       cross-family OsStr↔Path, str↔OsStr), OsStr/Path conversions, `from_static`,
+       `into_bytes`, `to_str_lossy`, `is_normalized`, `as_mut_ptr(_unchecked)`,
+       `reserve`, `SliceError` messages, O(1) truncation of borrowed/shared views,
+       in-place growth of unique sub-slices, borrowed slicing of borrowed values.
+     - Bugs found by the old suites: `Header::from_vec` swapped length and capacity
+       (ported from `hipvec`); `Wide` stored slice pointers derived from shared
+       references and later wrote through them (UB under Stacked Borrows, found by
+       Miri).
+     - Intended changes (tests adapted, with comments): `into_vec`/`into_string`/…
+       infallible; `capacity()` of a shared value is its length; heap capacities
+       round up (`with_capacity(42)` may give 48); `HipOsStr::to_str` returns
+       `Option<&str>` like std (the sharing version is `into_str`); `Borrow<BStr>`
+       for strings and `Borrow<OsStr>` for paths dropped (hash mismatch).
+     - Removed public modules: `vecs`, `smart`, `common`, and the deprecated
+       `Local`/`ThreadSafe` backend aliases.
 4. **Std compatibility**
    - Ledger generated from std's rustdoc JSON (`rust-docs-json` component) listing every
      stable inherent method and trait impl of `Vec<u8>`, `String`, `OsString`, `PathBuf`

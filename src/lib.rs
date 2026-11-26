@@ -1,10 +1,10 @@
 //! Yet another **string type** for Rust 🦀
 //!
 //! * no copy and `const` **literal wrapping**
-//! * no alloc **small strings** (_23 bytes_ on 64-bit platform)
+//! * no alloc **small strings** (up to _23 bytes_ on 64-bit platforms)
 //! * no copy **owned slices**
+//! * three sizes: 3 words, 2 words or a single word
 //! * a niche: `Option<HipStr>` and `HipStr` have the same size
-//! * **zero dependency**, except for optional `serde` support
 //!
 //! Also byte strings, OS strings, paths, too!
 //!
@@ -25,41 +25,50 @@
 //! let chars = user.chars().count(); // "inherits" `&str` methods
 //! ```
 //!
-//! # Three Representations
+//! # Three Sizes
 //!
-//! Each type has three distinct representations:
+//! Each family (strings, byte strings, OS strings, paths) comes in three sizes:
 //!
-//! - Borrowed slice
-//! - Inline sequence (up to [`HipByt::inline_capacity()`])
-//! - Shared reference (cheaply clonable) _and slice_ (sliceable)
+//! | Size    | Types                              | Inline (64-bit) | Borrowed | O(1) slicing |
+//! |---------|------------------------------------|-----------------|----------|--------------|
+//! | 3 words | [`HipStr`], [`HipByt`], …          | 23 bytes        | yes      | yes          |
+//! | 2 words | [`SmallStr`], [`SmallByt`], …      | 15 bytes        | yes      | no           |
+//! | 1 word  | [`TinyStr`], [`TinyByt`], …        | 7 bytes         | no       | no           |
+//!
+//! Every size has the same niche: `Option<T>` is as large as `T`.
+//!
+//! # Representations
+//!
+//! A value is either
+//!
+//! - an inline sequence (up to `inline_capacity()` bytes),
+//! - a borrowed slice (3- and 2-word types),
+//! - or a shared heap buffer (cheaply clonable), which may be a [`Vec`]
+//!   adopted without copying (`From<String>`, `From<Vec<u8>>`, …).
 //!
 //! The shared reference can be thread-safe or not, depending on the backend.
 //!
-//! Most operations keep string **normalized**, that is, if the string is not
-//! borrowed, the inline representation is preferred when possible.
+//! Most operations keep values **normalized**, that is, if the value is not
+//! borrowed, the inline representation is preferred when possible. Empty
+//! values are always inline.
 //!
-//! ## ⚠️ Warning!
-//!
-//! The used representation of the empty string is **unspecified** and may
-//! change between patch versions! It may be _borrowed_ or _inlined_ but will
-//! never be allocated.
+//! [`Vec`]: alloc::vec::Vec
 //!
 //! # Three Backends
 //!
 //! The crate provides three backends:
 //!
-//! - `Arc` (atomic reference counting), formerly `ThreadSafe`
-//! - `Rc` (reference counting), formerly `Local`
-//! - `Unique` (unique reference)
+//! - `Arc` (atomic reference counting)
+//! - `Rc` (reference counting)
+//! - `Unique` (unique reference, clones copy)
 //!
-//! The last backend, `Unique`, is mostly an experiment in pushing what
-//! constitutes a hipstr backend and has **no practical use**.
+//! The crate root provides type aliases for the first two:
 //!
-//! The crate root also provides some convenience type aliases, typically for
-//! strings:
+//! - `hipstr::HipStr`, `hipstr::SmallStr`, `hipstr::TinyStr`, … with `Arc`,
+//! - `hipstr::LocalHipStr`, `hipstr::LocalSmallStr`, … with `Rc`.
 //!
-//! - `hipstr::HipStr` with the `Arc` backend,
-//! - `hipstr::LocalHipStr` with the `Rc` backend.
+//! Each family module also has backend-generic aliases, e.g.
+//! [`string::HipStr<'a, B>`](string::HipStr).
 //!
 //! # Platform Support
 //!
@@ -75,12 +84,12 @@
 //! # Features
 //!
 //! * `std` (default): uses `std` rather than `core` and `alloc`, and also
-//!   provides more trait implementations (for comparison, conversions)
+//!   provides more trait implementations (for comparison, conversions) and the
+//!   OS string and path types
 //! * `serde`: provides serialization/deserialization support with [`serde`](https://serde.rs)
 //! * `borsh`: provides serialization/deserialization support with [`borsh`](https://borsh.io)
 //! * `bstr`: provides compatibility with [BurntSushi's bstr
-//!   crate](https://github.com/BurntSushi/bstr) make `HipByt` deref to
-//!   [`&bstr::BStr`](bstr::BStr) rather than [`&[u8]`](slice)
+//!   crate](https://github.com/BurntSushi/bstr)
 //! * `unstable`: do nothing, used to reveal unstable implementation details
 
 #![no_std]
@@ -96,50 +105,113 @@ extern crate std;
 
 pub mod backend;
 pub mod bytes;
-pub mod common;
-pub(crate) mod macros;
-pub mod smart;
-pub mod string;
-pub mod vecs;
-
-mod next;
-
+pub mod enc;
+pub mod hip;
 #[cfg(feature = "std")]
 pub mod os_string;
 #[cfg(feature = "std")]
 pub mod path;
+pub mod pattern;
+pub mod repr;
+pub mod slice;
+pub mod string;
+
+#[cfg(feature = "borsh")]
+mod borsh_impl;
+#[cfg(feature = "bstr")]
+mod bstr_impl;
+mod family;
+#[cfg(feature = "serde")]
+mod serde_impl;
+mod string_pattern;
+
+// Internal vector machinery (ported from the `hipvec` branch, copy-only).
+// Its doc examples are `ignore`d: the items are not public.
+#[allow(dead_code, unused_imports, unused_macros, unreachable_pub)]
+mod common;
+#[allow(dead_code, unused_imports, unused_macros, unreachable_pub)]
+mod inline;
+#[allow(dead_code, unused_imports, unused_macros, unreachable_pub)]
+mod thin;
+#[allow(dead_code, unused_imports, unused_macros, unreachable_pub)]
+mod traits;
 
 #[cfg(test)]
-pub mod tests;
+mod tests;
 
 pub use backend::{Arc, Backend, Rc, Unique};
-#[expect(deprecated)]
-pub use backend::{Local, ThreadSafe};
+pub use hip::Hip;
 
-/// Thread-safe shared byte sequence.
-pub type HipByt<'borrow> = bytes::HipByt<'borrow, Arc>;
+/// Declares the public aliases of one family: 3 sizes × {`Arc`, `Rc`}.
+///
+/// The backend is fixed (no default type parameter): defaults of type aliases
+/// do not drive inference in expressions such as `HipStr::from("…")`. The
+/// backend-generic aliases live in each family module.
+macro_rules! aliases {
+    ($m:ident, $wide:ident, $small:ident, $tiny:ident, $lwide:ident, $lsmall:ident, $ltiny:ident) => {
+        #[doc = concat!("Thread-safe [`", stringify!($m), "::", stringify!($wide), "`] (`Arc` backend).")]
+        pub type $wide<'a> = $m::$wide<'a, Arc>;
+        #[doc = concat!("Thread-safe [`", stringify!($m), "::", stringify!($small), "`] (`Arc` backend).")]
+        pub type $small<'a> = $m::$small<'a, Arc>;
+        #[doc = concat!("Thread-safe [`", stringify!($m), "::", stringify!($tiny), "`] (`Arc` backend).")]
+        pub type $tiny = $m::$tiny<Arc>;
+        #[doc = concat!("Thread-local [`", stringify!($m), "::", stringify!($wide), "`] (`Rc` backend).")]
+        pub type $lwide<'a> = $m::$wide<'a, Rc>;
+        #[doc = concat!("Thread-local [`", stringify!($m), "::", stringify!($small), "`] (`Rc` backend).")]
+        pub type $lsmall<'a> = $m::$small<'a, Rc>;
+        #[doc = concat!("Thread-local [`", stringify!($m), "::", stringify!($tiny), "`] (`Rc` backend).")]
+        pub type $ltiny = $m::$tiny<Rc>;
+    };
+}
 
-/// Thread-safe shared string.
-pub type HipStr<'borrow> = string::HipStr<'borrow, Arc>;
+/// Declares the backend-generic aliases of one family, in its module.
+macro_rules! generic_aliases {
+    ($enc:ty, $wide:ident, $small:ident, $tiny:ident, $what:literal) => {
+        #[doc = concat!("3-word ", $what, ": inline, borrowed or shared, with O(1) slicing.")]
+        pub type $wide<'a, B> = $crate::hip::Hip<$enc, $crate::repr::Wide<'a, u8, B>>;
+        #[doc = concat!("2-word ", $what, ": inline, borrowed or shared.")]
+        pub type $small<'a, B> = $crate::hip::Hip<$enc, $crate::repr::Small<'a, u8, B>>;
+        #[doc = concat!("1-word ", $what, ": inline or shared (no borrowing).")]
+        pub type $tiny<B> = $crate::hip::Hip<$enc, $crate::repr::Tiny<u8, B>>;
+    };
+}
+pub(crate) use generic_aliases;
 
-/// Thread-safe shared string.
+aliases!(
+    string,
+    HipStr,
+    SmallStr,
+    TinyStr,
+    LocalHipStr,
+    LocalSmallStr,
+    LocalTinyStr
+);
+aliases!(
+    bytes,
+    HipByt,
+    SmallByt,
+    TinyByt,
+    LocalHipByt,
+    LocalSmallByt,
+    LocalTinyByt
+);
 #[cfg(feature = "std")]
-pub type HipOsStr<'borrow> = os_string::HipOsStr<'borrow, Arc>;
-
-/// Thread-safe shared path.
+aliases!(
+    os_string,
+    HipOsStr,
+    SmallOsStr,
+    TinyOsStr,
+    LocalHipOsStr,
+    LocalSmallOsStr,
+    LocalTinyOsStr
+);
 #[cfg(feature = "std")]
-pub type HipPath<'borrow> = path::HipPath<'borrow, Arc>;
-
-/// Thread-local shared byte sequence.
-pub type LocalHipByt<'borrow> = bytes::HipByt<'borrow, Rc>;
-
-/// Thread-local shared string.
-pub type LocalHipStr<'borrow> = string::HipStr<'borrow, Rc>;
-
-/// Thread-local shared byte sequence.
-#[cfg(feature = "std")]
-pub type LocalHipOsStr<'borrow> = os_string::HipOsStr<'borrow, Rc>;
-
-/// Thread-local shared path.
-#[cfg(feature = "std")]
-pub type LocalHipPath<'borrow> = path::HipPath<'borrow, Rc>;
+aliases!(
+    path,
+    HipPath,
+    SmallPath,
+    TinyPath,
+    LocalHipPath,
+    LocalSmallPath,
+    LocalTinyPath
+);

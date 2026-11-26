@@ -1,69 +1,30 @@
-use core::ptr::NonNull;
-
-use sealed::Sealed;
-
-#[cfg(test)]
-pub(crate) mod tests;
-
-pub(crate) mod sealed {
-    pub trait Sealed {}
+/// Implements `Extend` for a vector type, given:
+/// - Vector type
+/// - Element type
+/// - Generic parameters enclosed in square brackets
+/// - Where clause enclosed in square brackets
+///
+/// Requirement: the vector type must have `len()`, `capacity()`, `reserve()`, `as_mut_ptr()`, and `set_len()` methods.
+macro_rules! impl_extend {
+    ( $ty:ty,  $param:ty, [ $($gen:tt)* ], [ $($where_clause:tt)* ]  ) => {
+        impl<$($gen)*> core::iter::Extend<$param> for $ty where $($where_clause)* {
+            fn extend<_I: IntoIterator<Item=$param>>(&mut self, iter: _I) {
+                let mut iterator = iter.into_iter();
+                while let Some(element) = iterator.next() {
+                    let len = self.len();
+                    if len == self.capacity() {
+                        let (lower, _) = iterator.size_hint();
+                        self.reserve(lower.saturating_add(1)); // if lower is usize::MAX, this must panic
+                    }
+                    // SAFETY: space was reserved
+                    unsafe {
+                        self.as_mut_ptr().add(len).write(element);
+                        self.set_len(len + 1);
+                    }
+                }
+            }
+        }
+    };
 }
 
-pub trait Vector: Sealed {
-    type Item;
-
-    fn len(&self) -> usize;
-    fn capacity(&self) -> usize;
-    fn as_slice(&self) -> &[Self::Item];
-    fn as_ptr(&self) -> *const Self::Item;
-}
-
-pub trait MutVector: Vector {
-    unsafe fn set_len(&mut self, len: usize);
-
-    fn as_mut_ptr(&mut self) -> *mut Self::Item;
-
-    fn as_non_null(&mut self) -> NonNull<Self::Item>;
-
-    fn as_mut_slice(&mut self) -> &mut [Self::Item];
-}
-
-impl<T> Sealed for alloc::vec::Vec<T> {}
-
-impl<T> Vector for alloc::vec::Vec<T> {
-    type Item = T;
-
-    fn len(&self) -> usize {
-        self.len()
-    }
-
-    fn capacity(&self) -> usize {
-        self.capacity()
-    }
-
-    fn as_slice(&self) -> &[Self::Item] {
-        self.as_slice()
-    }
-
-    fn as_ptr(&self) -> *const Self::Item {
-        self.as_ptr()
-    }
-}
-
-impl<T> MutVector for alloc::vec::Vec<T> {
-    unsafe fn set_len(&mut self, len: usize) {
-        unsafe { self.set_len(len) }
-    }
-
-    fn as_mut_ptr(&mut self) -> *mut Self::Item {
-        self.as_mut_ptr()
-    }
-
-    fn as_mut_slice(&mut self) -> &mut [Self::Item] {
-        self.as_mut_slice()
-    }
-
-    fn as_non_null(&mut self) -> NonNull<Self::Item> {
-        unsafe { NonNull::new_unchecked(self.as_mut_ptr()) }
-    }
-}
+pub(crate) use impl_extend;

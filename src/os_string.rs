@@ -1,126 +1,99 @@
-//! OS string.
-//!
-//! This module provides the [`HipOsStr`] as well as the associated helper type [`RefMut`].
+//! Platform strings: [`HipOsStr`], [`SmallOsStr`], [`TinyOsStr`].
 
 use alloc::borrow::Cow;
-use alloc::fmt;
-use core::hash::Hash;
-use core::ops::{Deref, DerefMut};
+use alloc::boxed::Box;
+use alloc::string::String;
+use alloc::vec::Vec;
 use std::ffi::{OsStr, OsString};
+use std::path::{Path, PathBuf};
 
-use crate::backend::Backend;
-use crate::bytes::HipByt;
-use crate::string::HipStr;
-
-mod cmp;
-mod convert;
-
-// OsStr(ing) implements Serialize/Deserialize only on Unix and Windows. thx @dsherret
-#[cfg(all(feature = "serde", any(unix, windows)))]
-pub mod serde;
+use super::enc::{self, Bytes, Utf8};
+use super::family::{impl_cmp, impl_std_glue};
+use super::hip::Hip;
+use super::repr::Repr;
+pub use crate::hip::RefMut;
 
 #[cfg(test)]
 mod tests;
 
-/// Smart OS string, i.e. shared and cheaply clonable OS string.
-///
-/// Internally used the same representations as [`HipByt`].
-///
-/// # Examples
-///
-/// You can create a `HipStr` from anything that implements [`OsStr`], typically:
-///
-/// - string slices ([`&str`], [`&OsStr`], [`&Path`]),
-/// - owned strings ([`String`], [`OsString`], [`PathBuf`], [`Box<str>`][Box]),
-/// - clone-on-write smart pointers ([`Cow`]) to string slice,
-/// - “Hip”-strings ([`HipStr`], [`HipOsStr`], [`HipPath`]),
-///
-/// with [`From`]:
-///
-/// ```
-/// # use hipstr::HipOsStr;
-/// let hello = HipOsStr::from("Hello");
-/// ```
-///
-/// When possible, `HipOsStr::from` takes ownership of the underlying string
-/// buffer:
-///
-/// ```
-/// # use hipstr::HipOsStr;
-/// # use std::ffi::OsStr;
-/// let world_os = OsStr::new("World").to_os_string();
-/// let world = HipOsStr::from(world_os); // here there is only one heap-allocation
-/// ```
-///
-/// For borrowing string slice, you can also use the no-copy [`HipOsStr::borrowed`]
-/// (like [`Cow::Borrowed`](std::borrow::Cow)):
-///
-/// ```
-/// # use hipstr::HipOsStr;
-/// let hello = HipOsStr::borrowed("Hello, world!");
-/// ```
-///
-/// # Representations
-///
-/// Like `HipByt`, `HipOsStr` has three possible internal representations:
-///
-/// * borrow
-/// * inline string
-/// * shared heap allocated string
-///
-/// [`&OsStr`]: std::ffi::OsStr
-/// [`&Path`]: std::path::Path
-/// [`String`]: std::string::String
-/// [Box]: std::boxed::Box
-/// [`PathBuf`]: std::path::PathBuf
-/// [`HipStr`]: crate::string::HipStr
-/// [`HipPath`]: crate::path::HipPath
-#[repr(transparent)]
-pub struct HipOsStr<'borrow, B>(pub(crate) HipByt<'borrow, B>)
-where
-    B: Backend;
+super::generic_aliases!(
+    enc::OsStr,
+    HipOsStr,
+    SmallOsStr,
+    TinyOsStr,
+    "platform string"
+);
 
-impl<'borrow, B> HipOsStr<'borrow, B>
-where
-    B: Backend,
-{
-    /// Creates an empty `HipOsStr`.
-    ///
-    /// Function provided for [`OsString::new`] replacement.
-    ///
-    /// # ⚠️ Stability warning!
-    ///
-    /// The used representation of the empty string is unspecified.
-    /// It may be *borrowed* or *inlined* but will never be allocated.
-    ///
-    /// # Examples
-    ///
-    /// Basic usage:
-    ///
-    /// ```
-    /// # use hipstr::HipOsStr;
-    /// let s = HipOsStr::new();
-    /// ```
+impl_std_glue!(enc::OsStr, OsStr, OsString);
+
+impl_cmp!(enc::OsStr as OsStr;
+    [] OsStr, [] &OsStr, [] OsString, [] &OsString, [] Box<OsStr>, [] &Box<OsStr>,
+    [] Cow<'_, OsStr>, [] &Cow<'_, OsStr>,
+);
+impl_cmp!(enc::OsStr as Path;
+    [] Path, [] &Path, [] PathBuf, [] &PathBuf, [] Box<Path>, [] &Box<Path>,
+    [] Cow<'_, Path>, [] &Cow<'_, Path>,
+);
+
+impl<'a, R: Repr<'a, u8>> AsRef<Path> for Hip<enc::OsStr, R> {
     #[inline]
-    #[must_use]
-    pub const fn new() -> Self {
-        Self(HipByt::new())
+    fn as_ref(&self) -> &Path {
+        Path::new(self.as_inner())
     }
+}
 
-    /// Creates a new `HipOsStr` with the given capacity.
-    ///
-    /// The final capacity depends on the representation and is not guaranteed
-    /// to be exact. However, the returned `HipOsStr` will be able to hold at
-    /// least `capacity` bytes without reallocating or changing representation.
-    ///
-    /// # Representation
-    ///
-    /// If the capacity is less or equal to the inline capacity, the
-    /// representation will be *inline*.
-    ///
-    /// Otherwise, it will be *allocated*.
-    ///
-    /// The representation is **not normalized**.
+impl<'a, R: Repr<'a, u8>> From<String> for Hip<enc::OsStr, R> {
+    /// Adopts the buffer when it does not fit inline (no copy).
+    #[inline]
+    fn from(value: String) -> Self {
+        Self::from_owned(value.into())
+    }
+}
+
+impl<'a, R: Repr<'a, u8>> From<Box<str>> for Hip<enc::OsStr, R> {
+    #[inline]
+    fn from(value: Box<str>) -> Self {
+        Self::from(String::from(value))
+    }
+}
+
+impl<'a, R: Repr<'a, u8>> From<Cow<'a, str>> for Hip<enc::OsStr, R> {
+    /// Borrows `Cow::Borrowed` (copies if the representation cannot borrow).
+    #[inline]
+    fn from(value: Cow<'a, str>) -> Self {
+        match value {
+            Cow::Borrowed(s) => Self::from_inner_borrowed(OsStr::new(s)),
+            Cow::Owned(s) => Self::from(s),
+        }
+    }
+}
+
+impl<'a, R: Repr<'a, u8>> From<&Hip<Utf8, R>> for Hip<enc::OsStr, R> {
+    /// Shares the storage (no copy).
+    #[inline]
+    fn from(value: &Hip<Utf8, R>) -> Self {
+        Self::from(value.clone())
+    }
+}
+
+impl<'a, R: Repr<'a, u8>> From<Hip<enc::OsStr, R>> for Hip<Bytes, R> {
+    /// The encoded bytes, keeping the representation (no copy).
+    #[inline]
+    fn from(value: Hip<enc::OsStr, R>) -> Self {
+        value.into_bytes()
+    }
+}
+
+impl<'a, R: Repr<'a, u8>> From<Hip<enc::OsStr, R>> for Vec<u8> {
+    /// The encoded bytes, O(1) when the value uniquely owns an adopted buffer.
+    #[inline]
+    fn from(value: Hip<enc::OsStr, R>) -> Self {
+        value.into_os_string().into_encoded_bytes()
+    }
+}
+
+impl<'a, R: Repr<'a, u8>> Hip<enc::OsStr, R> {
+    /// Extracts an [`OsStr`] slice of the entire `HipOsStr`.
     ///
     /// # Examples
     ///
@@ -129,30 +102,39 @@ where
     /// ```
     /// # use hipstr::HipOsStr;
     /// # use std::ffi::OsStr;
-    /// let mut s = HipOsStr::with_capacity(42);
-    /// for _ in 0..42 {
-    ///     s.push("*");
-    /// }
-    /// assert_eq!(s, OsStr::new(&"*".repeat(42)));
+    /// let s = HipOsStr::from("foobar");
+    ///
+    /// assert_eq!(OsStr::new("foobar"), s.as_os_str());
     /// ```
     #[inline]
     #[must_use]
-    pub fn with_capacity(cap: usize) -> Self {
-        Self(HipByt::with_capacity(cap))
+    pub fn as_os_str(&self) -> &OsStr {
+        self.as_inner()
     }
 
-    /// Creates a new `HipOsStr` from an OS string slice without copying the
-    /// slice.
-    ///
-    /// Requires only `impl AsRef<OsStr>`: it accepts `&str`, `&OsStr`, and
-    /// `&Path` for instance.
-    ///
-    /// To create a `HipOsStr` from a `'static` string slice `const`-ly, see
-    /// [`HipOsStr::from_static`].
-    ///
-    /// # Representation
-    ///
-    /// The created `HipOsStr` is _borrowed_.
+    /// Raw pointer to the first encoded byte.
+    #[inline]
+    #[must_use]
+    pub fn as_ptr(&self) -> *const u8 {
+        self.bytes().as_ptr()
+    }
+
+    /// The encoded bytes (see [`OsStr::as_encoded_bytes`]).
+    #[inline]
+    #[must_use]
+    pub fn as_encoded_bytes(&self) -> &[u8] {
+        self.bytes()
+    }
+
+    /// Converts into an `OsString`, in O(1) when the value uniquely owns an
+    /// adopted buffer, by copying otherwise.
+    #[inline]
+    #[must_use]
+    pub fn into_os_string(self) -> OsString {
+        self.into_owned_std()
+    }
+
+    /// Appends a given string slice onto the end of this `HipOsStr`.
     ///
     /// # Examples
     ///
@@ -160,81 +142,52 @@ where
     ///
     /// ```
     /// # use hipstr::HipOsStr;
-    /// let s = HipOsStr::borrowed("hello");
-    /// assert_eq!(s.len(), 5);
+    /// # use std::ffi::OsStr;
+    /// let mut s = HipOsStr::from("cork");
+    /// s.push("screw");
+    /// assert_eq!(s, OsStr::new("corkscrew"));
     /// ```
-    #[must_use]
-    pub fn borrowed<S: AsRef<OsStr> + ?Sized>(value: &'borrow S) -> Self {
-        Self(HipByt::borrowed(value.as_ref().as_encoded_bytes()))
+    #[inline]
+    pub fn push(&mut self, addition: impl AsRef<OsStr>) {
+        // SAFETY: concatenation of encoded OS strings is a valid encoded OS string
+        unsafe { self.push_bytes(addition.as_ref().as_encoded_bytes()) }
     }
 
-    /// Returns `true` if this `HipOsStr` uses the inline representation, `false` otherwise.
+    /// The string slice, if valid UTF-8.
+    #[inline]
+    #[must_use]
+    pub fn to_str(&self) -> Option<&str> {
+        self.as_os_str().to_str()
+    }
+
+    /// Lossy conversion to a string.
+    #[inline]
+    #[must_use]
+    pub fn to_string_lossy(&self) -> alloc::borrow::Cow<'_, str> {
+        self.as_os_str().to_string_lossy()
+    }
+
+    /// Returns the borrowed slice if this `HipOsStr` is actually borrowed,
+    /// `None` otherwise.
     ///
     /// # Examples
     ///
-    /// Basic usage:
-    ///
     /// ```
     /// # use hipstr::HipOsStr;
-    /// let s = HipOsStr::borrowed("hello");
-    /// assert!(!s.is_inline());
+    /// # use std::ffi::OsStr;
+    /// let abc: &'static OsStr = OsStr::new("abc");
+    /// let s = HipOsStr::borrowed(abc);
+    /// let c: Option<&'static OsStr> = s.as_borrowed();
+    /// assert_eq!(c, Some(abc));
+    /// assert!(std::ptr::eq(abc, c.unwrap()));
     ///
-    /// let s = HipOsStr::from("hello");
-    /// assert!(s.is_inline());
-    ///
-    /// let s = HipOsStr::from("hello".repeat(10));
-    /// assert!(!s.is_inline());
+    /// let s2 = HipOsStr::from(abc);
+    /// assert!(s2.as_borrowed().is_none());
     /// ```
     #[inline]
     #[must_use]
-    pub const fn is_inline(&self) -> bool {
-        self.0.is_inline()
-    }
-
-    /// Returns `true` if this `HipOsStr` is a static string borrow, `false` otherwise.
-    ///
-    /// # Examples
-    ///
-    /// Basic usage:
-    ///
-    /// ```
-    /// # use hipstr::HipOsStr;
-    /// let s = HipOsStr::borrowed("hello");
-    /// assert!(s.is_borrowed());
-    ///
-    /// let s = HipOsStr::from("hello");
-    /// assert!(!s.is_borrowed());
-    ///
-    /// let s = HipOsStr::from("hello".repeat(10));
-    /// assert!(!s.is_borrowed());
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn is_borrowed(&self) -> bool {
-        self.0.is_borrowed()
-    }
-
-    /// Returns `true` if this `HipOsStr` is a shared heap-allocated string, `false` otherwise.
-    ///
-    /// # Examples
-    ///
-    /// Basic usage:
-    ///
-    /// ```
-    /// # use hipstr::HipOsStr;
-    /// let s = HipOsStr::borrowed("hello");
-    /// assert!(!s.is_allocated());
-    ///
-    /// let s = HipOsStr::from("hello");
-    /// assert!(!s.is_allocated());
-    ///
-    /// let s = HipOsStr::from("hello".repeat(10));
-    /// assert!(s.is_allocated());
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn is_allocated(&self) -> bool {
-        self.0.is_allocated()
+    pub fn as_borrowed(&self) -> Option<&'a OsStr> {
+        self.borrowed_inner()
     }
 
     /// Converts `self` into a string slice with the `'borrow` lifetime if this
@@ -258,91 +211,11 @@ where
     /// assert!(std::ptr::eq(borrowed, c.unwrap()));
     /// ```
     #[inline]
-    pub fn into_borrowed(self) -> Result<&'borrow OsStr, Self> {
-        self.0
-            .into_borrowed()
-            .map(|slice|
-                // SAFETY: type invariant
-                unsafe { OsStr::from_encoded_bytes_unchecked(slice) })
-            .map_err(Self)
-    }
-
-    /// Returns the borrowed slice if this `HipOsStr` is actually borrowed,
-    /// `None` otherwise.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use hipstr::HipOsStr;
-    /// # use std::ffi::OsStr;
-    /// let abc: &'static OsStr = OsStr::new("abc");
-    /// let s = HipOsStr::borrowed(abc);
-    /// let c: Option<&'static OsStr> = s.as_borrowed();
-    /// assert_eq!(c, Some(abc));
-    /// assert!(std::ptr::eq(abc, c.unwrap()));
-    ///
-    /// let s2 = HipOsStr::from(abc);
-    /// assert!(s2.as_borrowed().is_none());
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn as_borrowed(&self) -> Option<&'borrow OsStr> {
-        match self.0.as_borrowed() {
-            Some(slice) => {
-                // SAFETY: type invariant
-                // transmute to be "const"
-                Some(unsafe { core::mem::transmute::<&[u8], &OsStr>(slice) })
-            }
-            None => None,
+    pub fn into_borrowed(self) -> Result<&'a OsStr, Self> {
+        match self.borrowed_inner() {
+            Some(b) => Ok(b),
+            None => Err(self),
         }
-    }
-
-    /// Returns the length of this `HipOsStr`, in bytes, not [`char`]s or
-    /// graphemes. In other words, it might not be what a human considers the
-    /// length of the string.
-    ///
-    /// As noted in [`OsStr::len`], the length is not the number of bytes used
-    /// by the OS representation of this string, but by the Rust interoperabilty
-    /// format which may differ significantly from both the OS representation
-    /// and the native Rust representation.
-    ///
-    /// # Examples
-    ///
-    /// Basic usage:
-    ///
-    /// ```
-    /// # use hipstr::HipOsStr;
-    /// let a = HipOsStr::from("(c)");
-    /// assert_eq!(a.len(), 3);
-    ///
-    /// let b = HipOsStr::from("®");
-    /// assert_eq!(b.len(), 2);
-    /// assert_eq!(b.to_str().unwrap().chars().count(), 1);
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    /// Returns `true` if this `HipOsStr` has a length of zero, and `false` otherwise.
-    ///
-    /// # Examples
-    ///
-    /// Basic usage:
-    ///
-    /// ```
-    /// # use hipstr::HipOsStr;
-    /// let a = HipOsStr::new();
-    /// assert!(a.is_empty());
-    ///
-    /// let b = HipOsStr::borrowed("ab");
-    /// assert!(!b.is_empty());
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn is_empty(&self) -> bool {
-        self.0.is_empty()
     }
 
     /// Converts a `HipOsStr` into a `HipByt`.
@@ -361,187 +234,14 @@ where
     ///
     /// assert_eq!(&[104, 101, 108, 108, 111][..], &b[..]);
     /// ```
-    #[allow(clippy::missing_const_for_fn)] // cannot const it for now, clippy bug
-    #[must_use]
-    pub fn into_bytes(self) -> HipByt<'borrow, B> {
-        self.0
-    }
-
-    /// Extracts an [`OsStr`] slice of the entire `HipOsStr`.
-    ///
-    /// # Examples
-    ///
-    /// Basic usage:
-    ///
-    /// ```
-    /// # use hipstr::HipOsStr;
-    /// # use std::ffi::OsStr;
-    /// let s = HipOsStr::from("foobar");
-    ///
-    /// assert_eq!(OsStr::new("foobar"), s.as_os_str());
-    /// ```
     #[inline]
     #[must_use]
-    pub fn as_os_str(&self) -> &OsStr {
-        // SAFETY: type invariant
-        unsafe { OsStr::from_encoded_bytes_unchecked(self.0.as_slice()) }
+    pub const fn into_bytes(self) -> Hip<Bytes, R> {
+        // SAFETY: no invariant on bytes
+        unsafe { Hip::from_repr(self.into_repr()) }
     }
 
-    /// Returns the maximal length (in bytes) of inline string.
-    #[inline]
-    #[must_use]
-    pub const fn inline_capacity() -> usize {
-        HipByt::<B>::inline_capacity()
-    }
-
-    /// Returns the total number of bytes the backend can hold.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # use hipstr::HipOsStr;
-    /// let mut s: String = String::with_capacity(42);
-    /// s.extend('a'..='z');
-    /// let string = HipOsStr::from(s);
-    /// assert_eq!(string.len(), 26);
-    /// assert_eq!(string.capacity(), 42);
-    ///
-    /// let string2 = string.clone();
-    /// assert_eq!(string.capacity(), 42);
-    /// ```
-    #[inline]
-    #[must_use]
-    pub fn capacity(&self) -> usize {
-        self.0.capacity()
-    }
-
-    /// Converts `self` into an [`OsString`] without clone or allocation if possible.
-    ///
-    /// # Errors
-    ///
-    /// Returns `Err(self)` if it is impossible to take ownership of the string
-    /// backing this `HipOsStr`.
-    #[inline]
-    pub fn into_os_string(self) -> Result<OsString, Self> {
-        self.0
-            .into_vec()
-            // SAFETY: type invariant
-            .map(|v| unsafe { OsString::from_encoded_bytes_unchecked(v) })
-            .map_err(Self)
-    }
-
-    /// Returns a mutable handle to the underlying [`OsString`].
-    ///
-    /// This operation may reallocate a new string if either:
-    ///
-    /// - the representation is not an allocated buffer (inline array or borrow),
-    /// - the underlying buffer is shared.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # use hipstr::HipOsStr;
-    /// # use std::ffi::OsStr;
-    /// let mut s = HipOsStr::borrowed("abc");
-    /// {
-    ///     let mut r = s.mutate();
-    ///     r.push("def");
-    ///     assert_eq!(r.as_os_str(), OsStr::new("abcdef"));
-    /// }
-    /// assert_eq!(s, OsStr::new("abcdef"));
-    /// ```
-    #[inline]
-    #[must_use]
-    pub fn mutate(&mut self) -> RefMut<'_, 'borrow, B> {
-        // SAFETY: type invariant
-        let owned = self.take_os_string();
-        RefMut {
-            result: self,
-            owned,
-        }
-    }
-
-    /// Appends a given string slice onto the end of this `HipOsStr`.
-    ///
-    /// # Examples
-    ///
-    /// Basic usage:
-    ///
-    /// ```
-    /// # use hipstr::HipOsStr;
-    /// # use std::ffi::OsStr;
-    /// let mut s = HipOsStr::from("cork");
-    /// s.push("screw");
-    /// assert_eq!(s, OsStr::new("corkscrew"));
-    /// ```
-    #[inline]
-    pub fn push(&mut self, addition: impl AsRef<OsStr>) {
-        self.0.push_slice(addition.as_ref().as_encoded_bytes());
-    }
-
-    /// Makes the string owned, copying the data if it is actually borrowed.
-    ///
-    /// ```
-    /// # use hipstr::HipOsStr;
-    /// # use std::ffi::OsStr;
-    /// let s: String = ('a'..'z').collect();
-    /// let s2 = s.clone();
-    /// let h = HipOsStr::borrowed(&s[..]);
-    /// // drop(s); // err, s is borrowed
-    /// let h = h.into_owned();
-    /// drop(s); // ok
-    /// assert_eq!(h, OsStr::new(&s2));
-    /// ```
-    #[must_use]
-    pub fn into_owned(self) -> HipOsStr<'static, B> {
-        HipOsStr(self.0.into_owned())
-    }
-
-    #[inline]
-    #[cfg(test)]
-    pub(crate) fn as_ptr(&self) -> *const u8 {
-        self.0.as_ptr()
-    }
-
-    /// Converts the `HipOsStr` into a [`HipStr`] if it contains valid Unicode data.
-    ///
-    /// # Errors
-    ///
-    /// If it contains invalid Unicode data, ownership of the original `HipOsStr` is returned.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use hipstr::{HipStr,HipOsStr};
-    ///
-    /// let os = HipOsStr::from("foo");
-    /// let s = os.into_str();
-    /// assert_eq!(s, Ok(HipStr::from("foo")));
-    /// ```
-    #[inline]
-    pub fn into_str(self) -> Result<HipStr<'borrow, B>, Self> {
-        HipStr::from_utf8(self.0).map_err(|e| Self(e.bytes))
-    }
-
-    /// Converts a `HipOsStr` into a [`HipStr`] if the content is valid Unicode.
-    ///
-    /// This conversion may entail doing a check for UTF-8 validity.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use hipstr::{HipOsStr, HipStr};
-    /// let os_str = HipOsStr::from("foo");
-    /// assert_eq!(os_str.to_str(), Some(HipStr::from("foo")));
-    /// ```
-    #[must_use]
-    pub fn to_str(&self) -> Option<HipStr<'borrow, B>> {
-        let _ = self.as_os_str().to_str()?;
-        // SAFETY: the previous line checked the encoding
-        Some(unsafe { HipStr::from_utf8_unchecked(self.0.clone()) })
-    }
-
-    /// Converts a `HipOsStr` to a [`HipStr`].
+    /// Converts a `HipOsStr` to a `HipStr`.
     ///
     /// Any non-Unicode sequences are replaced with
     /// [`U+FFFD REPLACEMENT CHARACTER`][U+FFFD].
@@ -588,137 +288,57 @@ where
     ///     assert_eq!(hip_os_str.to_str_lossy(), "fo�o");
     /// }
     /// ```
-    #[inline]
     #[must_use]
-    pub fn to_str_lossy(&self) -> HipStr<'borrow, B> {
+    pub fn to_str_lossy(&self) -> Hip<Utf8, R> {
         match self.as_os_str().to_string_lossy() {
-            Cow::Borrowed(_) => unsafe { HipStr::from_utf8_unchecked(self.0.clone()) },
-            Cow::Owned(s) => HipStr::from(s),
+            // SAFETY: valid UTF-8
+            Cow::Borrowed(_) => unsafe { Hip::from_repr(self.repr().clone()) },
+            Cow::Owned(s) => Hip::from(s),
         }
     }
 
-    pub(crate) fn take_os_string(&mut self) -> OsString {
-        // SAFETY: type invariant
-        unsafe { OsString::from_encoded_bytes_unchecked(self.0.take_vec()) }
-    }
-
-    /// Extracts a slice as its own `HipOsStr` based on the given subslice `&OsStr`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `slice` is not part of `self`.
-    ///
-    /// # Examples
-    ///
-    /// Basic usage:
-    ///
-    /// ```
-    /// # use hipstr::HipOsStr;
-    /// # use std::path::Path;
-    /// # use std::ffi::OsStr;
-    /// let a = HipOsStr::from("abc/def");
-    /// let p: &Path = a.as_ref();
-    /// let n: &OsStr = p.file_name().unwrap();
-    /// assert_eq!(a.slice_ref(n), HipOsStr::from("def"));
-    /// ```
-    #[inline]
-    #[must_use]
-    pub fn slice_ref(&self, slice: &OsStr) -> Self {
-        Self(self.0.slice_ref(slice.as_encoded_bytes()))
-    }
-
-    /// Returns a slice as it own `HipStr` based on the given subslice `&OsStr`.
+    /// Converts the `HipOsStr` into a `HipStr` if it contains valid Unicode data.
     ///
     /// # Errors
     ///
-    /// Returns `None` if `slice` is not a part of `self`.
+    /// If it contains invalid Unicode data, ownership of the original `HipOsStr` is returned.
     ///
     /// # Examples
     ///
-    /// Basic usage:
-    ///
     /// ```
-    /// # use hipstr::HipOsStr;
-    /// # use std::path::Path;
-    /// # use std::ffi::OsStr;
-    /// let a = HipOsStr::from("abc");
-    /// let sl: &OsStr = unsafe { OsStr::from_encoded_bytes_unchecked(&a.as_encoded_bytes()[0..2]) };
-    /// assert_eq!(a.try_slice_ref(sl), Some(HipOsStr::from("ab")));
-    /// assert!(a.try_slice_ref("z".as_ref()).is_none());
+    /// # use hipstr::{HipStr,HipOsStr};
+    ///
+    /// let os = HipOsStr::from("foo");
+    /// let s = os.into_str();
+    /// assert_eq!(s, Ok(HipStr::from("foo")));
     /// ```
-    #[inline]
-    pub fn try_slice_ref(&self, slice: &OsStr) -> Option<Self> {
-        self.0.try_slice_ref(slice.as_encoded_bytes()).map(Self)
-    }
-
-    /// Extracts a slice as its own `HipOsStr` based on the given subslice `&OsStr`.
-    ///
-    /// # Safety
-    ///
-    /// The slice MUST be a part of this `HipOsStr`.
-    #[inline]
-    #[must_use]
-    pub fn slice_ref_unchecked(&self, slice: &OsStr) -> Self {
-        // SAFETY
-        unsafe { Self(self.0.slice_ref_unchecked(slice.as_encoded_bytes())) }
-    }
-
-    /// Shrinks the capacity of the string as much as possible.
-    ///
-    /// The capacity will remain at least as large as the actual length of the
-    /// string.
-    ///
-    /// No-op if the representation is not allocated.
-    ///
-    /// # Representation stability
-    ///
-    /// The allocated representation may change to *inline* if the required
-    /// capacity is smaller than the inline capacity.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # use hipstr::HipOsStr;
-    /// let mut s = HipOsStr::with_capacity(100);
-    /// s.push("abc");
-    /// s.shrink_to_fit();
-    /// assert_eq!(s.capacity(), HipOsStr::inline_capacity());
-    /// ```
-    #[inline]
-    pub fn shrink_to_fit(&mut self) {
-        self.0.shrink_to_fit();
-    }
-
-    /// Shrinks the capacity of the string with a lower bound.
-    ///
-    /// The capacity will remain at least as large as the given lower bound and
-    /// the actual length of the string.
-    ///
-    /// No-op if the representation is not allocated.
-    ///
-    /// # Representation stability
-    ///
-    /// The allocated representation may change to *inline* if the required
-    /// capacity is smaller than the inline capacity.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # use hipstr::HipOsStr;
-    /// let mut s = HipOsStr::with_capacity(100);
-    /// s.shrink_to(4);
-    /// assert_eq!(s.capacity(), HipOsStr::inline_capacity());
-    /// ```
-    #[inline]
-    pub fn shrink_to(&mut self, min_capacity: usize) {
-        self.0.shrink_to(min_capacity);
+    pub fn into_str(self) -> Result<Hip<Utf8, R>, Self> {
+        if self.to_str().is_some() {
+            // SAFETY: checked UTF-8
+            Ok(unsafe { Hip::from_repr(self.into_repr()) })
+        } else {
+            Err(self)
+        }
     }
 }
 
-impl<B> HipOsStr<'static, B>
-where
-    B: Backend,
-{
+impl<'a, R: Repr<'a, u8>> From<&str> for Hip<enc::OsStr, R> {
+    #[inline]
+    fn from(value: &str) -> Self {
+        Self::from_inner(OsStr::new(value))
+    }
+}
+
+impl<'a, R: Repr<'a, u8>> From<Hip<Utf8, R>> for Hip<enc::OsStr, R> {
+    /// Keeps the representation (no copy): UTF-8 is a valid encoded OS string.
+    #[inline]
+    fn from(value: Hip<Utf8, R>) -> Self {
+        // SAFETY: UTF-8 bytes are valid encoded OS string bytes
+        unsafe { Self::from_repr(value.into_repr()) }
+    }
+}
+
+impl<'a, B: super::backend::Backend> Hip<enc::OsStr, super::repr::Wide<'a, u8, B>> {
     /// Creates a new `HipOsStr` from a `'static` string slice without copying
     /// the slice.
     ///
@@ -738,110 +358,86 @@ where
     #[inline]
     #[must_use]
     pub const fn from_static(value: &'static str) -> Self {
-        // SAFETY: value is a valid UTF-8
-        HipOsStr(HipByt::borrowed(value.as_bytes()))
+        Self::from_repr_const(super::repr::Wide::borrowed(value.as_bytes()))
     }
-}
 
-// Manual implementation needed to remove trait bound on B::RawPointer.
-impl<B> Clone for HipOsStr<'_, B>
-where
-    B: Backend,
-{
+    /// Creates a new `HipOsStr` from an OS string slice without copying the
+    /// slice.
+    ///
+    /// Requires only `impl AsRef<OsStr>`: it accepts `&str`, `&OsStr`, and
+    /// `&Path` for instance.
+    ///
+    /// To create a `HipOsStr` from a `'static` string slice `const`-ly, see
+    /// [`HipOsStr::from_static`].
+    ///
+    /// # Representation
+    ///
+    /// The created `HipOsStr` is _borrowed_.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// # use hipstr::HipOsStr;
+    /// let s = HipOsStr::borrowed("hello");
+    /// assert_eq!(s.len(), 5);
+    /// ```
     #[inline]
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
+    #[must_use]
+    pub fn borrowed(value: &'a (impl AsRef<OsStr> + ?Sized)) -> Self {
+        Self::from_inner_borrowed(value.as_ref())
     }
 }
 
-// Manual implementation needed to remove trait bound on B::RawPointer.
-impl<B> Default for HipOsStr<'_, B>
-where
-    B: Backend,
-{
+impl<'a, B: super::backend::Backend> Hip<enc::OsStr, super::repr::Small<'a, u8, B>> {
+    /// Creates a new `HipOsStr` from a `'static` string slice without copying
+    /// the slice.
+    ///
+    /// # Representation
+    ///
+    /// The created `HipOsStr` is _borrowed_.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// # use hipstr::HipOsStr;
+    /// let s = HipOsStr::from_static("hello");
+    /// assert_eq!(s.len(), 5);
+    /// ```
     #[inline]
-    fn default() -> Self {
-        Self::new()
+    #[must_use]
+    pub const fn from_static(value: &'static str) -> Self {
+        Self::from_repr_const(super::repr::Small::borrowed(value.as_bytes()))
     }
-}
 
-impl<B> Deref for HipOsStr<'_, B>
-where
-    B: Backend,
-{
-    type Target = OsStr;
-
+    /// Creates a new `HipOsStr` from an OS string slice without copying the
+    /// slice.
+    ///
+    /// Requires only `impl AsRef<OsStr>`: it accepts `&str`, `&OsStr`, and
+    /// `&Path` for instance.
+    ///
+    /// To create a `HipOsStr` from a `'static` string slice `const`-ly, see
+    /// [`HipOsStr::from_static`].
+    ///
+    /// # Representation
+    ///
+    /// The created `HipOsStr` is _borrowed_.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// # use hipstr::HipOsStr;
+    /// let s = HipOsStr::borrowed("hello");
+    /// assert_eq!(s.len(), 5);
+    /// ```
     #[inline]
-    fn deref(&self) -> &Self::Target {
-        self.as_os_str()
-    }
-}
-
-impl<B> Hash for HipOsStr<'_, B>
-where
-    B: Backend,
-{
-    #[inline]
-    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-        self.as_os_str().hash(state);
-    }
-}
-
-// Formatting
-
-impl<B> fmt::Debug for HipOsStr<'_, B>
-where
-    B: Backend,
-{
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(self.as_os_str(), f)
-    }
-}
-
-/// A wrapper type for a mutably borrowed [`OsString`] out of a [`HipOsStr`].
-pub struct RefMut<'a, 'borrow, B>
-where
-    B: Backend,
-{
-    result: &'a mut HipOsStr<'borrow, B>,
-    owned: OsString,
-}
-
-impl<B> fmt::Debug for RefMut<'_, '_, B>
-where
-    B: Backend,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.owned.fmt(f)
-    }
-}
-
-impl<B> Drop for RefMut<'_, '_, B>
-where
-    B: Backend,
-{
-    fn drop(&mut self) {
-        let owned = core::mem::take(&mut self.owned);
-        *self.result = HipOsStr::from(owned);
-    }
-}
-
-impl<B> Deref for RefMut<'_, '_, B>
-where
-    B: Backend,
-{
-    type Target = OsString;
-    fn deref(&self) -> &Self::Target {
-        &self.owned
-    }
-}
-
-impl<B> DerefMut for RefMut<'_, '_, B>
-where
-    B: Backend,
-{
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.owned
+    #[must_use]
+    pub fn borrowed(value: &'a (impl AsRef<OsStr> + ?Sized)) -> Self {
+        Self::from_inner_borrowed(value.as_ref())
     }
 }

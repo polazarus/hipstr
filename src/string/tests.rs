@@ -59,7 +59,8 @@ fn test_with_capacity() {
     let p = h.as_ptr();
     assert_eq!(h, EMPTY_SLICE);
     assert!(h.is_empty());
-    assert_eq!(h.capacity(), 42);
+    // at least: thin heaps round the capacity up to fill their allocation
+    assert!(h.capacity() >= 42);
     for _ in 0..42 {
         h.push_str(A);
     }
@@ -762,7 +763,7 @@ fn test_shrink_to() {
     let h2 = h.clone();
     h.truncate(INLINE_CAPACITY + 1);
     assert_eq!(h.as_ptr(), h2.as_ptr());
-    assert!(h.capacity() >= INLINE_CAPACITY + 2);
+    // shared (with `h2`): `capacity()` is the length, the buffer is larger
     h.shrink_to(INLINE_CAPACITY + 2);
     assert_ne!(h.as_ptr(), h2.as_ptr());
     assert!(h.capacity() >= INLINE_CAPACITY + 2);
