@@ -124,6 +124,27 @@ impl<'a, T: Copy + 'static, B: Backend> Wide<'a, T, B> {
     }
 
     #[inline]
+    pub const fn is_borrowed(&self) -> bool {
+        !self.is_inline() && self.sliced().owner.is_none()
+    }
+
+    #[inline]
+    pub const fn is_heap(&self) -> bool {
+        !self.is_inline() && self.sliced().owner.is_some()
+    }
+
+    /// The borrowed slice, with its full lifetime, if borrowed.
+    #[inline]
+    pub const fn borrowed_slice(&self) -> Option<&'a [T]> {
+        if self.is_borrowed() {
+            // SAFETY: borrowed case, the slice is valid for `'a`
+            Some(unsafe { self.sliced().slice.as_ref() })
+        } else {
+            None
+        }
+    }
+
+    #[inline]
     const fn inline(&self) -> &Inline<T> {
         debug_assert!(self.is_inline());
         // SAFETY: inline case, same size
@@ -321,13 +342,9 @@ unsafe impl<'a, T: Copy + 'static, B: Backend> Repr<'a, T> for Wide<'a, T, B> {
         unsafe { core::ptr::read((&raw const *this).cast::<Self::Owned>()) }
     }
 
+    #[inline]
     fn as_borrowed(&self) -> Option<&'a [T]> {
-        if !self.is_inline() && self.sliced().owner.is_none() {
-            // SAFETY: borrowed case, the slice is valid for `'a`
-            Some(unsafe { self.sliced().slice.as_ref() })
-        } else {
-            None
-        }
+        self.borrowed_slice()
     }
 
     fn kind(&self) -> Kind {

@@ -12,22 +12,29 @@ super::generic_aliases!(Bytes, HipByt, SmallByt, TinyByt, "byte string");
 
 impl_std_glue!(Bytes, [u8], Vec<u8>);
 impl_borrowed_ctors!(Bytes, [u8], |value| value);
+super::hip::impl_const_typed_accessors!(Bytes, [u8], |b| b);
+
+/// `const` byte accessors, per representation.
+macro_rules! impl_const_bytes {
+    ($([$($lt:lifetime)?] $repr:ty),* $(,)?) => {$(
+        impl<$($lt,)? B: super::backend::Backend> Hip<Bytes, $repr> {
+            /// The byte slice.
+            #[inline]
+            #[must_use]
+            pub const fn as_slice(&self) -> &[u8] {
+                self.repr().as_slice()
+            }
+        }
+    )*};
+}
+
+impl_const_bytes!(
+    ['a] super::repr::Wide<'a, u8, B>,
+    ['a] super::repr::Small<'a, u8, B>,
+    [] super::repr::Tiny<u8, B>,
+);
 
 impl<'a, R: Repr<'a, u8>> Hip<Bytes, R> {
-    /// The byte slice.
-    #[inline]
-    #[must_use]
-    pub fn as_slice(&self) -> &[u8] {
-        self.bytes()
-    }
-
-    /// Raw pointer to the bytes.
-    #[inline]
-    #[must_use]
-    pub fn as_ptr(&self) -> *const u8 {
-        self.bytes().as_ptr()
-    }
-
     /// Mutable access without copying, if inline or uniquely owned.
     #[inline]
     pub fn as_mut_slice(&mut self) -> Option<&mut [u8]> {
@@ -122,10 +129,14 @@ impl<'a, R: Repr<'a, u8>> Hip<Bytes, R> {
     /// Panics if the capacity overflows.
     #[must_use]
     pub fn repeat(&self, n: usize) -> Self {
-        let len = self.len().checked_mul(n).expect("capacity overflow");
+        let len = self
+            .bytes()
+            .len()
+            .checked_mul(n)
+            .expect("capacity overflow");
         let mut result = Self::with_capacity(len);
         for _ in 0..n {
-            result.push_slice(self.as_slice());
+            result.push_slice(self.bytes());
         }
         result
     }
@@ -148,14 +159,14 @@ impl<'a, R: Repr<'a, u8>> Hip<Bytes, R> {
 
     /// Converts to ASCII lower case in place (copying first if needed).
     pub fn make_ascii_lowercase(&mut self) {
-        if self.as_slice().iter().any(u8::is_ascii_uppercase) {
+        if self.bytes().iter().any(u8::is_ascii_uppercase) {
             self.to_mut_slice().make_ascii_lowercase();
         }
     }
 
     /// Converts to ASCII upper case in place (copying first if needed).
     pub fn make_ascii_uppercase(&mut self) {
-        if self.as_slice().iter().any(u8::is_ascii_lowercase) {
+        if self.bytes().iter().any(u8::is_ascii_lowercase) {
             self.to_mut_slice().make_ascii_uppercase();
         }
     }

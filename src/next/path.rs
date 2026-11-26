@@ -50,6 +50,28 @@ impl<'a, R: Repr<'a, u8>> Hip<enc::Path, R> {
         unsafe { Hip::from_repr(self.into_repr()) }
     }
 
+    /// The borrowed value, with its full lifetime, if borrowed.
+    ///
+    /// Not `const`: std's `OsStr`/`Path` conversions are not `const`.
+    #[inline]
+    #[must_use]
+    pub fn as_borrowed(&self) -> Option<&'a Path> {
+        self.borrowed_inner()
+    }
+
+    /// Returns the borrowed value, with its full lifetime, or `Err(self)`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err(self)` if the value is not borrowed.
+    #[inline]
+    pub fn into_borrowed(self) -> Result<&'a Path, Self> {
+        match self.borrowed_inner() {
+            Some(b) => Ok(b),
+            None => Err(self),
+        }
+    }
+
     /// Converts into a UTF-8 string, keeping the representation (no copy).
     ///
     /// # Errors

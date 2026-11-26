@@ -79,6 +79,23 @@ impl<T: Copy + 'static, B: Backend> Tiny<T, B> {
         super::word_bits(&self.word) & 1 == 1
     }
 
+    /// Always `false`: this representation never borrows.
+    #[inline]
+    pub const fn is_borrowed(&self) -> bool {
+        false
+    }
+
+    #[inline]
+    pub const fn is_heap(&self) -> bool {
+        !self.is_inline()
+    }
+
+    /// Always `None`: this representation never borrows.
+    #[inline]
+    pub const fn borrowed_slice<'a>(&self) -> Option<&'a [T]> {
+        None
+    }
+
     #[inline]
     const fn inline(&self) -> &Inline<T> {
         // SAFETY: inline case, same size

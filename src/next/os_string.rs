@@ -61,6 +61,28 @@ impl<'a, R: Repr<'a, u8>> Hip<enc::OsStr, R> {
         self.as_os_str().to_string_lossy()
     }
 
+    /// The borrowed value, with its full lifetime, if borrowed.
+    ///
+    /// Not `const`: std's `OsStr`/`Path` conversions are not `const`.
+    #[inline]
+    #[must_use]
+    pub fn as_borrowed(&self) -> Option<&'a OsStr> {
+        self.borrowed_inner()
+    }
+
+    /// Returns the borrowed value, with its full lifetime, or `Err(self)`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err(self)` if the value is not borrowed.
+    #[inline]
+    pub fn into_borrowed(self) -> Result<&'a OsStr, Self> {
+        match self.borrowed_inner() {
+            Some(b) => Ok(b),
+            None => Err(self),
+        }
+    }
+
     /// Converts into a UTF-8 string, keeping the representation (no copy).
     ///
     /// # Errors

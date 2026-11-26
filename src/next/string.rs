@@ -15,26 +15,74 @@ super::generic_aliases!(Utf8, HipStr, SmallStr, TinyStr, "string");
 
 impl_std_glue!(Utf8, str, String);
 impl_borrowed_ctors!(Utf8, str, |value| value.as_bytes());
+super::hip::impl_const_typed_accessors!(Utf8, str, |b| core::str::from_utf8_unchecked(b));
+
+/// `const` string accessors and UTF-8 conversions, per representation.
+macro_rules! impl_const_str {
+    ($([$($lt:lifetime)?] $repr:ty),* $(,)?) => {$(
+        impl<$($lt,)? B: super::backend::Backend> Hip<Utf8, $repr> {
+            /// The string slice.
+            #[inline]
+            #[must_use]
+            pub const fn as_str(&self) -> &str {
+                self.as_typed()
+            }
+
+            /// The bytes.
+            #[inline]
+            #[must_use]
+            pub const fn as_bytes(&self) -> &[u8] {
+                self.repr().as_slice()
+            }
+
+            /// Converts bytes into a string, keeping the representation (no copy).
+            ///
+            /// # Errors
+            ///
+            /// Returns the bytes back, with the UTF-8 error, if they are not UTF-8.
+            pub const fn from_utf8(bytes: Hip<Bytes, $repr>) -> Result<Self, FromUtf8Error<$repr>> {
+                match core::str::from_utf8(bytes.repr().as_slice()) {
+                    // SAFETY: checked
+                    Ok(_) => Ok(unsafe { Self::from_utf8_unchecked(bytes) }),
+                    Err(error) => Err(FromUtf8Error { bytes, error }),
+                }
+            }
+
+            /// Converts bytes into a string without checking (no copy).
+            ///
+            /// # Safety
+            ///
+            /// The bytes must be valid UTF-8.
+            #[inline]
+            #[must_use]
+            pub const unsafe fn from_utf8_unchecked(bytes: Hip<Bytes, $repr>) -> Self {
+                // SAFETY: precondition
+                unsafe { Self::from_repr(bytes.into_repr()) }
+            }
+        }
+    )*};
+}
+
+impl_const_str!(
+    ['a] super::repr::Wide<'a, u8, B>,
+    ['a] super::repr::Small<'a, u8, B>,
+    [] super::repr::Tiny<u8, B>,
+);
 
 impl<'a, R: Repr<'a, u8>> Hip<Utf8, R> {
-    /// The string slice.
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        self.as_inner()
-    }
-
-    /// The bytes.
-    #[inline]
-    #[must_use]
-    pub fn as_bytes(&self) -> &[u8] {
-        self.bytes()
+    /// Generic version of `from_utf8` (the public one is `const`, per repr).
+    pub(crate) fn from_utf8_generic(bytes: Hip<Bytes, R>) -> Result<Self, FromUtf8Error<R>> {
+        match core::str::from_utf8(bytes.as_inner()) {
+            // SAFETY: checked
+            Ok(_) => Ok(unsafe { Self::from_repr(bytes.into_repr()) }),
+            Err(error) => Err(FromUtf8Error { bytes, error }),
+        }
     }
 
     /// Converts into bytes, keeping the representation (no copy).
     #[inline]
     #[must_use]
-    pub fn into_bytes(self) -> Hip<Bytes, R> {
+    pub const fn into_bytes(self) -> Hip<Bytes, R> {
         // SAFETY: no invariant on bytes
         unsafe { Hip::from_repr(self.into_repr()) }
     }
@@ -85,9 +133,9 @@ impl<'a, R: Repr<'a, u8>> Hip<Utf8, R> {
 
     /// Removes and returns the last character.
     pub fn pop(&mut self) -> Option<char> {
-        let ch = self.as_str().chars().next_back()?;
+        let ch = self.as_inner().chars().next_back()?;
         // SAFETY: cut at a character boundary
-        unsafe { self.truncate_bytes(self.len() - ch.len_utf8()) };
+        unsafe { self.truncate_bytes(self.bytes().len() - ch.len_utf8()) };
         Some(ch)
     }
 
@@ -97,9 +145,9 @@ impl<'a, R: Repr<'a, u8>> Hip<Utf8, R> {
     ///
     /// Panics if `new_len` does not lie on a character boundary.
     pub fn truncate(&mut self, new_len: usize) {
-        if new_len < self.len() {
+        if new_len < self.bytes().len() {
             assert!(
-                self.as_str().is_char_boundary(new_len),
+                self.as_inner().is_char_boundary(new_len),
                 "new length is not a char boundary"
             );
             // SAFETY: cut at a character boundary
@@ -107,39 +155,14 @@ impl<'a, R: Repr<'a, u8>> Hip<Utf8, R> {
         }
     }
 
-    /// Converts bytes into a string, keeping the representation (no copy).
-    ///
-    /// # Errors
-    ///
-    /// Returns the bytes back, with the UTF-8 error, if they are not UTF-8.
-    pub fn from_utf8(bytes: Hip<Bytes, R>) -> Result<Self, FromUtf8Error<R>> {
-        match core::str::from_utf8(bytes.as_slice()) {
-            // SAFETY: checked
-            Ok(_) => Ok(unsafe { Self::from_utf8_unchecked(bytes) }),
-            Err(error) => Err(FromUtf8Error { bytes, error }),
-        }
-    }
-
-    /// Converts bytes into a string without checking (no copy).
-    ///
-    /// # Safety
-    ///
-    /// The bytes must be valid UTF-8.
-    #[inline]
-    #[must_use]
-    pub unsafe fn from_utf8_unchecked(bytes: Hip<Bytes, R>) -> Self {
-        // SAFETY: precondition
-        unsafe { Self::from_repr(bytes.into_repr()) }
-    }
-
     /// Converts bytes into a string, replacing invalid sequences with `U+FFFD`.
     ///
     /// Keeps the representation (no copy) when the bytes are valid.
     #[must_use]
     pub fn from_utf8_lossy(bytes: Hip<Bytes, R>) -> Self {
-        match String::from_utf8_lossy(bytes.as_slice()) {
+        match String::from_utf8_lossy(bytes.as_inner()) {
             // SAFETY: valid UTF-8, as `Borrowed` is only returned when valid
-            Cow::Borrowed(_) => unsafe { Self::from_utf8_unchecked(bytes) },
+            Cow::Borrowed(_) => unsafe { Self::from_repr(bytes.into_repr()) },
             Cow::Owned(s) => Self::from(s),
         }
     }
@@ -166,10 +189,14 @@ impl<'a, R: Repr<'a, u8>> Hip<Utf8, R> {
     /// Panics if the capacity overflows.
     #[must_use]
     pub fn repeat(&self, n: usize) -> Self {
-        let len = self.len().checked_mul(n).expect("capacity overflow");
+        let len = self
+            .bytes()
+            .len()
+            .checked_mul(n)
+            .expect("capacity overflow");
         let mut result = Self::with_capacity(len);
         for _ in 0..n {
-            result.push_str(self.as_str());
+            result.push_str(self.as_inner());
         }
         result
     }
@@ -192,14 +219,14 @@ impl<'a, R: Repr<'a, u8>> Hip<Utf8, R> {
 
     /// Converts to ASCII lower case in place (copying first if needed).
     pub fn make_ascii_lowercase(&mut self) {
-        if self.as_str().bytes().any(|b| b.is_ascii_uppercase()) {
+        if self.as_inner().bytes().any(|b| b.is_ascii_uppercase()) {
             self.to_mut_str().make_ascii_lowercase();
         }
     }
 
     /// Converts to ASCII upper case in place (copying first if needed).
     pub fn make_ascii_uppercase(&mut self) {
-        if self.as_str().bytes().any(|b| b.is_ascii_lowercase()) {
+        if self.as_inner().bytes().any(|b| b.is_ascii_lowercase()) {
             self.to_mut_str().make_ascii_uppercase();
         }
     }
@@ -207,13 +234,13 @@ impl<'a, R: Repr<'a, u8>> Hip<Utf8, R> {
     /// Unicode lower-case copy.
     #[must_use]
     pub fn to_lowercase(&self) -> Self {
-        Self::from(self.as_str().to_lowercase())
+        Self::from(self.as_inner().to_lowercase())
     }
 
     /// Unicode upper-case copy.
     #[must_use]
     pub fn to_uppercase(&self) -> Self {
-        Self::from(self.as_str().to_uppercase())
+        Self::from(self.as_inner().to_uppercase())
     }
 
     /// Concatenates string slices.
@@ -268,7 +295,7 @@ impl<'a, R: Repr<'a, u8>> Hip<Utf8, R> {
 impl<'a, R: Repr<'a, u8>> fmt::Display for Hip<Utf8, R> {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.as_str().fmt(f)
+        self.as_inner().fmt(f)
     }
 }
 
@@ -283,7 +310,7 @@ impl<'a, R: Repr<'a, u8>> fmt::Write for Hip<Utf8, R> {
 impl<'a, R: Repr<'a, u8>> AsRef<[u8]> for Hip<Utf8, R> {
     #[inline]
     fn as_ref(&self) -> &[u8] {
-        self.as_bytes()
+        self.bytes()
     }
 }
 
@@ -299,7 +326,7 @@ impl<'a, R: Repr<'a, u8>> TryFrom<Hip<Bytes, R>> for Hip<Utf8, R> {
 
     #[inline]
     fn try_from(bytes: Hip<Bytes, R>) -> Result<Self, Self::Error> {
-        Self::from_utf8(bytes)
+        Self::from_utf8_generic(bytes)
     }
 }
 
@@ -391,7 +418,7 @@ impl<'a, R: Repr<'a, u8>> FromUtf8Error<R> {
     #[inline]
     #[must_use]
     pub fn as_bytes(&self) -> &[u8] {
-        self.bytes.as_slice()
+        self.bytes.as_inner()
     }
 
     /// Returns the bytes back.

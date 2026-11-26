@@ -250,3 +250,92 @@ fn slicing() {
     let b = HipByt::from(LONG.as_bytes());
     assert_eq!(b.slice(..=1), b"a ".as_slice());
 }
+
+/// Every `const` accessor, evaluated at compile time for every alias: if one
+/// stops being `const`, this fails to build.
+///
+/// Values with drop glue cannot be dropped in a const context, hence the
+/// `forget` calls.
+mod const_accessors {
+    use core::mem::forget;
+
+    use super::*;
+
+    /// Encoding-agnostic accessors, available for every family.
+    macro_rules! agnostic {
+        ($($t:ty),* $(,)?) => {$(
+            const _: () = {
+                let h = <$t>::new();
+                assert!(h.len() == 0);
+                assert!(h.is_empty());
+                assert!(h.is_inline());
+                assert!(!h.is_borrowed());
+                assert!(!h.is_allocated());
+                assert!(<$t>::inline_capacity() > 0);
+                forget(h);
+            };
+        )*};
+    }
+
+    agnostic!(HipStr<'static>, SmallStr<'static>, TinyStr, LocalTinyStr);
+    agnostic!(HipByt<'static>, SmallByt<'static>, TinyByt);
+    #[cfg(feature = "std")]
+    agnostic!(HipOsStr<'static>, SmallOsStr<'static>, TinyOsStr);
+    #[cfg(feature = "std")]
+    agnostic!(HipPath<'static>, SmallPath<'static>, TinyPath);
+
+    /// String accessors on a borrowed value.
+    macro_rules! borrowed_str {
+        ($str:ty, $byt:ty) => {
+            const _: () = {
+                let s = <$str>::borrowed("hello, this is longer than any inline buffer");
+                assert!(s.is_borrowed());
+                assert!(s.as_str().len() == 44);
+                assert!(s.as_bytes().len() == 44);
+                assert!(!s.as_ptr().is_null());
+                assert!(s.as_borrowed().is_some());
+                let r = s.into_borrowed();
+                match r.as_ref() {
+                    Ok(b) => assert!(b.len() == 44),
+                    Err(_) => panic!("not borrowed"),
+                }
+                forget(r);
+
+                let s = <$str>::from_static("static");
+                let b = s.into_bytes();
+                let r = <$str>::from_utf8(b);
+                assert!(r.is_ok());
+                forget(r);
+
+                let b = <$byt>::borrowed(b"bytes");
+                assert!(b.as_slice().len() == 5);
+                assert!(!b.as_ptr().is_null());
+                assert!(b.as_borrowed().is_some());
+                // SAFETY: ASCII
+                let s = unsafe { <$str>::from_utf8_unchecked(b) };
+                assert!(s.as_str().len() == 5);
+                forget(s);
+            };
+        };
+    }
+
+    borrowed_str!(HipStr<'static>, HipByt<'static>);
+    borrowed_str!(SmallStr<'static>, SmallByt<'static>);
+
+    // `Tiny*` types cannot borrow: check the typed accessors on empty values.
+    const _: () = {
+        let s = TinyStr::new();
+        assert!(s.as_str().is_empty());
+        assert!(s.as_bytes().is_empty());
+        assert!(s.as_borrowed().is_none());
+        let r = s.into_borrowed();
+        assert!(r.is_err());
+        forget(r);
+        let b = TinyByt::new();
+        assert!(b.as_slice().is_empty());
+        assert!(!b.as_ptr().is_null());
+        let r = TinyStr::from_utf8(b);
+        assert!(r.is_ok());
+        forget(r);
+    };
+}

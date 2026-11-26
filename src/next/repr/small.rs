@@ -179,6 +179,28 @@ impl<'a, T: Copy + 'static, B: Backend> Small<'a, T, B> {
     }
 
     #[inline]
+    pub const fn is_borrowed(&self) -> bool {
+        matches!(self.tag(), Tag::Borrowed)
+    }
+
+    #[inline]
+    pub const fn is_heap(&self) -> bool {
+        matches!(self.tag(), Tag::Heap)
+    }
+
+    /// The borrowed slice, with its full lifetime, if borrowed.
+    #[inline]
+    pub const fn borrowed_slice(&self) -> Option<&'a [T]> {
+        if self.is_borrowed() {
+            let borrowed = self.borrowed_view();
+            // SAFETY: borrowed case, valid for `'a`
+            Some(unsafe { core::slice::from_raw_parts(borrowed.w0.as_ptr(), borrowed.msw) })
+        } else {
+            None
+        }
+    }
+
+    #[inline]
     const fn inline(&self) -> &Inline<T> {
         // SAFETY: inline case, same size
         unsafe { transmute::<&Pivot, &Inline<T>>(&self.pivot) }
@@ -329,14 +351,9 @@ unsafe impl<'a, T: Copy + 'static, B: Backend> Repr<'a, T> for Small<'a, T, B> {
         unsafe { core::ptr::read((&raw const *this).cast::<Self::Owned>()) }
     }
 
+    #[inline]
     fn as_borrowed(&self) -> Option<&'a [T]> {
-        if self.tag() == Tag::Borrowed {
-            let borrowed = self.borrowed_view();
-            // SAFETY: borrowed case, valid for `'a`
-            Some(unsafe { core::slice::from_raw_parts(borrowed.w0.as_ptr(), borrowed.msw) })
-        } else {
-            None
-        }
+        self.borrowed_slice()
     }
 
     fn kind(&self) -> Kind {

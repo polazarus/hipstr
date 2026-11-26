@@ -81,6 +81,114 @@ impl<E: Encoding, B: Backend> Hip<E, Tiny<u8, B>> {
     }
 }
 
+// ----- encoding-agnostic accessors, `const`, per representation -----
+//
+// Written once by a macro rather than generically over `R`: a `const fn`
+// cannot call trait methods on stable Rust, so these call each
+// representation's own `const` methods.
+
+macro_rules! impl_const_accessors {
+    ($([$($lt:lifetime)?] $repr:ty),* $(,)?) => {$(
+        impl<$($lt,)? E: Encoding, B: Backend> Hip<E, $repr> {
+            /// Length in bytes.
+            #[inline]
+            #[must_use]
+            pub const fn len(&self) -> usize {
+                self.repr.len()
+            }
+
+            /// Whether the length is zero.
+            #[inline]
+            #[must_use]
+            pub const fn is_empty(&self) -> bool {
+                self.repr.is_empty()
+            }
+
+            /// Whether the bytes are stored inline, without allocation.
+            #[inline]
+            #[must_use]
+            pub const fn is_inline(&self) -> bool {
+                self.repr.is_inline()
+            }
+
+            /// Whether the bytes are borrowed.
+            #[inline]
+            #[must_use]
+            pub const fn is_borrowed(&self) -> bool {
+                self.repr.is_borrowed()
+            }
+
+            /// Whether the bytes are stored on the heap.
+            #[inline]
+            #[must_use]
+            pub const fn is_allocated(&self) -> bool {
+                self.repr.is_heap()
+            }
+        }
+    )*};
+}
+
+impl_const_accessors!(['a] Wide<'a, u8, B>, ['a] Small<'a, u8, B>, [] Tiny<u8, B>);
+
+/// Implements the `const` typed accessors of an encoding whose byte
+/// conversion is `const` (bytes and UTF-8), for every representation.
+///
+/// `$from` converts `&[u8]` to `&$slice` (unsafe, called on valid bytes).
+macro_rules! impl_const_typed_accessors {
+    ($enc:ty, $slice:ty, |$b:ident| $from:expr) => {
+        $crate::next::hip::impl_const_typed_accessors!(@one $enc, $slice, |$b| $from, ['a] $crate::next::repr::Wide<'a, u8, B>, 'a);
+        $crate::next::hip::impl_const_typed_accessors!(@one $enc, $slice, |$b| $from, ['a] $crate::next::repr::Small<'a, u8, B>, 'a);
+        $crate::next::hip::impl_const_typed_accessors!(@one $enc, $slice, |$b| $from, ['a] $crate::next::repr::Tiny<u8, B>, 'a);
+    };
+    (@one $enc:ty, $slice:ty, |$b:ident| $from:expr, [$($lt:lifetime)?] $repr:ty, $blt:lifetime) => {
+        // the conversion is safe for bytes (identity), unsafe otherwise
+        #[allow(unused_unsafe)]
+        impl<$($lt,)? B: $crate::next::backend::Backend> $crate::next::hip::Hip<$enc, $repr> {
+            /// Raw pointer to the first byte.
+            #[inline]
+            #[must_use]
+            pub const fn as_ptr(&self) -> *const u8 {
+                self.repr().as_slice().as_ptr()
+            }
+
+            /// The borrowed value, with its full lifetime, if borrowed.
+            #[inline]
+            #[must_use]
+            pub const fn as_borrowed(&self) -> Option<&$blt $slice> {
+                match self.repr().borrowed_slice() {
+                    // SAFETY: type invariant
+                    Some($b) => Some(unsafe { $from }),
+                    None => None,
+                }
+            }
+
+            /// Returns the borrowed value, with its full lifetime, or `Err(self)`.
+            ///
+            /// # Errors
+            ///
+            /// Returns `Err(self)` if the value is not borrowed.
+            #[inline]
+            pub const fn into_borrowed(self) -> Result<&$blt $slice, Self> {
+                match self.repr().borrowed_slice() {
+                    Some($b) => {
+                        core::mem::forget(self);
+                        // SAFETY: type invariant
+                        Ok(unsafe { $from })
+                    }
+                    None => Err(self),
+                }
+            }
+
+            pub(crate) const fn as_typed(&self) -> &$slice {
+                let $b = self.repr().as_slice();
+                // SAFETY: type invariant
+                unsafe { $from }
+            }
+        }
+    };
+}
+pub(crate) use impl_const_typed_accessors;
+
 // ----- everything else, once -----
 
 impl<'a, E: Encoding, R: Repr<'a, u8>> Hip<E, R> {
@@ -109,8 +217,20 @@ impl<'a, E: Encoding, R: Repr<'a, u8>> Hip<E, R> {
     }
 
     #[inline]
-    pub(crate) fn into_repr(self) -> R {
+    pub(crate) const fn into_repr(self) -> R {
+        let this = core::mem::ManuallyDrop::new(self);
+        // SAFETY: `Hip` is `repr(transparent)` over `R` (the other field is a
+        // ZST); the repr is moved out exactly once and `self` is forgotten
+        unsafe { core::ptr::read((&raw const this).cast::<R>()) }
+    }
+
+    /// The borrowed value, with its full lifetime, if borrowed.
+    #[inline]
+    pub(crate) fn borrowed_inner(&self) -> Option<&'a E::Slice> {
         self.repr
+            .as_borrowed()
+            // SAFETY: type invariant
+            .map(|bytes| unsafe { E::from_bytes_unchecked(bytes) })
     }
 
     #[inline]
@@ -163,41 +283,6 @@ impl<'a, E: Encoding, R: Repr<'a, u8>> Hip<E, R> {
         unsafe { Self::from_repr(repr) }
     }
 
-    /// Length in bytes.
-    #[inline]
-    #[must_use]
-    pub fn len(&self) -> usize {
-        self.repr.len()
-    }
-
-    /// Whether the length is zero.
-    #[inline]
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.repr.is_empty()
-    }
-
-    /// Whether the bytes are stored inline, without allocation.
-    #[inline]
-    #[must_use]
-    pub fn is_inline(&self) -> bool {
-        self.repr.kind() == Kind::Inline
-    }
-
-    /// Whether the bytes are borrowed.
-    #[inline]
-    #[must_use]
-    pub fn is_borrowed(&self) -> bool {
-        self.repr.kind() == Kind::Borrowed
-    }
-
-    /// Whether the bytes are stored on the heap.
-    #[inline]
-    #[must_use]
-    pub fn is_allocated(&self) -> bool {
-        matches!(self.repr.kind(), Kind::Heap(_))
-    }
-
     /// Maximal length stored inline.
     #[inline]
     #[must_use]
@@ -213,32 +298,8 @@ impl<'a, E: Encoding, R: Repr<'a, u8>> Hip<E, R> {
         if self.repr.is_unique() {
             self.repr.capacity()
         } else {
-            self.len()
+            self.repr.len()
         }
-    }
-
-    /// Returns the borrowed value, with its full lifetime, or `Err(self)`.
-    ///
-    /// # Errors
-    ///
-    /// Returns `Err(self)` if the value is not borrowed.
-    #[inline]
-    pub fn into_borrowed(self) -> Result<&'a E::Slice, Self> {
-        match self.repr.as_borrowed() {
-            // SAFETY: type invariant
-            Some(bytes) => Ok(unsafe { E::from_bytes_unchecked(bytes) }),
-            None => Err(self),
-        }
-    }
-
-    /// Returns the borrowed value, with its full lifetime, if borrowed.
-    #[inline]
-    #[must_use]
-    pub fn as_borrowed(&self) -> Option<&'a E::Slice> {
-        self.repr
-            .as_borrowed()
-            // SAFETY: type invariant
-            .map(|bytes| unsafe { E::from_bytes_unchecked(bytes) })
     }
 
     /// Makes the value independent of any borrow, copying borrowed data.
@@ -304,10 +365,10 @@ impl<'a, E: Encoding, R: Repr<'a, u8>> Hip<E, R> {
     /// Moves inline when the bytes and `min_capacity` fit. No-op if borrowed
     /// or shared.
     pub fn shrink_to(&mut self, min_capacity: usize) {
-        if !self.is_allocated() || !self.repr.is_unique() {
+        if !matches!(self.repr.kind(), Kind::Heap(_)) || !self.repr.is_unique() {
             return;
         }
-        let target = min_capacity.max(self.len());
+        let target = min_capacity.max(self.repr.len());
         if self.repr.capacity() > target {
             let mut repr = R::new();
             repr.reserve(target);
@@ -466,9 +527,9 @@ where
     /// Borrowed values stay borrowed; others convert to the owned form.
     #[inline]
     fn from(value: Hip<E, R>) -> Self {
-        match value.into_borrowed() {
-            Ok(b) => Cow::Borrowed(b),
-            Err(h) => Cow::Owned(h.into_owned_std()),
+        match value.borrowed_inner() {
+            Some(b) => Cow::Borrowed(b),
+            None => Cow::Owned(value.into_owned_std()),
         }
     }
 }

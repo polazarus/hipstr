@@ -101,6 +101,14 @@ src/
      of `Result<_, Self>`: thin heaps can never be taken without copying.
    - *Step 3a (done):* core (`hip.rs`), encodings, the 4 families' basic API,
      `Wide`-only slicing, std glue (conversions/comparisons both ways), tests per alias.
+   - *Const accessors (done):* `len`, `is_empty`, `is_inline`, `is_borrowed`,
+     `is_allocated`, `inline_capacity`, `new`, `borrowed`, `from_static` for every alias;
+     `as_str`/`as_bytes`/`as_slice`/`as_ptr`/`as_borrowed`/`into_borrowed`/`from_utf8`/
+     `from_utf8_unchecked`/`into_bytes` for str and bytes. Generated per representation
+     (stable Rust cannot call trait methods in `const fn`). `tests.rs::const_accessors`
+     evaluates them all at compile time. Not const: `HipOsStr`/`HipPath`
+     `as_borrowed`/`into_borrowed` (std's conversions are not `const`; `main` relied on
+     transmutes of std-internal layouts, dropped here).
    - *Step 3b:* str pattern methods (`trim*`, `split*`, `lines`, … returning shared
      slices on `Hip*`), `inline`/`try_inline` const ctors, borsh/serde/bstr.
    - *Step 3c:* swap — remove the old modules, move `src/next` to the crate root,
