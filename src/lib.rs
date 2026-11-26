@@ -102,6 +102,8 @@ pub mod smart;
 pub mod string;
 pub mod vecs;
 
+mod next;
+
 #[cfg(feature = "std")]
 pub mod os_string;
 #[cfg(feature = "std")]

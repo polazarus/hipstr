@@ -55,6 +55,10 @@ src/
    release notes 1.86 → 1.100 for stabilizations that remove `unsafe`.
 1. **Core port** from `hipvec` (copy-only): backend, header, tagged pointer, inline,
    thin, wide, drain, splice, with their tests.
+   - *Status:* done in `src/next/` (temporary private module beside the current code,
+     removed in phase 3). 107 unit tests pass, Miri-clean under `-Zmiri-strict-provenance`.
+     Doc examples are `ignore`d until the items become public. The wide (`Vec`-adopting)
+     path lives in `hipvec`'s `hip/base.rs` and moves over with phase 2.
 2. **Three reprs** — layouts + asserts first (1-/2-word tagging is the main risk),
    then the `Repr` trait.
 3. **Encoding layer** — `Hip<E, R, B>`, aliases, port today's
