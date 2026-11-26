@@ -142,11 +142,6 @@ impl<T, P: Counter> Owner<T, P> {
     }
 }
 
-pub enum OwnerMut<'a, T, P> {
-    Thin(&'a mut thin::Base<T, P>),
-    Wide(), // TODO
-}
-
 #[repr(C)]
 pub struct Sliced<T, C: Counter> {
     #[cfg(target_endian = "little")]

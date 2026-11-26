@@ -11,13 +11,18 @@ use crate::backend::Backend;
 use crate::common::markers::{self, Copyness};
 use crate::thin;
 
+/// A hip slice:
+///
+/// - borrowed, inline or heap-allocated,
+/// - shared or unique,
+/// - copyable or non-copyable.
 #[repr(transparent)]
-pub struct HipVec<'a, T, B: Backend, M: Copyness = markers::NonCopy> {
+pub struct HipSlice<'a, T, B: Backend, M: Copyness> {
     base: Base<'a, T, B>,
     marker: PhantomData<M>,
 }
 
-impl<'a, T, B: Backend, M: Copyness> HipVec<'a, T, B, M> {
+impl<'a, T, B: Backend, M: Copyness> HipSlice<'a, T, B, M> {
     pub const fn new() -> Self {
         Self {
             base: Base::new(),
@@ -63,7 +68,7 @@ impl<'a, T, B: Backend, M: Copyness> HipVec<'a, T, B, M> {
     }
 }
 
-impl<'a, T: Clone, B: Backend> HipVec<'a, T, B, markers::NonCopy> {
+impl<'a, T: Clone, B: Backend> HipSlice<'a, T, B, markers::NonCopy> {
     #[inline]
     pub fn mutate(&mut self) -> RefMut<'_, 'a, T, B> {
         self.base.make_unique_clone();
@@ -73,12 +78,16 @@ impl<'a, T: Clone, B: Backend> HipVec<'a, T, B, markers::NonCopy> {
     }
 
     #[inline]
+    #[allow(
+        clippy::wrong_self_convention,
+        reason = "mirror as_mut_slice which is std"
+    )]
     pub fn to_mut_slice(&mut self) -> &mut [T] {
         self.base.to_mut_slice()
     }
 }
 
-impl<'a, T: Copy, B: Backend> HipVec<'a, T, B, markers::Copy> {
+impl<'a, T: Copy, B: Backend> HipSlice<'a, T, B, markers::Copy> {
     #[inline]
     pub fn mutate(&mut self) -> RefMut<'_, 'a, T, B> {
         self.base.make_unique_copy();
@@ -88,12 +97,16 @@ impl<'a, T: Copy, B: Backend> HipVec<'a, T, B, markers::Copy> {
     }
 
     #[inline]
+    #[allow(
+        clippy::wrong_self_convention,
+        reason = "mirror as_mut_slice which is std"
+    )]
     pub fn to_mut_slice(&mut self) -> &mut [T] {
         self.base.to_mut_slice_copy()
     }
 }
 
-impl<'a, T, B: Backend> HipVec<'a, T, B, markers::NonCopy> {
+impl<'a, T, B: Backend> HipSlice<'a, T, B, markers::NonCopy> {
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             base: Base::with_capacity(capacity),
@@ -102,26 +115,26 @@ impl<'a, T, B: Backend> HipVec<'a, T, B, markers::NonCopy> {
     }
 }
 
-impl<'a, T, B: Backend, M: Copyness> Default for HipVec<'a, T, B, M> {
+impl<'a, T, B: Backend, M: Copyness> Default for HipSlice<'a, T, B, M> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<'a, T, B: Backend, M: Copyness> ConstDefault for HipVec<'a, T, B, M> {
+impl<'a, T, B: Backend, M: Copyness> ConstDefault for HipSlice<'a, T, B, M> {
     const DEFAULT: Self = Self::new();
 }
 
-impl<'a, T, B: Backend, M: Copyness> Drop for HipVec<'a, T, B, M> {
+impl<'a, T, B: Backend, M: Copyness> Drop for HipSlice<'a, T, B, M> {
     fn drop(&mut self) {
         unsafe {
-            // no real need to switch on the copyness, drop is already lazy with needs_drop
+            // no real need to switch on the copyness, drop is already efficient thx to needs_drop
             self.base.drop();
         }
     }
 }
 
-impl<'a, T, B: Backend, M: Copyness> From<thin::GenericThinVec<T, M>> for HipVec<'a, T, B, M> {
+impl<'a, T, B: Backend, M: Copyness> From<thin::GenericThinVec<T, M>> for HipSlice<'a, T, B, M> {
     fn from(thin_vec: thin::GenericThinVec<T, M>) -> Self {
         Self {
             base: Base::from_any_thin_base(thin_vec.into_base()),
@@ -130,6 +143,8 @@ impl<'a, T, B: Backend, M: Copyness> From<thin::GenericThinVec<T, M>> for HipVec
     }
 }
 
+/// A mutable reference to a `HipVec`.
+#[must_use]
 pub struct RefMut<'a, 'b, T, B: Backend> {
     base: Mut<'a, 'b, T, B>,
 }
@@ -146,7 +161,7 @@ impl<'a, 'b, T, B: Backend> RefMut<'a, 'b, T, B> {
     }
 }
 
-impl<'a, T, B: Backend, M: Copyness> From<Vec<T>> for HipVec<'a, T, B, M> {
+impl<'a, T, B: Backend, M: Copyness> From<Vec<T>> for HipSlice<'a, T, B, M> {
     fn from(value: Vec<T>) -> Self {
         Self {
             base: Base::from_wide(value),
