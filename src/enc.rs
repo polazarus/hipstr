@@ -1,7 +1,8 @@
 //! Encodings: what the bytes of a [`Hip`](super::hip::Hip) value mean.
 //!
 //! Every type of the crate stores bytes; an encoding marker states their
-//! invariant (none, UTF-8, OS string) and maps them to the matching std types.
+//! invariant (none, UTF-8, C string, OS string, path) and maps them to the
+//! matching std types.
 
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -23,6 +24,13 @@ pub unsafe trait Encoding: seal::Sealed + 'static {
 
     /// Owned std form, e.g. `String`.
     type Owned;
+
+    /// Bytes of the empty value (e.g. a lone NUL for C strings).
+    const EMPTY: &'static [u8] = b"";
+
+    /// Number of trailing terminator bytes stored with every value (the NUL of
+    /// C strings), excluded from lengths and capacities.
+    const TERMINATOR: usize = 0;
 
     fn as_bytes(slice: &Self::Slice) -> &[u8];
 
@@ -47,8 +55,44 @@ pub struct Bytes;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct Utf8;
 
+/// NUL-terminated C string ([`core::ffi::CStr`]), stored with its terminator.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub struct CStr;
+
 impl seal::Sealed for Bytes {}
 impl seal::Sealed for Utf8 {}
+impl seal::Sealed for CStr {}
+
+// SAFETY: bytes end with the only NUL (precondition)
+unsafe impl Encoding for CStr {
+    type Slice = core::ffi::CStr;
+    type Owned = alloc::ffi::CString;
+
+    const EMPTY: &'static [u8] = b"\0";
+    const TERMINATOR: usize = 1;
+
+    #[inline]
+    fn as_bytes(slice: &core::ffi::CStr) -> &[u8] {
+        slice.to_bytes_with_nul()
+    }
+
+    #[inline]
+    unsafe fn from_bytes_unchecked(bytes: &[u8]) -> &core::ffi::CStr {
+        // SAFETY: precondition
+        unsafe { core::ffi::CStr::from_bytes_with_nul_unchecked(bytes) }
+    }
+
+    #[inline]
+    fn owned_into_bytes(owned: alloc::ffi::CString) -> Vec<u8> {
+        owned.into_bytes_with_nul()
+    }
+
+    #[inline]
+    unsafe fn owned_from_bytes_unchecked(bytes: Vec<u8>) -> alloc::ffi::CString {
+        // SAFETY: precondition
+        unsafe { alloc::ffi::CString::from_vec_with_nul_unchecked(bytes) }
+    }
+}
 
 // SAFETY: no invariant
 unsafe impl Encoding for Bytes {

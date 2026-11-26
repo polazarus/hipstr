@@ -202,6 +202,24 @@ pub mod bytes {
     }
 }
 
+// ----- C strings -----
+
+/// C strings serialize like `CStr` (bytes without the terminator) and
+/// deserialize like `CString` (rejecting interior NULs).
+impl<'a, R: Repr<'a, u8>> Serialize for Hip<crate::enc::CStr, R> {
+    #[inline]
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.as_inner().serialize(serializer)
+    }
+}
+
+impl<'de, 'a, R: Repr<'a, u8>> Deserialize<'de> for Hip<crate::enc::CStr, R> {
+    #[inline]
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        alloc::ffi::CString::deserialize(deserializer).map(Self::from_owned)
+    }
+}
+
 // ----- OS strings and paths -----
 
 #[cfg(feature = "std")]
@@ -303,6 +321,17 @@ mod tests {
         let s: TinyStr = string::borrow_deserialize(&mut de).unwrap();
         assert!(!s.is_borrowed());
         assert_eq!(s, LONG);
+    }
+
+    #[test]
+    fn c_strings() {
+        use crate::{SmallCStr, TinyCStr};
+        let c = SmallCStr::from(c"hello");
+        let json = serde_json::to_string(&c).unwrap();
+        assert_eq!(json, serde_json::to_string(c"hello").unwrap());
+        let back: TinyCStr = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, c"hello");
+        assert!(serde_json::from_str::<TinyCStr>("[97,0,98]").is_err());
     }
 
     #[test]

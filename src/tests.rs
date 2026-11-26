@@ -280,6 +280,42 @@ mod const_accessors {
 
     agnostic!(HipStr<'static>, SmallStr<'static>, TinyStr, LocalTinyStr);
     agnostic!(HipByt<'static>, SmallByt<'static>, TinyByt);
+    agnostic!(HipCStr<'static>, SmallCStr<'static>, TinyCStr);
+
+    /// C string accessors, every size.
+    macro_rules! c_str_accessors {
+        ($($t:ty),* $(,)?) => {$(
+            const _: () = {
+                // 2 characters + NUL: fits the 1-word inline buffer on 32-bit too
+                let c = <$t>::inline(c"ab");
+                assert!(c.len() == 2 && !c.is_empty() && c.is_inline());
+                assert!(c.as_c_str().count_bytes() == 2);
+                assert!(c.as_bytes().len() == 2);
+                assert!(c.as_bytes_with_nul().len() == 3);
+                assert!(!c.as_ptr().is_null());
+                let b = c.into_bytes_with_nul();
+                assert!(b.as_slice().len() == 3);
+                forget(b);
+                let e = <$t>::new();
+                assert!(e.is_empty() && e.as_bytes_with_nul().len() == 1);
+                forget(e);
+                let r = <$t>::try_inline(c"definitely longer than any inline capacity");
+                assert!(r.is_none());
+                forget(r);
+            };
+        )*};
+    }
+
+    c_str_accessors!(HipCStr<'static>, SmallCStr<'static>, TinyCStr);
+
+    const _: () = {
+        let c = HipCStr::borrowed(c"borrowed C string, longer than inline");
+        assert!(c.is_borrowed() && c.as_borrowed().is_some());
+        let r = c.into_borrowed();
+        assert!(r.is_ok());
+        forget(r);
+        forget(SmallCStr::from_static(c"static"));
+    };
     #[cfg(feature = "std")]
     agnostic!(HipOsStr<'static>, SmallOsStr<'static>, TinyOsStr);
     #[cfg(feature = "std")]

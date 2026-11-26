@@ -54,7 +54,7 @@ impl<'a, E: Encoding, B: Backend> Hip<E, Wide<'a, u8, B>> {
     #[inline]
     #[must_use]
     pub const fn new() -> Self {
-        Self::from_repr_const(Wide::new())
+        Self::from_repr_const(Wide::inline_copy(E::EMPTY))
     }
 
     pub(crate) const fn from_repr_const(repr: Wide<'a, u8, B>) -> Self {
@@ -86,7 +86,7 @@ impl<'a, E: Encoding, B: Backend> Hip<E, Small<'a, u8, B>> {
     #[inline]
     #[must_use]
     pub const fn new() -> Self {
-        Self::from_repr_const(Small::new())
+        Self::from_repr_const(Small::inline_copy(E::EMPTY))
     }
 
     pub(crate) const fn from_repr_const(repr: Small<'a, u8, B>) -> Self {
@@ -118,7 +118,7 @@ impl<E: Encoding, B: Backend> Hip<E, Tiny<u8, B>> {
     #[inline]
     #[must_use]
     pub const fn new() -> Self {
-        Self::from_repr_const(Tiny::new())
+        Self::from_repr_const(Tiny::inline_copy(E::EMPTY))
     }
 
     pub(crate) const fn from_repr_const(repr: Tiny<u8, B>) -> Self {
@@ -158,7 +158,8 @@ macro_rules! impl_const_accessors {
             #[inline]
             #[must_use]
             pub const fn len(&self) -> usize {
-                self.repr.len()
+                // C strings: without the NUL terminator, like `CStr::count_bytes`
+                self.repr.len() - E::TERMINATOR
             }
 
             /// Returns `true` if this `HipStr` has a length of zero, and `false` otherwise.
@@ -178,7 +179,7 @@ macro_rules! impl_const_accessors {
             #[inline]
             #[must_use]
             pub const fn is_empty(&self) -> bool {
-                self.repr.is_empty()
+                self.repr.len() == E::TERMINATOR
             }
 
             /// Returns `true` if this `HipStr` uses the inline representation, `false` otherwise.
@@ -518,7 +519,7 @@ impl<'a, E: Encoding, R: Repr<'a, u8>> Hip<E, R> {
     /// ```
     #[must_use]
     pub fn with_capacity(capacity: usize) -> Self {
-        let mut repr = R::new();
+        let mut repr = R::from_slice(E::EMPTY);
         repr.reserve(capacity);
         // SAFETY: empty
         unsafe { Self::from_repr(repr) }
@@ -528,7 +529,8 @@ impl<'a, E: Encoding, R: Repr<'a, u8>> Hip<E, R> {
     #[inline]
     #[must_use]
     pub const fn inline_capacity() -> usize {
-        R::INLINE_CAPACITY
+        // C strings: without the NUL terminator
+        R::INLINE_CAPACITY - E::TERMINATOR
     }
 
     /// Capacity of the owned storage: the inline capacity, the heap capacity,
@@ -536,11 +538,13 @@ impl<'a, E: Encoding, R: Repr<'a, u8>> Hip<E, R> {
     #[inline]
     #[must_use]
     pub fn capacity(&self) -> usize {
-        if self.repr.is_unique() {
+        let raw = if self.repr.is_unique() {
             self.repr.capacity()
         } else {
             self.repr.len()
-        }
+        };
+        // C strings: without the NUL terminator
+        raw.saturating_sub(E::TERMINATOR)
     }
 
     /// Makes the string owned, copying the data if it is actually borrowed.
@@ -588,7 +592,8 @@ impl<'a, E: Encoding, R: Repr<'a, u8>> Hip<E, R> {
     /// ```
     #[inline]
     pub fn mutate(&mut self) -> RefMut<'_, 'a, E, R> {
-        let repr = core::mem::replace(&mut self.repr, R::new());
+        // placeholder valid for `E` (observable if the guard is leaked)
+        let repr = core::mem::replace(&mut self.repr, R::from_slice(E::EMPTY));
         // SAFETY: type invariant
         let owned = unsafe { E::owned_from_bytes_unchecked(repr.into_vec()) };
         RefMut {
@@ -659,7 +664,7 @@ impl<'a, E: Encoding, R: Repr<'a, u8>> Hip<E, R> {
     /// ```
     #[inline]
     pub fn clear(&mut self) {
-        self.repr.clear();
+        self.repr = R::from_slice(E::EMPTY);
     }
 
     /// Shrinks the capacity of the string as much as possible.
@@ -712,7 +717,9 @@ impl<'a, E: Encoding, R: Repr<'a, u8>> Hip<E, R> {
         if !matches!(self.repr.kind(), Kind::Heap(_)) {
             return;
         }
-        let target = min_capacity.max(self.repr.len());
+        let target = min_capacity
+            .saturating_add(E::TERMINATOR)
+            .max(self.repr.len());
         // raw capacity of the (possibly shared) buffer
         if self.repr.capacity() > target {
             let mut repr = R::new();
@@ -771,7 +778,7 @@ impl<'a, E: Encoding, R: Repr<'a, u8>> Default for Hip<E, R> {
     #[inline]
     fn default() -> Self {
         // SAFETY: empty
-        unsafe { Self::from_repr(R::new()) }
+        unsafe { Self::from_repr(R::from_slice(E::EMPTY)) }
     }
 }
 

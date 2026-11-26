@@ -6,7 +6,7 @@
 //! * three sizes: 3 words, 2 words or a single word
 //! * a niche: `Option<HipStr>` and `HipStr` have the same size
 //!
-//! Also byte strings, OS strings, paths, too!
+//! Also byte strings, C strings, OS strings, paths, too!
 //!
 //! # Examples
 //!
@@ -27,7 +27,8 @@
 //!
 //! # Three Sizes
 //!
-//! Each family (strings, byte strings, OS strings, paths) comes in three sizes:
+//! Each family (strings, byte strings, C strings, OS strings, paths) comes in
+//! three sizes:
 //!
 //! | Size    | Types                              | Inline (64-bit) | Borrowed | O(1) slicing |
 //! |---------|------------------------------------|-----------------|----------|--------------|
@@ -105,6 +106,7 @@ extern crate std;
 
 pub mod backend;
 pub mod bytes;
+pub mod c_str;
 pub mod enc;
 pub mod hip;
 #[cfg(feature = "std")]
@@ -194,6 +196,15 @@ aliases!(
     LocalHipByt,
     LocalSmallByt,
     LocalTinyByt
+);
+aliases!(
+    c_str,
+    HipCStr,
+    SmallCStr,
+    TinyCStr,
+    LocalHipCStr,
+    LocalSmallCStr,
+    LocalTinyCStr
 );
 #[cfg(feature = "std")]
 aliases!(

@@ -11,7 +11,7 @@ Breaking rewrite of `hipstr` in place (single crate).
 | MSRV / edition | 1.100 (latest stable at 2026-11-26) / 2024 — use it to remove `unsafe` |
 | Dependencies | Small, well-known crates allowed where they cut `unsafe` or boilerplate |
 | Vec heap | Kept: heap header may adopt a `Vec` buffer → O(1) `From<Vec>`/`From<String>` |
-| Sizes | 3 words (today's), 2 words, 1 word — for all four families (bytes, str, OsStr, Path) |
+| Sizes | 3 words (today's), 2 words, 1 word — for all five families (bytes, str, CStr, OsStr, Path) |
 | API shape | One generic core `Hip<'a, E: Encoding, R: Repr, B: Backend>` + aliases |
 | 1-word borrowed | **None**: 1-word holds inline or heap only |
 | Std compat | Full method parity + trait parity + differential test suite |
@@ -22,6 +22,7 @@ Breaking rewrite of `hipstr` in place (single crate).
 |---|---|---|---|
 | str   | `HipStr<'a>`   | `SmallStr<'a>`   | `TinyStr`   |
 | bytes | `HipByt<'a>`   | `SmallByt<'a>`   | `TinyByt`   |
+| CStr  | `HipCStr<'a>`  | `SmallCStr<'a>`  | `TinyCStr`  |
 | OsStr | `HipOsStr<'a>` | `SmallOsStr<'a>` | `TinyOsStr` |
 | Path  | `HipPath<'a>`  | `SmallPath<'a>`  | `TinyPath`  |
 
@@ -146,6 +147,14 @@ src/
      `Extend`, `FromIterator`, `fmt::Write`/`io::Write`, `Index`, `Borrow`, `Hash`, …
 5. **Differential tests** — same operations on std and on every alias
    (3 sizes × Rc/Arc/Unique), handwritten scenarios + `proptest` op sequences.
+3½. **C strings** (done) — `HipCStr`/`SmallCStr`/`TinyCStr` (+ `Local*`), `no_std` (`CStr` is
+   in `core`, `CString` in `alloc`). Stored with the NUL terminator so they deref to
+   `CStr` without copying; encodings now declare `EMPTY` and `TERMINATOR`, and `len`,
+   `is_empty`, `capacity`, `inline_capacity` exclude the terminator (like
+   `CStr::count_bytes`), so `TinyCStr` holds 6 bytes inline on 64-bit. `const`
+   accessors (`as_c_str`, `as_bytes`, `as_bytes_with_nul`, `inline`, `borrowed`,
+   `from_static` with `c"…"` literals), `CString` round trip without copy,
+   `TryFrom` like `CString::new`, comparisons, serde.
 6. **Finish** — serde/bstr/borsh, benches across sizes, docs, migration guide.
 
 ## Open questions
