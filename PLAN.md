@@ -16,6 +16,18 @@ Breaking rewrite of `hipstr` in place (single crate).
 | 1-word borrowed | **None**: 1-word holds inline or heap only |
 | Std compat | Full method parity + trait parity + differential test suite |
 
+## Public names
+
+| Family | 3 words (`Wide`) | 2 words (`Pair`) | 1 word (`Tiny`) |
+|---|---|---|---|
+| str   | `HipStr<'a>`   | `SmallStr<'a>`   | `TinyStr`   |
+| bytes | `HipByt<'a>`   | `SmallByt<'a>`   | `TinyByt`   |
+| OsStr | `HipOsStr<'a>` | `SmallOsStr<'a>` | `TinyOsStr` |
+| Path  | `HipPath<'a>`  | `SmallPath<'a>`  | `TinyPath`  |
+
+`Tiny*` types have no lifetime (they never borrow). Aliases default to `Arc`; `Local*`
+variants (`LocalHipStr`, `LocalSmallStr`, `LocalTinyStr`, …) use `Rc`.
+
 ## Representations
 
 | Repr | Size | Inline | Borrowed | Heap | Slicing |
@@ -93,9 +105,7 @@ src/
 
 ## Open questions
 
-- Alias naming: `HipStr` / `HipStr2` / `HipStr1`, or `HipStr` / `PairStr` / `ThinStr`, or other.
   Repr names: `Wide` (3 words) / `Pair` (2 words) / `Tiny` (1 word).
-- Default backend for aliases (today `Arc`) and whether to keep `Local*` aliases.
 - `Unique` backend semantics on clone (deep copy, as today?). *Implemented as deep copy.*
 - Vec-heap growth maps `Vec::try_reserve` errors to "capacity overflow" (the allocation
   error kind is unstable), so OOM on that path panics instead of aborting.
