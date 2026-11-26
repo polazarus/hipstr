@@ -29,7 +29,7 @@ const _: () = {
 
 /// 1-word copy-on-write sequence (see the module documentation).
 #[repr(transparent)]
-pub struct Tiny<T: Copy, B: Backend> {
+pub struct Tiny<T: Copy + 'static, B: Backend> {
     word: NonNull<()>,
     marker: PhantomData<Owner<T, B>>,
 }
@@ -41,11 +41,17 @@ const _: () = {
 };
 
 // SAFETY: see `Wide`
-unsafe impl<T: Copy + Send + Sync, B: Backend> Send for Tiny<T, B> where B::Counter: Send + Sync {}
+unsafe impl<T: Copy + Send + Sync + 'static, B: Backend> Send for Tiny<T, B> where
+    B::Counter: Send + Sync
+{
+}
 // SAFETY: see `Wide`
-unsafe impl<T: Copy + Send + Sync, B: Backend> Sync for Tiny<T, B> where B::Counter: Send + Sync {}
+unsafe impl<T: Copy + Send + Sync + 'static, B: Backend> Sync for Tiny<T, B> where
+    B::Counter: Send + Sync
+{
+}
 
-impl<T: Copy, B: Backend> Tiny<T, B> {
+impl<T: Copy + 'static, B: Backend> Tiny<T, B> {
     const fn from_inline(inline: Inline<T>) -> Self {
         Self {
             // SAFETY: same size, an inline word is tagged and non-zero
@@ -138,13 +144,13 @@ impl<T: Copy, B: Backend> Tiny<T, B> {
     }
 }
 
-impl<T: Copy, B: Backend> Default for Tiny<T, B> {
+impl<T: Copy + 'static, B: Backend> Default for Tiny<T, B> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T: Copy, B: Backend> Clone for Tiny<T, B> {
+impl<T: Copy + 'static, B: Backend> Clone for Tiny<T, B> {
     fn clone(&self) -> Self {
         if !self.is_inline() && self.owner().try_clone().is_none() {
             return Self::try_from_slice(self.as_slice(), self.len())
@@ -157,7 +163,7 @@ impl<T: Copy, B: Backend> Clone for Tiny<T, B> {
     }
 }
 
-impl<T: Copy, B: Backend> Drop for Tiny<T, B> {
+impl<T: Copy + 'static, B: Backend> Drop for Tiny<T, B> {
     fn drop(&mut self) {
         if !self.is_inline() {
             // SAFETY: this handle is dropped
@@ -167,7 +173,8 @@ impl<T: Copy, B: Backend> Drop for Tiny<T, B> {
 }
 
 // SAFETY: see the trait's contract, upheld by `try_reserve`
-unsafe impl<'a, T: Copy + 'a, B: Backend> Repr<'a, T> for Tiny<T, B> {
+unsafe impl<'a, T: Copy + 'static, B: Backend> Repr<'a, T> for Tiny<T, B> {
+    type Owned = Self;
     const WORDS: usize = 1;
     const INLINE_CAPACITY: usize = Inline::<T>::CAPACITY;
     const MAX_LEN: usize = isize::MAX as usize;
@@ -193,6 +200,16 @@ unsafe impl<'a, T: Copy + 'a, B: Backend> Repr<'a, T> for Tiny<T, B> {
         } else {
             Self::from_owner(Owner::from_vec(vec))
         }
+    }
+
+    #[inline]
+    fn into_owned(self) -> Self {
+        self
+    }
+
+    #[inline]
+    fn as_borrowed(&self) -> Option<&'a [T]> {
+        None
     }
 
     fn kind(&self) -> Kind {

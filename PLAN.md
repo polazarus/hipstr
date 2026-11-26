@@ -89,8 +89,22 @@ src/
      (was `todo!()` in `hipvec`).
    - Counters now initialise through a non-const `InitPrefix` trait, so loom's atomics
      fit; `ConstDefault` is kept only where const construction is really used.
-3. **Encoding layer** — `Hip<E, R, B>`, aliases, port today's
+3. **Encoding layer** — `Hip<E, R>`, aliases, port today's
    `HipByt`/`HipStr`/`HipOsStr`/`HipPath` API once, generically.
+   - *Design:* `Hip<E, R>` takes the **concrete** repr (`Wide<'a, u8, B>`, …), not a
+     layout marker + lifetime: a GAT projection would make the type invariant in `'a`.
+     Root aliases fix the backend (`HipStr<'a>` = `Arc`, `LocalHipStr<'a>` = `Rc`);
+     backend-generic aliases live in the family modules (`string::HipStr<'a, B>`),
+     because alias defaults do not drive inference in expressions.
+   - *API change:* `into_vec`/`into_string`/`into_os_string`/`into_path_buf` are
+     infallible (O(1) when uniquely owning an adopted buffer, copy otherwise) instead
+     of `Result<_, Self>`: thin heaps can never be taken without copying.
+   - *Step 3a (done):* core (`hip.rs`), encodings, the 4 families' basic API,
+     `Wide`-only slicing, std glue (conversions/comparisons both ways), tests per alias.
+   - *Step 3b:* str pattern methods (`trim*`, `split*`, `lines`, … returning shared
+     slices on `Hip*`), `inline`/`try_inline` const ctors, borsh/serde/bstr.
+   - *Step 3c:* swap — remove the old modules, move `src/next` to the crate root,
+     port the old test suites and doc examples.
 4. **Std compatibility**
    - Ledger generated from std's rustdoc JSON (`rust-docs-json` component) listing every
      stable inherent method and trait impl of `Vec<u8>`, `String`, `OsString`, `PathBuf`

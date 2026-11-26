@@ -59,9 +59,12 @@ pub enum Kind {
 /// [`len`]: Repr::len
 /// [`set_len`]: Repr::set_len
 /// [`as_slice`]: Repr::as_slice
-pub unsafe trait Repr<'a, T: Copy + 'a>: Clone + Sized {
+pub unsafe trait Repr<'a, T: Copy + 'static>: Clone + Sized {
     /// Size in words.
     const WORDS: usize;
+
+    /// The same representation, without the borrow lifetime.
+    type Owned: Repr<'static, T, Owned = Self::Owned>;
 
     /// Maximal number of elements stored inline.
     const INLINE_CAPACITY: usize;
@@ -95,6 +98,12 @@ pub unsafe trait Repr<'a, T: Copy + 'a>: Clone + Sized {
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    /// Makes the value independent of the borrow, copying borrowed data.
+    fn into_owned(self) -> Self::Owned;
+
+    /// The borrowed slice, with its full lifetime, if the value is borrowed.
+    fn as_borrowed(&self) -> Option<&'a [T]>;
 
     /// Converts into a vector, in O(1) for a unique adopted vector.
     fn into_vec(self) -> Vec<T>;

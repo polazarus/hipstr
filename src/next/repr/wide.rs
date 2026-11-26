@@ -35,7 +35,7 @@ struct Pivot {
 }
 
 #[repr(C)]
-struct Sliced<T: Copy, B: Backend> {
+struct Sliced<T: Copy + 'static, B: Backend> {
     #[cfg(target_endian = "little")]
     owner: Owner<T, B>,
     slice: NonNull<[T]>,
@@ -43,8 +43,8 @@ struct Sliced<T: Copy, B: Backend> {
     owner: Owner<T, B>,
 }
 
-impl<T: Copy, B: Backend> Copy for Sliced<T, B> {}
-impl<T: Copy, B: Backend> Clone for Sliced<T, B> {
+impl<T: Copy + 'static, B: Backend> Copy for Sliced<T, B> {}
+impl<T: Copy + 'static, B: Backend> Clone for Sliced<T, B> {
     fn clone(&self) -> Self {
         *self
     }
@@ -60,7 +60,7 @@ const _: () = {
 
 /// 3-word copy-on-write sequence (see the module documentation).
 #[repr(transparent)]
-pub struct Wide<'a, T: Copy, B: Backend> {
+pub struct Wide<'a, T: Copy + 'static, B: Backend> {
     pivot: Pivot,
     marker: PhantomData<(&'a [T], Owner<T, B>)>,
 }
@@ -73,11 +73,17 @@ const _: () = {
 
 // SAFETY: shared state is either immutable borrowed data or behind the
 // backend's counter, which decides thread safety
-unsafe impl<T: Copy + Send + Sync, B: Backend> Send for Wide<'_, T, B> where B::Counter: Send + Sync {}
+unsafe impl<T: Copy + Send + Sync + 'static, B: Backend> Send for Wide<'_, T, B> where
+    B::Counter: Send + Sync
+{
+}
 // SAFETY: same as `Send`
-unsafe impl<T: Copy + Send + Sync, B: Backend> Sync for Wide<'_, T, B> where B::Counter: Send + Sync {}
+unsafe impl<T: Copy + Send + Sync + 'static, B: Backend> Sync for Wide<'_, T, B> where
+    B::Counter: Send + Sync
+{
+}
 
-impl<'a, T: Copy, B: Backend> Wide<'a, T, B> {
+impl<'a, T: Copy + 'static, B: Backend> Wide<'a, T, B> {
     const fn from_inline(inline: Inline<T>) -> Self {
         Self {
             // SAFETY: same size, word 0 of an inline is tagged and non-zero
@@ -228,13 +234,13 @@ impl<'a, T: Copy, B: Backend> Wide<'a, T, B> {
     }
 }
 
-impl<T: Copy, B: Backend> Default for Wide<'_, T, B> {
+impl<T: Copy + 'static, B: Backend> Default for Wide<'_, T, B> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T: Copy, B: Backend> Clone for Wide<'_, T, B> {
+impl<T: Copy + 'static, B: Backend> Clone for Wide<'_, T, B> {
     fn clone(&self) -> Self {
         if self.is_inline() || self.sliced().owner.is_none() {
             return Self {
@@ -252,7 +258,7 @@ impl<T: Copy, B: Backend> Clone for Wide<'_, T, B> {
     }
 }
 
-impl<T: Copy, B: Backend> Drop for Wide<'_, T, B> {
+impl<T: Copy + 'static, B: Backend> Drop for Wide<'_, T, B> {
     fn drop(&mut self) {
         if !self.is_inline() {
             let owner = self.sliced().owner;
@@ -265,7 +271,8 @@ impl<T: Copy, B: Backend> Drop for Wide<'_, T, B> {
 }
 
 // SAFETY: see the trait's contract, upheld by `try_reserve`
-unsafe impl<'a, T: Copy + 'a, B: Backend> Repr<'a, T> for Wide<'a, T, B> {
+unsafe impl<'a, T: Copy + 'static, B: Backend> Repr<'a, T> for Wide<'a, T, B> {
+    type Owned = Wide<'static, T, B>;
     const WORDS: usize = 3;
     const INLINE_CAPACITY: usize = Inline::<T>::CAPACITY;
     const MAX_LEN: usize = isize::MAX as usize;
@@ -302,6 +309,24 @@ unsafe impl<'a, T: Copy + 'a, B: Backend> Repr<'a, T> for Wide<'a, T, B> {
                 owner,
                 slice: NonNull::from_ref(owner.as_slice()),
             })
+        }
+    }
+
+    fn into_owned(self) -> Self::Owned {
+        if self.as_borrowed().is_some() {
+            return <Self::Owned as Repr<'static, T>>::from_slice(self.as_slice());
+        }
+        let this = core::mem::ManuallyDrop::new(self);
+        // SAFETY: not borrowed, so nothing depends on `'a`; same type otherwise
+        unsafe { core::ptr::read((&raw const *this).cast::<Self::Owned>()) }
+    }
+
+    fn as_borrowed(&self) -> Option<&'a [T]> {
+        if !self.is_inline() && self.sliced().owner.is_none() {
+            // SAFETY: borrowed case, the slice is valid for `'a`
+            Some(unsafe { self.sliced().slice.as_ref() })
+        } else {
+            None
         }
     }
 

@@ -85,7 +85,7 @@ const _: () = {
 
 /// 2-word copy-on-write sequence (see the module documentation).
 #[repr(transparent)]
-pub struct Small<'a, T: Copy, B: Backend> {
+pub struct Small<'a, T: Copy + 'static, B: Backend> {
     pivot: Pivot,
     marker: PhantomData<(&'a [T], Owner<T, B>)>,
 }
@@ -97,11 +97,15 @@ const _: () = {
 };
 
 // SAFETY: see `Wide`
-unsafe impl<T: Copy + Send + Sync, B: Backend> Send for Small<'_, T, B> where B::Counter: Send + Sync
-{}
+unsafe impl<T: Copy + Send + Sync + 'static, B: Backend> Send for Small<'_, T, B> where
+    B::Counter: Send + Sync
+{
+}
 // SAFETY: see `Wide`
-unsafe impl<T: Copy + Send + Sync, B: Backend> Sync for Small<'_, T, B> where B::Counter: Send + Sync
-{}
+unsafe impl<T: Copy + Send + Sync + 'static, B: Backend> Sync for Small<'_, T, B> where
+    B::Counter: Send + Sync
+{
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Tag {
@@ -110,7 +114,7 @@ enum Tag {
     Borrowed,
 }
 
-impl<'a, T: Copy, B: Backend> Small<'a, T, B> {
+impl<'a, T: Copy + 'static, B: Backend> Small<'a, T, B> {
     const fn from_inline(inline: Inline<T>) -> Self {
         Self {
             // SAFETY: same size, the length word of an inline is tagged 0b11
@@ -257,13 +261,13 @@ impl<'a, T: Copy, B: Backend> Small<'a, T, B> {
     }
 }
 
-impl<T: Copy, B: Backend> Default for Small<'_, T, B> {
+impl<T: Copy + 'static, B: Backend> Default for Small<'_, T, B> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T: Copy, B: Backend> Clone for Small<'_, T, B> {
+impl<T: Copy + 'static, B: Backend> Clone for Small<'_, T, B> {
     fn clone(&self) -> Self {
         if self.tag() == Tag::Heap && self.heap().w0.try_clone().is_none() {
             return Self::from_slice(self.as_slice());
@@ -275,7 +279,7 @@ impl<T: Copy, B: Backend> Clone for Small<'_, T, B> {
     }
 }
 
-impl<T: Copy, B: Backend> Drop for Small<'_, T, B> {
+impl<T: Copy + 'static, B: Backend> Drop for Small<'_, T, B> {
     fn drop(&mut self) {
         if self.tag() == Tag::Heap {
             // SAFETY: this handle is dropped
@@ -285,7 +289,8 @@ impl<T: Copy, B: Backend> Drop for Small<'_, T, B> {
 }
 
 // SAFETY: see the trait's contract, upheld by `try_reserve`
-unsafe impl<'a, T: Copy + 'a, B: Backend> Repr<'a, T> for Small<'a, T, B> {
+unsafe impl<'a, T: Copy + 'static, B: Backend> Repr<'a, T> for Small<'a, T, B> {
+    type Owned = Small<'static, T, B>;
     const WORDS: usize = 2;
     const INLINE_CAPACITY: usize = Inline::<T>::CAPACITY;
     const MAX_LEN: usize = MAX_HEAP_LEN;
@@ -312,6 +317,25 @@ unsafe impl<'a, T: Copy + 'a, B: Backend> Repr<'a, T> for Small<'a, T, B> {
         } else {
             let len = vec.len();
             Self::from_heap(Owner::from_vec(vec), len)
+        }
+    }
+
+    fn into_owned(self) -> Self::Owned {
+        if self.tag() == Tag::Borrowed {
+            return <Self::Owned as Repr<'static, T>>::from_slice(self.as_slice());
+        }
+        let this = core::mem::ManuallyDrop::new(self);
+        // SAFETY: not borrowed, so nothing depends on `'a`; same type otherwise
+        unsafe { core::ptr::read((&raw const *this).cast::<Self::Owned>()) }
+    }
+
+    fn as_borrowed(&self) -> Option<&'a [T]> {
+        if self.tag() == Tag::Borrowed {
+            let borrowed = self.borrowed_view();
+            // SAFETY: borrowed case, valid for `'a`
+            Some(unsafe { core::slice::from_raw_parts(borrowed.w0.as_ptr(), borrowed.msw) })
+        } else {
+            None
         }
     }
 

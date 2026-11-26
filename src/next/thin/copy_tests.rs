@@ -365,7 +365,7 @@ fn splice_invalid_range_panics() {
 #[test]
 fn extend() {
     let mut v = V::<i32>::new();
-    v.extend(std::iter::empty());
+    v.extend(core::iter::empty());
     assert!(v.as_slice().is_empty());
 
     v.extend([1, 2, 3]);

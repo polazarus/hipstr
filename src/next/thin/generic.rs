@@ -971,7 +971,7 @@ impl<T: Copy> ThinVec<T> {
     /// the elements `[0, at)` with its previous capacity unchanged.
     ///
     /// - If you want to take ownership of the entire contents and capacity of
-    ///   the vector, see [`std::mem::take`] or [`std::mem::replace`].
+    ///   the vector, see [`core::mem::take`] or [`core::mem::replace`].
     /// - If you don't need the returned vector at all, see [`truncate`].
     /// - If you want to take ownership of an arbitrary subslice, or you don't
     ///   necessarily want to store the removed items in a vector, see [`drain`].
