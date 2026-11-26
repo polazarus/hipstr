@@ -11,6 +11,12 @@ pub type BoundedRc<const MAX: usize> = BackendImpl<BoundedCount<MAX>, true>;
 #[repr(C)]
 pub struct BoundedCount<const MAX: usize>(Cell<usize>);
 
+impl<const MAX: usize> InitPrefix for BoundedCount<MAX> {
+    fn init() -> Self {
+        Self::DEFAULT
+    }
+}
+
 impl<const MAX: usize> ConstDefault for BoundedCount<MAX> {
     const DEFAULT: Self = Self(Cell::new(1));
 }

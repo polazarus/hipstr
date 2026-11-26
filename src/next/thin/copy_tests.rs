@@ -106,19 +106,19 @@ fn reserve_exact() {
 
 #[test]
 fn append() {
-    let mut left: V<i32> = v![1, 2, 3];
-    let mut right: V<i32> = v![4, 5, 6];
+    let mut left: V<i16> = v![1, 2, 3];
+    let mut right: V<i16> = v![4, 5, 6];
     left.append(&mut right);
     assert_eq!(left.as_slice(), &[1, 2, 3, 4, 5, 6]);
     assert!(right.is_empty());
 
-    let mut left: V<i32> = v![1, 2, 3];
+    let mut left: V<i16> = v![1, 2, 3];
     let mut right = alloc::vec![4, 5, 6];
     left.append(&mut right);
     assert_eq!(left.as_slice(), &[1, 2, 3, 4, 5, 6]);
     assert!(right.is_empty());
 
-    let mut left: V<i32> = v![1, 2, 3];
+    let mut left: V<i16> = v![1, 2, 3];
     let mut right = inline_vec![4, 5, 6];
     left.append(&mut right);
     assert_eq!(left.as_slice(), &[1, 2, 3, 4, 5, 6]);

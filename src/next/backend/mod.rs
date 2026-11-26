@@ -52,6 +52,13 @@ impl<C: Counter, const PANIC_ON_OVERFLOW: bool> Backend for BackendImpl<C, PANIC
 
 impl<C: Counter, const PANIC_ON_OVERFLOW: bool> Sealed for BackendImpl<C, PANIC_ON_OVERFLOW> {}
 
+/// Initial value of a vector header prefix, such as a fresh counter.
+///
+/// Deliberately not `const`: loom's atomics cannot be built in a const context.
+pub trait InitPrefix {
+    fn init() -> Self;
+}
+
 /// Counter update result.
 #[must_use]
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -74,7 +81,7 @@ pub enum UpdateResult {
 /// that the `get` and `set` methods reflect the current state of the counter
 /// accurately. Failure to uphold these guarantees may lead to undefined
 /// behavior in smart pointer implementations that rely on this trait.
-pub unsafe trait Counter: ConstDefault + 'static {
+pub unsafe trait Counter: InitPrefix + 'static {
     /// Tries to increment the counter.
     ///
     /// In case of atomics, the [`Ordering::Release`] semantics is expected on the write.

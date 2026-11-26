@@ -6,6 +6,7 @@ use core::ptr::NonNull;
 
 use const_default::ConstDefault;
 
+use crate::next::backend::InitPrefix;
 use crate::next::common::ZeroUsize;
 
 /// Common vector header with arbitrary associated data, called "prefix".
@@ -28,7 +29,7 @@ pub struct Header<T, Prefix, Ptr: Copy> {
 }
 
 pub type ThinHeader<T, Prefix> = Header<T, Prefix, ZeroUsize>;
-pub type WideHeader<T, Prefix> = Header<T, Prefix, Option<NonNull<T>>>;
+pub type VecHeader<T, Prefix> = Header<T, Prefix, Option<NonNull<T>>>;
 
 impl<T, Prefix> ThinHeader<T, Prefix> {
     const DATA_OFFSET: usize = {
@@ -40,12 +41,12 @@ impl<T, Prefix> ThinHeader<T, Prefix> {
         layout.size()
     };
 
-    pub const fn with_capacity(capacity: usize) -> Self
+    pub fn with_capacity(capacity: usize) -> Self
     where
-        Prefix: ConstDefault,
+        Prefix: InitPrefix,
     {
         Self {
-            prefix: Prefix::DEFAULT,
+            prefix: Prefix::init(),
             ptr: ZeroUsize::DEFAULT,
             cap: capacity,
             len: 0,
@@ -90,11 +91,11 @@ impl<T, Prefix> ThinHeader<T, Prefix> {
     }
 }
 
-impl<T, P: ConstDefault> Header<T, P, Option<NonNull<T>>> {
-    pub(crate) fn from_wide(vec: Vec<T>) -> Box<Self> {
+impl<T, P: InitPrefix> Header<T, P, Option<NonNull<T>>> {
+    pub(crate) fn from_vec(vec: Vec<T>) -> Box<Self> {
         let (ptr, cap, len) = vec.into_raw_parts();
         Box::new(Self {
-            prefix: P::DEFAULT,
+            prefix: P::init(),
             ptr: NonNull::new(ptr),
             cap,
             len,
@@ -116,7 +117,7 @@ where
     };
 }
 
-impl<T, P> ConstDefault for WideHeader<T, P>
+impl<T, P> ConstDefault for VecHeader<T, P>
 where
     P: ConstDefault,
 {
@@ -175,7 +176,7 @@ mod tests {
     #[test]
     fn common() {
         type THU8 = ThinHeader<u8, ()>;
-        type FHU8 = WideHeader<u8, ()>;
+        type FHU8 = VecHeader<u8, ()>;
         assert_eq!(offset_of!(THU8, prefix), offset_of!(FHU8, prefix));
         assert_eq!(offset_of!(THU8, ptr), offset_of!(FHU8, ptr));
         assert_eq!(offset_of!(THU8, len), offset_of!(FHU8, len));

@@ -7,6 +7,13 @@ use crate::next::common::ZeroUsize;
 #[repr(transparent)]
 pub struct One(ZeroUsize);
 
+impl super::InitPrefix for One {
+    #[inline]
+    fn init() -> Self {
+        Self::DEFAULT
+    }
+}
+
 impl ConstDefault for One {
     const DEFAULT: Self = Self(ZeroUsize::DEFAULT);
 }

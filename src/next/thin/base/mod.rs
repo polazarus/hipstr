@@ -6,6 +6,7 @@ use core::{cmp, fmt};
 use const_default::ConstDefault;
 
 use super::{TryReserveError, TryReserveErrorKind, unwrap_or_oom};
+use crate::next::backend::InitPrefix;
 pub use crate::next::common::header::ThinHeader as Header;
 use crate::next::common::methods;
 use crate::next::common::tagged_pointer::TaggedPointer;
@@ -261,7 +262,7 @@ impl<T, P> Base<T, P> {
     /// Appends all elements from another vector to the end of this vector, consuming the other vector.
     pub fn append(&mut self, other: &mut impl MutableVector<Item = T>)
     where
-        P: ConstDefault,
+        P: InitPrefix,
     {
         methods::append!(self, other);
     }
@@ -321,14 +322,14 @@ impl<T, P> Base<T, P> {
 
     pub fn with_fresh_prefix<P2>(mut self) -> Base<T, P2>
     where
-        P2: ConstDefault,
+        P2: InitPrefix,
     {
         if let Some(header) = self.0.as_non_null() {
             if size_of::<P>() == size_of::<P2>() && align_of::<P>() == align_of::<P2>() {
                 let prefix = unsafe { &raw mut (*header.as_ptr()).prefix };
                 let prefix: *mut P2 = prefix.cast();
                 unsafe {
-                    prefix.write(P2::DEFAULT);
+                    prefix.write(P2::init());
                 }
                 Base(self.0.cast())
             } else {
@@ -345,7 +346,7 @@ impl<T, P> Base<T, P> {
 
 impl<T, P> Base<T, P>
 where
-    P: ConstDefault,
+    P: InitPrefix,
 {
     pub fn with_capacity(capacity: usize) -> Self {
         unwrap_or_oom(Self::try_with_capacity(capacity))
@@ -544,6 +545,13 @@ impl Default for Reserved {
 
 impl ConstDefault for Reserved {
     const DEFAULT: Self = Self(0);
+}
+
+impl InitPrefix for Reserved {
+    #[inline]
+    fn init() -> Self {
+        Self::DEFAULT
+    }
 }
 
 impl fmt::Debug for Reserved {

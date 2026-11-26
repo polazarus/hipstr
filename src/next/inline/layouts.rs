@@ -1,13 +1,22 @@
 use core::mem::MaybeUninit;
-#[cfg(target_endian = "little")]
 use core::num::NonZeroUsize;
 use core::ptr;
 use core::ptr::NonNull;
 
+/// Memory layout of an inline vector.
+///
+/// The tagged length is a `LEN_SIZE`-byte integer placed either
+///
+/// - in the least significant byte(s) of the first word, tagged with bit 0 set
+///   ("low" layouts), or
+/// - in the most significant byte(s) of the last word, tagged with its two top
+///   bits set ("high" layouts, see [`HighLayout`]).
 pub trait Layout<T>: Copy {
     const LEN_SIZE: usize;
     const CAPACITY: usize;
     const EMPTY: Self;
+    /// Whether the tagged length lives in the most significant bits of the last word.
+    const HIGH: bool = false;
 }
 
 pub trait LayoutExt<T>: Layout<T> {
@@ -15,6 +24,13 @@ pub trait LayoutExt<T>: Layout<T> {
     const DATA_OFFSET: Option<usize>;
     const DATA_SIZE: usize;
     const LEN_OFFSET: usize;
+    /// Tag bits, in the coordinates of the `LEN_SIZE`-byte length field.
+    const TAG: usize;
+}
+
+/// Whether the length field comes first in memory.
+const fn len_first(high: bool) -> bool {
+    high == cfg!(target_endian = "big")
 }
 
 impl<T, L: Layout<T>> LayoutExt<T> for L {
@@ -23,39 +39,59 @@ impl<T, L: Layout<T>> LayoutExt<T> for L {
     const DATA_OFFSET: Option<usize> = {
         if align_of::<T>() > align_of::<Self>() {
             None
-        } else if cfg!(target_endian = "little") {
+        } else if len_first(L::HIGH) {
             Some(Self::SIZE - Self::DATA_SIZE)
         } else {
-            // in big endian, the length is stored at the end of the layout, so data starts at offset 0
             Some(0)
         }
     };
     const DATA_SIZE: usize = Self::CAPACITY * size_of::<T>();
 
-    const LEN_OFFSET: usize = {
-        #[cfg(target_endian = "little")]
-        {
-            0
-        }
-        #[cfg(target_endian = "big")]
-        {
-            Self::SIZE - Self::LEN_SIZE
-        }
+    const LEN_OFFSET: usize = if len_first(L::HIGH) {
+        0
+    } else {
+        Self::SIZE - Self::LEN_SIZE
     };
+
+    const TAG: usize = if L::HIGH {
+        if L::LEN_SIZE == 0 {
+            0
+        } else {
+            0b11 << (L::LEN_SIZE * 8 - 2)
+        }
+    } else {
+        1
+    };
+}
+
+const fn encode<T, L: Layout<T>>(len: usize) -> usize {
+    if L::HIGH {
+        len | L::TAG
+    } else {
+        (len << 1) | 1
+    }
+}
+
+const fn decode<T, L: Layout<T>>(tagged: usize) -> usize {
+    if L::HIGH {
+        tagged & !L::TAG
+    } else {
+        tagged >> 1
+    }
 }
 
 /// Returns the length of the vector encoded in the layout.
 pub(crate) const fn len<T, L: Layout<T>>(layout: &L) -> usize {
     let ptr = unsafe { (&raw const *layout).cast::<u8>().add(L::LEN_OFFSET) };
     let tagged_len = match L::LEN_SIZE {
-        0 => 0,
+        0 => return 0,
         1 => unsafe { *ptr as usize },
         2 => unsafe { *(ptr.cast::<u16>()) as usize },
         4 => unsafe { *(ptr.cast::<u32>()) as usize },
         8 => unsafe { *(ptr.cast::<u64>()) as usize },
         _ => unreachable!(),
     };
-    tagged_len >> 1
+    decode::<T, L>(tagged_len)
 }
 
 /// Sets the length of the vector.
@@ -63,28 +99,21 @@ pub(crate) const unsafe fn set_len<T, L: Layout<T>>(layout: &mut L, len: usize) 
     debug_assert!(len <= L::CAPACITY);
 
     let ptr = unsafe { (&raw mut *layout).cast::<u8>().add(L::LEN_OFFSET) };
-    // add tag
-    let tagged_len = (len << 1) | 1;
+    let tagged_len = encode::<T, L>(len);
     match L::LEN_SIZE {
         0 => (),
         1 => unsafe {
-            debug_assert!(
-                tagged_len as u64 <= 0xFF,
-                "length exceeds maximum for 1-byte length field"
-            );
+            debug_assert!(tagged_len as u64 <= 0xFF, "length exceeds 1-byte field");
             ptr.write(tagged_len as u8);
         },
         2 => unsafe {
-            debug_assert!(
-                tagged_len as u64 <= 0xFFFF,
-                "length exceeds maximum for 2-byte length field"
-            );
+            debug_assert!(tagged_len as u64 <= 0xFFFF, "length exceeds 2-byte field");
             ptr.cast::<u16>().write(tagged_len as u16);
         },
         4 => unsafe {
             debug_assert!(
                 tagged_len as u64 <= 0xFFFF_FFFF,
-                "length exceeds maximum for 4-byte length field"
+                "length exceeds 4-byte field"
             );
             ptr.cast::<u32>().write(tagged_len as u32);
         },
@@ -121,86 +150,125 @@ pub(crate) const fn data_non_null<T, L: Layout<T>>(layout: &mut L) -> NonNull<T>
     }
 }
 
-/// Returns the maximum length that can be encoded in a length field of the given size (in bytes).
-const fn len_max(len_size: usize) -> usize {
-    (1 << (len_size * 8).saturating_sub(1)) - 1
+/// Computes `(capacity, len_size)` for elements of type `T` in a layout of
+/// `size` bytes aligned to `align`, where `tag_bits` bits of the length field
+/// are reserved for the tag.
+const fn numbers<T>(size: usize, align: usize, tag_bits: u32) -> (usize, usize) {
+    if align_of::<T>() > align {
+        return (0, 0);
+    }
+
+    let element_size = size_of::<T>();
+
+    // find the maximum count of elements that can fit in the layout
+    let Some(mut count) = size.checked_div(element_size) else {
+        return (usize::MAX >> tag_bits, size_of::<usize>());
+    };
+
+    loop {
+        if count == 0 {
+            break (0, 0);
+        }
+
+        let remainder = size - (count * element_size);
+        // largest power of two that fits in the remainder, capped to a word
+        let len_size = if remainder == 0 {
+            0
+        } else {
+            let p = 1 << remainder.ilog2();
+            if p > size_of::<usize>() {
+                size_of::<usize>()
+            } else {
+                p
+            }
+        };
+        let len_max = if len_size == 0 {
+            0
+        } else {
+            (1 << (len_size as u32 * 8 - tag_bits)) - 1
+        };
+
+        if count <= len_max {
+            break (count, len_size);
+        }
+
+        // not encodable, but the len size is already a word
+        if len_size == size_of::<usize>() {
+            break (len_max, len_size);
+        }
+        count -= 1;
+    }
 }
 
-/// A basic layout that can store any type, including ZSTs on 3 pointer-sized words.
-///
-/// It uses a non-zero integer to store the length allowing for a niche that Rust may exploit.
-/// This layout is simple and efficient for most cases.
+/// A layout of `1 + REST` words with the tagged length in the low bits of the
+/// first word (bit 0 set). Any properly aligned pointer has bit 0 clear, so it
+/// can share the first word.
 #[repr(C)]
-pub struct BasicLayout {
+pub struct LowLayout<const REST: usize> {
     #[cfg(target_endian = "little")]
     lsw: NonZeroUsize,
 
-    remainder: [MaybeUninit<usize>; 2],
+    rest: [MaybeUninit<usize>; REST],
 
     #[cfg(target_endian = "big")]
     lsw: NonZeroUsize,
 }
 
-impl Copy for BasicLayout {}
-impl Clone for BasicLayout {
+impl<const REST: usize> Copy for LowLayout<REST> {}
+impl<const REST: usize> Clone for LowLayout<REST> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl BasicLayout {
-    pub(crate) const fn numbers<T>() -> (usize, usize) {
-        if align_of::<T>() > align_of::<Self>() {
-            return (0, 0);
-        }
+impl<T, const REST: usize> Layout<T> for LowLayout<REST> {
+    const LEN_SIZE: usize = numbers::<T>(size_of::<Self>(), align_of::<Self>(), 1).1;
+    const CAPACITY: usize = numbers::<T>(size_of::<Self>(), align_of::<Self>(), 1).0;
+    const EMPTY: Self = Self {
+        lsw: NonZeroUsize::new(1).unwrap(),
+        rest: [MaybeUninit::uninit(); REST],
+    };
+}
 
-        let size = size_of::<Self>();
-        let element_size = size_of::<T>();
+/// A layout of `REST + 1` words with the tagged length in the high bits of the
+/// last word (two top bits set). Lets the first word hold an unaligned pointer.
+#[repr(C)]
+pub struct HighLayout<const REST: usize> {
+    #[cfg(target_endian = "big")]
+    msw: NonZeroUsize,
 
-        // find the maximum count of elements that can fit in the layout
-        let Some(mut count) = size.checked_div(element_size) else {
-            return (usize::MAX >> 1, size_of::<usize>());
-        };
+    rest: [MaybeUninit<usize>; REST],
 
-        loop {
-            if count == 0 {
-                break (0, 0);
-            }
+    #[cfg(target_endian = "little")]
+    msw: NonZeroUsize,
+}
 
-            let remainder = size - (count * element_size);
-            let len_size = remainder.next_power_of_two() >> 1;
-            let (len_size, full) = if len_size >= size_of::<usize>() {
-                (size_of::<usize>(), true)
-            } else {
-                (len_size, false)
-            };
-            // maximal length w.r.t the current len size (remove 1 bit for nonzero tagging)
-            let len_max = len_max(len_size);
-
-            // count is encodable
-            if count <= len_max {
-                break (count, len_size);
-            }
-
-            // not encodable, but the len size is already usize
-            if full {
-                break (len_max, len_size);
-            }
-            count -= 1;
-        }
+impl<const REST: usize> Copy for HighLayout<REST> {}
+impl<const REST: usize> Clone for HighLayout<REST> {
+    fn clone(&self) -> Self {
+        *self
     }
 }
 
-impl<T> Layout<T> for BasicLayout {
-    const LEN_SIZE: usize = Self::numbers::<T>().1;
-    const CAPACITY: usize = Self::numbers::<T>().0;
-    const EMPTY: Self = {
-        Self {
-            lsw: NonZeroUsize::new(1).unwrap(),
-            remainder: [MaybeUninit::uninit(); 2],
-        }
+/// Tag of [`HighLayout`] in the coordinates of a full word.
+pub const HIGH_TAG: usize = 0b11 << (usize::BITS - 2);
+
+impl<T, const REST: usize> Layout<T> for HighLayout<REST> {
+    const LEN_SIZE: usize = numbers::<T>(size_of::<Self>(), align_of::<Self>(), 2).1;
+    const CAPACITY: usize = numbers::<T>(size_of::<Self>(), align_of::<Self>(), 2).0;
+    const EMPTY: Self = Self {
+        msw: NonZeroUsize::new(HIGH_TAG).unwrap(),
+        rest: [MaybeUninit::uninit(); REST],
     };
+    const HIGH: bool = true;
 }
+
+/// The 3-word layout.
+pub type BasicLayout = LowLayout<2>;
+/// The 1-word layout.
+pub type WordLayout = LowLayout<0>;
+/// The 2-word layout.
+pub type PairLayout = HighLayout<1>;
 
 #[cfg(test)]
 mod tests {
@@ -210,6 +278,15 @@ mod tests {
     fn layout_zst() {
         assert_eq!(size_of::<BasicLayout>(), 3 * size_of::<usize>());
         assert_eq!(<BasicLayout as Layout<()>>::CAPACITY, usize::MAX >> 1);
+    }
+
+    #[test]
+    fn capacities_u8() {
+        let w = size_of::<usize>();
+        assert_eq!(<BasicLayout as Layout<u8>>::CAPACITY, 3 * w - 1);
+        assert_eq!(<PairLayout as Layout<u8>>::CAPACITY, 2 * w - 1);
+        assert_eq!(<WordLayout as Layout<u8>>::CAPACITY, w - 1);
+        assert_eq!(<PairLayout as Layout<()>>::CAPACITY, usize::MAX >> 2);
     }
 
     #[test]

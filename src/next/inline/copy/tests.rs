@@ -56,7 +56,7 @@ fn dst() {
 
 #[test]
 fn slice() {
-    let mut l = V::<i32>::new();
+    let mut l = V::<i16>::new();
     l.push(1);
     l.push(2);
     l.push(3);
@@ -186,7 +186,7 @@ fn push_panic() {
 
 #[test]
 fn from_array() {
-    let l = V::<i32>::from([1, 2, 3]);
+    let l = V::<i16>::from([1, 2, 3]);
     assert_eq!(l.as_slice(), &[1, 2, 3]);
 }
 
@@ -315,7 +315,7 @@ fn resize_with() {
 
 #[test]
 fn remove() {
-    let mut l = V::<i32>::from([10, 20, 30, 40]);
+    let mut l = V::<i16>::from([10, 20, 30, 40]);
     let removed = l.remove(1);
     assert_eq!(removed, 20);
     assert_eq!(l.as_slice(), &[10, 30, 40]);
@@ -323,7 +323,7 @@ fn remove() {
 
 #[test]
 fn remove_first() {
-    let mut l = V::<i32>::from([10, 20, 30, 40]);
+    let mut l = V::<i16>::from([10, 20, 30, 40]);
     let removed = l.remove(0);
     assert_eq!(removed, 10);
     assert_eq!(l.as_slice(), &[20, 30, 40]);
@@ -331,7 +331,7 @@ fn remove_first() {
 
 #[test]
 fn remove_last() {
-    let mut l = V::<i32>::from([10, 20, 30, 40]);
+    let mut l = V::<i16>::from([10, 20, 30, 40]);
     let removed = l.remove(l.len() - 1);
     assert_eq!(removed, 40);
     assert_eq!(l.as_slice(), &[10, 20, 30]);
@@ -340,13 +340,13 @@ fn remove_last() {
 #[test]
 #[should_panic(expected = "index out of bounds")]
 fn remove_panic() {
-    let mut l = V::<i32>::from([1, 2, 3]);
+    let mut l = V::<i16>::from([1, 2, 3]);
     let _ = l.remove(3);
 }
 
 #[test]
 fn swap_remove() {
-    let mut l = V::<i32>::from([10, 20, 30, 40]);
+    let mut l = V::<i16>::from([10, 20, 30, 40]);
     let removed = l.swap_remove(1);
     assert_eq!(removed, 20);
     assert_eq!(l.as_slice(), &[10, 40, 30]);
@@ -354,7 +354,7 @@ fn swap_remove() {
 
 #[test]
 fn swap_remove_first() {
-    let mut l = V::<i32>::from([10, 20, 30, 40]);
+    let mut l = V::<i16>::from([10, 20, 30, 40]);
     let removed = l.swap_remove(0);
     assert_eq!(removed, 10);
     assert_eq!(l.as_slice(), &[40, 20, 30]);
@@ -362,7 +362,7 @@ fn swap_remove_first() {
 
 #[test]
 fn swap_remove_last() {
-    let mut l = V::<i32>::from([10, 20, 30, 40]);
+    let mut l = V::<i16>::from([10, 20, 30, 40]);
     let removed = l.swap_remove(l.len() - 1);
     assert_eq!(removed, 40);
     assert_eq!(l.as_slice(), &[10, 20, 30]);
@@ -371,19 +371,19 @@ fn swap_remove_last() {
 #[test]
 #[should_panic(expected = "index out of bounds")]
 fn swap_remove_panic() {
-    let mut l = V::<i32>::from([1, 2, 3]);
+    let mut l = V::<i16>::from([1, 2, 3]);
     let _ = l.swap_remove(3);
 }
 
 #[test]
 fn from_slice() {
-    let l = V::<i32>::from([1, 2, 3].as_slice());
+    let l = V::<i16>::from([1, 2, 3].as_slice());
     assert_eq!(l.as_slice(), &[1, 2, 3]);
 }
 
 #[test]
 fn extend_from_slice() {
-    let mut l = V::<i32>::from([1, 2]);
+    let mut l = V::<i16>::from([1, 2]);
 
     l.extend_from_slice(&[3, 4]);
     assert_eq!(l.as_slice(), &[1, 2, 3, 4]);
@@ -494,19 +494,19 @@ fn inline_vec_empty() {
 
 #[test]
 fn inline_vec_list() {
-    let l: V<i32> = v![1, 2, 3];
+    let l: V<i16> = v![1, 2, 3];
     assert_eq!(l.as_slice(), &[1, 2, 3]);
 }
 
 #[test]
 fn inline_vec_list_trailing_comma() {
-    let l: V<i32> = v![1, 2, 3,];
+    let l: V<i16> = v![1, 2, 3,];
     assert_eq!(l.as_slice(), &[1, 2, 3]);
 }
 
 #[test]
 fn inline_vec_repeat() {
-    let l: V<i32> = v![7; 3];
+    let l: V<i16> = v![7; 3];
     assert_eq!(l.as_slice(), &[7, 7, 7]);
 }
 

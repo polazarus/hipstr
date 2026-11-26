@@ -1,6 +1,7 @@
 #[cfg(not(loom))]
 use core::sync::atomic::{AtomicUsize, Ordering, fence};
 
+#[cfg(not(loom))]
 use const_default::ConstDefault;
 #[cfg(loom)]
 use loom::sync::atomic::{AtomicUsize, Ordering, fence};
@@ -68,6 +69,14 @@ unsafe impl Counter for AtomicCount {
     }
 }
 
+impl super::InitPrefix for AtomicCount {
+    #[inline]
+    fn init() -> Self {
+        Self(AtomicUsize::new(0))
+    }
+}
+
+#[cfg(not(loom))]
 impl ConstDefault for AtomicCount {
     #[allow(clippy::declare_interior_mutable_const)]
     const DEFAULT: Self = Self(AtomicUsize::new(0));

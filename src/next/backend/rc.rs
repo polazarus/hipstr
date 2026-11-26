@@ -59,6 +59,13 @@ unsafe impl Counter for Count {
     }
 }
 
+impl super::InitPrefix for Count {
+    #[inline]
+    fn init() -> Self {
+        Self(Cell::new(0))
+    }
+}
+
 impl ConstDefault for Count {
     #[allow(clippy::declare_interior_mutable_const)]
     const DEFAULT: Self = Self(Cell::new(0));

@@ -10,5 +10,6 @@
 pub mod backend;
 pub mod common;
 pub mod inline;
+pub mod repr;
 pub mod thin;
 pub mod traits;
