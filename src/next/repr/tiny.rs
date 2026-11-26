@@ -74,6 +74,20 @@ impl<T: Copy + 'static, B: Backend> Tiny<T, B> {
         Self::from_inline(Inline::new())
     }
 
+    /// Copies `slice` inline, in a `const` context too.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `slice` is longer than the inline capacity.
+    #[inline]
+    pub const fn inline_copy(slice: &[T]) -> Self {
+        assert!(
+            slice.len() <= Inline::<T>::CAPACITY,
+            "too long to be inlined"
+        );
+        Self::from_inline(Inline::from_slice_copy(slice))
+    }
+
     #[inline]
     pub const fn is_inline(&self) -> bool {
         super::word_bits(&self.word) & 1 == 1

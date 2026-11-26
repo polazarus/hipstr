@@ -15,7 +15,8 @@ super::generic_aliases!(Utf8, HipStr, SmallStr, TinyStr, "string");
 
 impl_std_glue!(Utf8, str, String);
 impl_borrowed_ctors!(Utf8, str, |value| value.as_bytes());
-super::hip::impl_const_typed_accessors!(Utf8, str, |b| core::str::from_utf8_unchecked(b));
+super::hip::impl_const_typed_accessors!(Utf8, str, |b| core::str::from_utf8_unchecked(b), |v| v
+    .as_bytes());
 
 /// `const` string accessors and UTF-8 conversions, per representation.
 macro_rules! impl_const_str {

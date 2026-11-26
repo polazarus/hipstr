@@ -12,7 +12,7 @@ super::generic_aliases!(Bytes, HipByt, SmallByt, TinyByt, "byte string");
 
 impl_std_glue!(Bytes, [u8], Vec<u8>);
 impl_borrowed_ctors!(Bytes, [u8], |value| value);
-super::hip::impl_const_typed_accessors!(Bytes, [u8], |b| b);
+super::hip::impl_const_typed_accessors!(Bytes, [u8], |b| b, |v| v);
 
 /// `const` byte accessors, per representation.
 macro_rules! impl_const_bytes {

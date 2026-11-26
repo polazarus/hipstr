@@ -8,6 +8,10 @@
 #![allow(dead_code, unused_imports, unused_macros, unreachable_pub)]
 
 pub mod backend;
+#[cfg(feature = "borsh")]
+mod borsh;
+#[cfg(feature = "bstr")]
+mod bstr;
 pub mod bytes;
 pub mod common;
 pub mod enc;
@@ -18,9 +22,13 @@ pub mod inline;
 pub mod os_string;
 #[cfg(feature = "std")]
 pub mod path;
+pub mod pattern;
 pub mod repr;
+#[cfg(feature = "serde")]
+pub mod serde;
 pub mod slice;
 pub mod string;
+mod string_pattern;
 pub mod thin;
 pub mod traits;
 

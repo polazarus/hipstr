@@ -109,8 +109,14 @@ src/
      evaluates them all at compile time. Not const: `HipOsStr`/`HipPath`
      `as_borrowed`/`into_borrowed` (std's conversions are not `const`; `main` relied on
      transmutes of std-internal layouts, dropped here).
-   - *Step 3b:* str pattern methods (`trim*`, `split*`, `lines`, … returning shared
-     slices on `Hip*`), `inline`/`try_inline` const ctors, borsh/serde/bstr.
+   - *Step 3b (done):* str pattern methods (`trim*`, `split*`, `lines`, … returning
+     shared slices on `HipStr`); `const` `inline`/`try_inline` for str and bytes, every
+     size; serde (every family and size, `borrow_deserialize` copies for `Tiny*`),
+     borsh, bstr.
+     - Fixed vs `main`: `HipStr: Borrow<BStr>` broke `Borrow`'s contract (`str` and
+       `BStr` hash differently) — strings now only get `AsRef<BStr>` + comparisons.
+     - Fixed vs `main`: borsh decoding pre-allocated the untrusted length prefix (up to
+       4 GiB); it now goes through borsh's `Vec<u8>` decoder and adopts its buffer.
    - *Step 3c:* swap — remove the old modules, move `src/next` to the crate root,
      port the old test suites and doc examples.
 4. **Std compatibility**

@@ -133,14 +133,15 @@ impl_const_accessors!(['a] Wide<'a, u8, B>, ['a] Small<'a, u8, B>, [] Tiny<u8, B
 /// Implements the `const` typed accessors of an encoding whose byte
 /// conversion is `const` (bytes and UTF-8), for every representation.
 ///
-/// `$from` converts `&[u8]` to `&$slice` (unsafe, called on valid bytes).
+/// `$from` converts `&[u8]` to `&$slice` (unsafe, called on valid bytes);
+/// `$to` converts `&$slice` to `&[u8]`.
 macro_rules! impl_const_typed_accessors {
-    ($enc:ty, $slice:ty, |$b:ident| $from:expr) => {
-        $crate::next::hip::impl_const_typed_accessors!(@one $enc, $slice, |$b| $from, ['a] $crate::next::repr::Wide<'a, u8, B>, 'a);
-        $crate::next::hip::impl_const_typed_accessors!(@one $enc, $slice, |$b| $from, ['a] $crate::next::repr::Small<'a, u8, B>, 'a);
-        $crate::next::hip::impl_const_typed_accessors!(@one $enc, $slice, |$b| $from, ['a] $crate::next::repr::Tiny<u8, B>, 'a);
+    ($enc:ty, $slice:ty, |$b:ident| $from:expr, |$v:ident| $to:expr) => {
+        $crate::next::hip::impl_const_typed_accessors!(@one $enc, $slice, |$b| $from, |$v| $to, ['a] $crate::next::repr::Wide<'a, u8, B>, 'a);
+        $crate::next::hip::impl_const_typed_accessors!(@one $enc, $slice, |$b| $from, |$v| $to, ['a] $crate::next::repr::Small<'a, u8, B>, 'a);
+        $crate::next::hip::impl_const_typed_accessors!(@one $enc, $slice, |$b| $from, |$v| $to, ['a] $crate::next::repr::Tiny<u8, B>, 'a);
     };
-    (@one $enc:ty, $slice:ty, |$b:ident| $from:expr, [$($lt:lifetime)?] $repr:ty, $blt:lifetime) => {
+    (@one $enc:ty, $slice:ty, |$b:ident| $from:expr, |$v:ident| $to:expr, [$($lt:lifetime)?] $repr:ty, $blt:lifetime) => {
         // the conversion is safe for bytes (identity), unsafe otherwise
         #[allow(unused_unsafe)]
         impl<$($lt,)? B: $crate::next::backend::Backend> $crate::next::hip::Hip<$enc, $repr> {
@@ -176,6 +177,32 @@ macro_rules! impl_const_typed_accessors {
                         Ok(unsafe { $from })
                     }
                     None => Err(self),
+                }
+            }
+
+            /// Copies the value inline, in a `const` context too.
+            ///
+            /// # Panics
+            ///
+            /// Panics if the value is longer than the inline capacity.
+            #[inline]
+            #[must_use]
+            pub const fn inline($v: &$slice) -> Self {
+                Self::try_inline($v).expect("value too long to be inlined")
+            }
+
+            /// Copies the value inline, in a `const` context too; `None` if
+            /// it is longer than the inline capacity.
+            #[inline]
+            #[must_use]
+            pub const fn try_inline($v: &$slice) -> Option<Self> {
+                let bytes: &[u8] = $to;
+                // no `match` on an `Option` holding a value with drop glue:
+                // const evaluation cannot prove the `None` arm drops nothing
+                if bytes.len() <= <$repr as $crate::next::repr::Repr<'_, u8>>::INLINE_CAPACITY {
+                    Some(Self::from_repr_const(<$repr>::inline_copy(bytes)))
+                } else {
+                    None
                 }
             }
 

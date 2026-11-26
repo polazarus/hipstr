@@ -322,6 +322,25 @@ mod const_accessors {
     borrowed_str!(HipStr<'static>, HipByt<'static>);
     borrowed_str!(SmallStr<'static>, SmallByt<'static>);
 
+    /// `inline` / `try_inline` for every string and byte alias.
+    macro_rules! inline_ctors {
+        ($($str:ty, $byt:ty);* $(;)?) => {$(
+            const _: () = {
+                let s = <$str>::inline("abc");
+                assert!(s.is_inline() && s.as_str().len() == 3);
+                forget(s);
+                let b = <$byt>::inline(b"abc");
+                assert!(b.is_inline() && b.as_slice().len() == 3);
+                forget(b);
+                let r = <$str>::try_inline("longer than any inline capacity, really");
+                assert!(r.is_none());
+                forget(r);
+            };
+        )*};
+    }
+
+    inline_ctors!(HipStr<'static>, HipByt<'static>; SmallStr<'static>, SmallByt<'static>; TinyStr, TinyByt);
+
     // `Tiny*` types cannot borrow: check the typed accessors on empty values.
     const _: () = {
         let s = TinyStr::new();
@@ -338,4 +357,51 @@ mod const_accessors {
         assert!(r.is_ok());
         forget(r);
     };
+}
+
+#[test]
+fn str_patterns_share_storage() {
+    let text = "  first line, with words\nsecond line: more words here  ";
+    let s = HipStr::from(text);
+    let inside = |h: &HipStr<'_>| {
+        let range = s.as_bytes().as_ptr_range();
+        range.contains(&h.as_ptr()) || h.is_inline()
+    };
+
+    let trimmed = s.trim();
+    assert_eq!(trimmed, text.trim());
+    assert!(inside(&trimmed) && !trimmed.is_inline());
+
+    let lines: Vec<_> = s.lines().collect();
+    assert_eq!(lines, text.lines().collect::<Vec<_>>());
+    assert!(lines.iter().all(inside));
+
+    let words: Vec<_> = s.split_whitespace().collect();
+    assert_eq!(words, text.split_whitespace().collect::<Vec<_>>());
+    let rev: Vec<_> = s.rsplit(' ').collect();
+    assert_eq!(rev, text.rsplit(' ').collect::<Vec<_>>());
+    let n: Vec<_> = s.splitn(2, ',').collect();
+    assert_eq!(n, text.splitn(2, ',').collect::<Vec<_>>());
+
+    let (a, b) = s.split_once('\n').unwrap();
+    assert_eq!((a.as_str(), b.as_str()), text.split_once('\n').unwrap());
+    assert!(inside(&b) && !b.is_inline());
+
+    let idx: Vec<_> = s
+        .match_indices("words")
+        .map(|(i, m)| (i, m.len()))
+        .collect();
+    assert_eq!(idx, alloc::vec![(19, 5), (43, 5)]);
+    assert_eq!(
+        s.trim_matches(' ').strip_prefix("first").unwrap().len(),
+        text.trim().len() - 5
+    );
+    assert_eq!(s.trim_end_matches(char::is_whitespace), text.trim_end());
+    assert!(s.strip_suffix("nope").is_none());
+
+    // borrowed input: results stay borrowed, with the original lifetime
+    let borrowed = HipStr::borrowed(text);
+    let last = borrowed.split('\n').next_back().unwrap();
+    assert!(last.is_borrowed());
+    assert_eq!(last.into_borrowed().unwrap().as_ptr(), text[25..].as_ptr());
 }
