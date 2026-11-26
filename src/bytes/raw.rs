@@ -527,7 +527,7 @@ impl<'borrow, B: Backend> HipByt<'borrow, B> {
     #[inline(never)]
     pub(crate) fn inherent_eq<B2: Backend>(&self, other: &HipByt<B2>) -> bool {
         // use memcmp directly to squeeze one more comparison
-        extern "C" {
+        unsafe extern "C" {
             fn memcmp(a: *const u8, b: *const u8, size: usize) -> core::ffi::c_int;
         }
 

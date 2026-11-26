@@ -2,9 +2,9 @@ name: basic
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "ng"]
   pull_request:
-    branches: ["main"]
+    branches: ["main", "ng"]
 
 env:
   CARGO_TERM_COLOR: always

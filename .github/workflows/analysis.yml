@@ -2,9 +2,9 @@ name: analysis
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "ng"]
   pull_request:
-    branches: ["main"]
+    branches: ["main", "ng"]
   schedule:
     - cron: "34 5 * * 1"
 

@@ -8,9 +8,9 @@ repository = "https://github.com/polazarus/hipstr"
 keywords = ["string", "refcount", "inline", "arc_str", "cow"]
 categories = ["memory-management", "data-structures"]
 license = "MIT OR Apache-2.0"
-edition = "2021"
+edition = "2024"
 readme = "README.md"
-rust-version = "1.85.0"
+rust-version = "1.100.0"
 
 [package.metadata.docs.rs]
 all-features = true

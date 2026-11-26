@@ -137,7 +137,7 @@ impl<B: Backend> Allocated<B> {
     /// This function abuses the [`Copy`]-ness of [`Allocated`] to get a copy
     /// (and not a clone) of the [`Smart`] reference wrapped in [`ManuallyDrop`]
     /// to ensure it's not dropped.
-    fn owner(&self) -> impl Deref<Target = Smart<Vec<u8>, B>> {
+    fn owner(&self) -> impl Deref<Target = Smart<Vec<u8>, B>> + use<B> {
         ManuallyDrop::new(self.into_owner())
     }
 
@@ -150,7 +150,7 @@ impl<B: Backend> Allocated<B> {
     /// # Safety
     ///
     /// The owner must not be shared, cf. [`Self::is_unique`].
-    unsafe fn owner_mut(&mut self) -> impl DerefMut<Target = Smart<Vec<u8>, B>> {
+    unsafe fn owner_mut(&mut self) -> impl DerefMut<Target = Smart<Vec<u8>, B>> + use<B> {
         debug_assert!(self.is_unique());
         ManuallyDrop::new(self.into_owner())
     }
