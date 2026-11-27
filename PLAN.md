@@ -144,7 +144,10 @@ src/
      `CString`, `OsString`, `PathBuf` (+ `[u8]`, `str`, `CStr`, `OsStr`, `Path`; `BString`
      as `Vec<u8>`) with its status → committed `compat/LEDGER.md`. Deliberate gaps (raw
      parts, allocators, `as_mut_vec`, …) carry a reason in `compat/ledger.toml`. CI job
-     `std-parity` fails on a gap or a stale ledger.
+     `std-parity` fails on a gap or a stale ledger. `compat/UNSTABLE.md` (same script, not
+     checked) keeps the std methods not stable at the MSRV — unstable, or stabilized
+     later like `Vec::try_remove` / `String::into_chars` (1.101) — as candidates, marked
+     done / via deref / candidate.
    - Methods: Vec API for byte strings (`vec_ops.rs`, shared by `HipByt` and `HipBStr`
      through `enc::Unconstrained`), String API (`string_ops.rs`), CString/OsString/PathBuf
      methods; `reserve*`/`try_reserve*` on every type (std's `TryReserveError`). Written
