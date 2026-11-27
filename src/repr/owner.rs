@@ -92,6 +92,10 @@ impl<B: Backend> Owner<B> {
     }
 
     /// Allocates a thin owner with room for `capacity` elements.
+    ///
+    /// # Errors
+    ///
+    /// On capacity overflow or allocation failure.
     pub fn try_with_capacity(capacity: usize) -> Result<Self, TryReserveError> {
         debug_assert!(capacity != 0);
         ThinBase::<B>::try_with_capacity(capacity).map(Self::from_thin)
@@ -230,24 +234,77 @@ impl<B: Backend> Owner<B> {
         }
     }
 
-    /// Converts into a vector, in O(1) for a unique vec owner, otherwise by
-    /// copying the owned elements.
-    pub fn into_vec(self) -> Vec<u8> {
+    /// Converts the first `len` elements into a vector: in O(1) for a unique
+    /// vec owner (truncated), otherwise by copying only those.
+    pub fn into_vec_prefix(self, len: usize) -> Vec<u8> {
+        debug_assert!(len <= self.len());
         if self.kind() == HeapKind::Vec && self.is_unique() {
             // SAFETY: unique vec owner, the header was boxed by `Header::from_vec`
             let header = unsafe { Box::from_raw(self.header_ptr().as_ptr()) };
             // SAFETY: rebuilds the adopted vector with its current length
-            unsafe { Vec::from_raw_parts(header.ptr.unwrap().as_ptr(), header.len, header.cap) }
+            let mut vec = unsafe {
+                Vec::from_raw_parts(header.ptr.unwrap().as_ptr(), header.len, header.cap)
+            };
+            vec.truncate(len);
+            vec
         } else {
-            let vec = self.as_slice().to_vec();
+            let vec = self.as_slice()[..len].to_vec();
             // SAFETY: the handle is consumed
             unsafe { self.release() };
             vec
         }
     }
 
+    /// Shrinks the buffer to about `target` elements (`len <= target`).
+    ///
+    /// # Errors
+    ///
+    /// If the allocator fails (thin buffers); the buffer is then unchanged.
+    ///
+    /// # Panics
+    ///
+    /// Never: a vec header always has a pointer.
+    ///
+    /// # Safety
+    ///
+    /// The owner must be unique. The handle may move: the caller must store
+    /// the updated `self` back.
+    pub unsafe fn try_shrink(&mut self, target: usize) -> Result<(), TryReserveError> {
+        debug_assert!(self.len() <= target);
+        match self.kind() {
+            HeapKind::Thin => {
+                // SAFETY: same representation, unique access
+                let thin = unsafe { &mut *core::ptr::from_mut(self).cast::<ThinBase<B>>() };
+                // SAFETY: `target >= len`
+                unsafe { thin.try_realloc(target) }
+            }
+            HeapKind::Vec => {
+                let mut header = self.header_ptr();
+                // SAFETY: unique access to a vec header
+                let header = unsafe { header.as_mut() };
+                // SAFETY: rebuilds the adopted vector temporarily
+                let mut vec = ManuallyDrop::new(unsafe {
+                    Vec::from_raw_parts(header.ptr.unwrap().as_ptr(), header.len, header.cap)
+                });
+                vec.shrink_to(target);
+                header.ptr = NonNull::new(vec.as_mut_ptr());
+                header.cap = vec.capacity();
+                Ok(())
+            }
+        }
+    }
+
     /// Ensures room for `required` elements in total; `exact` asks for no
     /// more than that, otherwise the capacity grows geometrically.
+    ///
+    /// # Errors
+    ///
+    /// On capacity overflow or allocation failure; the buffer is then
+    /// unchanged.
+    ///
+    /// # Panics
+    ///
+    /// Never: a vec header always has a pointer.
     ///
     /// # Safety
     ///
@@ -259,7 +316,7 @@ impl<B: Backend> Owner<B> {
         match self.kind() {
             HeapKind::Thin => {
                 // SAFETY: same representation, unique access
-                let thin = unsafe { transmute::<&mut Self, &mut ThinBase<B>>(self) };
+                let thin = unsafe { &mut *core::ptr::from_mut(self).cast::<ThinBase<B>>() };
                 if exact {
                     // SAFETY: `required > capacity >= len`
                     unsafe { thin.try_realloc(required) }

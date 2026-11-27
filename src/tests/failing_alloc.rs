@@ -298,6 +298,28 @@ mod tests {
         }
 
         #[test]
+        fn shrink_fails() {
+            // kept as is when the allocator fails
+            let mut b = HipByt::with_capacity(1000);
+            b.extend_from_slice(&[7u8; 600]);
+            let cap = b.capacity();
+            let ((), consumed) = failing(|| b.shrink_to_fit());
+            assert!(consumed);
+            assert_eq!(b.capacity(), cap);
+            assert_eq!(b, &[7u8; 600][..]);
+            let mut b = SmallByt::with_capacity(1000);
+            b.extend_from_slice(&[7u8; 600]);
+            let ((), consumed) = failing(|| b.shrink_to_fit());
+            assert!(consumed);
+            assert_eq!(b, &[7u8; 600][..]);
+            let mut b = TinyByt::with_capacity(1000);
+            b.extend_from_slice(&[7u8; 600]);
+            let ((), consumed) = failing(|| b.shrink_to_fit());
+            assert!(consumed);
+            assert_eq!(b, &[7u8; 600][..]);
+        }
+
+        #[test]
         fn inline_to_heap() {
             let mut b = SmallByt::from(&b"ab"[..]);
             let (r, consumed) = failing(|| b.try_reserve(100));

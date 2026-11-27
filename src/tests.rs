@@ -7,6 +7,9 @@ use core::fmt::Write;
 
 use super::*;
 
+// not under Miri on Windows: a global allocator makes Miri run std's
+// Windows `System` allocator, whose header read breaks Stacked Borrows
+#[cfg(not(all(miri, windows)))]
 pub mod failing_alloc;
 
 const LONG: &str = "a string that is definitely longer than any inline capacity";
@@ -1322,5 +1325,192 @@ mod review {
         b.shrink_to_fit();
         b.reserve(1);
         assert!(b.capacity() >= 2000);
+    }
+}
+
+/// The performance changes after the review.
+mod perf {
+    use alloc::format;
+
+    use super::*;
+
+    const LONG: &[u8] = b"a1b2c3d4e5f6g7h8i9j0 and more than the inline capacity";
+
+    #[test]
+    fn extract_if_unshares_once_and_lazily() {
+        let shared = HipByt::from(LONG);
+        let mut b = shared.clone();
+        {
+            let it = b.extract_if(.., |x| x.is_ascii_digit());
+            drop(it);
+        }
+        assert!(
+            core::ptr::eq(b.as_ptr(), shared.as_ptr()),
+            "not iterated: still shared"
+        );
+        let mut it = b.extract_if(.., |x| x.is_ascii_digit());
+        assert_eq!(it.next(), Some(b'1'));
+        // reads through the value while the pointer is cached
+        assert!(format!("{it:?}").contains("remaining"));
+        assert_eq!(it.next(), Some(b'2'));
+        let rest: Vec<u8> = it.collect();
+        assert_eq!(rest, b"34567890");
+        assert_eq!(b, &b"abcdefghij and more than the inline capacity"[..]);
+        assert_eq!(shared, LONG, "the other handle is untouched");
+        // mutation through the filter, a partial run, then drop
+        let mut b = HipByt::from(LONG);
+        let mut it = b.extract_if(..10, |x| {
+            x.make_ascii_uppercase();
+            *x == b'2'
+        });
+        assert_eq!(it.next(), Some(b'2'));
+        drop(it);
+        assert_eq!(&b[..6], b"A1Bc3d");
+    }
+
+    #[test]
+    fn extract_if_inline_moved_iterator() {
+        // inline bytes live in the value: moving the iterator (retagging its
+        // borrow) between calls must not invalidate anything
+        let mut b = HipByt::from(b"a1b2c3");
+        let mut it = b.extract_if(.., |x| x.is_ascii_digit());
+        assert_eq!(it.next(), Some(b'1'));
+        let moved = it;
+        let rest: Vec<u8> = moved.collect();
+        assert_eq!(rest, b"23");
+        assert_eq!(b, b"abc");
+        let mut s = HipStr::from("aéb");
+        s.retain(|c| c != 'é');
+        assert_eq!(s, "ab");
+    }
+
+    #[test]
+    fn string_retain_unshares_once() {
+        let shared = HipStr::from("héllo wörld, longer than the inline capacity");
+        let mut s = shared.clone();
+        s.retain(|c| c.is_ascii());
+        assert_eq!(s, "hllo wrld, longer than the inline capacity");
+        assert_eq!(shared, "héllo wörld, longer than the inline capacity");
+    }
+
+    #[allow(clippy::cast_possible_truncation, reason = "wrapping pattern")]
+    fn bytes(n: usize) -> Vec<u8> {
+        (0..n).map(|i| i as u8).collect()
+    }
+
+    #[test]
+    fn into_vec_copies_only_the_view() {
+        // shared, shortened view: a copy of the view
+        let big = SmallByt::from(bytes(1000));
+        let mut s = big.clone();
+        s.truncate(100);
+        let v = s.into_vec();
+        assert_eq!(v, bytes(100));
+        assert_eq!(v.capacity(), 100, "only the view copied");
+        // unique adopted vector: O(1), truncated
+        let mut vec = bytes(1000);
+        vec.reserve(24);
+        let ptr = vec.as_ptr();
+        let mut s = SmallByt::from(vec);
+        s.truncate(100);
+        let v = s.into_vec();
+        assert_eq!((v.as_ptr(), v.len()), (ptr, 100));
+        // unique thin buffer (wide, tiny): a copy of the elements only
+        let mut w = HipByt::from(&bytes(1000)[..]);
+        w.truncate(100);
+        assert_eq!(w.into_vec().capacity(), 100);
+        let t = TinyByt::from(&bytes(1000)[..]);
+        assert_eq!(t.into_vec(), bytes(1000));
+        let t = TinyByt::from(bytes(1000));
+        assert_eq!(t.into_vec(), bytes(1000));
+    }
+
+    #[test]
+    fn split_off_shares_wide_buffers() {
+        let mut b = HipByt::from(bytes(1000));
+        let base = b.as_ptr();
+        let tail = b.split_off(10);
+        assert_eq!(tail.as_ptr(), base.wrapping_add(10), "O(1), shared");
+        assert_eq!(tail, &bytes(1000)[10..]);
+        assert_eq!(b, &bytes(10)[..]);
+        let mut s = HipStr::from("é".repeat(100));
+        let tail = s.split_off(100);
+        assert_eq!(tail, "é".repeat(50));
+        assert_eq!(s, "é".repeat(50));
+        // the unique backend cannot share: copies
+        let mut u =
+            crate::hip::Hip::<crate::enc::Bytes, crate::repr::Wide<'_, Unique>>::from(bytes(1000));
+        let tail = u.split_off(500);
+        assert_eq!(tail, &bytes(1000)[500..]);
+        // small and tiny: copies
+        let mut sm = SmallByt::from(bytes(100));
+        assert_eq!(sm.split_off(40), &bytes(100)[40..]);
+        assert_eq!(sm, &bytes(40)[..]);
+    }
+
+    #[test]
+    fn shrink_unique_in_place() {
+        // thin buffer
+        let mut b = HipByt::with_capacity(1000);
+        b.extend_from_slice(&bytes(600));
+        b.shrink_to_fit();
+        assert!(b.capacity() < 600 + size_of::<usize>());
+        assert_eq!(b, &bytes(600)[..]);
+        // adopted vector
+        let mut v = bytes(600);
+        v.reserve_exact(400);
+        let mut b = HipByt::from(v);
+        b.shrink_to(700);
+        assert!((700..1000).contains(&b.capacity()), "{}", b.capacity());
+        b.shrink_to_fit();
+        assert_eq!(b.capacity(), 600);
+        // narrowed wide slice: moved to the front, then shrunk
+        let whole = HipByt::from(bytes(1000));
+        let mut w = whole.slice(100..700);
+        drop(whole);
+        w.shrink_to_fit();
+        assert_eq!(w.capacity(), 600);
+        assert_eq!(w, &bytes(700)[100..]);
+        // small view, tiny
+        let mut sm = SmallByt::from(bytes(1000));
+        sm.truncate(600);
+        sm.shrink_to_fit();
+        assert!(sm.capacity() < 600 + size_of::<usize>());
+        let mut t = TinyByt::with_capacity(1000);
+        t.extend_from_slice(&bytes(600));
+        t.shrink_to_fit();
+        assert!(t.capacity() < 600 + size_of::<usize>());
+        assert_eq!(t, &bytes(600)[..]);
+    }
+
+    #[test]
+    fn shrink_shared() {
+        // the whole buffer: left alone
+        for mut b in [HipByt::from(bytes(1000)), HipByt::from(&bytes(1000)[..])] {
+            b.reserve(0);
+            let other = b.clone();
+            b.shrink_to_fit();
+            assert!(core::ptr::eq(b.as_ptr(), other.as_ptr()), "still shared");
+        }
+        let t = TinyByt::from(bytes(1000));
+        let mut t2 = t.clone();
+        t2.shrink_to_fit();
+        assert!(core::ptr::eq(t.as_ptr(), t2.as_ptr()));
+        // part of it: copied, so that the rest may be freed
+        let whole = HipByt::from(bytes(1000));
+        let mut part = whole.slice(100..700);
+        part.shrink_to_fit();
+        assert!(!core::ptr::eq(
+            part.as_ptr(),
+            whole.as_ptr().wrapping_add(100)
+        ));
+        assert_eq!(part.capacity(), 600);
+        assert_eq!(part, &bytes(700)[100..]);
+        let big = SmallByt::from(bytes(1000));
+        let mut sm = big.clone();
+        sm.truncate(600);
+        sm.shrink_to_fit();
+        assert!(!core::ptr::eq(sm.as_ptr(), big.as_ptr()));
+        assert_eq!(sm, &bytes(600)[..]);
     }
 }

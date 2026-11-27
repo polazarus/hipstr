@@ -55,12 +55,25 @@ representation), with the old names kept as aliases. See
   `cstr`, `enc`, `hip`, `repr`
 - MSRV 1.100, edition 2024; no more exposed provenance (Miri strict
   provenance clean)
+- `shrink_to`/`shrink_to_fit` shrink uniquely owned buffers in place
+  (`realloc`) and leave shared ones alone, unless the value shows only part
+  of the buffer (then copied, so that the rest can be freed)
+- `split_off` on 3-word values shares the buffer (O(1)) instead of copying
+  the tail
+- `into_vec` (and the other `into_*`) copy only the visible bytes of a
+  shortened or shared value
+- `extract_if` and `String`-style `retain` unshare the value once, not per
+  element
 
 ### Fixed
 
 - `HipStr: Borrow<BStr>` and `HipPath: Borrow<OsStr>` violated `Borrow`'s
   contract (different hashes): removed
 - borsh deserialization pre-allocated the untrusted length prefix
+- `HipOsStr::push` (and `Extend`/`FromIterator` of OS strings) on Windows
+  could build ill-formed WTF-8 from a surrogate pair split across the two
+  strings: the pair is now joined, like `OsString::push`
+- `reserve_exact`/`try_reserve_exact` grew geometrically
 
 ## [0.8.0] - 2025-02-10
 

@@ -221,9 +221,10 @@ impl<'a, R: Repr<'a>> Hip<Utf8, R> {
             len,
             borrow: PhantomData,
         };
+        // unshared once, before the loop (`f` cannot reach the value)
+        // SAFETY: the guard restores the invariant, even on panic
+        let bytes = unsafe { g.hip.bytes_mut() };
         while g.read < len {
-            // SAFETY: the guard restores the invariant, even on panic
-            let bytes = unsafe { g.hip.bytes_mut() };
             // SAFETY: `read` is at a char boundary of the original string
             let ch = unsafe { core::str::from_utf8_unchecked(&bytes[g.read..]) }
                 .chars()
@@ -258,8 +259,10 @@ impl<'a, R: Repr<'a>> Hip<Utf8, R> {
     #[track_caller]
     #[must_use = "use `.truncate()` if you don't need the other half"]
     pub fn split_off(&mut self, at: usize) -> Self {
-        let range = self.char_range(at..);
-        let tail = Self::from(&self.as_inner()[range]);
+        // checks the boundary
+        let _ = self.char_range(at..);
+        // SAFETY: a suffix from a char boundary is valid UTF-8
+        let tail = unsafe { Self::from_repr(self.repr().split_tail(at)) };
         // SAFETY: checked boundary
         unsafe { self.truncate_bytes(at) };
         tail

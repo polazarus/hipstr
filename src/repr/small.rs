@@ -396,9 +396,7 @@ unsafe impl<'a, B: Backend> Repr<'a> for Small<'a, B> {
             let len = self.len();
             let this = core::mem::ManuallyDrop::new(self);
             // the view may be shorter than the owned buffer
-            let mut vec = this.heap().w0.into_vec();
-            vec.truncate(len);
-            return vec;
+            return this.heap().w0.into_vec_prefix(len);
         }
         self.as_slice().to_vec()
     }
@@ -432,6 +430,24 @@ unsafe impl<'a, B: Backend> Repr<'a> for Small<'a, B> {
             _ => *self = Self::try_from_slice(self.as_slice(), required)?,
         }
         Ok(())
+    }
+
+    fn try_shrink_in_place(&mut self, target: usize) -> Result<bool, TryReserveError> {
+        if !(self.tag() == Tag::Heap && self.heap().w0.is_unique()) {
+            return Ok(false);
+        }
+        let len = self.len();
+        let heap = self.heap_mut();
+        // drop the owned tail past the view
+        // SAFETY: unique owner, the first `len` elements are initialized
+        unsafe { heap.w0.set_len(len) };
+        // SAFETY: unique owner, the updated handle is stored back
+        unsafe { heap.w0.try_shrink(target)? };
+        Ok(true)
+    }
+
+    fn is_partial_view(&self) -> bool {
+        self.tag() == Tag::Heap && self.len() < self.heap().w0.len()
     }
 
     fn shrink_view(&mut self, len: usize) -> bool {

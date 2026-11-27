@@ -539,3 +539,33 @@ fn test_shrink_to() {
     h.shrink_to(0);
     assert_eq!(h.capacity(), 3);
 }
+
+/// Like `OsString::push`: a surrogate pair split across the junction is
+/// joined (WTF-8).
+#[cfg(windows)]
+#[test]
+fn push_joins_split_surrogates() {
+    use alloc::vec::Vec;
+    use std::ffi::OsString;
+    use std::os::windows::ffi::{OsStrExt, OsStringExt};
+
+    let hi = OsString::from_wide(&[u16::from(b'a'), 0xD83D]);
+    let lo = OsString::from_wide(&[0xDE00, u16::from(b'b')]);
+    let mut expected = hi.clone();
+    expected.push(&lo);
+    for mut h in [HipOsStr::from(hi.clone()), HipOsStr::from(hi.as_os_str())] {
+        h.push(&lo);
+        assert_eq!(h.as_os_str(), expected.as_os_str());
+        assert_eq!(h.as_encoded_bytes(), expected.as_encoded_bytes());
+        assert_eq!(
+            h.encode_wide().collect::<Vec<_>>(),
+            [u16::from(b'a'), 0xD83D, 0xDE00, u16::from(b'b')]
+        );
+    }
+    // lone surrogates stay as they are
+    let mut h = HipOsStr::from(OsString::from_wide(&[0xD83D]));
+    h.push(OsStr::new("x"));
+    let mut e = OsString::from_wide(&[0xD83D]);
+    e.push("x");
+    assert_eq!(h.as_os_str(), e.as_os_str());
+}

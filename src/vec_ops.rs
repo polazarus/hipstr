@@ -433,7 +433,7 @@ impl<'a, E: Unconstrained, R: Repr<'a>> Hip<E, R> {
             "`at` split index (is {at}) should be <= len (is {len})"
         );
         // SAFETY: no invariant
-        let tail = unsafe { Self::from_repr(R::from_slice(&self.bytes()[at..])) };
+        let tail = unsafe { Self::from_repr(self.repr().split_tail(at)) };
         // SAFETY: no invariant
         unsafe { self.truncate_bytes(at) };
         tail
@@ -544,6 +544,7 @@ impl<'a, E: Unconstrained, R: Repr<'a>> Hip<E, R> {
         let len = self.bytes().len();
         let range = range_or_panic(range, len);
         ExtractIf {
+            unshared: false,
             read: range.start,
             write: range.start,
             end: range.end,
@@ -695,6 +696,11 @@ impl<'a, E: Unconstrained, R: Repr<'a>, I: Iterator<Item = u8>> Drop for Splice<
 /// Iterator returned by [`Hip::extract_if`] on byte strings.
 pub struct ExtractIf<'h, 'a, E: Unconstrained, R: Repr<'a>, F: FnMut(&mut u8) -> bool> {
     hip: &'h mut Hip<E, R>,
+    /// Whether the value was made unique (on the first `next`: once, and
+    /// only if iterated). The pointer is not cached: inline bytes live in the
+    /// value, and moving the iterator retags `hip`, invalidating pointers
+    /// derived before.
+    unshared: bool,
     read: usize,
     write: usize,
     end: usize,
@@ -719,16 +725,28 @@ impl<'a, E: Unconstrained, R: Repr<'a>, F: FnMut(&mut u8) -> bool> Iterator
     type Item = u8;
 
     fn next(&mut self) -> Option<u8> {
+        if self.read == self.end {
+            return None;
+        }
+        if !self.unshared {
+            self.hip.raw_mut();
+            self.unshared = true;
+        }
+        // SAFETY: unique (see `unshared`), no invariant on bytes; derived
+        // afresh, valid for this call (`filter` cannot reach the value)
+        let bytes = unsafe { self.hip.repr_mut().as_mut_ptr() };
         while self.read < self.end {
-            let bytes = self.hip.raw_mut();
-            let mut b = bytes[self.read];
-            let take = (self.filter)(&mut b);
-            bytes[self.read] = b;
-            self.read += 1;
-            if take {
-                return Some(b);
+            // SAFETY: `write <= read < end <= len` bytes, unique
+            unsafe {
+                let mut b = bytes.add(self.read).read();
+                let take = (self.filter)(&mut b);
+                bytes.add(self.read).write(b);
+                self.read += 1;
+                if take {
+                    return Some(b);
+                }
+                bytes.add(self.write).write(b);
             }
-            bytes[self.write] = b;
             self.write += 1;
         }
         None

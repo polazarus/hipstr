@@ -149,6 +149,27 @@ pub unsafe trait Repr<'a>: Clone + Sized {
     /// can (borrowed or heap views). Returns `false` otherwise.
     fn shrink_view(&mut self, len: usize) -> bool;
 
+    /// Shrinks the storage of a uniquely owned heap value to about `target`
+    /// elements (`len <= target`), in place (`realloc`). Returns `Ok(false)`,
+    /// doing nothing, if the value is not a unique heap value.
+    ///
+    /// # Errors
+    ///
+    /// If the allocator fails; the value is then unchanged.
+    fn try_shrink_in_place(&mut self, target: usize) -> Result<bool, TryReserveError>;
+
+    /// Whether a heap value shows only part of its buffer (so that a copy
+    /// could let the rest be freed).
+    fn is_partial_view(&self) -> bool;
+
+    /// The elements from `at` on (`at <= len`), as a new value: a copy by
+    /// default, an O(1) shared slice for representations that can.
+    #[inline]
+    #[must_use]
+    fn split_tail(&self, at: usize) -> Self {
+        Self::from_slice(&self.as_slice()[at..])
+    }
+
     /// Raw pointer to the owned storage.
     ///
     /// # Safety

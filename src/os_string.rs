@@ -16,6 +16,76 @@ pub use crate::hip::RefMut;
 #[cfg(test)]
 mod tests;
 
+/// WTF-8 (the encoding of Windows OS strings) helpers; compiled for tests on
+/// every platform.
+#[cfg(any(windows, test))]
+mod wtf8 {
+    /// The surrogate encoded by the 3 bytes `b` (`ED A0..BF 80..BF`), if any.
+    fn surrogate(b: &[u8; 3]) -> Option<u32> {
+        match *b {
+            [0xED, b1 @ 0xA0..=0xBF, b2 @ 0x80..=0xBF] => {
+                Some(0xD000 | u32::from(b1 & 0x3F) << 6 | u32::from(b2 & 0x3F))
+            }
+            _ => None,
+        }
+    }
+
+    /// If `head` ends with a lone high surrogate and `tail` starts with a
+    /// lone low one, the 4-byte UTF-8 encoding of the code point they form
+    /// (to replace those 6 bytes).
+    #[allow(
+        clippy::cast_possible_truncation,
+        reason = "each value is masked to fit its byte (cp < 0x110000)"
+    )]
+    pub fn join_surrogates(head: &[u8], tail: &[u8]) -> Option<[u8; 4]> {
+        let hi = surrogate(head.last_chunk()?)?;
+        let lo = surrogate(tail.first_chunk()?)?;
+        if !(0xD800..0xDC00).contains(&hi) || !(0xDC00..0xE000).contains(&lo) {
+            return None;
+        }
+        let cp = 0x10000 + ((hi - 0xD800) << 10) + (lo - 0xDC00);
+        Some([
+            0xF0 | (cp >> 18) as u8,
+            0x80 | (cp >> 12 & 0x3F) as u8,
+            0x80 | (cp >> 6 & 0x3F) as u8,
+            0x80 | (cp & 0x3F) as u8,
+        ])
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        // U+1F600 = D83D DE00
+        const HI: [u8; 3] = [0xED, 0xA0, 0xBD];
+        const LO: [u8; 3] = [0xED, 0xB8, 0x80];
+
+        #[test]
+        fn joins_a_split_pair() {
+            let joined =
+                join_surrogates(&[b'a', HI[0], HI[1], HI[2]], &[LO[0], LO[1], LO[2], b'b']);
+            assert_eq!(joined, Some(*"\u{1F600}".as_bytes().first_chunk().unwrap()));
+        }
+
+        #[test]
+        fn leaves_the_rest() {
+            assert_eq!(join_surrogates(&HI, b"x"), None, "lone high");
+            assert_eq!(join_surrogates(b"x", &LO), None, "lone low");
+            assert_eq!(join_surrogates(&LO, &HI), None, "reversed");
+            assert_eq!(join_surrogates(&HI, &HI), None, "two highs");
+            assert_eq!(join_surrogates(&LO, &LO), None, "two lows");
+            // U+D7FF (ED 9F BF) is not a surrogate
+            assert_eq!(join_surrogates(&[0xED, 0x9F, 0xBF], &LO), None);
+            assert_eq!(join_surrogates(&HI, &[0xED, 0xB8]), None, "short tail");
+            assert_eq!(join_surrogates(&HI, b"xyz"), None, "not a surrogate");
+            assert_eq!(join_surrogates(&[0xA0, 0xBD], &LO), None, "short head");
+            assert_eq!(join_surrogates(b"", b""), None);
+            // a well-formed 4-byte code point is not split
+            assert_eq!(join_surrogates("\u{1F600}".as_bytes(), &LO), None);
+        }
+    }
+}
+
 super::generic_aliases!(
     enc::OsStr,
     HipOsStr,
@@ -157,8 +227,24 @@ impl<'a, R: Repr<'a>> Hip<enc::OsStr, R> {
     /// ```
     #[inline]
     pub fn push(&mut self, addition: impl AsRef<OsStr>) {
-        // SAFETY: concatenation of encoded OS strings is a valid encoded OS string
-        unsafe { self.push_bytes(addition.as_ref().as_encoded_bytes()) }
+        let addition = addition.as_ref().as_encoded_bytes();
+        // WTF-8 (Windows): a lone high surrogate at the end and a lone low
+        // one at the start join into one code point, as `OsString::push` does
+        #[cfg(windows)]
+        if let Some(joined) = wtf8::join_surrogates(self.as_encoded_bytes(), addition) {
+            let len = self.as_encoded_bytes().len();
+            // SAFETY: the 3-byte surrogates at the junction replaced by the
+            // 4-byte encoding of their code point: well-formed WTF-8
+            unsafe {
+                self.truncate_bytes(len - 3);
+                self.push_bytes(&joined);
+                self.push_bytes(&addition[3..]);
+            }
+            return;
+        }
+        // SAFETY: on Unix-like platforms any bytes; on Windows, no surrogate
+        // pair split at the junction
+        unsafe { self.push_bytes(addition) }
     }
 
     /// Converts encoded bytes into an OS string, adopting the buffer (see

@@ -399,9 +399,7 @@ unsafe impl<'a, B: Backend> Repr<'a> for Wide<'a, B> {
                 && sliced.slice.cast() == sliced.owner.data()
             {
                 let this = core::mem::ManuallyDrop::new(self);
-                let mut vec = sliced.owner.into_vec();
-                vec.truncate(this.len());
-                return vec;
+                return sliced.owner.into_vec_prefix(this.len());
             }
         }
         self.as_slice().to_vec()
@@ -450,6 +448,37 @@ unsafe impl<'a, B: Backend> Repr<'a> for Wide<'a, B> {
             *self = Self::try_from_slice(self.as_slice(), required)?;
         }
         Ok(())
+    }
+
+    fn try_shrink_in_place(&mut self, target: usize) -> Result<bool, TryReserveError> {
+        if self.is_inline() {
+            return Ok(false);
+        }
+        let sliced = self.sliced_mut();
+        if !(sliced.owner.is_some() && sliced.owner.is_unique()) {
+            return Ok(false);
+        }
+        // the slice at the front, the owned tail dropped
+        Self::normalize(sliced);
+        let len = sliced.slice.len();
+        // SAFETY: unique owner, the updated handle is stored back
+        unsafe { sliced.owner.try_shrink(target)? };
+        sliced.slice = NonNull::slice_from_raw_parts(sliced.owner.data(), len);
+        Ok(true)
+    }
+
+    fn is_partial_view(&self) -> bool {
+        if self.is_inline() {
+            return false;
+        }
+        let sliced = self.sliced();
+        sliced.owner.is_some() && sliced.slice.len() < sliced.owner.len()
+    }
+
+    #[inline]
+    fn split_tail(&self, at: usize) -> Self {
+        // shares the buffer (short tails are still copied inline)
+        self.slice(at..self.len())
     }
 
     fn capacity(&self) -> usize {
@@ -551,6 +580,18 @@ mod tests {
         );
     }
 
+    #[test]
+    fn shrink_hooks_on_inline_and_borrowed() {
+        // `Hip::shrink_to` stops before these: checked at this level
+        let mut w = W::from_slice(b"ab");
+        assert!(!w.try_shrink_in_place(2).unwrap());
+        assert!(!w.is_partial_view());
+        let mut w = W::borrowed(&[1u8; 100]);
+        assert!(!w.try_shrink_in_place(100).unwrap());
+        assert!(!w.is_partial_view());
+    }
+
+    #[cfg(not(all(miri, windows)))]
     #[test]
     fn grow_sliced_fails() {
         use crate::tests::failing_alloc::failing;

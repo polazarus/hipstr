@@ -266,7 +266,7 @@ unsafe impl<'a, B: Backend> Repr<'a> for Tiny<B> {
             return self.as_slice().to_vec();
         }
         let this = core::mem::ManuallyDrop::new(self);
-        this.owner().into_vec()
+        this.owner().into_vec_prefix(this.len())
     }
 
     fn is_unique(&self) -> bool {
@@ -289,6 +289,21 @@ unsafe impl<'a, B: Backend> Repr<'a> for Tiny<B> {
             *self = Self::try_from_slice(self.as_slice(), required)?;
         }
         Ok(())
+    }
+
+    fn try_shrink_in_place(&mut self, target: usize) -> Result<bool, TryReserveError> {
+        if self.is_inline() || !self.owner().is_unique() {
+            return Ok(false);
+        }
+        // SAFETY: unique owner, the updated handle is stored back in place
+        unsafe { self.owner_mut().try_shrink(target)? };
+        Ok(true)
+    }
+
+    #[inline]
+    fn is_partial_view(&self) -> bool {
+        // no per-handle length: always the whole buffer
+        false
     }
 
     #[inline]

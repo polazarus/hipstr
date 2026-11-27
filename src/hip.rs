@@ -675,6 +675,11 @@ impl<'a, E: Encoding, R: Repr<'a>> Hip<E, R> {
     ///
     /// No-op if the representation is not allocated.
     ///
+    /// A uniquely owned buffer is shrunk in place (`realloc`, usually without
+    /// copying). A shared buffer is left alone (copying would only add an
+    /// allocation), unless the value shows only part of it: it is then copied,
+    /// so that the rest can be freed once the other handles are gone.
+    ///
     /// # Representation stability
     ///
     /// The allocated representation may change to *inline* if the required
@@ -701,6 +706,11 @@ impl<'a, E: Encoding, R: Repr<'a>> Hip<E, R> {
     ///
     /// No-op if the representation is not allocated.
     ///
+    /// A uniquely owned buffer is shrunk in place (`realloc`, usually without
+    /// copying). A shared buffer is left alone (copying would only add an
+    /// allocation), unless the value shows only part of it: it is then copied,
+    /// so that the rest can be freed once the other handles are gone.
+    ///
     /// # Representation stability
     ///
     /// The allocated representation may change to *inline* if the required
@@ -721,13 +731,25 @@ impl<'a, E: Encoding, R: Repr<'a>> Hip<E, R> {
         let target = min_capacity
             .saturating_add(E::TERMINATOR)
             .max(self.repr.len());
-        // raw capacity of the (possibly shared) buffer
-        if self.repr.capacity() > target {
-            let mut repr = R::new();
-            repr.reserve(target);
-            repr.extend_from_slice(self.bytes());
-            self.repr = repr;
+        if self.repr.capacity() <= target {
+            return;
         }
+        if target > R::INLINE_CAPACITY {
+            // unique: in place (`realloc`); kept as is if the allocator fails
+            match self.repr.try_shrink_in_place(target) {
+                Ok(true) | Err(_) => return,
+                Ok(false) => {}
+            }
+            // shared: copying would only add an allocation, unless the value
+            // shows part of a buffer that the copy may let go
+            if !self.repr.is_partial_view() {
+                return;
+            }
+        }
+        let mut repr = R::new();
+        repr.reserve(target);
+        repr.extend_from_slice(self.bytes());
+        self.repr = repr;
     }
 }
 
