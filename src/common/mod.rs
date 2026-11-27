@@ -1,7 +1,6 @@
 use const_default::ConstDefault;
 pub(crate) mod header;
 pub(crate) mod tagged_pointer;
-pub(crate) mod utils;
 
 #[derive(Default, Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(usize)]

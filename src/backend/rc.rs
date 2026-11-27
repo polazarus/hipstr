@@ -38,22 +38,6 @@ unsafe impl Counter for Count {
     }
 
     #[inline]
-    #[cfg(test)]
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    fn get(&self) -> usize {
-        // the count is strictly less than `usize::MAX`
-        self.0.get() + 1
-    }
-
-    #[inline]
-    #[cfg(test)]
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    fn set(&self, value: usize) {
-        assert!(value != 0, "invalid counter value");
-        self.0.set(value - 1);
-    }
-
-    #[inline]
     fn is_unique(&self) -> bool {
         self.0.get() == 0
     }

@@ -9,7 +9,6 @@ use super::{TryReserveError, TryReserveErrorKind, unwrap_or_oom};
 use crate::backend::InitPrefix;
 pub use crate::common::header::ThinHeader as Header;
 use crate::common::tagged_pointer::TaggedPointer;
-use crate::common::utils::drop_raw_slice;
 
 /// Tag for the tagged pointer in `Base`.
 ///
@@ -46,12 +45,6 @@ const fn min_non_zero_cap(size: usize) -> usize {
 #[derive(Debug)]
 #[repr(transparent)]
 pub struct Base<T, P>(pub(crate) TaggedPointer<Header<T, P>, TAG>);
-
-impl<T, P> Default for Base<T, P> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 
 impl<T, P> ConstDefault for Base<T, P> {
     const DEFAULT: Self = Self::new();
@@ -99,16 +92,6 @@ impl<T, P> Base<T, P> {
         } else {
             0
         }
-    }
-
-    /// Returns `true` if the vector is empty, that is, if its length is zero.
-    #[inline]
-    pub const fn is_empty(&self) -> bool {
-        // one cannot simply check if the pointer is null to determine if the
-        // vector is empty, because an empty vector can still have a non-null
-        // pointer if it has a non-zero capacity, so actually need to check the
-        // length instead
-        self.len() == 0
     }
 
     /// Sets the length of the vector.
@@ -163,30 +146,6 @@ impl<T, P> Base<T, P> {
         }
     }
 
-    /// Returns a non-null pointer to the data, that is, the first element of
-    /// the vector, or a dangling pointer if the vector is empty.
-    #[inline]
-    #[expect(clippy::needless_pass_by_ref_mut)]
-    pub const fn as_non_null(&mut self) -> NonNull<T> {
-        if let Some(header) = self.0.as_non_null() {
-            unsafe { Header::data(header) }
-        } else {
-            NonNull::dangling()
-        }
-    }
-
-    /// Returns a slice of the initialized elements in the vector.
-    #[inline]
-    pub const fn as_slice(&self) -> &[T] {
-        unsafe { core::slice::from_raw_parts(self.as_ptr(), self.len()) }
-    }
-
-    /// Returns a mutable slice of the initialized elements in the vector.
-    #[inline]
-    pub const fn as_mut_slice(&mut self) -> &mut [T] {
-        unsafe { core::slice::from_raw_parts_mut(self.as_mut_ptr(), self.len()) }
-    }
-
     /// Drops the allocation if it exists.
     ///
     /// # Safety
@@ -211,44 +170,12 @@ impl<T, P> Base<T, P> {
         // reset the pointer for safety, should be removed by the compiler
         *self = Self::new();
     }
-
-    /// Drops the elements and the allocation if it exists.
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure that the vector is not used after this method is called, and that the
-    /// allocation is not dropped elsewhere, to avoid double free or use after free.
-    #[inline]
-    pub unsafe fn drop(&mut self) {
-        if let Some(header) = self.0.as_non_null()
-            && let Some((layout, _)) = Header::<T, P>::layout(unsafe { header.as_ref().cap })
-        {
-            // SAFETY: type invariant says the slice is valid
-            unsafe {
-                let data_ptr = Header::data(header).as_ptr();
-                drop_raw_slice(data_ptr, header.as_ref().len);
-                // header.as_mut().len = 0;
-            }
-
-            // SAFETY: type invariant says the allocated pointer is valid and properly aligned, and the layout is correct
-            unsafe {
-                alloc::alloc::dealloc(header.as_ptr().cast(), layout);
-            }
-        }
-
-        // reset the pointer for safety, should be removed by the compiler
-        *self = Self::new();
-    }
 }
 
 impl<T, P> Base<T, P>
 where
     P: InitPrefix,
 {
-    pub fn with_capacity(capacity: usize) -> Self {
-        unwrap_or_oom(Self::try_with_capacity(capacity))
-    }
-
     pub fn try_with_capacity(capacity: usize) -> Result<Self, TryReserveError> {
         if capacity == 0 {
             return Ok(Self::new());
@@ -272,10 +199,6 @@ where
 
     const MIN_CAPACITY: usize = const { min_non_zero_cap(size_of::<T>()) };
 
-    pub fn reserve(&mut self, additional: usize) {
-        unwrap_or_oom(self.try_reserve(additional));
-    }
-
     pub fn try_reserve(&mut self, additional: usize) -> Result<(), TryReserveError> {
         let old_cap = self.capacity();
         let len = self.len();
@@ -293,24 +216,6 @@ where
             let new_cap = cmp::max(req_cap, floor_cap);
             unsafe {
                 self.try_realloc(new_cap)?;
-            }
-        }
-        Ok(())
-    }
-
-    pub fn reserve_exact(&mut self, additional: usize) {
-        unwrap_or_oom(self.try_reserve_exact(additional));
-    }
-
-    pub fn try_reserve_exact(&mut self, additional: usize) -> Result<(), TryReserveError> {
-        let old_cap = self.capacity();
-        let len = self.len();
-        let req_cap = len
-            .checked_add(additional)
-            .ok_or(TryReserveError(TryReserveErrorKind::CapacityOverflow))?;
-        if req_cap > old_cap {
-            unsafe {
-                self.try_realloc(req_cap)?;
             }
         }
         Ok(())
@@ -344,7 +249,7 @@ where
                 }
                 self.0 = ptr.into(); // transform the pointer back into a tagged pointer
             } else {
-                *self = Self::with_capacity(new_cap);
+                *self = Self::try_with_capacity(new_cap)?;
             }
         }
         Ok(())

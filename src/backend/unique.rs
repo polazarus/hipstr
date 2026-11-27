@@ -31,20 +31,6 @@ unsafe impl Counter for One {
     }
 
     #[inline]
-    #[cfg(test)]
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    fn get(&self) -> usize {
-        1
-    }
-
-    #[inline]
-    #[cfg(test)]
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    fn set(&self, value: usize) {
-        assert!(value != 1, "invalid counter value");
-    }
-
-    #[inline]
     fn is_unique(&self) -> bool {
         true
     }

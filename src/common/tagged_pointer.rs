@@ -26,12 +26,6 @@ impl<T, const TAG: usize> core::fmt::Debug for TaggedPointer<T, TAG> {
     }
 }
 
-impl<T, const TAG: usize> core::fmt::Pointer for TaggedPointer<T, TAG> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        self.as_ptr().fmt(f)
-    }
-}
-
 impl<T, const TAG: usize> Copy for TaggedPointer<T, TAG> {}
 
 impl<T, const TAG: usize> Clone for TaggedPointer<T, TAG> {
@@ -83,12 +77,6 @@ impl<T, const TAG: usize> TaggedPointer<T, TAG> {
 
         Self::NULL
     }
-
-    pub fn cast<U>(&self) -> TaggedPointer<U, TAG> {
-        TaggedPointer {
-            ptr: self.ptr.cast(),
-        }
-    }
 }
 
 /// Converts a non-null pointer to a new tagged pointer.
@@ -117,14 +105,5 @@ impl<T, const TAG: usize> From<Box<T>> for TaggedPointer<T, TAG> {
     fn from(b: Box<T>) -> Self {
         let p = Box::into_raw(b);
         Self::from(unsafe { NonNull::new_unchecked(p) })
-    }
-}
-
-impl<T, const TAG: usize> TryFrom<TaggedPointer<T, TAG>> for NonNull<T> {
-    type Error = ();
-
-    #[inline]
-    fn try_from(tagged: TaggedPointer<T, TAG>) -> Result<Self, Self::Error> {
-        tagged.as_non_null().ok_or(())
     }
 }

@@ -44,21 +44,6 @@ unsafe impl Counter for AtomicCount {
     }
 
     #[inline]
-    #[cfg(test)]
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    fn get(&self) -> usize {
-        self.0.load(Ordering::Acquire) + 1
-    }
-
-    #[cfg(test)]
-    #[inline]
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    fn set(&self, value: usize) {
-        assert!(value != 0, "invalid counter value");
-        self.0.store(value - 1, Ordering::Release);
-    }
-
-    #[inline]
     fn is_unique(&self) -> bool {
         if self.0.load(Ordering::Relaxed) == 0 {
             fence(Ordering::Acquire);

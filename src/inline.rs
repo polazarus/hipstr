@@ -1291,4 +1291,103 @@ mod tests {
             assert!(set.contains("k"), "hashes like `str`");
         }
     }
+
+    /// The `const` API again at run time (coverage does not see `const`
+    /// evaluation), with the traits.
+    #[test]
+    #[allow(clippy::clone_on_copy, reason = "tests `Clone`")]
+    fn runtime_api() {
+        let mut b = InlineByt::<6>::default();
+        b.extend_from_slice(b"abc");
+        b.try_push(b'd').unwrap();
+        b.push(b'e');
+        assert_eq!(b.try_extend_from_slice(b"xy"), Err(CapacityError));
+        b.insert(0, b'z');
+        assert!(b.is_full());
+        assert_eq!(b.remove(0), b'z');
+        assert_eq!(b.swap_remove(0), b'a');
+        assert_eq!(b.pop(), Some(b'd'));
+        b.truncate(2);
+        b.as_mut_slice()[0] = b'E';
+        <InlineByt<6> as AsMut<[u8]>>::as_mut(&mut b)[1] = b'B';
+        (*b).reverse();
+        b.extend([b'1']);
+        b.extend(&[b'2']);
+        assert_eq!(b.as_slice(), b"BE12");
+        assert_eq!(<InlineByt<6> as AsRef<[u8]>>::as_ref(&b), b"BE12");
+        assert!(!b.as_ptr().is_null());
+        assert!(b == b"BE12".as_slice() && b"BE12".as_slice() == b);
+        assert!(b < b"C".as_slice() && b"A".as_slice() < b);
+        assert_eq!(b.clone(), b);
+        assert_eq!(b.cmp(&b), Ordering::Equal);
+        assert_eq!(alloc::format!("{b:?}"), "[66, 69, 49, 50]");
+        let mut empty = InlineByt::<2>::new();
+        assert_eq!(empty.pop(), None);
+        empty.clear();
+
+        let mut s = InlineStr::<16>::inline("héllo");
+        s.push(' ');
+        assert_eq!(s.try_insert_str(0, "¡"), Ok(()));
+        assert_eq!(
+            s.try_insert_str(0, "far too long to fit"),
+            Err(CapacityError)
+        );
+        s.insert(s.len(), '!');
+        s.insert_str(0, ">");
+        assert_eq!(s.remove(0), '>');
+        assert_eq!(s.remove(0), '¡');
+        assert_eq!(s.pop(), Some('!'));
+        assert_eq!(s.pop(), Some(' '));
+        s.make_ascii_uppercase();
+        assert_eq!(s.as_str(), "HéLLO");
+        s.make_ascii_lowercase();
+        (*s).make_ascii_uppercase();
+        s.as_mut_str().make_ascii_lowercase();
+        assert_eq!(s.as_bytes(), "héllo".as_bytes());
+        s.truncate(3);
+        assert_eq!(s, "hé");
+        assert_eq!(<InlineStr<16> as AsRef<[u8]>>::as_ref(&s), "hé".as_bytes());
+        assert!(s > "ha" && "ha" < s);
+        let mut multi = InlineStr::<16>::inline("a€𝄞");
+        assert_eq!(multi.pop(), Some('𝄞'));
+        assert_eq!(multi.pop(), Some('€'));
+        assert_eq!(InlineStr::<4>::new().pop(), None);
+
+        let c = InlineCStr::<8>::inline(c"abc");
+        let mut c2 = c;
+        c2.truncate(1);
+        assert_eq!(c2.as_c_str(), c"a");
+        assert_eq!(c.as_bytes(), b"abc");
+        assert!(c == c"abc" && c"abc" == c);
+        assert_eq!(InlineCStr::<8>::try_from(c"x").unwrap(), c"x");
+        assert_eq!(alloc::format!("{CapacityError}"), "insufficient capacity");
+    }
+
+    #[test]
+    #[cfg(feature = "bstr")]
+    fn runtime_bstr() {
+        let b = InlineBStr::<8>::try_from_inner(::bstr::BStr::new("ab")).unwrap();
+        assert_eq!(b.as_bstr(), "ab");
+        assert_eq!(b.as_bytes(), b"ab");
+        assert_eq!(<InlineBStr<8> as AsRef<[u8]>>::as_ref(&b), b"ab");
+        assert_eq!(alloc::format!("{b}"), "ab");
+    }
+
+    #[test]
+    #[cfg(feature = "std")]
+    fn runtime_os_and_path() {
+        use std::ffi::OsStr;
+        use std::path::Path;
+
+        let mut o = InlineOsStr::<8>::try_from_inner(OsStr::new("ab")).unwrap();
+        o.try_push("cd").unwrap();
+        assert!(o.try_push("too long").is_err());
+        assert_eq!(o.as_os_str(), "abcd");
+        assert_eq!(o.as_encoded_bytes(), b"abcd");
+        assert!(o == OsStr::new("abcd"));
+        let p = InlinePath::<8>::try_from_inner(Path::new("/x")).unwrap();
+        assert_eq!(p.as_path(), Path::new("/x"));
+        assert_eq!(p.as_encoded_bytes(), b"/x");
+        assert!(InlinePath::<1>::try_from_inner(Path::new("/x")).is_err());
+    }
 }

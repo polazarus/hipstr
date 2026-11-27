@@ -95,22 +95,6 @@ pub unsafe trait Counter: InitPrefix + 'static {
     /// [`Ordering::Release`]: core::sync::atomic::Ordering
     fn decr(&self) -> UpdateResult;
 
-    /// Returns the current value of the counter.
-    ///
-    /// In case of atomics, the [`Ordering::Acquire`] semantics is expected.
-    ///
-    /// [`Ordering::Acquire`]: core::sync::atomic::Ordering
-    #[cfg(test)]
-    fn get(&self) -> usize;
-
-    /// Sets the current value of the counter.
-    ///
-    /// In case of atomics, the [`Ordering::Release`] semantics is expected.
-    ///
-    /// [`Ordering::Release`]: core::sync::atomic::Ordering
-    #[cfg(test)]
-    fn set(&self, value: usize);
-
     /// Checks if the counter is at one.
     ///
     /// In case of atomics, the [`Ordering::Acquire`] semantics is expected.
