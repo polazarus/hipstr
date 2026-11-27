@@ -29,18 +29,13 @@ unsafe impl Counter for AtomicCount {
         let set_order = Ordering::Release;
         let fetch_order = Ordering::Relaxed;
 
-        let atomic = &self.0;
-        let mut old = atomic.load(fetch_order);
-        while old < usize::MAX - 1 {
-            let new = old + 1;
-            match atomic.compare_exchange_weak(old, new, set_order, fetch_order) {
-                Ok(_) => {
-                    return UpdateResult::Done;
-                }
-                Err(next_prev) => old = next_prev,
-            }
+        #[allow(deprecated, reason = "renamed `try_update`, which loom lacks")]
+        match self.0.fetch_update(set_order, fetch_order, |old| {
+            (old < usize::MAX - 1).then_some(old + 1)
+        }) {
+            Ok(_) => UpdateResult::Done,
+            Err(_) => UpdateResult::Overflow,
         }
-        UpdateResult::Overflow
     }
 
     #[inline]

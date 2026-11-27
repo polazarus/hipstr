@@ -15,6 +15,7 @@ use core::cmp::Ordering;
 use core::fmt;
 use core::hash::{Hash, Hasher};
 use core::marker::PhantomData;
+use core::mem::ManuallyDrop;
 use core::ops::{Deref, DerefMut};
 
 use super::backend::Backend;
@@ -598,7 +599,7 @@ impl<'a, E: Encoding, R: Repr<'a>> Hip<E, R> {
         let owned = unsafe { E::owned_from_bytes_unchecked(repr.into_vec()) };
         RefMut {
             target: self,
-            owned: Some(owned),
+            owned: ManuallyDrop::new(owned),
             borrow: PhantomData,
         }
     }
@@ -857,15 +858,16 @@ impl<'a, E: Encoding, R: Repr<'a>> Hip<E, R> {
 /// Dereferences to the std owned form; writes back on drop.
 pub struct RefMut<'h, 'a, E: Encoding, R: Repr<'a>> {
     target: &'h mut Hip<E, R>,
-    owned: Option<E::Owned>,
+    /// Taken back on drop only.
+    owned: ManuallyDrop<E::Owned>,
     borrow: PhantomData<&'a ()>,
 }
 
 impl<'a, E: Encoding, R: Repr<'a>> Drop for RefMut<'_, 'a, E, R> {
     fn drop(&mut self) {
-        if let Some(owned) = self.owned.take() {
-            *self.target = Hip::from_owned(owned);
-        }
+        // SAFETY: not used afterwards
+        let owned = unsafe { ManuallyDrop::take(&mut self.owned) };
+        *self.target = Hip::from_owned(owned);
     }
 }
 
@@ -883,14 +885,14 @@ impl<'a, E: Encoding, R: Repr<'a>> Deref for RefMut<'_, 'a, E, R> {
 
     #[inline]
     fn deref(&self) -> &E::Owned {
-        self.owned.as_ref().unwrap()
+        &self.owned
     }
 }
 
 impl<'a, E: Encoding, R: Repr<'a>> DerefMut for RefMut<'_, 'a, E, R> {
     #[inline]
     fn deref_mut(&mut self) -> &mut E::Owned {
-        self.owned.as_mut().unwrap()
+        &mut self.owned
     }
 }
 

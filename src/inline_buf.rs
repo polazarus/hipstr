@@ -29,12 +29,12 @@ pub type Tiny = Inline<1, false>;
 
 const W: usize = size_of::<usize>();
 
-/// Little-endian value of the `m <= size_of::<usize>()` bytes at `p`, zero
+/// Little-endian value of the `m` bytes at `p`, zero
 /// extended, without a byte-wise copy: two (possibly overlapping) loads.
 ///
 /// # Safety
 ///
-/// `p` valid for reads of `m` bytes.
+/// `p` valid for reads of `m` bytes, `1 <= m <= size_of::<usize>()`.
 #[inline]
 const unsafe fn load_le(p: *const u8, m: usize) -> usize {
     macro_rules! pair {
@@ -58,11 +58,10 @@ const unsafe fn load_le(p: *const u8, m: usize) -> usize {
         pair!(u32)
     } else if m >= 2 {
         pair!(u16)
-    } else if m == 1 {
+    } else {
+        debug_assert!(m == 1);
         // SAFETY: precondition
         unsafe { p.read() as usize }
-    } else {
-        0
     }
 }
 
@@ -250,11 +249,13 @@ mod tests {
     fn tags() {
         // low: bit 0 of the first word set; high: top two bits of the last
         // word set (what the reprs rely on)
-        let be = cfg!(target_endian = "big");
+        const BE: bool = cfg!(target_endian = "big");
+        const LOW_WORD: usize = if BE { 2 } else { 0 };
+        const HIGH_WORD: usize = if BE { 0 } else { 1 };
         let b = Basic::from_slice_copy(b"ab");
-        assert_eq!(b.0[if be { 2 } else { 0 }] & 1, 1);
+        assert_eq!(b.0[LOW_WORD] & 1, 1);
         let s = Small::from_slice_copy(b"ab");
-        assert_eq!(s.0[if be { 0 } else { 1 }] & HIGH_TAG, HIGH_TAG);
+        assert_eq!(s.0[HIGH_WORD] & HIGH_TAG, HIGH_TAG);
         assert_eq!(Tiny::new().0[0], 1, "empty low buffer: only the tag");
     }
 

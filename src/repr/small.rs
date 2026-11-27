@@ -479,3 +479,38 @@ unsafe impl<'a, B: Backend> Repr<'a> for Small<'a, B> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::backend::Rc;
+
+    type S = Small<'static, Rc>;
+
+    #[test]
+    #[allow(clippy::clone_on_copy, reason = "covers the impl")]
+    fn accessors() {
+        let split = Split { msw: 1, w0: 2u8 };
+        assert_eq!(split.clone().w0, 2);
+        assert!(S::default().is_empty());
+        assert!(!S::from_slice(b"ab").is_empty());
+        assert_eq!(S::from_slice(b"ab").borrowed_slice(), None);
+        assert_eq!(S::borrowed(b"ab").borrowed_slice(), Some(&b"ab"[..]));
+    }
+
+    // the contract excludes these (a reserve unborrows): checked anyway
+
+    #[test]
+    #[should_panic(expected = "borrowed after reserve")]
+    fn borrowed_as_mut_ptr() {
+        let mut s = S::borrowed(b"ab");
+        let _ = unsafe { s.as_mut_ptr() };
+    }
+
+    #[test]
+    #[should_panic(expected = "borrowed after reserve")]
+    fn borrowed_set_len() {
+        let mut s = S::borrowed(b"ab");
+        unsafe { s.set_len(1) };
+    }
+}

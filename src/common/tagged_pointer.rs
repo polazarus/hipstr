@@ -20,12 +20,6 @@ pub struct TaggedPointer<T, const TAG: usize> {
     ptr: NonNull<T>,
 }
 
-impl<T, const TAG: usize> core::fmt::Debug for TaggedPointer<T, TAG> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        self.as_ptr().fmt(f)
-    }
-}
-
 impl<T, const TAG: usize> Copy for TaggedPointer<T, TAG> {}
 
 impl<T, const TAG: usize> Clone for TaggedPointer<T, TAG> {
@@ -66,17 +60,13 @@ impl<T, const TAG: usize> TaggedPointer<T, TAG> {
         }
     }
 
-    const NULL: Self = Self {
-        ptr: NonNull::without_provenance(NonZeroUsize::new(TAG).unwrap()),
-    };
-
-    /// Creates a null tagged pointer.
-    #[inline]
-    pub const fn null() -> Self {
+    /// The null tagged pointer.
+    pub const NULL: Self = {
         Self::debug_check();
-
-        Self::NULL
-    }
+        Self {
+            ptr: NonNull::without_provenance(NonZeroUsize::new(TAG).unwrap()),
+        }
+    };
 }
 
 /// Converts a non-null pointer to a new tagged pointer.
@@ -105,5 +95,17 @@ impl<T, const TAG: usize> From<Box<T>> for TaggedPointer<T, TAG> {
     fn from(b: Box<T>) -> Self {
         let p = Box::into_raw(b);
         Self::from(unsafe { NonNull::new_unchecked(p) })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[allow(clippy::clone_on_copy, reason = "covers the impl")]
+    fn clone_is_a_copy() {
+        let p = TaggedPointer::<u64, 2>::NULL;
+        assert!(p.clone().as_non_null().is_none());
     }
 }

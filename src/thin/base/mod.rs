@@ -24,7 +24,6 @@ const TAG: usize = 0b10;
 const MIN_CAPACITY: usize = size_of::<usize>();
 
 /// A thin heap byte buffer: one allocation, the header then the bytes.
-#[derive(Debug)]
 #[repr(transparent)]
 pub struct Base<P>(pub(crate) TaggedPointer<Header<P>, TAG>);
 
@@ -63,7 +62,7 @@ impl<P> Base<P> {
     /// underlying pointer is null.
     #[inline]
     pub const fn new() -> Self {
-        const { Self(TaggedPointer::null()) }
+        Self(TaggedPointer::NULL)
     }
 
     /// Returns a new thin vector with the given capacity, that is, with an actual allocation if the capacity is non-zero.
@@ -203,14 +202,14 @@ where
 
     pub unsafe fn try_realloc(&mut self, new_cap: usize) -> Result<(), TryReserveError> {
         if new_cap == 0 {
-            *self = Self::new();
+            // SAFETY: replaced right away
+            unsafe { self.drop_container() };
             return Ok(());
         }
 
         let old_cap = self.capacity();
-        let old_layout = Header::<P>::layout(old_cap)
-            .ok_or(TryReserveError(TryReserveErrorKind::CapacityOverflow))?
-            .0;
+        // SAFETY: the current capacity came from a valid layout
+        let old_layout = unsafe { Header::<P>::layout(old_cap).unwrap_unchecked() }.0;
         let (new_layout, new_cap) = Header::<P>::layout(new_cap)
             .ok_or(TryReserveError(TryReserveErrorKind::CapacityOverflow))?;
 
@@ -265,5 +264,61 @@ mod tests {
         assert_eq!(repr.len(), 0);
         assert_eq!(repr.capacity(), 0);
         assert_eq!(repr.as_ptr(), ptr::dangling());
+    }
+
+    type B = Base<crate::backend::Count>;
+
+    #[test]
+    fn null_and_allocated() {
+        let mut b = B::try_with_capacity(0).unwrap();
+        assert_eq!(b.capacity(), 0);
+        assert_eq!(b.as_mut_ptr(), ptr::dangling_mut());
+        // SAFETY: zero length on null
+        unsafe { b.set_len(0) };
+        // growing from null allocates
+        b.try_reserve(3).unwrap();
+        assert!(b.capacity() >= MIN_CAPACITY);
+        assert_eq!(b.as_ptr(), b.as_mut_ptr().cast_const());
+        // SAFETY: zero is in bounds
+        unsafe { b.set_len(0) };
+        // shrinking to zero frees
+        // SAFETY: no elements
+        unsafe { b.try_realloc(0).unwrap() };
+        assert_eq!(b.capacity(), 0);
+        let mut b = B::from_slice_copy(b"abc");
+        assert_eq!(b.len(), 3);
+        // SAFETY: not used afterwards
+        unsafe { b.drop_container() };
+    }
+
+    #[test]
+    fn edges() {
+        // freeing nothing
+        let mut b = B::new();
+        // SAFETY: not used afterwards
+        unsafe { b.drop_container() };
+        // empty copy: no allocation
+        assert_eq!(B::from_slice_copy(b"").capacity(), 0);
+        let mut b = B::try_with_capacity(16).unwrap();
+        let cap = b.capacity();
+        // enough room already
+        b.try_reserve(cap).unwrap();
+        // same capacity
+        // SAFETY: no elements
+        unsafe { b.try_realloc(cap).unwrap() };
+        assert_eq!(b.capacity(), cap);
+        // overflowing length
+        // SAFETY: zeroed, in bounds
+        unsafe { b.set_len(1) };
+        assert!(b.try_reserve(usize::MAX).is_err());
+        // SAFETY: not used afterwards
+        unsafe { b.drop_container() };
+    }
+
+    #[test]
+    #[should_panic(expected = "length overflow")]
+    fn set_len_on_null() {
+        // SAFETY: checked
+        unsafe { B::new().set_len(1) };
     }
 }

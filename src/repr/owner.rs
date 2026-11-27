@@ -65,7 +65,7 @@ const _: () = {
 
 impl<B: Backend> Owner<B> {
     /// Null owner, only used as "borrowed" marker by the 3-word representation.
-    pub const NONE: Self = Self(TaggedPointer::null(), PhantomData);
+    pub const NONE: Self = Self(TaggedPointer::NULL, PhantomData);
 
     /// Wraps a non-empty thin vector.
     ///
@@ -276,5 +276,40 @@ impl<B: Backend> Owner<B> {
                 result
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::backend::Rc;
+
+    #[test]
+    #[allow(clippy::clone_on_copy, reason = "covers the impl")]
+    fn clone_is_a_copy() {
+        let o = Owner::<Rc>::from_slice(b"abc");
+        assert_eq!(o.clone().as_slice(), b"abc");
+        // SAFETY: the only handle
+        unsafe { o.release() };
+    }
+
+    #[test]
+    #[should_panic(expected = "null owner")]
+    fn null_header() {
+        let _ = Owner::<Rc>::NONE.header_ptr();
+    }
+
+    #[test]
+    #[should_panic(expected = "reference count overflow")]
+    fn count_overflow() {
+        // on the stack, so that the panic leaks nothing
+        let mut header = VecHeader::<Rc> {
+            prefix: crate::backend::Count(core::cell::Cell::new(usize::MAX - 1)),
+            ptr: None,
+            cap: 0,
+            len: 0,
+        };
+        let o = Owner::<Rc>(NonNull::from(&mut header).into(), PhantomData);
+        let _ = o.try_clone();
     }
 }

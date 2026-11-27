@@ -162,6 +162,16 @@ mod tests {
     const LONG: &str = "a string that is definitely longer than any inline capacity";
 
     #[test]
+    fn truncated_input() {
+        use borsh::BorshDeserialize;
+        // no length prefix
+        assert!(crate::HipCStr::try_from_slice(&[]).is_err());
+        assert!(crate::InlineByt::try_from_slice(&[]).is_err());
+        // a length prefix of 3, one byte
+        assert!(crate::InlineByt::try_from_slice(&[3, 0, 0, 0, b'a']).is_err());
+    }
+
+    #[test]
     fn round_trips() {
         let encoded = borsh::to_vec(&HipStr::from(LONG)).unwrap();
         assert_eq!(encoded, borsh::to_vec(LONG).unwrap(), "same format as str");

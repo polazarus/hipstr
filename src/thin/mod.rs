@@ -55,12 +55,45 @@ impl fmt::Display for TryReserveError {
 pub(crate) fn unwrap_or_oom<T>(result: Result<T, TryReserveError>) -> T {
     match result {
         Ok(value) => value,
-        Err(TryReserveError(TryReserveErrorKind::CapacityOverflow)) => {
-            panic!("capacity overflow")
-        }
-        Err(TryReserveError(TryReserveErrorKind::AllocError { layout })) => {
-            alloc::alloc::handle_alloc_error(layout)
-        }
-        Err(TryReserveError(TryReserveErrorKind::Std(e))) => panic!("{e}"),
+        Err(e) => oom(e),
+    }
+}
+
+/// Panics, or aborts on an allocation error (not testable: excluded from
+/// coverage).
+#[cold]
+#[track_caller]
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn oom(e: TryReserveError) -> ! {
+    match e.0 {
+        TryReserveErrorKind::CapacityOverflow => panic!("capacity overflow"),
+        TryReserveErrorKind::AllocError { layout } => alloc::alloc::handle_alloc_error(layout),
+        TryReserveErrorKind::Std(e) => panic!("{e}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use alloc::string::ToString;
+
+    use super::*;
+
+    #[test]
+    fn display() {
+        let overflow = TryReserveError(TryReserveErrorKind::CapacityOverflow);
+        assert_eq!(overflow.to_string(), "capacity overflow");
+        let std_e = alloc::vec::Vec::<u8>::new()
+            .try_reserve(usize::MAX)
+            .unwrap_err();
+        let e = TryReserveError(TryReserveErrorKind::Std(std_e.clone()));
+        assert_eq!(e.to_string(), std_e.to_string());
+        assert_eq!(e.into_std(), std_e);
+        assert_eq!(overflow.into_std(), std_e);
+    }
+
+    #[test]
+    #[should_panic(expected = "capacity overflow")]
+    fn unwrap_overflow() {
+        unwrap_or_oom::<()>(Err(TryReserveError(TryReserveErrorKind::CapacityOverflow)));
     }
 }

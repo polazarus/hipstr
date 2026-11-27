@@ -515,6 +515,16 @@ mod tests {
 
     const LONG: &str = "a string that is definitely longer than any inline capacity";
 
+    #[cfg(feature = "bstr")]
+    #[test]
+    fn inline_bstr() {
+        let b = crate::InlineBStr::try_inline(b"ab").unwrap();
+        let json = serde_json::to_string(&b).unwrap();
+        assert_eq!(json, "[97,98]");
+        let back: crate::InlineBStr = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, b);
+    }
+
     #[test]
     fn round_trips() {
         let json = serde_json::to_string(LONG).unwrap();
@@ -572,6 +582,14 @@ mod tests {
     fn errors() {
         let r: Result<HipStr<'_>, _> = serde_json::from_str("[255]");
         assert!(r.unwrap_err().to_string().contains("a string"));
+    }
+
+    #[test]
+    fn bad_elements() {
+        assert!(serde_json::from_str::<HipByt<'_>>(r#"[1,"x"]"#).is_err());
+        assert!(serde_json::from_str::<crate::InlineByt>(r#"[1,"x"]"#).is_err());
+        #[cfg(feature = "std")]
+        assert!(serde_json::from_str::<crate::InlineOsStr>("5").is_err());
     }
 
     #[cfg(feature = "std")]

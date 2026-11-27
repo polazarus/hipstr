@@ -471,3 +471,31 @@ impl<'a, B: Backend> Hip<Utf8, Wide<'a, B>> {
         unsafe { self.slice_bytes(range) }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use alloc::string::ToString;
+
+    use super::*;
+
+    #[test]
+    fn bytes_error_with_char_kind() {
+        // not produced for bytes, displayed anyway
+        let source = crate::HipByt::from(&b"abc"[..]);
+        let e = SliceError {
+            kind: SliceErrorKind::StartNotACharBoundary,
+            range: 1..2,
+            source: &source,
+        };
+        assert_eq!(
+            e.to_string(),
+            SliceErrorKind::StartNotACharBoundary.to_string()
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "range start index 5 out of range for slice of length 3")]
+    fn start_out_of_range() {
+        let _ = range_or_panic(5.., 3);
+    }
+}

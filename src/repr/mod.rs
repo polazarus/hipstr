@@ -89,10 +89,7 @@ pub unsafe trait Repr<'a>: Clone + Sized {
 
     fn as_slice(&self) -> &[u8];
 
-    #[inline]
-    fn len(&self) -> usize {
-        self.as_slice().len()
-    }
+    fn len(&self) -> usize;
 
     #[inline]
     fn is_empty(&self) -> bool {

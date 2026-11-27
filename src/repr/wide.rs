@@ -492,3 +492,58 @@ unsafe impl<'a, B: Backend> Repr<'a> for Wide<'a, B> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use alloc::vec;
+
+    use super::*;
+    use crate::backend::Rc;
+
+    type W = Wide<'static, Rc>;
+
+    #[test]
+    #[allow(clippy::clone_on_copy, reason = "covers the impl")]
+    fn accessors() {
+        assert!(W::default().is_empty());
+        let mut w = W::from_vec(vec![1u8; 100]);
+        assert!(!w.is_empty());
+        let sliced = w.sliced_mut().clone();
+        assert_eq!(sliced.slice.len(), 100);
+    }
+
+    #[test]
+    fn grow_sliced_in_place() {
+        // a unique sliced owner: room after moving the slice to the front
+        // (longer than the inline capacity, so that the slice is not copied)
+        let whole = W::from_vec((0..200u8).collect());
+        let base = whole.as_slice().as_ptr();
+        let mut w = whole.slice(100..140);
+        drop(whole);
+        w.try_reserve(70).unwrap();
+        assert_eq!(
+            w.as_slice().as_ptr(),
+            base,
+            "moved to the front, not reallocated"
+        );
+        assert_eq!(
+            w.as_slice(),
+            &(100..140u8).collect::<alloc::vec::Vec<_>>()[..]
+        );
+    }
+
+    #[test]
+    fn grow_sliced_fails() {
+        use crate::tests::failing_alloc::failing;
+        // a unique sliced owner, moved to the front then grown
+        let whole = W::from_vec((0..100u8).collect());
+        let mut w = whole.slice(10..50);
+        drop(whole);
+        let (r, consumed) = failing(|| w.try_reserve(1000));
+        assert!(r.is_err() && consumed);
+        assert_eq!(
+            w.as_slice(),
+            &(10..50u8).collect::<alloc::vec::Vec<_>>()[..]
+        );
+    }
+}

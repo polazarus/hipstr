@@ -7,7 +7,7 @@ use core::fmt::Write;
 
 use super::*;
 
-mod failing_alloc;
+pub mod failing_alloc;
 
 const LONG: &str = "a string that is definitely longer than any inline capacity";
 
@@ -1198,5 +1198,86 @@ mod parity_coverage {
         let bad = std::ffi::OsStr::from_bytes(b"\xff");
         assert!(HipOsStr::from(bad).into_string().is_err());
         assert!(HipPath::from(bad).into_string().is_err());
+    }
+}
+
+/// Paths the other tests miss.
+mod gaps {
+    use super::*;
+
+    #[cfg(feature = "bstr")]
+    #[test]
+    fn bstr_accessors() {
+        use ::bstr::BStr;
+        let b = HipBStr::borrowed(BStr::new(b"ab"));
+        assert_eq!(b.as_slice(), b"ab");
+        assert_eq!(HipBStr::borrowed_bytes(b"ab"), b);
+        let bytes = HipByt::from(&b"ab"[..]);
+        let as_bstr: &BStr = bytes.as_ref();
+        assert_eq!(as_bstr, BStr::new(b"ab"));
+    }
+
+    #[test]
+    fn cstr_from_vec_with_nul_unchecked() {
+        // SAFETY: one NUL, at the end
+        let c = unsafe { HipCStr::from_vec_with_nul_unchecked(b"ab\0".to_vec()) };
+        assert_eq!(c.as_bytes(), b"ab");
+    }
+
+    #[test]
+    fn inline_truncate_at_runtime() {
+        let mut s = InlineStr::try_inline("abc").unwrap();
+        s.truncate(1);
+        assert_eq!(s.as_str(), "a");
+        s.truncate(5);
+        assert_eq!(s.as_str(), "a");
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn from_static_at_runtime() {
+        assert_eq!(SmallOsStr::from_static("ab").as_os_str(), "ab");
+        assert_eq!(
+            SmallPath::from_static("a/b").as_path(),
+            std::path::Path::new("a/b")
+        );
+    }
+
+    #[test]
+    fn vec_ops_edges() {
+        let mut b = HipByt::new();
+        b.retain_mut(|_| true);
+        b.dedup_by(|_, _| true);
+        let mut b = HipByt::from(&b"a"[..]);
+        b.dedup_by(|_, _| true);
+        assert_eq!(b, &b"a"[..]);
+        let mut b = HipByt::from(&b"abc"[..]);
+        let mut d = b.drain(..);
+        assert_eq!(d.next(), Some(b'a'));
+        assert_eq!(d.next_back(), Some(b'c'));
+        assert_eq!(d.next_back(), Some(b'b'));
+        assert_eq!(d.next_back(), None);
+        drop(d);
+        // nothing removed: no compaction to finish
+        let mut b = HipByt::from(&b"abc"[..]);
+        b.dedup_by(|_, _| false);
+        assert_eq!(b, &b"abc"[..]);
+        // empty str drain from the back
+        let mut s = HipStr::from("");
+        assert_eq!(s.drain(..).next_back(), None);
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn compact_panic_keeps_the_rest() {
+        let mut b = HipByt::from(&b"abcdef"[..]);
+        let r = std::panic::catch_unwind(core::panic::AssertUnwindSafe(|| {
+            b.retain(|&x| {
+                assert!(x != b'd', "stop");
+                x != b'b'
+            });
+        }));
+        assert!(r.is_err());
+        assert_eq!(b, &b"acdef"[..]);
     }
 }

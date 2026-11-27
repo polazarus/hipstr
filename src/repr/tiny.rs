@@ -180,8 +180,7 @@ impl<B: Backend> Default for Tiny<B> {
 impl<B: Backend> Clone for Tiny<B> {
     fn clone(&self) -> Self {
         if !self.is_inline() && self.owner().try_clone().is_none() {
-            return Self::try_from_slice(self.as_slice(), self.len())
-                .unwrap_or_else(|e| crate::thin::unwrap_or_oom(Err(e)));
+            return crate::thin::unwrap_or_oom(Self::try_from_slice(self.as_slice(), self.len()));
         }
         Self {
             word: self.word,
@@ -322,5 +321,22 @@ unsafe impl<'a, B: Backend> Repr<'a> for Tiny<B> {
             // SAFETY: precondition, unique owner
             unsafe { self.owner().set_len(len) };
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::backend::Unique;
+
+    #[test]
+    fn default_and_unique_clone() {
+        assert_eq!(Tiny::<Unique>::default().len(), 0);
+        // a unique owner cannot be shared: cloning copies
+        let long = [7u8; 100];
+        let a = Tiny::<Unique>::from_slice(&long);
+        let b = a.clone();
+        assert_eq!(b.as_slice(), &long[..]);
+        assert_ne!(a.as_slice().as_ptr(), b.as_slice().as_ptr());
     }
 }

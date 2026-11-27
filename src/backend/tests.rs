@@ -51,3 +51,16 @@ unsafe impl<const MAX: usize> Counter for BoundedCount<MAX> {
         self.0.get() == 1
     }
 }
+
+#[test]
+fn counters_overflow() {
+    let rc = Count(core::cell::Cell::new(usize::MAX - 1));
+    assert!(matches!(rc.incr(), UpdateResult::Overflow));
+    #[cfg(all(target_has_atomic = "ptr", not(loom)))]
+    {
+        let arc = AtomicCount(core::sync::atomic::AtomicUsize::new(usize::MAX - 1));
+        assert!(matches!(arc.incr(), UpdateResult::Overflow));
+        let arc = AtomicCount(core::sync::atomic::AtomicUsize::new(0));
+        assert!(matches!(arc.incr(), UpdateResult::Done));
+    }
+}

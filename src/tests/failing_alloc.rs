@@ -280,6 +280,24 @@ mod tests {
         }
 
         #[test]
+        fn heap_grow() {
+            let long = [7u8; 100];
+            // unique heap values
+            let mut b = SmallByt::from(&long[..]);
+            let (r, consumed) = failing(|| b.try_reserve(1000));
+            assert!(r.is_err() && consumed);
+            let mut b = TinyByt::from(&long[..]);
+            let (r, consumed) = failing(|| b.try_reserve(1000));
+            assert!(r.is_err() && consumed);
+            // shared: copied
+            let mut b = TinyByt::from(&long[..]);
+            let _other = b.clone();
+            let (r, consumed) = failing(|| b.try_reserve(1000));
+            assert!(r.is_err() && consumed);
+            assert_eq!(b, &long[..]);
+        }
+
+        #[test]
         fn inline_to_heap() {
             let mut b = SmallByt::from(&b"ab"[..]);
             let (r, consumed) = failing(|| b.try_reserve(100));
