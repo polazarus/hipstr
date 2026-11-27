@@ -182,6 +182,37 @@ macro_rules! impl_const_accessors {
                 self.repr.len() == E::TERMINATOR
             }
 
+            /// Extracts a raw pointer out of the `HipStr`.
+            ///
+            /// As strings are ultimately sequence of bytes, the raw pointer points to a
+            /// [`u8`]. This pointer will be pointing to the first byte of the string.
+            ///
+            /// It is your responsibility to make sure that:
+            ///
+            /// - This `HipStr` outlives the pointer this function returns.
+            ///
+            /// - This `HipStr` is not modified in another way before the use of the
+            ///   pointer. Modifying the byte sequence may change representation or
+            ///   reallocate, which would invalid the returned pointer.
+            ///
+            /// - The returned pointer is never written to. If you need to mutate the
+            ///   contents of the string slice, use [`as_mut_ptr`].
+            ///
+            /// [`as_mut_ptr`]: Self::as_mut_ptr
+            ///
+            /// # Examples
+            ///
+            /// ```
+            /// # use hipstr::HipStr;
+            /// let s = HipStr::from("Hello");
+            /// let ptr = s.as_ptr();
+            /// ```
+            #[inline]
+            #[must_use]
+            pub const fn as_ptr(&self) -> *const u8 {
+                self.repr.as_slice().as_ptr()
+            }
+
             /// Returns `true` if this `HipStr` uses the inline representation, `false` otherwise.
             ///
             /// # Examples
@@ -280,37 +311,6 @@ macro_rules! impl_const_typed_accessors {
         // the conversion is safe for bytes (identity), unsafe otherwise
         #[allow(unused_unsafe)]
         impl<$($lt,)? B: $crate::backend::Backend> $crate::hip::Hip<$enc, $repr> {
-            /// Extracts a raw pointer out of the `HipStr`.
-            ///
-            /// As strings are ultimately sequence of bytes, the raw pointer points to a
-            /// [`u8`]. This pointer will be pointing to the first byte of the string.
-            ///
-            /// It is your responsibility to make sure that:
-            ///
-            /// - This `HipStr` outlives the pointer this function returns.
-            ///
-            /// - This `HipStr` is not modified in another way before the use of the
-            ///   pointer. Modifying the byte sequence may change representation or
-            ///   reallocate, which would invalid the returned pointer.
-            ///
-            /// - The returned pointer is never written to. If you need to mutate the
-            ///   contents of the string slice, use [`as_mut_ptr`].
-            ///
-            /// [`as_mut_ptr`]: Self::as_mut_ptr
-            ///
-            /// # Examples
-            ///
-            /// ```
-            /// # use hipstr::HipStr;
-            /// let s = HipStr::from("Hello");
-            /// let ptr = s.as_ptr();
-            /// ```
-            #[inline]
-            #[must_use]
-            pub const fn as_ptr(&self) -> *const u8 {
-                self.repr().as_slice().as_ptr()
-            }
-
             /// Returns the borrowed string slice if this `HipStr` is actually borrowed,
             /// `None` otherwise.
             ///

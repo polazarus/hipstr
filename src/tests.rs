@@ -269,6 +269,7 @@ mod const_accessors {
                 let h = <$t>::new();
                 assert!(h.len() == 0);
                 assert!(h.is_empty());
+                assert!(!h.as_ptr().is_null());
                 assert!(h.is_inline());
                 assert!(!h.is_borrowed());
                 assert!(!h.is_allocated());
@@ -341,6 +342,22 @@ mod const_accessors {
     agnostic!(HipOsStr<'static>, SmallOsStr<'static>, TinyOsStr);
     #[cfg(feature = "std")]
     agnostic!(HipPath<'static>, SmallPath<'static>, TinyPath);
+
+    /// OS string accessors, every size (`as_os_str` itself cannot be `const`).
+    #[cfg(feature = "std")]
+    macro_rules! os_accessors {
+        ($($t:ty),* $(,)?) => {$(
+            const _: () = {
+                let o = <$t>::from_static("os string, longer than any inline capacity");
+                assert!(o.as_encoded_bytes().len() == 42 && o.len() == 42);
+                assert!(!o.as_ptr().is_null());
+                forget(o);
+            };
+        )*};
+    }
+
+    #[cfg(feature = "std")]
+    os_accessors!(HipOsStr<'static>, SmallOsStr<'static>);
 
     /// String accessors on a borrowed value.
     macro_rules! borrowed_str {

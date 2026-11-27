@@ -26,6 +26,28 @@ super::generic_aliases!(
 
 impl_std_glue!(enc::OsStr, OsStr, OsString);
 
+/// `const` accessors, per representation (`as_os_str` cannot be `const`:
+/// std's conversions from bytes are not, and `OsStr`'s layout is not
+/// guaranteed).
+macro_rules! impl_const_os_str {
+    ($([$($lt:lifetime)?] $repr:ty),* $(,)?) => {$(
+        impl<$($lt,)? B: super::backend::Backend> Hip<enc::OsStr, $repr> {
+            /// The encoded bytes (see [`OsStr::as_encoded_bytes`]).
+            #[inline]
+            #[must_use]
+            pub const fn as_encoded_bytes(&self) -> &[u8] {
+                self.repr().as_slice()
+            }
+        }
+    )*};
+}
+
+impl_const_os_str!(
+    ['a] super::repr::Wide<'a, u8, B>,
+    ['a] super::repr::Small<'a, u8, B>,
+    [] super::repr::Tiny<u8, B>,
+);
+
 impl_cmp!(enc::OsStr as OsStr;
     [] OsStr, [] &OsStr, [] OsString, [] &OsString, [] Box<OsStr>, [] &Box<OsStr>,
     [] Cow<'_, OsStr>, [] &Cow<'_, OsStr>,
@@ -110,20 +132,6 @@ impl<'a, R: Repr<'a, u8>> Hip<enc::OsStr, R> {
     #[must_use]
     pub fn as_os_str(&self) -> &OsStr {
         self.as_inner()
-    }
-
-    /// Raw pointer to the first encoded byte.
-    #[inline]
-    #[must_use]
-    pub fn as_ptr(&self) -> *const u8 {
-        self.bytes().as_ptr()
-    }
-
-    /// The encoded bytes (see [`OsStr::as_encoded_bytes`]).
-    #[inline]
-    #[must_use]
-    pub fn as_encoded_bytes(&self) -> &[u8] {
-        self.bytes()
     }
 
     /// Converts into an `OsString`, in O(1) when the value uniquely owns an
