@@ -148,6 +148,42 @@ unsafe impl Encoding for Utf8 {
     }
 }
 
+/// Byte string from the `bstr` crate ([`bstr::BStr`]): bytes, conventionally
+/// UTF-8, without invariant.
+#[cfg(feature = "bstr")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub struct BStr;
+
+#[cfg(feature = "bstr")]
+impl seal::Sealed for BStr {}
+
+// SAFETY: no invariant
+#[cfg(feature = "bstr")]
+unsafe impl Encoding for BStr {
+    type Slice = bstr::BStr;
+    type Owned = bstr::BString;
+
+    #[inline]
+    fn as_bytes(slice: &bstr::BStr) -> &[u8] {
+        slice
+    }
+
+    #[inline]
+    unsafe fn from_bytes_unchecked(bytes: &[u8]) -> &bstr::BStr {
+        crate::b_str::bstr_from_bytes(bytes)
+    }
+
+    #[inline]
+    fn owned_into_bytes(owned: bstr::BString) -> Vec<u8> {
+        owned.into()
+    }
+
+    #[inline]
+    unsafe fn owned_from_bytes_unchecked(bytes: Vec<u8>) -> bstr::BString {
+        bstr::BString::new(bytes)
+    }
+}
+
 #[cfg(feature = "std")]
 pub use os::{OsStr, Path};
 

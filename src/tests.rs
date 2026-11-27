@@ -281,6 +281,27 @@ mod const_accessors {
     agnostic!(HipStr<'static>, SmallStr<'static>, TinyStr, LocalTinyStr);
     agnostic!(HipByt<'static>, SmallByt<'static>, TinyByt);
     agnostic!(HipCStr<'static>, SmallCStr<'static>, TinyCStr);
+    #[cfg(feature = "bstr")]
+    agnostic!(HipBStr<'static>, SmallBStr<'static>, TinyBStr);
+
+    #[cfg(feature = "bstr")]
+    const _: () = {
+        let b = SmallBStr::borrowed_bytes(b"bytes, longer than any inline capacity!");
+        assert!(b.is_borrowed() && b.as_bytes().len() == 39);
+        assert!(b.as_borrowed().is_some() && !b.as_ptr().is_null());
+        let _: &bstr::BStr = b.as_bstr();
+        let bytes = b.into_bytes();
+        assert!(bytes.as_slice().len() == 39);
+        forget(bytes);
+        let empty = TinyBStr::new();
+        let i = TinyBStr::try_inline(empty.as_bstr());
+        assert!(i.is_some());
+        forget(i);
+        forget(empty);
+        let x = HipBStr::borrowed_bytes(b"x");
+        forget(HipBStr::inline(x.as_bstr()));
+        forget(x);
+    };
 
     /// C string accessors, every size.
     macro_rules! c_str_accessors {

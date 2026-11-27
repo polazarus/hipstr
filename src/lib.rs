@@ -90,7 +90,9 @@
 //! * `serde`: provides serialization/deserialization support with [`serde`](https://serde.rs)
 //! * `borsh`: provides serialization/deserialization support with [`borsh`](https://borsh.io)
 //! * `bstr`: provides compatibility with [BurntSushi's bstr
-//!   crate](https://github.com/BurntSushi/bstr)
+//!   crate](https://github.com/BurntSushi/bstr), and the [`HipBStr`],
+//!   `SmallBStr` and `TinyBStr` byte strings, which dereference to
+//!   `bstr::BStr`
 //! * `unstable`: do nothing, used to reveal unstable implementation details
 
 #![no_std]
@@ -104,6 +106,8 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
+#[cfg(feature = "bstr")]
+pub mod b_str;
 pub mod backend;
 pub mod bytes;
 pub mod c_str;
@@ -196,6 +200,16 @@ aliases!(
     LocalHipByt,
     LocalSmallByt,
     LocalTinyByt
+);
+#[cfg(feature = "bstr")]
+aliases!(
+    b_str,
+    HipBStr,
+    SmallBStr,
+    TinyBStr,
+    LocalHipBStr,
+    LocalSmallBStr,
+    LocalTinyBStr
 );
 aliases!(
     c_str,

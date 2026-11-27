@@ -202,6 +202,25 @@ pub mod bytes {
     }
 }
 
+// ----- bstr byte strings -----
+
+/// `bstr` byte strings serialize as bytes, like `bstr::BString` does.
+#[cfg(feature = "bstr")]
+impl<'a, R: Repr<'a, u8>> Serialize for Hip<crate::enc::BStr, R> {
+    #[inline]
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_bytes(self.bytes())
+    }
+}
+
+#[cfg(feature = "bstr")]
+impl<'de, 'a, R: Repr<'a, u8>> Deserialize<'de> for Hip<crate::enc::BStr, R> {
+    #[inline]
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Hip::<Bytes, R>::deserialize(deserializer).map(Self::from)
+    }
+}
+
 // ----- C strings -----
 
 /// C strings serialize like `CStr` (bytes without the terminator) and
@@ -321,6 +340,17 @@ mod tests {
         let s: TinyStr = string::borrow_deserialize(&mut de).unwrap();
         assert!(!s.is_borrowed());
         assert_eq!(s, LONG);
+    }
+
+    #[test]
+    #[cfg(feature = "bstr")]
+    fn bstr_byte_strings() {
+        use crate::TinyBStr;
+        let b = TinyBStr::from(b"\xffab".as_slice());
+        let json = serde_json::to_string(&b).unwrap();
+        assert_eq!(json, "[255,97,98]");
+        let back: TinyBStr = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, b);
     }
 
     #[test]

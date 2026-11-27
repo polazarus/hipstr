@@ -45,6 +45,22 @@ impl<'a, R: Repr<'a, u8>> BorshDeserialize for Hip<Utf8, R> {
     }
 }
 
+#[cfg(feature = "bstr")]
+impl<'a, R: Repr<'a, u8>> BorshSerialize for Hip<crate::enc::BStr, R> {
+    #[inline]
+    fn serialize<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
+        self.bytes().serialize(writer)
+    }
+}
+
+#[cfg(feature = "bstr")]
+impl<'a, R: Repr<'a, u8>> BorshDeserialize for Hip<crate::enc::BStr, R> {
+    #[inline]
+    fn deserialize_reader<Rd: io::Read>(reader: &mut Rd) -> io::Result<Self> {
+        Vec::<u8>::deserialize_reader(reader).map(Self::from_owned_bytes)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -62,6 +78,16 @@ mod tests {
         let encoded = borsh::to_vec(&SmallByt::from(b"abc")).unwrap();
         let b: HipByt<'_> = borsh::from_slice(&encoded).unwrap();
         assert_eq!(b, b"abc".as_slice());
+    }
+
+    #[test]
+    #[cfg(feature = "bstr")]
+    fn bstr_byte_strings() {
+        let b = crate::SmallBStr::from(b"\xffab".as_slice());
+        let encoded = borsh::to_vec(&b).unwrap();
+        assert_eq!(encoded, borsh::to_vec(b"\xffab".as_slice()).unwrap());
+        let back: crate::TinyBStr = borsh::from_slice(&encoded).unwrap();
+        assert_eq!(back, b);
     }
 
     #[test]

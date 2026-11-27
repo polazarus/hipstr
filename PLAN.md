@@ -23,6 +23,7 @@ Breaking rewrite of `hipstr` in place (single crate).
 | str   | `HipStr<'a>`   | `SmallStr<'a>`   | `TinyStr`   |
 | bytes | `HipByt<'a>`   | `SmallByt<'a>`   | `TinyByt`   |
 | CStr  | `HipCStr<'a>`  | `SmallCStr<'a>`  | `TinyCStr`  |
+| BStr (`bstr` feature) | `HipBStr<'a>` | `SmallBStr<'a>` | `TinyBStr` |
 | OsStr | `HipOsStr<'a>` | `SmallOsStr<'a>` | `TinyOsStr` |
 | Path  | `HipPath<'a>`  | `SmallPath<'a>`  | `TinyPath`  |
 
@@ -155,6 +156,13 @@ src/
    accessors (`as_c_str`, `as_bytes`, `as_bytes_with_nul`, `inline`, `borrowed`,
    `from_static` with `c"…"` literals), `CString` round trip without copy,
    `TryFrom` like `CString::new`, comparisons, serde.
+3¾. **bstr byte strings** (done, `bstr` feature) — `HipBStr`/`SmallBStr`/`TinyBStr` (+ `Local*`),
+   dereferencing to `bstr::BStr` (its string-like API, text `Debug`/`Display`). `bstr`
+   guarantees `&BStr` ≡ `&[u8]`, so conversions are casts and the accessors are `const`
+   (`as_bstr`, `as_bytes`, `borrowed_bytes` for byte literals, `inline`, …). Storage kept
+   across `HipByt`/`HipStr` conversions; comparisons with `BStr`/`BString`/bytes/`str`;
+   `Borrow<[u8]>` (hashes match); serde and borsh as bytes. Replaces `main`'s
+   feature-dependent `Deref` of `HipByt` to `BStr` (non-additive).
 6. **Finish** — serde/bstr/borsh, benches across sizes, docs, migration guide.
 
 ## Open questions

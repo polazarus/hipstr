@@ -8,6 +8,20 @@
 /// forms of an encoding, in both directions.
 macro_rules! impl_std_glue {
     ($enc:ty, $slice:ty, $owned:ty) => {
+        $crate::family::impl_std_glue!($enc, $slice, $owned, no_box);
+
+        impl<'a, R: $crate::repr::Repr<'a, u8>> From<alloc::boxed::Box<$slice>>
+            for $crate::hip::Hip<$enc, R>
+        {
+            #[inline]
+            fn from(value: alloc::boxed::Box<$slice>) -> Self {
+                Self::from_owned(<$owned>::from(value))
+            }
+        }
+    };
+
+    // without `From<Box<$slice>>`, for owned types lacking `From<Box<$slice>>`
+    ($enc:ty, $slice:ty, $owned:ty, no_box) => {
         impl<'a, R: $crate::repr::Repr<'a, u8>> From<$owned> for $crate::hip::Hip<$enc, R> {
             /// Adopts the buffer when the value does not fit inline (no copy).
             #[inline]
@@ -21,15 +35,6 @@ macro_rules! impl_std_glue {
             #[inline]
             fn from(value: $crate::hip::Hip<$enc, R>) -> Self {
                 value.into_owned_std()
-            }
-        }
-
-        impl<'a, R: $crate::repr::Repr<'a, u8>> From<alloc::boxed::Box<$slice>>
-            for $crate::hip::Hip<$enc, R>
-        {
-            #[inline]
-            fn from(value: alloc::boxed::Box<$slice>) -> Self {
-                Self::from_owned(<$owned>::from(value))
             }
         }
 
