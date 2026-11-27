@@ -216,6 +216,7 @@ unsafe impl<'a, T: Copy + 'static, B: Backend> Repr<'a, T> for Tiny<T, B> {
         Self::new()
     }
 
+    #[inline]
     fn from_slice(slice: &[T]) -> Self {
         crate::thin::unwrap_or_oom(Self::try_from_slice(slice, slice.len()))
     }

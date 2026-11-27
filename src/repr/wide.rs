@@ -331,6 +331,7 @@ unsafe impl<'a, T: Copy + 'static, B: Backend> Repr<'a, T> for Wide<'a, T, B> {
         Self::new()
     }
 
+    #[inline]
     fn from_slice(slice: &[T]) -> Self {
         if slice.len() <= Inline::<T>::CAPACITY {
             Self::from_inline(Inline::from_slice_copy(slice))

@@ -954,7 +954,11 @@ where
 {
     #[inline]
     fn eq(&self, other: &Hip<E, R2>) -> bool {
-        self.as_inner() == other.as_inner()
+        let (a, b) = (self.bytes(), other.bytes());
+        // shared or borrowed from the same storage: equal without comparing
+        // (identical bytes, so equal for every encoding, paths included)
+        (a.len() == b.len() && core::ptr::eq(a.as_ptr(), b.as_ptr()))
+            || self.as_inner() == other.as_inner()
     }
 }
 

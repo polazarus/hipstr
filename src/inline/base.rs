@@ -28,6 +28,7 @@ impl<T, L: Layout<T>> Base<T, L> {
     /// # Panics
     ///
     /// Panics if `slice` is longer than [`CAPACITY`](Self::CAPACITY).
+    #[inline]
     #[track_caller]
     pub const fn from_slice_copy(slice: &[T]) -> Self
     where
@@ -35,6 +36,10 @@ impl<T, L: Layout<T>> Base<T, L> {
     {
         assert!(slice.len() <= L::CAPACITY, "too long to be inlined");
         let mut this = Self::new();
+        if slice.is_empty() {
+            // skip the copy: a `memcpy` call even for nothing
+            return this;
+        }
         // SAFETY: room for `slice.len()` elements (checked), copyable
         // elements, and `this` is fresh so the buffers do not overlap
         unsafe {
