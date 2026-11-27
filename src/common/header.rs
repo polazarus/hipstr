@@ -31,7 +31,7 @@ pub type VecHeader<Prefix> = Header<Prefix, Option<NonNull<u8>>>;
 
 impl<Prefix> ThinHeader<Prefix> {
     /// The bytes follow the header (alignment 1: no padding).
-    const DATA_OFFSET: usize = size_of::<Self>();
+    pub(crate) const DATA_OFFSET: usize = size_of::<Self>();
 
     pub fn with_capacity(capacity: usize) -> Self
     where

@@ -25,6 +25,7 @@ use crate::thin::TryReserveError;
 
 pub mod owner;
 pub mod small;
+pub mod thin_owner;
 pub mod tiny;
 pub mod wide;
 
@@ -74,6 +75,11 @@ pub unsafe trait Repr<'a>: Clone + Sized {
 
     /// Whether borrowed slices are kept as is (otherwise they are copied).
     const BORROWS: bool;
+
+    /// Whether vectors are adopted without copying (`from_vec`, and
+    /// `into_vec` of a unique adopted vector); otherwise they are copied
+    /// into a thin buffer.
+    const ADOPTS_VEC: bool;
 
     fn new() -> Self;
 

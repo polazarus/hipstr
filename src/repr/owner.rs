@@ -347,14 +347,6 @@ impl<B: Backend> Owner<B> {
 }
 
 #[cfg(test)]
-impl<B: Backend> Owner<B> {
-    /// An owner over a header built by a test (vector kind).
-    pub(crate) fn from_header_for_tests(header: NonNull<VecHeader<B>>) -> Self {
-        Self(header.into(), PhantomData)
-    }
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
     use crate::backend::Rc;

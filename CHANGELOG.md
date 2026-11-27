@@ -55,6 +55,10 @@ representation), with the old names kept as aliases. See
   `cstr`, `enc`, `hip`, `repr`
 - MSRV 1.100, edition 2024; no more exposed provenance (Miri strict
   provenance clean)
+- the 2- and 1-word types keep only their own (thin) buffers: their heap
+  reads are a pointer and a length (no header load nor kind check), and
+  `From<String>`/`From<Vec<u8>>`/`into_string`/`into_vec` copy for them (the
+  3-word types still adopt buffers)
 - `shrink_to`/`shrink_to_fit` shrink uniquely owned buffers in place
   (`realloc`) and leave shared ones alone, unless the value shows only part
   of the buffer (then copied, so that the rest can be freed)

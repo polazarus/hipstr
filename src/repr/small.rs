@@ -3,17 +3,23 @@
 //! ```text
 //!            little endian            big endian
 //! inline     [data...][data|len]      [len|data][data...]   top bits of "len word" = 0b11
-//! heap       [owner][0b10 | len]      [0b10 | len][owner]
-//! borrowed   [ptr][len]               [len][ptr]            top bit of "len word" = 0
+//! heap       [data ptr][0b10 | len]   [0b10 | len][data ptr]
+//! borrowed   [ptr][0b00 | len]        [0b00 | len][ptr]
 //! ```
+//!
+//! Heap and borrowed values both hold a pointer to their first byte and a
+//! length under the same mask, so that reading them is one path
+//! (`from_raw_parts(ptr, word & LEN_MASK)`): the only branch on reads is
+//! inline or not. Heap values are always thin buffers (no adopted `Vec`), and
+//! the pointer is to the data; the header, needed to clone, drop or mutate,
+//! is at a constant offset before it.
 //!
 //! The discriminant lives in the two most significant bits of the length word
 //! because a borrowed pointer may be unaligned (e.g. to `u8`) and cannot carry
 //! a tag. Consequences:
 //!
-//! - heap values hold at most `2^(usize::BITS - 2) - 1` elements;
-//! - borrowed values hold at most `isize::MAX` elements (any real slice of a
-//!   non-zero-sized type);
+//! - heap and borrowed values hold at most `2^(usize::BITS - 2) - 1` elements
+//!   (1 GiB on 32-bit targets);
 //! - the length word is never zero (empty values are inline), which gives
 //!   `Option<Small>` a niche.
 
@@ -23,8 +29,8 @@ use core::mem::{MaybeUninit, offset_of, transmute};
 use core::num::NonZeroUsize;
 use core::ptr::NonNull;
 
-use super::owner::Owner;
-use super::{Kind, Repr, capacity_overflow};
+use super::thin_owner::ThinOwner;
+use super::{HeapKind, Kind, Repr, capacity_overflow};
 use crate::backend::Backend;
 use crate::thin::TryReserveError;
 
@@ -37,8 +43,8 @@ const LEN_MASK: usize = !TAG_MASK;
 
 /// Maximal heap length.
 pub const MAX_HEAP_LEN: usize = LEN_MASK;
-/// Maximal borrowed length.
-pub const MAX_BORROWED_LEN: usize = usize::MAX >> 1;
+/// Maximal borrowed length: the same as heap lengths (one mask for both).
+pub const MAX_BORROWED_LEN: usize = LEN_MASK;
 
 /// Raw 2 words; the length word is never zero.
 #[repr(C)]
@@ -51,7 +57,7 @@ struct Pivot {
     msw: NonZeroUsize,
 }
 
-/// Heap or borrowed view: a pointer-sized word and the length word.
+/// Heap or borrowed view: a pointer to the first byte and the length word.
 #[repr(C)]
 struct Split<W: Copy> {
     #[cfg(target_endian = "big")]
@@ -68,7 +74,7 @@ impl<W: Copy> Clone for Split<W> {
     }
 }
 
-type Heap<B> = Split<Owner<B>>;
+type Heap<B> = Split<ThinOwner<B>>;
 type Borrowed = Split<NonNull<u8>>;
 
 const _: () = {
@@ -85,7 +91,7 @@ const _: () = {
 #[repr(transparent)]
 pub struct Small<'a, B: Backend> {
     pivot: Pivot,
-    marker: PhantomData<(&'a [u8], Owner<B>)>,
+    marker: PhantomData<(&'a [u8], ThinOwner<B>)>,
 }
 
 const _: () = {
@@ -115,7 +121,7 @@ impl<'a, B: Backend> Small<'a, B> {
         }
     }
 
-    const fn from_heap(owner: Owner<B>, len: usize) -> Self {
+    const fn from_heap(owner: ThinOwner<B>, len: usize) -> Self {
         debug_assert!(len <= MAX_HEAP_LEN);
         let heap = Heap {
             w0: owner,
@@ -137,8 +143,8 @@ impl<'a, B: Backend> Small<'a, B> {
     ///
     /// # Panics
     ///
-    /// Panics if the slice is longer than [`MAX_BORROWED_LEN`], which is only
-    /// possible for zero-sized types.
+    /// Panics if the slice is longer than [`MAX_BORROWED_LEN`] (only possible
+    /// on 32-bit targets, from 1 GiB on).
     #[inline]
     pub const fn borrowed(slice: &'a [u8]) -> Self {
         if slice.is_empty() {
@@ -150,7 +156,7 @@ impl<'a, B: Backend> Small<'a, B> {
             msw: slice.len(),
         };
         Self {
-            // SAFETY: same size, the length word is non-zero with a clear top bit
+            // SAFETY: same size, the length word is non-zero, tagged 0b00
             pivot: unsafe { transmute::<Borrowed, Pivot>(borrowed) },
             marker: PhantomData,
         }
@@ -178,7 +184,7 @@ impl<'a, B: Backend> Small<'a, B> {
 
     #[inline]
     pub const fn is_inline(&self) -> bool {
-        matches!(self.tag(), Tag::Inline)
+        self.pivot.msw.get() >= TAG_MASK
     }
 
     #[inline]
@@ -229,18 +235,18 @@ impl<'a, B: Backend> Small<'a, B> {
 
     #[inline]
     const fn borrowed_view(&self) -> &Borrowed {
-        // SAFETY: borrowed case, same size
+        // SAFETY: borrowed or heap case (a heap handle is a data pointer),
+        // same size
         unsafe { transmute::<&Pivot, &Borrowed>(&self.pivot) }
     }
 
     #[inline]
     pub const fn len(&self) -> usize {
-        match self.tag() {
-            Tag::Inline => self.inline().len(),
-            Tag::Heap => self.pivot.msw.get() & LEN_MASK,
-            // the whole word (top bit clear): borrowed lengths may use the
-            // bit below it, part of the tag for heap lengths
-            Tag::Borrowed => self.pivot.msw.get(),
+        if self.is_inline() {
+            self.inline().len()
+        } else {
+            // heap or borrowed: one mask
+            self.pivot.msw.get() & LEN_MASK
         }
     }
 
@@ -251,19 +257,15 @@ impl<'a, B: Backend> Small<'a, B> {
 
     #[inline]
     pub const fn as_slice(&self) -> &[u8] {
-        match self.tag() {
-            Tag::Inline => self.inline().as_slice(),
-            Tag::Heap => {
-                let heap = self.heap();
-                let len = heap.msw & LEN_MASK;
-                // SAFETY: type invariant, `len` initialized owned elements
-                unsafe { core::slice::from_raw_parts(heap.w0.data().as_ptr(), len) }
-            }
-            Tag::Borrowed => {
-                let borrowed = self.borrowed_view();
-                // SAFETY: type invariant, borrowed for `'a`
-                unsafe { core::slice::from_raw_parts(borrowed.w0.as_ptr(), borrowed.msw) }
-            }
+        if self.is_inline() {
+            self.inline().as_slice()
+        } else {
+            // heap or borrowed: a pointer to the first byte and a masked
+            // length (a heap `ThinOwner` is a transparent data pointer)
+            let view = self.borrowed_view();
+            // SAFETY: type invariant, `len` initialized elements, owned or
+            // borrowed for `'a`
+            unsafe { core::slice::from_raw_parts(view.w0.as_ptr(), view.msw & LEN_MASK) }
         }
     }
 
@@ -282,7 +284,7 @@ impl<'a, B: Backend> Small<'a, B> {
         if capacity > MAX_HEAP_LEN {
             return Err(capacity_overflow());
         }
-        let owner = Owner::<B>::try_with_capacity(capacity)?;
+        let owner = ThinOwner::<B>::try_with_capacity(capacity)?;
         // SAFETY: fresh unique owner with enough capacity
         unsafe {
             owner
@@ -329,6 +331,7 @@ unsafe impl<'a, B: Backend> Repr<'a> for Small<'a, B> {
     const INLINE_CAPACITY: usize = Inline::CAPACITY;
     const MAX_LEN: usize = MAX_HEAP_LEN;
     const BORROWS: bool = true;
+    const ADOPTS_VEC: bool = false;
 
     #[inline]
     fn new() -> Self {
@@ -350,13 +353,9 @@ unsafe impl<'a, B: Backend> Repr<'a> for Small<'a, B> {
     }
 
     fn from_vec(vec: Vec<u8>) -> Self {
-        if vec.len() <= Inline::CAPACITY || vec.len() > MAX_HEAP_LEN {
-            // the second case panics with a capacity overflow
-            Self::from_slice(&vec)
-        } else {
-            let len = vec.len();
-            Self::from_heap(Owner::from_vec(vec), len)
-        }
+        // thin buffers only: a copy (panics with a capacity overflow past
+        // `MAX_HEAP_LEN`)
+        Self::from_slice(&vec)
     }
 
     fn into_owned(self) -> Self::Owned {
@@ -376,7 +375,7 @@ unsafe impl<'a, B: Backend> Repr<'a> for Small<'a, B> {
     fn kind(&self) -> Kind {
         match self.tag() {
             Tag::Inline => Kind::Inline,
-            Tag::Heap => Kind::Heap(self.heap().w0.kind()),
+            Tag::Heap => Kind::Heap(HeapKind::Thin),
             Tag::Borrowed => Kind::Borrowed,
         }
     }
@@ -527,42 +526,56 @@ mod tests {
         assert_eq!(S::borrowed(b"ab").borrowed_slice(), Some(&b"ab"[..]));
     }
 
-    /// A borrowed length with the bit below the top one set (≥ 1 GiB on
-    /// 32-bit targets): that bit belongs to the length, not to a tag.
+    /// The longest borrowed length reads back whole (the words only, never
+    /// the bytes), with the same mask as heap lengths.
     #[test]
-    fn long_borrowed_len() {
-        let len = (1 << SHIFT) + 5;
-        assert!(len <= MAX_BORROWED_LEN);
+    fn longest_borrowed_len() {
+        assert_eq!(MAX_BORROWED_LEN, MAX_HEAP_LEN);
         let borrowed = Borrowed {
             w0: NonNull::dangling(),
-            msw: len,
+            msw: MAX_BORROWED_LEN,
         };
-        // only the words are read, never the bytes
         let s = S {
-            // SAFETY: same layout, non-zero length word
+            // SAFETY: same layout, non-zero length word tagged 0b00
             pivot: unsafe { transmute::<Borrowed, Pivot>(borrowed) },
             marker: PhantomData,
         };
-        assert!(s.is_borrowed());
-        assert_eq!(s.len(), len);
+        assert!(s.is_borrowed() && !s.is_inline());
+        assert_eq!(s.len(), MAX_BORROWED_LEN);
+        let s = core::mem::ManuallyDrop::new(s);
         assert!(!s.is_empty());
     }
 
-    /// A heap capacity beyond what the length word holds (an adopted vector
+    /// A heap capacity beyond what the length word holds (geometric growth
     /// on 32-bit targets) is reported clamped.
     #[test]
     fn huge_capacity_is_clamped() {
-        // a fake vector header on the stack, never dereferenced as bytes
-        let mut header = super::super::owner::VecHeader::<Rc> {
-            prefix: crate::backend::Count(core::cell::Cell::new(0)),
-            ptr: Some(NonNull::dangling()),
-            cap: usize::MAX >> 1,
-            len: 100,
+        // a fake thin header on the stack, followed by a few bytes; only the
+        // header is read
+        #[repr(C)]
+        struct Fake {
+            header: crate::common::header::ThinHeader<crate::backend::Count>,
+            data: [u8; 8],
+        }
+        let mut fake = Fake {
+            header: crate::common::header::ThinHeader {
+                prefix: crate::backend::Count(core::cell::Cell::new(0)),
+                ptr: const_default::ConstDefault::DEFAULT,
+                cap: usize::MAX >> 1,
+                len: 100,
+            },
+            data: [0; 8],
         };
-        let owner = Owner::<Rc>::from_header_for_tests(NonNull::from(&mut header));
+        let owner = ThinOwner::<Rc>::from_header_for_tests(NonNull::from(&mut fake).cast());
         let s = core::mem::ManuallyDrop::new(S::from_heap(owner, 100));
         assert!(s.is_heap());
         assert_eq!(s.capacity(), MAX_HEAP_LEN.min(usize::MAX >> 1));
+    }
+
+    #[test]
+    fn too_long_for_the_length_word() {
+        // checked before allocating
+        assert!(S::try_from_slice(&[], MAX_HEAP_LEN + 1).is_err());
     }
 
     // the contract excludes these (a reserve unborrows): checked anyway

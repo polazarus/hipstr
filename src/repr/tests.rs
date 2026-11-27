@@ -33,6 +33,15 @@ fn expected_owned_kind<R: Repr<'static>>(len: usize, heap: HeapKind) -> Kind {
     }
 }
 
+/// The heap kind of a value made from a vector.
+fn vec_kind<R: Repr<'static>>() -> HeapKind {
+    if R::ADOPTS_VEC {
+        HeapKind::Vec
+    } else {
+        HeapKind::Thin
+    }
+}
+
 fn from_slice_and_vec<R: Repr<'static>>() {
     for len in lengths::<R>() {
         let d = data(len);
@@ -43,7 +52,7 @@ fn from_slice_and_vec<R: Repr<'static>>() {
 
         let r = R::from_vec(d.clone());
         assert_eq!(r.as_slice(), d.as_slice());
-        assert_eq!(r.kind(), expected_owned_kind::<R>(len, HeapKind::Vec));
+        assert_eq!(r.kind(), expected_owned_kind::<R>(len, vec_kind::<R>()));
     }
 }
 
@@ -70,9 +79,13 @@ fn vec_round_trip_is_zero_copy<R: Repr<'static>>() {
     let d = data(R::INLINE_CAPACITY + 100);
     let ptr = d.as_ptr();
     let r = R::from_vec(d);
-    assert_eq!(r.as_slice().as_ptr(), ptr);
+    // adopted, or copied into a thin buffer
+    assert_eq!(r.as_slice().as_ptr() == ptr, R::ADOPTS_VEC);
     let v = r.into_vec();
-    assert_eq!(v.as_ptr(), ptr);
+    // (a copy may land at the freed address: only checked when adopted)
+    if R::ADOPTS_VEC {
+        assert_eq!(v.as_ptr(), ptr);
+    }
     assert_eq!(v, data(R::INLINE_CAPACITY + 100));
 }
 
@@ -91,6 +104,11 @@ fn vec_with_spare_capacity<R: Repr<'static>>() {
     let (ptr, cap) = (v.as_ptr(), v.capacity());
     let mut r = R::from_vec(v);
     assert_eq!(r.len(), R::INLINE_CAPACITY + 1);
+    if !R::ADOPTS_VEC {
+        // copied: the spare capacity is not kept
+        assert_eq!(r.as_slice(), data(R::INLINE_CAPACITY + 1));
+        return;
+    }
     assert_eq!(r.capacity(), cap);
     r.extend_from_slice(&[1; 20]);
     assert_eq!(
@@ -162,7 +180,7 @@ fn growth_transitions<R: Repr<'static>>() {
     // adopted vectors grow in place, keeping their buffer adopted
     let mut r = R::from_vec(data(R::INLINE_CAPACITY + 1));
     r.extend_from_slice(&data(1000));
-    assert_eq!(r.kind(), Kind::Heap(HeapKind::Vec));
+    assert_eq!(r.kind(), Kind::Heap(vec_kind::<R>()));
     assert_eq!(r.len(), R::INLINE_CAPACITY + 1001);
 }
 

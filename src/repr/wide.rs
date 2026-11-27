@@ -325,6 +325,7 @@ unsafe impl<'a, B: Backend> Repr<'a> for Wide<'a, B> {
     const INLINE_CAPACITY: usize = Inline::CAPACITY;
     const MAX_LEN: usize = isize::MAX as usize;
     const BORROWS: bool = true;
+    const ADOPTS_VEC: bool = true;
 
     #[inline]
     fn new() -> Self {

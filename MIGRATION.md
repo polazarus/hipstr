@@ -20,14 +20,15 @@ provides smaller sizes and std's full API.
 | `try_reserve` on the old internal vectors | `try_reserve` on every type, returning std's `TryReserveError` |
 
 Writing generic code over the old types: name the generic type
-`Hip<E, R>` with `E: hipstr::enc::Encoding` and `R: hipstr::repr::Repr<'a, u8>`.
+`Hip<E, R>` with `E: hipstr::enc::Encoding` and `R: hipstr::repr::Repr<'a>`.
 
 ## Things that behave differently
 
 - **Getting buffers back.** `From<String>`, `From<Vec<u8>>`, `From<PathBuf>`,
-  … still take the buffer without copying; `into_string`/`into_vec`/… give it
-  back in O(1) if it is still uniquely owned, and copy otherwise instead of
-  failing.
+  … still take the buffer without copying for the 3-word types (`HipStr`, …);
+  `into_string`/`into_vec`/… give it back in O(1) if it is still uniquely
+  owned, and copy otherwise instead of failing. The new 2- and 1-word types
+  (`SmallStr`, `TinyStr`, …) always copy, both ways.
 - **Capacity.** `capacity()` of a shared value is its length (writing needs a
   copy first). Heap capacities may be rounded up: `with_capacity(42)` may
   report 48.

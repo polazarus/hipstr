@@ -2,34 +2,39 @@
 //!
 //! ```text
 //! inline     [tagged len|data...]     bit 0 = 1 (the length byte is the least significant)
-//! heap       [owner]                  bits 1..0 = 0b10
+//! heap       [data ptr + 0b10]        bits 1..0 = 0b10
 //! ```
 //!
 //! Borrowed slices are copied: a single word cannot hold a pointer and a
-//! length. The heap length is read from the header.
+//! length. Heap values are always thin buffers (no adopted `Vec`); the word
+//! is the (tagged) pointer to their data, the length is read from the header,
+//! at a constant offset before it.
 
 use alloc::vec::Vec;
 use core::marker::PhantomData;
 use core::mem::transmute;
 use core::ptr::NonNull;
 
-use super::owner::Owner;
-use super::{Kind, Repr, capacity_overflow};
+use super::thin_owner::ThinOwner;
+use super::{HeapKind, Kind, Repr, capacity_overflow};
 use crate::backend::Backend;
 use crate::thin::TryReserveError;
 
 type Inline = crate::inline_buf::Tiny;
 
+/// Tag of heap words, added to the (word-aligned) data pointer.
+const HEAP_TAG: usize = 0b10;
+
 const _: () = {
     assert!(size_of::<Inline>() == size_of::<usize>());
-    assert!(size_of::<Owner<crate::backend::Rc>>() == size_of::<usize>());
+    assert!(size_of::<ThinOwner<crate::backend::Rc>>() == size_of::<usize>());
 };
 
 /// 1-word copy-on-write sequence (see the module documentation).
 #[repr(transparent)]
 pub struct Tiny<B: Backend> {
     word: NonNull<()>,
-    marker: PhantomData<Owner<B>>,
+    marker: PhantomData<ThinOwner<B>>,
 }
 
 const _: () = {
@@ -52,11 +57,12 @@ impl<B: Backend> Tiny<B> {
         }
     }
 
-    const fn from_owner(owner: Owner<B>) -> Self {
-        debug_assert!(owner.is_some());
+    const fn from_owner(owner: ThinOwner<B>) -> Self {
         Self {
-            // SAFETY: same size, a non-null owner is a tagged non-null pointer
-            word: unsafe { transmute::<Owner<B>, NonNull<()>>(owner) },
+            // SAFETY: the data pointer is word-aligned, the tag fits its low
+            // bits (the result stays in the allocation's provenance, and is
+            // even: not inline)
+            word: unsafe { owner.data().byte_add(HEAP_TAG).cast() },
             marker: PhantomData,
         }
     }
@@ -112,15 +118,20 @@ impl<B: Backend> Tiny<B> {
     }
 
     #[inline]
-    const fn owner(&self) -> Owner<B> {
-        // SAFETY: heap case, same size
-        unsafe { transmute::<NonNull<()>, Owner<B>>(self.word) }
+    const fn owner(&self) -> ThinOwner<B> {
+        // SAFETY: heap case, the word is the data pointer plus the tag
+        unsafe { ThinOwner::from_data(self.word.byte_sub(HEAP_TAG).cast()) }
     }
 
+    /// Runs `f` on the handle (heap case), then stores it back: it may
+    /// move, whatever `f` returns.
     #[inline]
-    const fn owner_mut(&mut self) -> &mut Owner<B> {
-        // SAFETY: heap case, same size
-        unsafe { transmute::<&mut NonNull<()>, &mut Owner<B>>(&mut self.word) }
+    fn with_owner<T>(&mut self, f: impl FnOnce(&mut ThinOwner<B>) -> T) -> T {
+        let mut owner = self.owner();
+        let result = f(&mut owner);
+        // the word only: the old value is not dropped (same buffer)
+        self.word = core::mem::ManuallyDrop::new(Self::from_owner(owner)).word;
+        result
     }
 
     #[inline]
@@ -158,7 +169,7 @@ impl<B: Backend> Tiny<B> {
         if capacity <= Inline::CAPACITY {
             return Ok(Self::from_inline(Inline::from_slice_copy(slice)));
         }
-        let owner = Owner::<B>::try_with_capacity(capacity)?;
+        let owner = ThinOwner::<B>::try_with_capacity(capacity)?;
         // SAFETY: fresh unique owner with enough capacity
         unsafe {
             owner
@@ -205,6 +216,7 @@ unsafe impl<'a, B: Backend> Repr<'a> for Tiny<B> {
     const INLINE_CAPACITY: usize = Inline::CAPACITY;
     const MAX_LEN: usize = isize::MAX as usize;
     const BORROWS: bool = false;
+    const ADOPTS_VEC: bool = false;
 
     #[inline]
     fn new() -> Self {
@@ -226,11 +238,8 @@ unsafe impl<'a, B: Backend> Repr<'a> for Tiny<B> {
     }
 
     fn from_vec(vec: Vec<u8>) -> Self {
-        if vec.len() <= Inline::CAPACITY {
-            Self::from_inline(Inline::from_slice_copy(&vec))
-        } else {
-            Self::from_owner(Owner::from_vec(vec))
-        }
+        // thin buffers only: a copy
+        <Self as Repr<'a>>::from_slice(&vec)
     }
 
     #[inline]
@@ -247,7 +256,7 @@ unsafe impl<'a, B: Backend> Repr<'a> for Tiny<B> {
         if self.is_inline() {
             Kind::Inline
         } else {
-            Kind::Heap(self.owner().kind())
+            Kind::Heap(HeapKind::Thin)
         }
     }
 
@@ -282,8 +291,8 @@ unsafe impl<'a, B: Backend> Repr<'a> for Tiny<B> {
             }
         } else if self.owner().is_unique() {
             if required > self.owner().capacity() {
-                // SAFETY: unique owner, the updated handle is stored back in place
-                unsafe { self.owner_mut().try_grow(required, exact)? };
+                // SAFETY: unique owner, the updated handle is stored back
+                self.with_owner(|o| unsafe { o.try_grow(required, exact) })?;
             }
         } else {
             *self = Self::try_from_slice(self.as_slice(), required)?;
@@ -295,8 +304,8 @@ unsafe impl<'a, B: Backend> Repr<'a> for Tiny<B> {
         if self.is_inline() || !self.owner().is_unique() {
             return Ok(false);
         }
-        // SAFETY: unique owner, the updated handle is stored back in place
-        unsafe { self.owner_mut().try_shrink(target)? };
+        // SAFETY: unique owner, the updated handle is stored back
+        self.with_owner(|o| unsafe { o.try_shrink(target) })?;
         Ok(true)
     }
 
