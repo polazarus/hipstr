@@ -182,7 +182,7 @@ src/
 6. **Finish** (done) — benches across sizes (`benches/main.rs::sizes`), crate docs,
    README, CHANGELOG (Unreleased), `MIGRATION.md`. The unused vendored `hipvec` code
    (`ThinVec`, `InlineVec`, generic drain/splice, method macros, vector traits) was
-   removed: about 4,700 lines, most of the remaining `unsafe` outside the reprs.
+   removed: about 5,400 lines (1,200 remain: thin heap, inline layouts, header, tagged pointer).
    - Follow-ups: version number for the release; bulk byte operations (`retain`,
      `drain`) are ~3× slower than `Vec`'s (safe compaction); `reserve_exact` is
      `reserve`.
