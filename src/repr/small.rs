@@ -26,11 +26,9 @@ use core::ptr::NonNull;
 use super::owner::Owner;
 use super::{Kind, Repr, capacity_overflow};
 use crate::backend::Backend;
-use crate::inline_buf::base::Base as InlineBase;
-use crate::inline_buf::layouts::SmallLayout;
 use crate::thin::TryReserveError;
 
-type Inline<T> = InlineBase<T, SmallLayout>;
+type Inline = crate::inline_buf::Small;
 
 const SHIFT: u32 = usize::BITS - 2;
 const TAG_MASK: usize = 0b11 << SHIFT;
@@ -70,42 +68,36 @@ impl<W: Copy> Clone for Split<W> {
     }
 }
 
-type Heap<T, B> = Split<Owner<T, B>>;
-type Borrowed<T> = Split<NonNull<T>>;
+type Heap<B> = Split<Owner<B>>;
+type Borrowed = Split<NonNull<u8>>;
 
 const _: () = {
-    type H = Heap<u8, crate::backend::Rc>;
+    type H = Heap<crate::backend::Rc>;
     assert!(size_of::<Pivot>() == 2 * size_of::<usize>());
     assert!(size_of::<H>() == size_of::<Pivot>());
-    assert!(size_of::<Borrowed<u8>>() == size_of::<Pivot>());
-    assert!(size_of::<Inline<u8>>() == size_of::<Pivot>());
+    assert!(size_of::<Borrowed>() == size_of::<Pivot>());
+    assert!(size_of::<Inline>() == size_of::<Pivot>());
     assert!(offset_of!(H, msw) == offset_of!(Pivot, msw));
-    assert!(offset_of!(Borrowed<u8>, msw) == offset_of!(Pivot, msw));
+    assert!(offset_of!(Borrowed, msw) == offset_of!(Pivot, msw));
 };
 
 /// 2-word copy-on-write sequence (see the module documentation).
 #[repr(transparent)]
-pub struct Small<'a, T: Copy + 'static, B: Backend> {
+pub struct Small<'a, B: Backend> {
     pivot: Pivot,
-    marker: PhantomData<(&'a [T], Owner<T, B>)>,
+    marker: PhantomData<(&'a [u8], Owner<B>)>,
 }
 
 const _: () = {
-    type P = Small<'static, u8, crate::backend::Rc>;
+    type P = Small<'static, crate::backend::Rc>;
     assert!(size_of::<P>() == 2 * size_of::<usize>());
     assert!(size_of::<Option<P>>() == size_of::<P>());
 };
 
 // SAFETY: see `Wide`
-unsafe impl<T: Copy + Send + Sync + 'static, B: Backend> Send for Small<'_, T, B> where
-    B::Counter: Send + Sync
-{
-}
+unsafe impl<B: Backend> Send for Small<'_, B> where B::Counter: Send + Sync {}
 // SAFETY: see `Wide`
-unsafe impl<T: Copy + Send + Sync + 'static, B: Backend> Sync for Small<'_, T, B> where
-    B::Counter: Send + Sync
-{
-}
+unsafe impl<B: Backend> Sync for Small<'_, B> where B::Counter: Send + Sync {}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Tag {
@@ -114,16 +106,16 @@ enum Tag {
     Borrowed,
 }
 
-impl<'a, T: Copy + 'static, B: Backend> Small<'a, T, B> {
-    const fn from_inline(inline: Inline<T>) -> Self {
+impl<'a, B: Backend> Small<'a, B> {
+    const fn from_inline(inline: Inline) -> Self {
         Self {
             // SAFETY: same size, the length word of an inline is tagged 0b11
-            pivot: unsafe { transmute::<Inline<T>, Pivot>(inline) },
+            pivot: unsafe { transmute::<Inline, Pivot>(inline) },
             marker: PhantomData,
         }
     }
 
-    const fn from_heap(owner: Owner<T, B>, len: usize) -> Self {
+    const fn from_heap(owner: Owner<B>, len: usize) -> Self {
         debug_assert!(len <= MAX_HEAP_LEN);
         let heap = Heap {
             w0: owner,
@@ -131,7 +123,7 @@ impl<'a, T: Copy + 'static, B: Backend> Small<'a, T, B> {
         };
         Self {
             // SAFETY: same size, the length word is tagged 0b10, non-zero
-            pivot: unsafe { transmute::<Heap<T, B>, Pivot>(heap) },
+            pivot: unsafe { transmute::<Heap<B>, Pivot>(heap) },
             marker: PhantomData,
         }
     }
@@ -148,18 +140,18 @@ impl<'a, T: Copy + 'static, B: Backend> Small<'a, T, B> {
     /// Panics if the slice is longer than [`MAX_BORROWED_LEN`], which is only
     /// possible for zero-sized types.
     #[inline]
-    pub const fn borrowed(slice: &'a [T]) -> Self {
+    pub const fn borrowed(slice: &'a [u8]) -> Self {
         if slice.is_empty() {
             return Self::new();
         }
         assert!(slice.len() <= MAX_BORROWED_LEN, "borrowed slice too long");
         let borrowed = Borrowed {
-            w0: NonNull::from_ref(slice).cast::<T>(),
+            w0: NonNull::from_ref(slice).cast::<u8>(),
             msw: slice.len(),
         };
         Self {
             // SAFETY: same size, the length word is non-zero with a clear top bit
-            pivot: unsafe { transmute::<Borrowed<T>, Pivot>(borrowed) },
+            pivot: unsafe { transmute::<Borrowed, Pivot>(borrowed) },
             marker: PhantomData,
         }
     }
@@ -179,11 +171,8 @@ impl<'a, T: Copy + 'static, B: Backend> Small<'a, T, B> {
     ///
     /// Panics if `slice` is longer than the inline capacity.
     #[inline]
-    pub const fn inline_copy(slice: &[T]) -> Self {
-        assert!(
-            slice.len() <= Inline::<T>::CAPACITY,
-            "too long to be inlined"
-        );
+    pub const fn inline_copy(slice: &[u8]) -> Self {
+        assert!(slice.len() <= Inline::CAPACITY, "too long to be inlined");
         Self::from_inline(Inline::from_slice_copy(slice))
     }
 
@@ -204,7 +193,7 @@ impl<'a, T: Copy + 'static, B: Backend> Small<'a, T, B> {
 
     /// The borrowed slice, with its full lifetime, if borrowed.
     #[inline]
-    pub const fn borrowed_slice(&self) -> Option<&'a [T]> {
+    pub const fn borrowed_slice(&self) -> Option<&'a [u8]> {
         if self.is_borrowed() {
             let borrowed = self.borrowed_view();
             // SAFETY: borrowed case, valid for `'a`
@@ -215,33 +204,33 @@ impl<'a, T: Copy + 'static, B: Backend> Small<'a, T, B> {
     }
 
     #[inline]
-    const fn inline(&self) -> &Inline<T> {
+    const fn inline(&self) -> &Inline {
         // SAFETY: inline case, same size
-        unsafe { transmute::<&Pivot, &Inline<T>>(&self.pivot) }
+        unsafe { transmute::<&Pivot, &Inline>(&self.pivot) }
     }
 
     #[inline]
-    const fn inline_mut(&mut self) -> &mut Inline<T> {
+    const fn inline_mut(&mut self) -> &mut Inline {
         // SAFETY: inline case, same size
-        unsafe { transmute::<&mut Pivot, &mut Inline<T>>(&mut self.pivot) }
+        unsafe { transmute::<&mut Pivot, &mut Inline>(&mut self.pivot) }
     }
 
     #[inline]
-    const fn heap(&self) -> &Heap<T, B> {
+    const fn heap(&self) -> &Heap<B> {
         // SAFETY: heap case, same size
-        unsafe { transmute::<&Pivot, &Heap<T, B>>(&self.pivot) }
+        unsafe { transmute::<&Pivot, &Heap<B>>(&self.pivot) }
     }
 
     #[inline]
-    const fn heap_mut(&mut self) -> &mut Heap<T, B> {
+    const fn heap_mut(&mut self) -> &mut Heap<B> {
         // SAFETY: heap case, same size
-        unsafe { transmute::<&mut Pivot, &mut Heap<T, B>>(&mut self.pivot) }
+        unsafe { transmute::<&mut Pivot, &mut Heap<B>>(&mut self.pivot) }
     }
 
     #[inline]
-    const fn borrowed_view(&self) -> &Borrowed<T> {
+    const fn borrowed_view(&self) -> &Borrowed {
         // SAFETY: borrowed case, same size
-        unsafe { transmute::<&Pivot, &Borrowed<T>>(&self.pivot) }
+        unsafe { transmute::<&Pivot, &Borrowed>(&self.pivot) }
     }
 
     #[inline]
@@ -259,7 +248,7 @@ impl<'a, T: Copy + 'static, B: Backend> Small<'a, T, B> {
     }
 
     #[inline]
-    pub const fn as_slice(&self) -> &[T] {
+    pub const fn as_slice(&self) -> &[u8] {
         match self.tag() {
             Tag::Inline => self.inline().as_slice(),
             Tag::Heap => {
@@ -279,19 +268,19 @@ impl<'a, T: Copy + 'static, B: Backend> Small<'a, T, B> {
     /// Copies `slice` to a new heap buffer; kept out of line so that the
     /// inline path of `from_slice` stays small enough to be inlined.
     #[inline(never)]
-    fn heap_from_slice(slice: &[T]) -> Self {
+    fn heap_from_slice(slice: &[u8]) -> Self {
         crate::thin::unwrap_or_oom(Self::try_from_slice(slice, slice.len()))
     }
 
-    fn try_from_slice(slice: &[T], capacity: usize) -> Result<Self, TryReserveError> {
+    fn try_from_slice(slice: &[u8], capacity: usize) -> Result<Self, TryReserveError> {
         debug_assert!(capacity >= slice.len());
-        if capacity <= Inline::<T>::CAPACITY {
+        if capacity <= Inline::CAPACITY {
             return Ok(Self::from_inline(Inline::from_slice_copy(slice)));
         }
         if capacity > MAX_HEAP_LEN {
             return Err(capacity_overflow());
         }
-        let owner = Owner::<T, B>::try_with_capacity(capacity)?;
+        let owner = Owner::<B>::try_with_capacity(capacity)?;
         // SAFETY: fresh unique owner with enough capacity
         unsafe {
             owner
@@ -304,13 +293,13 @@ impl<'a, T: Copy + 'static, B: Backend> Small<'a, T, B> {
     }
 }
 
-impl<T: Copy + 'static, B: Backend> Default for Small<'_, T, B> {
+impl<B: Backend> Default for Small<'_, B> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T: Copy + 'static, B: Backend> Clone for Small<'_, T, B> {
+impl<B: Backend> Clone for Small<'_, B> {
     fn clone(&self) -> Self {
         if self.tag() == Tag::Heap && self.heap().w0.try_clone().is_none() {
             return Self::from_slice(self.as_slice());
@@ -322,7 +311,7 @@ impl<T: Copy + 'static, B: Backend> Clone for Small<'_, T, B> {
     }
 }
 
-impl<T: Copy + 'static, B: Backend> Drop for Small<'_, T, B> {
+impl<B: Backend> Drop for Small<'_, B> {
     fn drop(&mut self) {
         if self.tag() == Tag::Heap {
             // SAFETY: this handle is dropped
@@ -332,10 +321,10 @@ impl<T: Copy + 'static, B: Backend> Drop for Small<'_, T, B> {
 }
 
 // SAFETY: see the trait's contract, upheld by `try_reserve`
-unsafe impl<'a, T: Copy + 'static, B: Backend> Repr<'a, T> for Small<'a, T, B> {
-    type Owned = Small<'static, T, B>;
+unsafe impl<'a, B: Backend> Repr<'a> for Small<'a, B> {
+    type Owned = Small<'static, B>;
     const WORDS: usize = 2;
-    const INLINE_CAPACITY: usize = Inline::<T>::CAPACITY;
+    const INLINE_CAPACITY: usize = Inline::CAPACITY;
     const MAX_LEN: usize = MAX_HEAP_LEN;
     const BORROWS: bool = true;
 
@@ -345,8 +334,8 @@ unsafe impl<'a, T: Copy + 'static, B: Backend> Repr<'a, T> for Small<'a, T, B> {
     }
 
     #[inline]
-    fn from_slice(slice: &[T]) -> Self {
-        if slice.len() <= Inline::<T>::CAPACITY {
+    fn from_slice(slice: &[u8]) -> Self {
+        if slice.len() <= Inline::CAPACITY {
             Self::from_inline(Inline::from_slice_copy(slice))
         } else {
             Self::heap_from_slice(slice)
@@ -354,12 +343,12 @@ unsafe impl<'a, T: Copy + 'static, B: Backend> Repr<'a, T> for Small<'a, T, B> {
     }
 
     #[inline]
-    fn from_borrowed(slice: &'a [T]) -> Self {
+    fn from_borrowed(slice: &'a [u8]) -> Self {
         Self::borrowed(slice)
     }
 
-    fn from_vec(vec: Vec<T>) -> Self {
-        if vec.len() <= Inline::<T>::CAPACITY || vec.len() > MAX_HEAP_LEN {
+    fn from_vec(vec: Vec<u8>) -> Self {
+        if vec.len() <= Inline::CAPACITY || vec.len() > MAX_HEAP_LEN {
             // the second case panics with a capacity overflow
             Self::from_slice(&vec)
         } else {
@@ -370,7 +359,7 @@ unsafe impl<'a, T: Copy + 'static, B: Backend> Repr<'a, T> for Small<'a, T, B> {
 
     fn into_owned(self) -> Self::Owned {
         if self.tag() == Tag::Borrowed {
-            return <Self::Owned as Repr<'static, T>>::from_slice(self.as_slice());
+            return <Self::Owned as Repr<'static>>::from_slice(self.as_slice());
         }
         let this = core::mem::ManuallyDrop::new(self);
         // SAFETY: not borrowed, so nothing depends on `'a`; same type otherwise
@@ -378,7 +367,7 @@ unsafe impl<'a, T: Copy + 'static, B: Backend> Repr<'a, T> for Small<'a, T, B> {
     }
 
     #[inline]
-    fn as_borrowed(&self) -> Option<&'a [T]> {
+    fn as_borrowed(&self) -> Option<&'a [u8]> {
         self.borrowed_slice()
     }
 
@@ -391,7 +380,7 @@ unsafe impl<'a, T: Copy + 'static, B: Backend> Repr<'a, T> for Small<'a, T, B> {
     }
 
     #[inline]
-    fn as_slice(&self) -> &[T] {
+    fn as_slice(&self) -> &[u8] {
         self.as_slice()
     }
 
@@ -400,7 +389,7 @@ unsafe impl<'a, T: Copy + 'static, B: Backend> Repr<'a, T> for Small<'a, T, B> {
         self.len()
     }
 
-    fn into_vec(self) -> Vec<T> {
+    fn into_vec(self) -> Vec<u8> {
         if self.tag() == Tag::Heap {
             let len = self.len();
             let this = core::mem::ManuallyDrop::new(self);
@@ -424,7 +413,7 @@ unsafe impl<'a, T: Copy + 'static, B: Backend> Repr<'a, T> for Small<'a, T, B> {
         let len = self.len();
         let required = len.checked_add(additional).ok_or(capacity_overflow())?;
         match self.tag() {
-            Tag::Inline if required <= Inline::<T>::CAPACITY => {}
+            Tag::Inline if required <= Inline::CAPACITY => {}
             Tag::Heap if self.heap().w0.is_unique() => {
                 if required > MAX_HEAP_LEN {
                     return Err(capacity_overflow());
@@ -454,7 +443,7 @@ unsafe impl<'a, T: Copy + 'static, B: Backend> Repr<'a, T> for Small<'a, T, B> {
             Tag::Borrowed => {
                 debug_assert!(len > 0, "empty values are inline");
                 // SAFETY: same layout, the length word stays non-zero (len > 0)
-                unsafe { transmute::<&mut Pivot, &mut Borrowed<T>>(&mut self.pivot) }.msw = len;
+                unsafe { transmute::<&mut Pivot, &mut Borrowed>(&mut self.pivot) }.msw = len;
                 true
             }
         }
@@ -462,13 +451,13 @@ unsafe impl<'a, T: Copy + 'static, B: Backend> Repr<'a, T> for Small<'a, T, B> {
 
     fn capacity(&self) -> usize {
         match self.tag() {
-            Tag::Inline => Inline::<T>::CAPACITY,
+            Tag::Inline => Inline::CAPACITY,
             Tag::Heap => self.heap().w0.capacity(),
             Tag::Borrowed => 0,
         }
     }
 
-    unsafe fn as_mut_ptr(&mut self) -> *mut T {
+    unsafe fn as_mut_ptr(&mut self) -> *mut u8 {
         match self.tag() {
             Tag::Inline => self.inline_mut().as_mut_ptr(),
             Tag::Heap => self.heap().w0.data().as_ptr(),

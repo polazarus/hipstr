@@ -77,12 +77,12 @@ macro_rules! impl_const_cstr {
 }
 
 impl_const_cstr!(
-    ['a] super::repr::Wide<'a, u8, B>,
-    ['a] super::repr::Small<'a, u8, B>,
-    [] super::repr::Tiny<u8, B>,
+    ['a] super::repr::Wide<'a, B>,
+    ['a] super::repr::Small<'a, B>,
+    [] super::repr::Tiny<B>,
 );
 
-impl<'a, R: Repr<'a, u8>> Hip<enc::CStr, R> {
+impl<'a, R: Repr<'a>> Hip<enc::CStr, R> {
     /// Converts into a `CString`, in O(1) when the value uniquely owns an
     /// adopted buffer, by copying otherwise.
     #[inline]
@@ -205,7 +205,7 @@ impl<'a, R: Repr<'a, u8>> Hip<enc::CStr, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> TryFrom<Vec<u8>> for Hip<enc::CStr, R> {
+impl<'a, R: Repr<'a>> TryFrom<Vec<u8>> for Hip<enc::CStr, R> {
     type Error = NulError;
 
     /// Appends the NUL terminator, like `CString::new` (reusing the buffer
@@ -216,7 +216,7 @@ impl<'a, R: Repr<'a, u8>> TryFrom<Vec<u8>> for Hip<enc::CStr, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> TryFrom<&[u8]> for Hip<enc::CStr, R> {
+impl<'a, R: Repr<'a>> TryFrom<&[u8]> for Hip<enc::CStr, R> {
     type Error = NulError;
 
     /// Appends the NUL terminator, like `CString::new`.
@@ -234,7 +234,7 @@ impl<'a, R: Repr<'a, u8>> TryFrom<&[u8]> for Hip<enc::CStr, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> TryFrom<&str> for Hip<enc::CStr, R> {
+impl<'a, R: Repr<'a>> TryFrom<&str> for Hip<enc::CStr, R> {
     type Error = NulError;
 
     /// Appends the NUL terminator, like `CString::new`.
@@ -244,7 +244,7 @@ impl<'a, R: Repr<'a, u8>> TryFrom<&str> for Hip<enc::CStr, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> TryFrom<String> for Hip<enc::CStr, R> {
+impl<'a, R: Repr<'a>> TryFrom<String> for Hip<enc::CStr, R> {
     type Error = NulError;
 
     /// Appends the NUL terminator, like `CString::new`.
@@ -254,7 +254,7 @@ impl<'a, R: Repr<'a, u8>> TryFrom<String> for Hip<enc::CStr, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> From<Hip<enc::CStr, R>> for Hip<Bytes, R> {
+impl<'a, R: Repr<'a>> From<Hip<enc::CStr, R>> for Hip<Bytes, R> {
     /// The bytes without the NUL terminator (see [`Hip::into_bytes`]).
     #[inline]
     fn from(value: Hip<enc::CStr, R>) -> Self {
@@ -262,7 +262,7 @@ impl<'a, R: Repr<'a, u8>> From<Hip<enc::CStr, R>> for Hip<Bytes, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> From<Hip<enc::CStr, R>> for Vec<u8> {
+impl<'a, R: Repr<'a>> From<Hip<enc::CStr, R>> for Vec<u8> {
     /// The bytes without the NUL terminator, like `CString::into_bytes`.
     #[inline]
     fn from(value: Hip<enc::CStr, R>) -> Self {

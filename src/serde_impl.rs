@@ -20,7 +20,7 @@ use super::repr::Repr;
 
 // ----- strings -----
 
-impl<'a, R: Repr<'a, u8>> Serialize for Hip<Utf8, R> {
+impl<'a, R: Repr<'a>> Serialize for Hip<Utf8, R> {
     #[inline]
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.serialize_str(self.as_inner())
@@ -60,12 +60,12 @@ macro_rules! str_visits {
     };
 }
 
-impl<'de, 'a, R: Repr<'a, u8>> Visitor<'de> for StrVisitor<R, false> {
+impl<'de, 'a, R: Repr<'a>> Visitor<'de> for StrVisitor<R, false> {
     type Value = Hip<Utf8, R>;
     str_visits!();
 }
 
-impl<'de: 'a, 'a, R: Repr<'a, u8>> Visitor<'de> for StrVisitor<(R, &'a ()), true> {
+impl<'de: 'a, 'a, R: Repr<'a>> Visitor<'de> for StrVisitor<(R, &'a ()), true> {
     type Value = Hip<Utf8, R>;
     str_visits!();
 
@@ -81,7 +81,7 @@ impl<'de: 'a, 'a, R: Repr<'a, u8>> Visitor<'de> for StrVisitor<(R, &'a ()), true
     }
 }
 
-impl<'de, 'a, R: Repr<'a, u8>> Deserialize<'de> for Hip<Utf8, R> {
+impl<'de, 'a, R: Repr<'a>> Deserialize<'de> for Hip<Utf8, R> {
     #[inline]
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         deserializer.deserialize_str(StrVisitor::<R, false>(PhantomData))
@@ -102,7 +102,7 @@ pub mod string {
     pub fn borrow_deserialize<'de: 'a, 'a, D, R>(deserializer: D) -> Result<Hip<Utf8, R>, D::Error>
     where
         D: Deserializer<'de>,
-        R: Repr<'a, u8>,
+        R: Repr<'a>,
     {
         deserializer.deserialize_str(StrVisitor::<(R, &'a ()), true>(PhantomData))
     }
@@ -110,7 +110,7 @@ pub mod string {
 
 // ----- bytes -----
 
-impl<'a, R: Repr<'a, u8>> Serialize for Hip<Bytes, R> {
+impl<'a, R: Repr<'a>> Serialize for Hip<Bytes, R> {
     #[inline]
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.serialize_bytes(self.bytes())
@@ -156,12 +156,12 @@ macro_rules! bytes_visits {
     };
 }
 
-impl<'de, 'a, R: Repr<'a, u8>> Visitor<'de> for BytesVisitor<R, false> {
+impl<'de, 'a, R: Repr<'a>> Visitor<'de> for BytesVisitor<R, false> {
     type Value = Hip<Bytes, R>;
     bytes_visits!('de);
 }
 
-impl<'de: 'a, 'a, R: Repr<'a, u8>> Visitor<'de> for BytesVisitor<(R, &'a ()), true> {
+impl<'de: 'a, 'a, R: Repr<'a>> Visitor<'de> for BytesVisitor<(R, &'a ()), true> {
     type Value = Hip<Bytes, R>;
     bytes_visits!('de);
 
@@ -176,7 +176,7 @@ impl<'de: 'a, 'a, R: Repr<'a, u8>> Visitor<'de> for BytesVisitor<(R, &'a ()), tr
     }
 }
 
-impl<'de, 'a, R: Repr<'a, u8>> Deserialize<'de> for Hip<Bytes, R> {
+impl<'de, 'a, R: Repr<'a>> Deserialize<'de> for Hip<Bytes, R> {
     #[inline]
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         deserializer.deserialize_bytes(BytesVisitor::<R, false>(PhantomData))
@@ -196,7 +196,7 @@ pub mod bytes {
     pub fn borrow_deserialize<'de: 'a, 'a, D, R>(deserializer: D) -> Result<Hip<Bytes, R>, D::Error>
     where
         D: Deserializer<'de>,
-        R: Repr<'a, u8>,
+        R: Repr<'a>,
     {
         deserializer.deserialize_bytes(BytesVisitor::<(R, &'a ()), true>(PhantomData))
     }
@@ -206,7 +206,7 @@ pub mod bytes {
 
 /// `bstr` byte strings serialize as bytes, like `bstr::BString` does.
 #[cfg(feature = "bstr")]
-impl<'a, R: Repr<'a, u8>> Serialize for Hip<crate::enc::BStr, R> {
+impl<'a, R: Repr<'a>> Serialize for Hip<crate::enc::BStr, R> {
     #[inline]
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.serialize_bytes(self.bytes())
@@ -214,7 +214,7 @@ impl<'a, R: Repr<'a, u8>> Serialize for Hip<crate::enc::BStr, R> {
 }
 
 #[cfg(feature = "bstr")]
-impl<'de, 'a, R: Repr<'a, u8>> Deserialize<'de> for Hip<crate::enc::BStr, R> {
+impl<'de, 'a, R: Repr<'a>> Deserialize<'de> for Hip<crate::enc::BStr, R> {
     #[inline]
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         Hip::<Bytes, R>::deserialize(deserializer).map(Self::from)
@@ -225,14 +225,14 @@ impl<'de, 'a, R: Repr<'a, u8>> Deserialize<'de> for Hip<crate::enc::BStr, R> {
 
 /// C strings serialize like `CStr` (bytes without the terminator) and
 /// deserialize like `CString` (rejecting interior NULs).
-impl<'a, R: Repr<'a, u8>> Serialize for Hip<crate::enc::CStr, R> {
+impl<'a, R: Repr<'a>> Serialize for Hip<crate::enc::CStr, R> {
     #[inline]
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         self.as_inner().serialize(serializer)
     }
 }
 
-impl<'de, 'a, R: Repr<'a, u8>> Deserialize<'de> for Hip<crate::enc::CStr, R> {
+impl<'de, 'a, R: Repr<'a>> Deserialize<'de> for Hip<crate::enc::CStr, R> {
     #[inline]
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         alloc::ffi::CString::deserialize(deserializer).map(Self::from_owned)
@@ -248,14 +248,14 @@ mod os {
     use super::*;
     use crate::enc;
 
-    impl<'a, R: Repr<'a, u8>> Serialize for Hip<enc::OsStr, R> {
+    impl<'a, R: Repr<'a>> Serialize for Hip<enc::OsStr, R> {
         #[inline]
         fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
             self.as_os_str().serialize(serializer)
         }
     }
 
-    impl<'de, 'a, R: Repr<'a, u8>> Deserialize<'de> for Hip<enc::OsStr, R> {
+    impl<'de, 'a, R: Repr<'a>> Deserialize<'de> for Hip<enc::OsStr, R> {
         #[inline]
         fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
             OsString::deserialize(deserializer).map(Self::from_owned)
@@ -263,14 +263,14 @@ mod os {
     }
 
     /// Paths go through strings, as `std::path::Path`'s own impls do.
-    impl<'a, R: Repr<'a, u8>> Serialize for Hip<enc::Path, R> {
+    impl<'a, R: Repr<'a>> Serialize for Hip<enc::Path, R> {
         #[inline]
         fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
             self.as_path().serialize(serializer)
         }
     }
 
-    impl<'de, 'a, R: Repr<'a, u8>> Deserialize<'de> for Hip<enc::Path, R> {
+    impl<'de, 'a, R: Repr<'a>> Deserialize<'de> for Hip<enc::Path, R> {
         #[inline]
         fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
             Hip::<Utf8, R>::deserialize(deserializer).map(Self::from)
@@ -296,7 +296,7 @@ pub mod path {
     ) -> Result<Hip<enc::Path, R>, D::Error>
     where
         D: Deserializer<'de>,
-        R: Repr<'a, u8>,
+        R: Repr<'a>,
     {
         super::string::borrow_deserialize(deserializer).map(Hip::from)
     }

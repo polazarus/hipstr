@@ -69,12 +69,12 @@ macro_rules! impl_const_bytes {
 }
 
 impl_const_bytes!(
-    ['a] super::repr::Wide<'a, u8, B>,
-    ['a] super::repr::Small<'a, u8, B>,
-    [] super::repr::Tiny<u8, B>,
+    ['a] super::repr::Wide<'a, B>,
+    ['a] super::repr::Small<'a, B>,
+    [] super::repr::Tiny<B>,
 );
 
-impl<'a, R: Repr<'a, u8>> Hip<Bytes, R> {
+impl<'a, R: Repr<'a>> Hip<Bytes, R> {
     /// Converts into a `Vec`, in O(1) when the value uniquely owns an
     /// adopted buffer, by copying otherwise.
     #[inline]
@@ -428,7 +428,7 @@ impl<'a, R: Repr<'a, u8>> Hip<Bytes, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>, const N: usize> From<&[u8; N]> for Hip<Bytes, R> {
+impl<'a, R: Repr<'a>, const N: usize> From<&[u8; N]> for Hip<Bytes, R> {
     #[inline]
     fn from(value: &[u8; N]) -> Self {
         Self::from_inner(value)

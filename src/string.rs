@@ -50,7 +50,7 @@ impl_cmp!(Utf8 as std::ffi::OsStr;
 );
 
 #[cfg(feature = "std")]
-impl<'a, R: Repr<'a, u8>> AsRef<std::ffi::OsStr> for Hip<Utf8, R> {
+impl<'a, R: Repr<'a>> AsRef<std::ffi::OsStr> for Hip<Utf8, R> {
     #[inline]
     fn as_ref(&self) -> &std::ffi::OsStr {
         std::ffi::OsStr::new(self.as_inner())
@@ -58,7 +58,7 @@ impl<'a, R: Repr<'a, u8>> AsRef<std::ffi::OsStr> for Hip<Utf8, R> {
 }
 
 #[cfg(feature = "std")]
-impl<'a, R: Repr<'a, u8>> AsRef<std::path::Path> for Hip<Utf8, R> {
+impl<'a, R: Repr<'a>> AsRef<std::path::Path> for Hip<Utf8, R> {
     #[inline]
     fn as_ref(&self) -> &std::path::Path {
         std::path::Path::new(self.as_inner())
@@ -66,7 +66,7 @@ impl<'a, R: Repr<'a, u8>> AsRef<std::path::Path> for Hip<Utf8, R> {
 }
 
 #[cfg(feature = "std")]
-impl<'a, R: Repr<'a, u8>> From<Hip<Utf8, R>> for std::ffi::OsString {
+impl<'a, R: Repr<'a>> From<Hip<Utf8, R>> for std::ffi::OsString {
     /// O(1) when the value uniquely owns an adopted buffer.
     #[inline]
     fn from(value: Hip<Utf8, R>) -> Self {
@@ -75,7 +75,7 @@ impl<'a, R: Repr<'a, u8>> From<Hip<Utf8, R>> for std::ffi::OsString {
 }
 
 #[cfg(feature = "std")]
-impl<'a, R: Repr<'a, u8>> std::net::ToSocketAddrs for Hip<Utf8, R> {
+impl<'a, R: Repr<'a>> std::net::ToSocketAddrs for Hip<Utf8, R> {
     type Iter = std::vec::IntoIter<std::net::SocketAddr>;
 
     #[inline]
@@ -84,7 +84,7 @@ impl<'a, R: Repr<'a, u8>> std::net::ToSocketAddrs for Hip<Utf8, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> TryFrom<&Hip<Bytes, R>> for Hip<Utf8, R> {
+impl<'a, R: Repr<'a>> TryFrom<&Hip<Bytes, R>> for Hip<Utf8, R> {
     type Error = FromUtf8Error<R>;
 
     /// Shares the storage of `bytes` (no copy).
@@ -234,12 +234,12 @@ macro_rules! impl_const_str {
 }
 
 impl_const_str!(
-    ['a] super::repr::Wide<'a, u8, B>,
-    ['a] super::repr::Small<'a, u8, B>,
-    [] super::repr::Tiny<u8, B>,
+    ['a] super::repr::Wide<'a, B>,
+    ['a] super::repr::Small<'a, B>,
+    [] super::repr::Tiny<B>,
 );
 
-impl<'a, R: Repr<'a, u8>> Hip<Utf8, R> {
+impl<'a, R: Repr<'a>> Hip<Utf8, R> {
     /// Generic version of `from_utf8` (the public one is `const`, per repr).
     pub(crate) fn from_utf8_generic(bytes: Hip<Bytes, R>) -> Result<Self, FromUtf8Error<R>> {
         match core::str::from_utf8(bytes.as_inner()) {
@@ -894,14 +894,14 @@ impl<'a, R: Repr<'a, u8>> Hip<Utf8, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> fmt::Display for Hip<Utf8, R> {
+impl<'a, R: Repr<'a>> fmt::Display for Hip<Utf8, R> {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.as_inner().fmt(f)
     }
 }
 
-impl<'a, R: Repr<'a, u8>> fmt::Write for Hip<Utf8, R> {
+impl<'a, R: Repr<'a>> fmt::Write for Hip<Utf8, R> {
     #[inline]
     fn write_str(&mut self, s: &str) -> fmt::Result {
         self.push_str(s);
@@ -909,21 +909,21 @@ impl<'a, R: Repr<'a, u8>> fmt::Write for Hip<Utf8, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> AsRef<[u8]> for Hip<Utf8, R> {
+impl<'a, R: Repr<'a>> AsRef<[u8]> for Hip<Utf8, R> {
     #[inline]
     fn as_ref(&self) -> &[u8] {
         self.bytes()
     }
 }
 
-impl<'a, R: Repr<'a, u8>> From<char> for Hip<Utf8, R> {
+impl<'a, R: Repr<'a>> From<char> for Hip<Utf8, R> {
     #[inline]
     fn from(ch: char) -> Self {
         Self::from_inner(ch.encode_utf8(&mut [0; 4]))
     }
 }
 
-impl<'a, R: Repr<'a, u8>> TryFrom<Hip<Bytes, R>> for Hip<Utf8, R> {
+impl<'a, R: Repr<'a>> TryFrom<Hip<Bytes, R>> for Hip<Utf8, R> {
     type Error = FromUtf8Error<R>;
 
     #[inline]
@@ -932,7 +932,7 @@ impl<'a, R: Repr<'a, u8>> TryFrom<Hip<Bytes, R>> for Hip<Utf8, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> TryFrom<Vec<u8>> for Hip<Utf8, R> {
+impl<'a, R: Repr<'a>> TryFrom<Vec<u8>> for Hip<Utf8, R> {
     type Error = alloc::string::FromUtf8Error;
 
     #[inline]
@@ -941,7 +941,7 @@ impl<'a, R: Repr<'a, u8>> TryFrom<Vec<u8>> for Hip<Utf8, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> TryFrom<&[u8]> for Hip<Utf8, R> {
+impl<'a, R: Repr<'a>> TryFrom<&[u8]> for Hip<Utf8, R> {
     type Error = Utf8Error;
 
     #[inline]
@@ -950,14 +950,14 @@ impl<'a, R: Repr<'a, u8>> TryFrom<&[u8]> for Hip<Utf8, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> From<Hip<Utf8, R>> for Hip<Bytes, R> {
+impl<'a, R: Repr<'a>> From<Hip<Utf8, R>> for Hip<Bytes, R> {
     #[inline]
     fn from(s: Hip<Utf8, R>) -> Self {
         s.into_bytes()
     }
 }
 
-impl<'a, R: Repr<'a, u8>> From<Hip<Utf8, R>> for Vec<u8> {
+impl<'a, R: Repr<'a>> From<Hip<Utf8, R>> for Vec<u8> {
     /// O(1) when the value uniquely owns an adopted buffer.
     #[inline]
     fn from(s: Hip<Utf8, R>) -> Self {
@@ -965,7 +965,7 @@ impl<'a, R: Repr<'a, u8>> From<Hip<Utf8, R>> for Vec<u8> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> core::str::FromStr for Hip<Utf8, R> {
+impl<'a, R: Repr<'a>> core::str::FromStr for Hip<Utf8, R> {
     type Err = core::convert::Infallible;
 
     #[inline]
@@ -974,7 +974,7 @@ impl<'a, R: Repr<'a, u8>> core::str::FromStr for Hip<Utf8, R> {
     }
 }
 
-impl<'a, 'b, R: Repr<'a, u8>> Extend<&'b str> for Hip<Utf8, R> {
+impl<'a, 'b, R: Repr<'a>> Extend<&'b str> for Hip<Utf8, R> {
     fn extend<I: IntoIterator<Item = &'b str>>(&mut self, iter: I) {
         for s in iter {
             self.push_str(s);
@@ -982,7 +982,7 @@ impl<'a, 'b, R: Repr<'a, u8>> Extend<&'b str> for Hip<Utf8, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> Extend<char> for Hip<Utf8, R> {
+impl<'a, R: Repr<'a>> Extend<char> for Hip<Utf8, R> {
     fn extend<I: IntoIterator<Item = char>>(&mut self, iter: I) {
         let iter = iter.into_iter();
         // SAFETY: reserving does not change the content
@@ -993,7 +993,7 @@ impl<'a, R: Repr<'a, u8>> Extend<char> for Hip<Utf8, R> {
     }
 }
 
-impl<'a, 'b, R: Repr<'a, u8>> FromIterator<&'b str> for Hip<Utf8, R> {
+impl<'a, 'b, R: Repr<'a>> FromIterator<&'b str> for Hip<Utf8, R> {
     fn from_iter<I: IntoIterator<Item = &'b str>>(iter: I) -> Self {
         let mut result = Self::default();
         result.extend(iter);
@@ -1001,7 +1001,7 @@ impl<'a, 'b, R: Repr<'a, u8>> FromIterator<&'b str> for Hip<Utf8, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> FromIterator<char> for Hip<Utf8, R> {
+impl<'a, R: Repr<'a>> FromIterator<char> for Hip<Utf8, R> {
     fn from_iter<I: IntoIterator<Item = char>>(iter: I) -> Self {
         let mut result = Self::default();
         result.extend(iter);
@@ -1015,7 +1015,7 @@ pub struct FromUtf8Error<R> {
     error: Utf8Error,
 }
 
-impl<'a, R: Repr<'a, u8>> FromUtf8Error<R> {
+impl<'a, R: Repr<'a>> FromUtf8Error<R> {
     /// Returns a slice of [`u8`]s bytes that were attempted to convert to a `HipStr`.
     ///
     /// # Examples
@@ -1090,7 +1090,7 @@ impl<'a, R: Repr<'a, u8>> FromUtf8Error<R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> fmt::Debug for FromUtf8Error<R> {
+impl<'a, R: Repr<'a>> fmt::Debug for FromUtf8Error<R> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("FromUtf8Error")
             .field("bytes", &self.bytes)
@@ -1099,7 +1099,7 @@ impl<'a, R: Repr<'a, u8>> fmt::Debug for FromUtf8Error<R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> Clone for FromUtf8Error<R> {
+impl<'a, R: Repr<'a>> Clone for FromUtf8Error<R> {
     fn clone(&self) -> Self {
         Self {
             bytes: self.bytes.clone(),
@@ -1108,13 +1108,13 @@ impl<'a, R: Repr<'a, u8>> Clone for FromUtf8Error<R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> PartialEq for FromUtf8Error<R> {
+impl<'a, R: Repr<'a>> PartialEq for FromUtf8Error<R> {
     fn eq(&self, other: &Self) -> bool {
         self.bytes == other.bytes && self.error == other.error
     }
 }
 
-impl<'a, R: Repr<'a, u8>> Eq for FromUtf8Error<R> {}
+impl<'a, R: Repr<'a>> Eq for FromUtf8Error<R> {}
 
 impl<R> fmt::Display for FromUtf8Error<R> {
     #[inline]
@@ -1123,4 +1123,4 @@ impl<R> fmt::Display for FromUtf8Error<R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> core::error::Error for FromUtf8Error<R> {}
+impl<'a, R: Repr<'a>> core::error::Error for FromUtf8Error<R> {}

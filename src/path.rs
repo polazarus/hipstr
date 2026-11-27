@@ -38,35 +38,35 @@ impl_cmp!(enc::Path as Path;
 );
 impl_cmp!(enc::Path as OsStr; [] Box<OsStr>, [] &Box<OsStr>);
 
-impl<'a, R1: Repr<'a, u8>, R2: Repr<'a, u8>> PartialEq<Hip<enc::OsStr, R2>> for Hip<enc::Path, R1> {
+impl<'a, R1: Repr<'a>, R2: Repr<'a>> PartialEq<Hip<enc::OsStr, R2>> for Hip<enc::Path, R1> {
     #[inline]
     fn eq(&self, other: &Hip<enc::OsStr, R2>) -> bool {
         self.as_path() == <Hip<enc::OsStr, R2> as AsRef<Path>>::as_ref(other)
     }
 }
 
-impl<'a, R1: Repr<'a, u8>, R2: Repr<'a, u8>> PartialEq<Hip<enc::Path, R2>> for Hip<enc::OsStr, R1> {
+impl<'a, R1: Repr<'a>, R2: Repr<'a>> PartialEq<Hip<enc::Path, R2>> for Hip<enc::OsStr, R1> {
     #[inline]
     fn eq(&self, other: &Hip<enc::Path, R2>) -> bool {
         <Self as AsRef<Path>>::as_ref(self) == other.as_path()
     }
 }
 
-impl<'a, R: Repr<'a, u8>> AsRef<OsStr> for Hip<enc::Path, R> {
+impl<'a, R: Repr<'a>> AsRef<OsStr> for Hip<enc::Path, R> {
     #[inline]
     fn as_ref(&self) -> &OsStr {
         self.as_os_str()
     }
 }
 
-impl<'a, R: Repr<'a, u8>> From<&OsStr> for Hip<enc::Path, R> {
+impl<'a, R: Repr<'a>> From<&OsStr> for Hip<enc::Path, R> {
     #[inline]
     fn from(value: &OsStr) -> Self {
         Self::from_inner(Path::new(value))
     }
 }
 
-impl<'a, R: Repr<'a, u8>> From<OsString> for Hip<enc::Path, R> {
+impl<'a, R: Repr<'a>> From<OsString> for Hip<enc::Path, R> {
     /// Adopts the buffer when it does not fit inline (no copy).
     #[inline]
     fn from(value: OsString) -> Self {
@@ -74,7 +74,7 @@ impl<'a, R: Repr<'a, u8>> From<OsString> for Hip<enc::Path, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> From<String> for Hip<enc::Path, R> {
+impl<'a, R: Repr<'a>> From<String> for Hip<enc::Path, R> {
     /// Adopts the buffer when it does not fit inline (no copy).
     #[inline]
     fn from(value: String) -> Self {
@@ -82,14 +82,14 @@ impl<'a, R: Repr<'a, u8>> From<String> for Hip<enc::Path, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> From<Box<str>> for Hip<enc::Path, R> {
+impl<'a, R: Repr<'a>> From<Box<str>> for Hip<enc::Path, R> {
     #[inline]
     fn from(value: Box<str>) -> Self {
         Self::from(String::from(value))
     }
 }
 
-impl<'a, R: Repr<'a, u8>> From<Cow<'a, str>> for Hip<enc::Path, R> {
+impl<'a, R: Repr<'a>> From<Cow<'a, str>> for Hip<enc::Path, R> {
     /// Borrows `Cow::Borrowed` (copies if the representation cannot borrow).
     #[inline]
     fn from(value: Cow<'a, str>) -> Self {
@@ -100,7 +100,7 @@ impl<'a, R: Repr<'a, u8>> From<Cow<'a, str>> for Hip<enc::Path, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> From<Cow<'a, OsStr>> for Hip<enc::Path, R> {
+impl<'a, R: Repr<'a>> From<Cow<'a, OsStr>> for Hip<enc::Path, R> {
     /// Borrows `Cow::Borrowed` (copies if the representation cannot borrow).
     #[inline]
     fn from(value: Cow<'a, OsStr>) -> Self {
@@ -111,7 +111,7 @@ impl<'a, R: Repr<'a, u8>> From<Cow<'a, OsStr>> for Hip<enc::Path, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> From<&Hip<Utf8, R>> for Hip<enc::Path, R> {
+impl<'a, R: Repr<'a>> From<&Hip<Utf8, R>> for Hip<enc::Path, R> {
     /// Shares the storage (no copy).
     #[inline]
     fn from(value: &Hip<Utf8, R>) -> Self {
@@ -119,7 +119,7 @@ impl<'a, R: Repr<'a, u8>> From<&Hip<Utf8, R>> for Hip<enc::Path, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> From<&Hip<enc::OsStr, R>> for Hip<enc::Path, R> {
+impl<'a, R: Repr<'a>> From<&Hip<enc::OsStr, R>> for Hip<enc::Path, R> {
     /// Shares the storage (no copy).
     #[inline]
     fn from(value: &Hip<enc::OsStr, R>) -> Self {
@@ -127,7 +127,7 @@ impl<'a, R: Repr<'a, u8>> From<&Hip<enc::OsStr, R>> for Hip<enc::Path, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> From<Hip<enc::Path, R>> for OsString {
+impl<'a, R: Repr<'a>> From<Hip<enc::Path, R>> for OsString {
     /// O(1) when the value uniquely owns an adopted buffer.
     #[inline]
     fn from(value: Hip<enc::Path, R>) -> Self {
@@ -135,7 +135,7 @@ impl<'a, R: Repr<'a, u8>> From<Hip<enc::Path, R>> for OsString {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> From<Hip<enc::Path, R>> for Hip<enc::OsStr, R> {
+impl<'a, R: Repr<'a>> From<Hip<enc::Path, R>> for Hip<enc::OsStr, R> {
     /// Keeps the representation (no copy).
     #[inline]
     fn from(value: Hip<enc::Path, R>) -> Self {
@@ -143,7 +143,7 @@ impl<'a, R: Repr<'a, u8>> From<Hip<enc::Path, R>> for Hip<enc::OsStr, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> From<&Hip<enc::Path, R>> for Hip<enc::OsStr, R> {
+impl<'a, R: Repr<'a>> From<&Hip<enc::Path, R>> for Hip<enc::OsStr, R> {
     /// Shares the storage (no copy).
     #[inline]
     fn from(value: &Hip<enc::Path, R>) -> Self {
@@ -151,7 +151,7 @@ impl<'a, R: Repr<'a, u8>> From<&Hip<enc::Path, R>> for Hip<enc::OsStr, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> Hip<enc::Path, R> {
+impl<'a, R: Repr<'a>> Hip<enc::Path, R> {
     /// Yields a [`Path`] slice of the entire `HipPath`.
     ///
     /// # Examples
@@ -409,14 +409,14 @@ impl<'a, R: Repr<'a, u8>> Hip<enc::Path, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> From<&str> for Hip<enc::Path, R> {
+impl<'a, R: Repr<'a>> From<&str> for Hip<enc::Path, R> {
     #[inline]
     fn from(value: &str) -> Self {
         Self::from_inner(Path::new(value))
     }
 }
 
-impl<'a, R: Repr<'a, u8>> From<Hip<Utf8, R>> for Hip<enc::Path, R> {
+impl<'a, R: Repr<'a>> From<Hip<Utf8, R>> for Hip<enc::Path, R> {
     /// Keeps the representation (no copy).
     #[inline]
     fn from(value: Hip<Utf8, R>) -> Self {
@@ -425,7 +425,7 @@ impl<'a, R: Repr<'a, u8>> From<Hip<Utf8, R>> for Hip<enc::Path, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> From<Hip<enc::OsStr, R>> for Hip<enc::Path, R> {
+impl<'a, R: Repr<'a>> From<Hip<enc::OsStr, R>> for Hip<enc::Path, R> {
     /// Keeps the representation (no copy).
     #[inline]
     fn from(value: Hip<enc::OsStr, R>) -> Self {
@@ -434,7 +434,7 @@ impl<'a, R: Repr<'a, u8>> From<Hip<enc::OsStr, R>> for Hip<enc::Path, R> {
     }
 }
 
-impl<'a, B: super::backend::Backend> Hip<enc::Path, super::repr::Wide<'a, u8, B>> {
+impl<'a, B: super::backend::Backend> Hip<enc::Path, super::repr::Wide<'a, B>> {
     /// Creates a new `HipPath` from a static string slice without copying the slice.
     ///
     /// # Representation
@@ -487,7 +487,7 @@ impl<'a, B: super::backend::Backend> Hip<enc::Path, super::repr::Wide<'a, u8, B>
     }
 }
 
-impl<'a, B: super::backend::Backend> Hip<enc::Path, super::repr::Small<'a, u8, B>> {
+impl<'a, B: super::backend::Backend> Hip<enc::Path, super::repr::Small<'a, B>> {
     /// Creates a new `HipPath` from a static string slice without copying the slice.
     ///
     /// # Representation

@@ -18,7 +18,7 @@ use crate::hip::Hip;
 use crate::repr::Repr;
 use crate::slice::range_or_panic;
 
-impl<'a, R: Repr<'a, u8>> Hip<Utf8, R> {
+impl<'a, R: Repr<'a>> Hip<Utf8, R> {
     /// Decodes UTF-16 little-endian bytes (see `String::from_utf16le`).
     ///
     /// # Errors
@@ -189,14 +189,14 @@ impl<'a, R: Repr<'a, u8>> Hip<Utf8, R> {
     /// assert_eq!(s, "foobar");
     /// ```
     pub fn retain(&mut self, mut f: impl FnMut(char) -> bool) {
-        struct Guard<'g, 'a, R: Repr<'a, u8>> {
+        struct Guard<'g, 'a, R: Repr<'a>> {
             hip: &'g mut Hip<Utf8, R>,
             read: usize,
             write: usize,
             len: usize,
             borrow: PhantomData<&'a ()>,
         }
-        impl<'a, R: Repr<'a, u8>> Drop for Guard<'_, 'a, R> {
+        impl<'a, R: Repr<'a>> Drop for Guard<'_, 'a, R> {
             fn drop(&mut self) {
                 // SAFETY: `[0, write)` holds whole kept characters and
                 // `[read, len)` the unvisited ones: moving them together
@@ -337,7 +337,7 @@ impl<'a, R: Repr<'a, u8>> Hip<Utf8, R> {
 }
 
 /// Draining iterator returned by [`Hip::drain`] on strings.
-pub struct Drain<'h, 'a, R: Repr<'a, u8>> {
+pub struct Drain<'h, 'a, R: Repr<'a>> {
     hip: &'h mut Hip<Utf8, R>,
     range: Range<usize>,
     front: usize,
@@ -345,7 +345,7 @@ pub struct Drain<'h, 'a, R: Repr<'a, u8>> {
     borrow: PhantomData<&'a ()>,
 }
 
-impl<'a, R: Repr<'a, u8>> Drain<'_, 'a, R> {
+impl<'a, R: Repr<'a>> Drain<'_, 'a, R> {
     /// The characters not yet yielded.
     #[must_use]
     pub fn as_str(&self) -> &str {
@@ -353,25 +353,25 @@ impl<'a, R: Repr<'a, u8>> Drain<'_, 'a, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> AsRef<str> for Drain<'_, 'a, R> {
+impl<'a, R: Repr<'a>> AsRef<str> for Drain<'_, 'a, R> {
     fn as_ref(&self) -> &str {
         self.as_str()
     }
 }
 
-impl<'a, R: Repr<'a, u8>> AsRef<[u8]> for Drain<'_, 'a, R> {
+impl<'a, R: Repr<'a>> AsRef<[u8]> for Drain<'_, 'a, R> {
     fn as_ref(&self) -> &[u8] {
         self.as_str().as_bytes()
     }
 }
 
-impl<'a, R: Repr<'a, u8>> fmt::Debug for Drain<'_, 'a, R> {
+impl<'a, R: Repr<'a>> fmt::Debug for Drain<'_, 'a, R> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("Drain").field(&self.as_str()).finish()
     }
 }
 
-impl<'a, R: Repr<'a, u8>> Iterator for Drain<'_, 'a, R> {
+impl<'a, R: Repr<'a>> Iterator for Drain<'_, 'a, R> {
     type Item = char;
 
     #[inline]
@@ -392,7 +392,7 @@ impl<'a, R: Repr<'a, u8>> Iterator for Drain<'_, 'a, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> DoubleEndedIterator for Drain<'_, 'a, R> {
+impl<'a, R: Repr<'a>> DoubleEndedIterator for Drain<'_, 'a, R> {
     #[inline]
     fn next_back(&mut self) -> Option<char> {
         let ch = self.as_str().chars().next_back()?;
@@ -401,9 +401,9 @@ impl<'a, R: Repr<'a, u8>> DoubleEndedIterator for Drain<'_, 'a, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> FusedIterator for Drain<'_, 'a, R> {}
+impl<'a, R: Repr<'a>> FusedIterator for Drain<'_, 'a, R> {}
 
-impl<'a, R: Repr<'a, u8>> Drop for Drain<'_, 'a, R> {
+impl<'a, R: Repr<'a>> Drop for Drain<'_, 'a, R> {
     fn drop(&mut self) {
         let range = core::mem::replace(&mut self.range, 0..0);
         // SAFETY: checked boundaries at creation

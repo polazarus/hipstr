@@ -10,7 +10,7 @@ macro_rules! impl_std_glue {
     ($enc:ty, $slice:ty, $owned:ty) => {
         $crate::family::impl_std_glue!($enc, $slice, $owned, no_box);
 
-        impl<'a, R: $crate::repr::Repr<'a, u8>> From<alloc::boxed::Box<$slice>>
+        impl<'a, R: $crate::repr::Repr<'a>> From<alloc::boxed::Box<$slice>>
             for $crate::hip::Hip<$enc, R>
         {
             #[inline]
@@ -22,7 +22,7 @@ macro_rules! impl_std_glue {
 
     // without `From<Box<$slice>>`, for owned types lacking `From<Box<$slice>>`
     ($enc:ty, $slice:ty, $owned:ty, no_box) => {
-        impl<'a, R: $crate::repr::Repr<'a, u8>> From<$owned> for $crate::hip::Hip<$enc, R> {
+        impl<'a, R: $crate::repr::Repr<'a>> From<$owned> for $crate::hip::Hip<$enc, R> {
             /// Adopts the buffer when the value does not fit inline (no copy).
             #[inline]
             fn from(value: $owned) -> Self {
@@ -30,7 +30,7 @@ macro_rules! impl_std_glue {
             }
         }
 
-        impl<'a, R: $crate::repr::Repr<'a, u8>> From<$crate::hip::Hip<$enc, R>> for $owned {
+        impl<'a, R: $crate::repr::Repr<'a>> From<$crate::hip::Hip<$enc, R>> for $owned {
             /// O(1) when the value uniquely owns an adopted buffer.
             #[inline]
             fn from(value: $crate::hip::Hip<$enc, R>) -> Self {
@@ -38,7 +38,7 @@ macro_rules! impl_std_glue {
             }
         }
 
-        impl<'a, R: $crate::repr::Repr<'a, u8>> core::borrow::Borrow<$slice>
+        impl<'a, R: $crate::repr::Repr<'a>> core::borrow::Borrow<$slice>
             for $crate::hip::Hip<$enc, R>
         {
             #[inline]
@@ -56,28 +56,28 @@ macro_rules! impl_std_glue {
 /// Each type may carry extra generics in brackets, e.g. `[const N: usize] [u8; N]`.
 macro_rules! impl_cmp {
     ($enc:ty as $view:ty; $([$($g:tt)*] $other:ty),* $(,)?) => {$(
-        impl<'a, R: $crate::repr::Repr<'a, u8>, $($g)*> PartialEq<$other> for $crate::hip::Hip<$enc, R> {
+        impl<'a, R: $crate::repr::Repr<'a>, $($g)*> PartialEq<$other> for $crate::hip::Hip<$enc, R> {
             #[inline]
             fn eq(&self, other: &$other) -> bool {
                 <Self as AsRef<$view>>::as_ref(self) == <$other as AsRef<$view>>::as_ref(other)
             }
         }
 
-        impl<'a, R: $crate::repr::Repr<'a, u8>, $($g)*> PartialEq<$crate::hip::Hip<$enc, R>> for $other {
+        impl<'a, R: $crate::repr::Repr<'a>, $($g)*> PartialEq<$crate::hip::Hip<$enc, R>> for $other {
             #[inline]
             fn eq(&self, other: &$crate::hip::Hip<$enc, R>) -> bool {
                 <$other as AsRef<$view>>::as_ref(self) == <$crate::hip::Hip<$enc, R> as AsRef<$view>>::as_ref(other)
             }
         }
 
-        impl<'a, R: $crate::repr::Repr<'a, u8>, $($g)*> PartialOrd<$other> for $crate::hip::Hip<$enc, R> {
+        impl<'a, R: $crate::repr::Repr<'a>, $($g)*> PartialOrd<$other> for $crate::hip::Hip<$enc, R> {
             #[inline]
             fn partial_cmp(&self, other: &$other) -> Option<core::cmp::Ordering> {
                 <Self as AsRef<$view>>::as_ref(self).partial_cmp(<$other as AsRef<$view>>::as_ref(other))
             }
         }
 
-        impl<'a, R: $crate::repr::Repr<'a, u8>, $($g)*> PartialOrd<$crate::hip::Hip<$enc, R>> for $other {
+        impl<'a, R: $crate::repr::Repr<'a>, $($g)*> PartialOrd<$crate::hip::Hip<$enc, R>> for $other {
             #[inline]
             fn partial_cmp(&self, other: &$crate::hip::Hip<$enc, R>) -> Option<core::cmp::Ordering> {
                 <$other as AsRef<$view>>::as_ref(self).partial_cmp(<$crate::hip::Hip<$enc, R> as AsRef<$view>>::as_ref(other))
@@ -96,7 +96,7 @@ macro_rules! impl_borrowed_ctors {
     };
     (@one $repr:ident, $enc:ty, $slice:ty, |$v:ident| $as_bytes:expr) => {
         impl<'a, B: $crate::backend::Backend>
-            $crate::hip::Hip<$enc, $crate::repr::$repr<'a, u8, B>>
+            $crate::hip::Hip<$enc, $crate::repr::$repr<'a, B>>
         {
             /// Borrows the value without copying, in a `const` context too.
             #[inline]

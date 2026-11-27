@@ -43,7 +43,7 @@ pub enum Kind {
     Heap(HeapKind),
 }
 
-/// A representation of a copy-on-write sequence of `T`.
+/// A representation of a copy-on-write sequence of `u8`.
 ///
 /// # Safety
 ///
@@ -59,12 +59,12 @@ pub enum Kind {
 /// [`len`]: Repr::len
 /// [`set_len`]: Repr::set_len
 /// [`as_slice`]: Repr::as_slice
-pub unsafe trait Repr<'a, T: Copy + 'static>: Clone + Sized {
+pub unsafe trait Repr<'a>: Clone + Sized {
     /// Size in words.
     const WORDS: usize;
 
     /// The same representation, without the borrow lifetime.
-    type Owned: Repr<'static, T, Owned = Self::Owned>;
+    type Owned: Repr<'static, Owned = Self::Owned>;
 
     /// Maximal number of elements stored inline.
     const INLINE_CAPACITY: usize;
@@ -77,17 +77,17 @@ pub unsafe trait Repr<'a, T: Copy + 'static>: Clone + Sized {
 
     fn new() -> Self;
 
-    fn from_slice(slice: &[T]) -> Self;
+    fn from_slice(slice: &[u8]) -> Self;
 
     /// Borrows `slice` if the representation supports it, copies it otherwise.
-    fn from_borrowed(slice: &'a [T]) -> Self;
+    fn from_borrowed(slice: &'a [u8]) -> Self;
 
     /// Adopts the vector's buffer if it does not fit inline.
-    fn from_vec(vec: Vec<T>) -> Self;
+    fn from_vec(vec: Vec<u8>) -> Self;
 
     fn kind(&self) -> Kind;
 
-    fn as_slice(&self) -> &[T];
+    fn as_slice(&self) -> &[u8];
 
     #[inline]
     fn len(&self) -> usize {
@@ -103,10 +103,10 @@ pub unsafe trait Repr<'a, T: Copy + 'static>: Clone + Sized {
     fn into_owned(self) -> Self::Owned;
 
     /// The borrowed slice, with its full lifetime, if the value is borrowed.
-    fn as_borrowed(&self) -> Option<&'a [T]>;
+    fn as_borrowed(&self) -> Option<&'a [u8]>;
 
     /// Converts into a vector, in O(1) for a unique adopted vector.
-    fn into_vec(self) -> Vec<T>;
+    fn into_vec(self) -> Vec<u8>;
 
     /// Whether the value can be mutated in place (inline or unique heap).
     fn is_unique(&self) -> bool;
@@ -129,7 +129,7 @@ pub unsafe trait Repr<'a, T: Copy + 'static>: Clone + Sized {
     /// # Safety
     ///
     /// Must follow a successful [`try_reserve`](Repr::try_reserve).
-    unsafe fn as_mut_ptr(&mut self) -> *mut T;
+    unsafe fn as_mut_ptr(&mut self) -> *mut u8;
 
     /// Sets the length.
     ///
@@ -148,14 +148,14 @@ pub unsafe trait Repr<'a, T: Copy + 'static>: Clone + Sized {
 
     /// Mutable access, copying first if shared or borrowed.
     #[inline]
-    fn to_mut_slice(&mut self) -> &mut [T] {
+    fn to_mut_slice(&mut self) -> &mut [u8] {
         self.reserve(0);
         let len = self.len();
         // SAFETY: unique after `reserve`, `len` initialized elements
         unsafe { core::slice::from_raw_parts_mut(self.as_mut_ptr(), len) }
     }
 
-    fn extend_from_slice(&mut self, slice: &[T]) {
+    fn extend_from_slice(&mut self, slice: &[u8]) {
         if slice.is_empty() {
             // keep borrowed or shared values as they are
             return;
@@ -173,7 +173,7 @@ pub unsafe trait Repr<'a, T: Copy + 'static>: Clone + Sized {
     }
 
     /// Resizes to `new_len`, filling with `value` when growing.
-    fn resize(&mut self, new_len: usize, value: T) {
+    fn resize(&mut self, new_len: usize, value: u8) {
         let len = self.len();
         if new_len <= len {
             self.truncate(new_len);
@@ -192,11 +192,11 @@ pub unsafe trait Repr<'a, T: Copy + 'static>: Clone + Sized {
     }
 
     #[inline]
-    fn push(&mut self, value: T) {
+    fn push(&mut self, value: u8) {
         self.extend_from_slice(core::slice::from_ref(&value));
     }
 
-    fn pop(&mut self) -> Option<T> {
+    fn pop(&mut self) -> Option<u8> {
         let last = *self.as_slice().last()?;
         self.truncate(self.len() - 1);
         Some(last)

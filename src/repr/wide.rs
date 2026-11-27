@@ -17,11 +17,9 @@ use core::ptr::NonNull;
 use super::owner::Owner;
 use super::{Kind, Repr, capacity_overflow};
 use crate::backend::Backend;
-use crate::inline_buf::base::Base as InlineBase;
-use crate::inline_buf::layouts::BasicLayout;
 use crate::thin::TryReserveError;
 
-type Inline<T> = InlineBase<T, BasicLayout>;
+type Inline = crate::inline_buf::Basic;
 
 /// Raw 3 words; word 0 is never zero.
 #[repr(C)]
@@ -35,67 +33,61 @@ struct Pivot {
 }
 
 #[repr(C)]
-struct Sliced<T: Copy + 'static, B: Backend> {
+struct Sliced<B: Backend> {
     #[cfg(target_endian = "little")]
-    owner: Owner<T, B>,
-    slice: NonNull<[T]>,
+    owner: Owner<B>,
+    slice: NonNull<[u8]>,
     #[cfg(target_endian = "big")]
-    owner: Owner<T, B>,
+    owner: Owner<B>,
 }
 
-impl<T: Copy + 'static, B: Backend> Copy for Sliced<T, B> {}
-impl<T: Copy + 'static, B: Backend> Clone for Sliced<T, B> {
+impl<B: Backend> Copy for Sliced<B> {}
+impl<B: Backend> Clone for Sliced<B> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
 const _: () = {
-    type S = Sliced<u8, crate::backend::Rc>;
+    type S = Sliced<crate::backend::Rc>;
     assert!(size_of::<Pivot>() == 3 * size_of::<usize>());
     assert!(size_of::<S>() == size_of::<Pivot>());
-    assert!(size_of::<Inline<u8>>() == size_of::<Pivot>());
+    assert!(size_of::<Inline>() == size_of::<Pivot>());
     assert!(offset_of!(S, owner) == offset_of!(Pivot, lsw));
 };
 
 /// 3-word copy-on-write sequence (see the module documentation).
 #[repr(transparent)]
-pub struct Wide<'a, T: Copy + 'static, B: Backend> {
+pub struct Wide<'a, B: Backend> {
     pivot: Pivot,
-    marker: PhantomData<(&'a [T], Owner<T, B>)>,
+    marker: PhantomData<(&'a [u8], Owner<B>)>,
 }
 
 const _: () = {
-    type F = Wide<'static, u8, crate::backend::Rc>;
+    type F = Wide<'static, crate::backend::Rc>;
     assert!(size_of::<F>() == 3 * size_of::<usize>());
     assert!(size_of::<Option<F>>() == size_of::<F>());
 };
 
 // SAFETY: shared state is either immutable borrowed data or behind the
 // backend's counter, which decides thread safety
-unsafe impl<T: Copy + Send + Sync + 'static, B: Backend> Send for Wide<'_, T, B> where
-    B::Counter: Send + Sync
-{
-}
+unsafe impl<B: Backend> Send for Wide<'_, B> where B::Counter: Send + Sync {}
 // SAFETY: same as `Send`
-unsafe impl<T: Copy + Send + Sync + 'static, B: Backend> Sync for Wide<'_, T, B> where
-    B::Counter: Send + Sync
-{
-}
+unsafe impl<B: Backend> Sync for Wide<'_, B> where B::Counter: Send + Sync {}
 
-impl<'a, T: Copy + 'static, B: Backend> Wide<'a, T, B> {
-    const fn from_inline(inline: Inline<T>) -> Self {
+impl<'a, B: Backend> Wide<'a, B> {
+    const fn from_inline(inline: Inline) -> Self {
         Self {
             // SAFETY: same size, word 0 of an inline is tagged and non-zero
-            pivot: unsafe { transmute::<Inline<T>, Pivot>(inline) },
+            pivot: unsafe { transmute::<Inline, Pivot>(inline) },
             marker: PhantomData,
         }
     }
 
-    const fn from_sliced(sliced: Sliced<T, B>) -> Self {
+    const fn from_sliced(sliced: Sliced<B>) -> Self {
         Self {
             // SAFETY: same size, word 0 of a sliced is a tagged owner, non-zero
-            pivot: unsafe { transmute::<Sliced<T, B>, Pivot>(sliced) },
+            pivot: unsafe { transmute::<Sliced<B>, Pivot>(sliced) },
             marker: PhantomData,
         }
     }
@@ -109,7 +101,7 @@ impl<'a, T: Copy + 'static, B: Backend> Wide<'a, T, B> {
     ///
     /// Unlike the other representations, empty slices stay borrowed.
     #[inline]
-    pub const fn borrowed(slice: &'a [T]) -> Self {
+    pub const fn borrowed(slice: &'a [u8]) -> Self {
         Self::from_sliced(Sliced {
             owner: Owner::NONE,
             slice: NonNull::from_ref(slice),
@@ -122,11 +114,8 @@ impl<'a, T: Copy + 'static, B: Backend> Wide<'a, T, B> {
     ///
     /// Panics if `slice` is longer than the inline capacity.
     #[inline]
-    pub const fn inline_copy(slice: &[T]) -> Self {
-        assert!(
-            slice.len() <= Inline::<T>::CAPACITY,
-            "too long to be inlined"
-        );
+    pub const fn inline_copy(slice: &[u8]) -> Self {
+        assert!(slice.len() <= Inline::CAPACITY, "too long to be inlined");
         Self::from_inline(Inline::from_slice_copy(slice))
     }
 
@@ -147,7 +136,7 @@ impl<'a, T: Copy + 'static, B: Backend> Wide<'a, T, B> {
 
     /// The borrowed slice, with its full lifetime, if borrowed.
     #[inline]
-    pub const fn borrowed_slice(&self) -> Option<&'a [T]> {
+    pub const fn borrowed_slice(&self) -> Option<&'a [u8]> {
         if self.is_borrowed() {
             // SAFETY: borrowed case, the slice is valid for `'a`
             Some(unsafe { self.sliced().slice.as_ref() })
@@ -157,35 +146,35 @@ impl<'a, T: Copy + 'static, B: Backend> Wide<'a, T, B> {
     }
 
     #[inline]
-    const fn inline(&self) -> &Inline<T> {
+    const fn inline(&self) -> &Inline {
         debug_assert!(self.is_inline());
         // SAFETY: inline case, same size
-        unsafe { transmute::<&Pivot, &Inline<T>>(&self.pivot) }
+        unsafe { transmute::<&Pivot, &Inline>(&self.pivot) }
     }
 
     #[inline]
-    const fn inline_mut(&mut self) -> &mut Inline<T> {
+    const fn inline_mut(&mut self) -> &mut Inline {
         debug_assert!(self.is_inline());
         // SAFETY: inline case, same size
-        unsafe { transmute::<&mut Pivot, &mut Inline<T>>(&mut self.pivot) }
+        unsafe { transmute::<&mut Pivot, &mut Inline>(&mut self.pivot) }
     }
 
     #[inline]
-    const fn sliced(&self) -> &Sliced<T, B> {
+    const fn sliced(&self) -> &Sliced<B> {
         debug_assert!(!self.is_inline());
         // SAFETY: sliced case, same size
-        unsafe { transmute::<&Pivot, &Sliced<T, B>>(&self.pivot) }
+        unsafe { transmute::<&Pivot, &Sliced<B>>(&self.pivot) }
     }
 
     #[inline]
-    const fn sliced_mut(&mut self) -> &mut Sliced<T, B> {
+    const fn sliced_mut(&mut self) -> &mut Sliced<B> {
         debug_assert!(!self.is_inline());
         // SAFETY: sliced case, same size
-        unsafe { transmute::<&mut Pivot, &mut Sliced<T, B>>(&mut self.pivot) }
+        unsafe { transmute::<&mut Pivot, &mut Sliced<B>>(&mut self.pivot) }
     }
 
     #[inline]
-    pub const fn as_slice(&self) -> &[T] {
+    pub const fn as_slice(&self) -> &[u8] {
         if self.is_inline() {
             self.inline().as_slice()
         } else {
@@ -216,7 +205,7 @@ impl<'a, T: Copy + 'static, B: Backend> Wide<'a, T, B> {
     pub fn slice(&self, range: core::ops::Range<usize>) -> Self {
         let start = range.start;
         let sub = &self.as_slice()[range];
-        if self.is_inline() || (self.is_heap() && sub.len() <= Inline::<T>::CAPACITY) {
+        if self.is_inline() || (self.is_heap() && sub.len() <= Inline::CAPACITY) {
             // inline, or a short slice of a heap value: copy inline (normalized)
             return Self::from_inline(Inline::from_slice_copy(sub));
         }
@@ -224,13 +213,13 @@ impl<'a, T: Copy + 'static, B: Backend> Wide<'a, T, B> {
         let owner = self.sliced().owner;
         if owner.is_some() && owner.try_clone().is_none() {
             // the backend refuses sharing (e.g. unique): copy the subslice
-            return <Self as Repr<'a, T>>::from_slice(sub);
+            return <Self as Repr<'a>>::from_slice(sub);
         }
         // borrowed (valid for `'a`) or shared (one more reference taken);
         // derived from the stored raw pointer, not from `sub`: a pointer made
         // from a shared reference must not be written through later
         // SAFETY: `start..start + sub.len()` is in bounds (checked by indexing)
-        let ptr = unsafe { self.sliced().slice.cast::<T>().add(start) };
+        let ptr = unsafe { self.sliced().slice.cast::<u8>().add(start) };
         Self::from_sliced(Sliced {
             owner,
             slice: NonNull::slice_from_raw_parts(ptr, sub.len()),
@@ -240,7 +229,7 @@ impl<'a, T: Copy + 'static, B: Backend> Wide<'a, T, B> {
     /// Copies `slice` to a new heap buffer; kept out of line so that the
     /// inline path of `from_slice` stays small enough to be inlined.
     #[inline(never)]
-    fn heap_from_slice(slice: &[T]) -> Self {
+    fn heap_from_slice(slice: &[u8]) -> Self {
         let owner = Owner::from_slice(slice);
         Self::from_sliced(Sliced {
             owner,
@@ -249,9 +238,9 @@ impl<'a, T: Copy + 'static, B: Backend> Wide<'a, T, B> {
     }
 
     /// Offset of the slice in the owner's buffer.
-    fn offset(sliced: &Sliced<T, B>) -> usize {
+    fn offset(sliced: &Sliced<B>) -> usize {
         // SAFETY: the slice lies within the owner's buffer
-        let offset = unsafe { sliced.slice.cast::<T>().offset_from(sliced.owner.data()) };
+        let offset = unsafe { sliced.slice.cast::<u8>().offset_from(sliced.owner.data()) };
         debug_assert!(offset >= 0);
         offset.cast_unsigned()
     }
@@ -259,11 +248,11 @@ impl<'a, T: Copy + 'static, B: Backend> Wide<'a, T, B> {
     /// Moves the slice to the start of a unique owner's buffer.
     ///
     /// Makes the owner's length equal to the slice's.
-    fn normalize(sliced: &mut Sliced<T, B>) {
+    fn normalize(sliced: &mut Sliced<B>) {
         let owner = sliced.owner;
         let data = owner.data();
         let len = sliced.slice.len();
-        if sliced.slice.cast::<T>() != data {
+        if sliced.slice.cast::<u8>() != data {
             // SAFETY: unique owner, the slice lies within its buffer
             unsafe { data.as_ptr().copy_from(sliced.slice.cast().as_ptr(), len) };
         }
@@ -272,12 +261,12 @@ impl<'a, T: Copy + 'static, B: Backend> Wide<'a, T, B> {
         sliced.slice = NonNull::slice_from_raw_parts(data, len);
     }
 
-    fn try_from_slice(slice: &[T], capacity: usize) -> Result<Self, TryReserveError> {
+    fn try_from_slice(slice: &[u8], capacity: usize) -> Result<Self, TryReserveError> {
         debug_assert!(capacity >= slice.len());
-        if capacity <= Inline::<T>::CAPACITY {
+        if capacity <= Inline::CAPACITY {
             return Ok(Self::from_inline(Inline::from_slice_copy(slice)));
         }
-        let owner = Owner::<T, B>::try_with_capacity(capacity)?;
+        let owner = Owner::<B>::try_with_capacity(capacity)?;
         // SAFETY: fresh unique owner with enough capacity
         unsafe {
             owner
@@ -293,13 +282,13 @@ impl<'a, T: Copy + 'static, B: Backend> Wide<'a, T, B> {
     }
 }
 
-impl<T: Copy + 'static, B: Backend> Default for Wide<'_, T, B> {
+impl<B: Backend> Default for Wide<'_, B> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T: Copy + 'static, B: Backend> Clone for Wide<'_, T, B> {
+impl<B: Backend> Clone for Wide<'_, B> {
     fn clone(&self) -> Self {
         if self.is_inline() || self.sliced().owner.is_none() {
             return Self {
@@ -317,7 +306,7 @@ impl<T: Copy + 'static, B: Backend> Clone for Wide<'_, T, B> {
     }
 }
 
-impl<T: Copy + 'static, B: Backend> Drop for Wide<'_, T, B> {
+impl<B: Backend> Drop for Wide<'_, B> {
     fn drop(&mut self) {
         if !self.is_inline() {
             let owner = self.sliced().owner;
@@ -330,10 +319,10 @@ impl<T: Copy + 'static, B: Backend> Drop for Wide<'_, T, B> {
 }
 
 // SAFETY: see the trait's contract, upheld by `try_reserve`
-unsafe impl<'a, T: Copy + 'static, B: Backend> Repr<'a, T> for Wide<'a, T, B> {
-    type Owned = Wide<'static, T, B>;
+unsafe impl<'a, B: Backend> Repr<'a> for Wide<'a, B> {
+    type Owned = Wide<'static, B>;
     const WORDS: usize = 3;
-    const INLINE_CAPACITY: usize = Inline::<T>::CAPACITY;
+    const INLINE_CAPACITY: usize = Inline::CAPACITY;
     const MAX_LEN: usize = isize::MAX as usize;
     const BORROWS: bool = true;
 
@@ -343,8 +332,8 @@ unsafe impl<'a, T: Copy + 'static, B: Backend> Repr<'a, T> for Wide<'a, T, B> {
     }
 
     #[inline]
-    fn from_slice(slice: &[T]) -> Self {
-        if slice.len() <= Inline::<T>::CAPACITY {
+    fn from_slice(slice: &[u8]) -> Self {
+        if slice.len() <= Inline::CAPACITY {
             Self::from_inline(Inline::from_slice_copy(slice))
         } else {
             Self::heap_from_slice(slice)
@@ -352,12 +341,12 @@ unsafe impl<'a, T: Copy + 'static, B: Backend> Repr<'a, T> for Wide<'a, T, B> {
     }
 
     #[inline]
-    fn from_borrowed(slice: &'a [T]) -> Self {
+    fn from_borrowed(slice: &'a [u8]) -> Self {
         Self::borrowed(slice)
     }
 
-    fn from_vec(vec: Vec<T>) -> Self {
-        if vec.len() <= Inline::<T>::CAPACITY {
+    fn from_vec(vec: Vec<u8>) -> Self {
+        if vec.len() <= Inline::CAPACITY {
             Self::from_inline(Inline::from_slice_copy(&vec))
         } else {
             let owner = Owner::from_vec(vec);
@@ -370,7 +359,7 @@ unsafe impl<'a, T: Copy + 'static, B: Backend> Repr<'a, T> for Wide<'a, T, B> {
 
     fn into_owned(self) -> Self::Owned {
         if self.as_borrowed().is_some() {
-            return <Self::Owned as Repr<'static, T>>::from_slice(self.as_slice());
+            return <Self::Owned as Repr<'static>>::from_slice(self.as_slice());
         }
         let this = core::mem::ManuallyDrop::new(self);
         // SAFETY: not borrowed, so nothing depends on `'a`; same type otherwise
@@ -378,7 +367,7 @@ unsafe impl<'a, T: Copy + 'static, B: Backend> Repr<'a, T> for Wide<'a, T, B> {
     }
 
     #[inline]
-    fn as_borrowed(&self) -> Option<&'a [T]> {
+    fn as_borrowed(&self) -> Option<&'a [u8]> {
         self.borrowed_slice()
     }
 
@@ -393,7 +382,7 @@ unsafe impl<'a, T: Copy + 'static, B: Backend> Repr<'a, T> for Wide<'a, T, B> {
     }
 
     #[inline]
-    fn as_slice(&self) -> &[T] {
+    fn as_slice(&self) -> &[u8] {
         self.as_slice()
     }
 
@@ -402,7 +391,7 @@ unsafe impl<'a, T: Copy + 'static, B: Backend> Repr<'a, T> for Wide<'a, T, B> {
         self.len()
     }
 
-    fn into_vec(self) -> Vec<T> {
+    fn into_vec(self) -> Vec<u8> {
         if !self.is_inline() {
             let sliced = *self.sliced();
             if sliced.owner.is_some()
@@ -431,7 +420,7 @@ unsafe impl<'a, T: Copy + 'static, B: Backend> Repr<'a, T> for Wide<'a, T, B> {
         let required = len.checked_add(additional).ok_or(capacity_overflow())?;
 
         if self.is_inline() {
-            if required > Inline::<T>::CAPACITY {
+            if required > Inline::CAPACITY {
                 *self = Self::try_from_slice(self.as_slice(), required)?;
             }
             return Ok(());
@@ -461,7 +450,7 @@ unsafe impl<'a, T: Copy + 'static, B: Backend> Repr<'a, T> for Wide<'a, T, B> {
 
     fn capacity(&self) -> usize {
         if self.is_inline() {
-            Inline::<T>::CAPACITY
+            Inline::CAPACITY
         } else {
             let sliced = self.sliced();
             if sliced.owner.is_some() {
@@ -482,7 +471,7 @@ unsafe impl<'a, T: Copy + 'static, B: Backend> Repr<'a, T> for Wide<'a, T, B> {
         true
     }
 
-    unsafe fn as_mut_ptr(&mut self) -> *mut T {
+    unsafe fn as_mut_ptr(&mut self) -> *mut u8 {
         if self.is_inline() {
             self.inline_mut().as_mut_ptr()
         } else {

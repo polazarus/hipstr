@@ -43,9 +43,9 @@ macro_rules! impl_const_os_str {
 }
 
 impl_const_os_str!(
-    ['a] super::repr::Wide<'a, u8, B>,
-    ['a] super::repr::Small<'a, u8, B>,
-    [] super::repr::Tiny<u8, B>,
+    ['a] super::repr::Wide<'a, B>,
+    ['a] super::repr::Small<'a, B>,
+    [] super::repr::Tiny<B>,
 );
 
 impl_cmp!(enc::OsStr as OsStr;
@@ -57,14 +57,14 @@ impl_cmp!(enc::OsStr as Path;
     [] Cow<'_, Path>, [] &Cow<'_, Path>,
 );
 
-impl<'a, R: Repr<'a, u8>> AsRef<Path> for Hip<enc::OsStr, R> {
+impl<'a, R: Repr<'a>> AsRef<Path> for Hip<enc::OsStr, R> {
     #[inline]
     fn as_ref(&self) -> &Path {
         Path::new(self.as_inner())
     }
 }
 
-impl<'a, R: Repr<'a, u8>> From<String> for Hip<enc::OsStr, R> {
+impl<'a, R: Repr<'a>> From<String> for Hip<enc::OsStr, R> {
     /// Adopts the buffer when it does not fit inline (no copy).
     #[inline]
     fn from(value: String) -> Self {
@@ -72,14 +72,14 @@ impl<'a, R: Repr<'a, u8>> From<String> for Hip<enc::OsStr, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> From<Box<str>> for Hip<enc::OsStr, R> {
+impl<'a, R: Repr<'a>> From<Box<str>> for Hip<enc::OsStr, R> {
     #[inline]
     fn from(value: Box<str>) -> Self {
         Self::from(String::from(value))
     }
 }
 
-impl<'a, R: Repr<'a, u8>> From<Cow<'a, str>> for Hip<enc::OsStr, R> {
+impl<'a, R: Repr<'a>> From<Cow<'a, str>> for Hip<enc::OsStr, R> {
     /// Borrows `Cow::Borrowed` (copies if the representation cannot borrow).
     #[inline]
     fn from(value: Cow<'a, str>) -> Self {
@@ -90,7 +90,7 @@ impl<'a, R: Repr<'a, u8>> From<Cow<'a, str>> for Hip<enc::OsStr, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> From<&Hip<Utf8, R>> for Hip<enc::OsStr, R> {
+impl<'a, R: Repr<'a>> From<&Hip<Utf8, R>> for Hip<enc::OsStr, R> {
     /// Shares the storage (no copy).
     #[inline]
     fn from(value: &Hip<Utf8, R>) -> Self {
@@ -98,7 +98,7 @@ impl<'a, R: Repr<'a, u8>> From<&Hip<Utf8, R>> for Hip<enc::OsStr, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> From<Hip<enc::OsStr, R>> for Hip<Bytes, R> {
+impl<'a, R: Repr<'a>> From<Hip<enc::OsStr, R>> for Hip<Bytes, R> {
     /// The encoded bytes, keeping the representation (no copy).
     #[inline]
     fn from(value: Hip<enc::OsStr, R>) -> Self {
@@ -106,7 +106,7 @@ impl<'a, R: Repr<'a, u8>> From<Hip<enc::OsStr, R>> for Hip<Bytes, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> From<Hip<enc::OsStr, R>> for Vec<u8> {
+impl<'a, R: Repr<'a>> From<Hip<enc::OsStr, R>> for Vec<u8> {
     /// The encoded bytes, O(1) when the value uniquely owns an adopted buffer.
     #[inline]
     fn from(value: Hip<enc::OsStr, R>) -> Self {
@@ -114,7 +114,7 @@ impl<'a, R: Repr<'a, u8>> From<Hip<enc::OsStr, R>> for Vec<u8> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> Hip<enc::OsStr, R> {
+impl<'a, R: Repr<'a>> Hip<enc::OsStr, R> {
     /// Extracts an [`OsStr`] slice of the entire `HipOsStr`.
     ///
     /// # Examples
@@ -411,14 +411,14 @@ impl<'a, R: Repr<'a, u8>> Hip<enc::OsStr, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> From<&str> for Hip<enc::OsStr, R> {
+impl<'a, R: Repr<'a>> From<&str> for Hip<enc::OsStr, R> {
     #[inline]
     fn from(value: &str) -> Self {
         Self::from_inner(OsStr::new(value))
     }
 }
 
-impl<'a, R: Repr<'a, u8>> From<Hip<Utf8, R>> for Hip<enc::OsStr, R> {
+impl<'a, R: Repr<'a>> From<Hip<Utf8, R>> for Hip<enc::OsStr, R> {
     /// Keeps the representation (no copy): UTF-8 is a valid encoded OS string.
     #[inline]
     fn from(value: Hip<Utf8, R>) -> Self {
@@ -427,7 +427,7 @@ impl<'a, R: Repr<'a, u8>> From<Hip<Utf8, R>> for Hip<enc::OsStr, R> {
     }
 }
 
-impl<'a, B: super::backend::Backend> Hip<enc::OsStr, super::repr::Wide<'a, u8, B>> {
+impl<'a, B: super::backend::Backend> Hip<enc::OsStr, super::repr::Wide<'a, B>> {
     /// Creates a new `HipOsStr` from a `'static` string slice without copying
     /// the slice.
     ///
@@ -479,7 +479,7 @@ impl<'a, B: super::backend::Backend> Hip<enc::OsStr, super::repr::Wide<'a, u8, B
     }
 }
 
-impl<'a, B: super::backend::Backend> Hip<enc::OsStr, super::repr::Small<'a, u8, B>> {
+impl<'a, B: super::backend::Backend> Hip<enc::OsStr, super::repr::Small<'a, B>> {
     /// Creates a new `HipOsStr` from a `'static` string slice without copying
     /// the slice.
     ///

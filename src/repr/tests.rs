@@ -5,7 +5,7 @@ use super::*;
 use crate::backend::{Arc, Rc, Unique};
 
 /// Representative lengths around the inline capacity of `R`.
-fn lengths<R: Repr<'static, u8>>() -> Vec<usize> {
+fn lengths<R: Repr<'static>>() -> Vec<usize> {
     let c = R::INLINE_CAPACITY;
     vec![0, 1, c - 1, c, c + 1, 2 * c + 3, 1000]
 }
@@ -25,7 +25,7 @@ fn data(len: usize) -> Vec<u8> {
     POOL[..len].to_vec()
 }
 
-fn expected_owned_kind<R: Repr<'static, u8>>(len: usize, heap: HeapKind) -> Kind {
+fn expected_owned_kind<R: Repr<'static>>(len: usize, heap: HeapKind) -> Kind {
     if len <= R::INLINE_CAPACITY {
         Kind::Inline
     } else {
@@ -33,7 +33,7 @@ fn expected_owned_kind<R: Repr<'static, u8>>(len: usize, heap: HeapKind) -> Kind
     }
 }
 
-fn from_slice_and_vec<R: Repr<'static, u8>>() {
+fn from_slice_and_vec<R: Repr<'static>>() {
     for len in lengths::<R>() {
         let d = data(len);
         let r = R::from_slice(&d);
@@ -47,7 +47,7 @@ fn from_slice_and_vec<R: Repr<'static, u8>>() {
     }
 }
 
-fn borrowed<R: Repr<'static, u8>>() {
+fn borrowed<R: Repr<'static>>() {
     for len in lengths::<R>() {
         let d = &POOL[..len];
         let r = R::from_borrowed(d);
@@ -66,7 +66,7 @@ fn borrowed<R: Repr<'static, u8>>() {
     }
 }
 
-fn vec_round_trip_is_zero_copy<R: Repr<'static, u8>>() {
+fn vec_round_trip_is_zero_copy<R: Repr<'static>>() {
     let d = data(R::INLINE_CAPACITY + 100);
     let ptr = d.as_ptr();
     let r = R::from_vec(d);
@@ -77,7 +77,7 @@ fn vec_round_trip_is_zero_copy<R: Repr<'static, u8>>() {
 }
 
 /// Writes into fresh unique values (Miri checks the pointers' provenance).
-fn mutate_fresh_unique<R: Repr<'static, u8>>() {
+fn mutate_fresh_unique<R: Repr<'static>>() {
     let d = data(R::INLINE_CAPACITY + 10);
     for mut r in [R::from_slice(&d), R::from_vec(d.clone())] {
         r.to_mut_slice()[0] = 1;
@@ -85,7 +85,7 @@ fn mutate_fresh_unique<R: Repr<'static, u8>>() {
     }
 }
 
-fn vec_with_spare_capacity<R: Repr<'static, u8>>() {
+fn vec_with_spare_capacity<R: Repr<'static>>() {
     let mut v = Vec::with_capacity(R::INLINE_CAPACITY + 50);
     v.extend_from_slice(&data(R::INLINE_CAPACITY + 1));
     let (ptr, cap) = (v.as_ptr(), v.capacity());
@@ -105,7 +105,7 @@ fn vec_with_spare_capacity<R: Repr<'static, u8>>() {
     );
 }
 
-fn clone_shares_or_copies<R: Repr<'static, u8>>(shares: bool) {
+fn clone_shares_or_copies<R: Repr<'static>>(shares: bool) {
     for (len, adopt) in [(R::INLINE_CAPACITY + 1, false), (500, true)] {
         let d = data(len);
         let a = if adopt {
@@ -124,7 +124,7 @@ fn clone_shares_or_copies<R: Repr<'static, u8>>(shares: bool) {
     }
 }
 
-fn copy_on_write<R: Repr<'static, u8>>() {
+fn copy_on_write<R: Repr<'static>>() {
     for len in lengths::<R>() {
         let d = data(len);
         for source in 0..3 {
@@ -149,7 +149,7 @@ fn copy_on_write<R: Repr<'static, u8>>() {
     }
 }
 
-fn growth_transitions<R: Repr<'static, u8>>() {
+fn growth_transitions<R: Repr<'static>>() {
     let mut r = R::new();
     let mut v = Vec::new();
     for i in 0..300u32 {
@@ -166,7 +166,7 @@ fn growth_transitions<R: Repr<'static, u8>>() {
     assert_eq!(r.len(), R::INLINE_CAPACITY + 1001);
 }
 
-fn truncate_and_pop<R: Repr<'static, u8>>() {
+fn truncate_and_pop<R: Repr<'static>>() {
     for len in lengths::<R>() {
         let d = data(len);
         let mut r = R::from_borrowed(&POOL[..len]);
@@ -183,7 +183,7 @@ fn truncate_and_pop<R: Repr<'static, u8>>() {
 }
 
 /// Differential test: random operations against `Vec<u8>`.
-fn differential<R: Repr<'static, u8>>(seed: u64) {
+fn differential<R: Repr<'static>>(seed: u64) {
     let mut rng = fastrand::Rng::with_seed(seed);
     let pool = &POOL;
     let mut r = R::new();
@@ -243,7 +243,7 @@ fn differential<R: Repr<'static, u8>>(seed: u64) {
 }
 
 /// One value of each kind the representation supports, with its content.
-fn kinds<R: Repr<'static, u8>>() -> Vec<(R, &'static [u8])> {
+fn kinds<R: Repr<'static>>() -> Vec<(R, &'static [u8])> {
     let c = R::INLINE_CAPACITY;
     let mut v = vec![
         (R::from_slice(&POOL[..c]), &POOL[..c]),
@@ -256,7 +256,7 @@ fn kinds<R: Repr<'static, u8>>() -> Vec<(R, &'static [u8])> {
     v
 }
 
-fn capacity_and_reserve<R: Repr<'static, u8>>() {
+fn capacity_and_reserve<R: Repr<'static>>() {
     for (mut r, d) in kinds::<R>() {
         match r.kind() {
             Kind::Inline => assert_eq!(r.capacity(), R::INLINE_CAPACITY),
@@ -272,7 +272,7 @@ fn capacity_and_reserve<R: Repr<'static, u8>>() {
     }
 }
 
-fn into_owned_keeps_content<R: Repr<'static, u8>>() {
+fn into_owned_keeps_content<R: Repr<'static>>() {
     for (r, d) in kinds::<R>() {
         let kind = r.kind();
         let ptr = r.as_slice().as_ptr();
@@ -356,12 +356,12 @@ macro_rules! suite {
     };
 }
 
-type WideRc<'a> = Wide<'a, u8, Rc>;
-type WideArc<'a> = Wide<'a, u8, Arc>;
-type WideUnique<'a> = Wide<'a, u8, Unique>;
-type SmallRc<'a> = Small<'a, u8, Rc>;
-type SmallArc<'a> = Small<'a, u8, Arc>;
-type SmallUnique<'a> = Small<'a, u8, Unique>;
+type WideRc<'a> = Wide<'a, Rc>;
+type WideArc<'a> = Wide<'a, Arc>;
+type WideUnique<'a> = Wide<'a, Unique>;
+type SmallRc<'a> = Small<'a, Rc>;
+type SmallArc<'a> = Small<'a, Arc>;
+type SmallUnique<'a> = Small<'a, Unique>;
 
 suite!(wide_rc, WideRc<'static>, shares = true);
 suite!(wide_arc, WideArc<'static>, shares = true);
@@ -369,36 +369,36 @@ suite!(wide_unique, WideUnique<'static>, shares = false);
 suite!(small_rc, SmallRc<'static>, shares = true);
 suite!(small_arc, SmallArc<'static>, shares = true);
 suite!(small_unique, SmallUnique<'static>, shares = false);
-suite!(tiny_rc, Tiny<u8, Rc>, shares = true);
-suite!(tiny_arc, Tiny<u8, Arc>, shares = true);
-suite!(tiny_unique, Tiny<u8, Unique>, shares = false);
+suite!(tiny_rc, Tiny<Rc>, shares = true);
+suite!(tiny_arc, Tiny<Arc>, shares = true);
+suite!(tiny_unique, Tiny<Unique>, shares = false);
 
 #[test]
 fn sizes() {
     let w = size_of::<usize>();
     assert_eq!(size_of::<WideRc<'static>>(), 3 * w);
     assert_eq!(size_of::<SmallRc<'static>>(), 2 * w);
-    assert_eq!(size_of::<Tiny<u8, Rc>>(), w);
+    assert_eq!(size_of::<Tiny<Rc>>(), w);
     assert_eq!(size_of::<Option<WideRc<'static>>>(), 3 * w);
     assert_eq!(size_of::<Option<SmallRc<'static>>>(), 2 * w);
-    assert_eq!(size_of::<Option<Tiny<u8, Rc>>>(), w);
+    assert_eq!(size_of::<Option<Tiny<Rc>>>(), w);
     assert_eq!(
-        <WideRc<'static> as Repr<'static, u8>>::INLINE_CAPACITY,
+        <WideRc<'static> as Repr<'static>>::INLINE_CAPACITY,
         3 * w - 1
     );
     assert_eq!(
-        <SmallRc<'static> as Repr<'static, u8>>::INLINE_CAPACITY,
+        <SmallRc<'static> as Repr<'static>>::INLINE_CAPACITY,
         2 * w - 1
     );
-    assert_eq!(<Tiny<u8, Rc> as Repr<'static, u8>>::INLINE_CAPACITY, w - 1);
+    assert_eq!(<Tiny<Rc> as Repr<'static>>::INLINE_CAPACITY, w - 1);
 }
 
 #[test]
 fn send_sync() {
-    fn is_send_sync<T: Send + Sync>() {}
+    fn is_send_sync<X: Send + Sync>() {}
     is_send_sync::<WideArc<'static>>();
     is_send_sync::<SmallArc<'static>>();
-    is_send_sync::<Tiny<u8, Arc>>();
+    is_send_sync::<Tiny<Arc>>();
     is_send_sync::<WideUnique<'static>>();
     is_send_sync::<SmallUnique<'static>>();
 }
@@ -407,7 +407,7 @@ fn send_sync() {
 fn const_construction() {
     const F: WideRc<'static> = Wide::borrowed(b"hello world, this is longer than inline");
     const P: SmallRc<'static> = Small::borrowed(b"hello world, longer");
-    const E: Tiny<u8, Rc> = Tiny::new();
+    const E: Tiny<Rc> = Tiny::new();
     assert_eq!(F.len(), 39);
     assert_eq!(P.as_slice(), b"hello world, longer");
     assert!(E.is_empty());

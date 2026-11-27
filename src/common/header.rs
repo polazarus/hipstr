@@ -1,7 +1,6 @@
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::alloc::Layout;
-use core::marker::PhantomData;
 use core::ptr::NonNull;
 
 use const_default::ConstDefault;
@@ -9,10 +8,11 @@ use const_default::ConstDefault;
 use crate::backend::InitPrefix;
 use crate::common::ZeroUsize;
 
-/// Common vector header with arbitrary associated data, called "prefix".
+/// Header of a heap byte buffer, with arbitrary associated data (the
+/// "prefix", e.g. a reference count).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(C)]
-pub struct Header<T, Prefix, Ptr: Copy> {
+pub struct Header<Prefix, Ptr: Copy> {
     /// Prefix.
     pub prefix: Prefix,
 
@@ -24,22 +24,14 @@ pub struct Header<T, Prefix, Ptr: Copy> {
 
     /// Length.
     pub len: usize,
-
-    _phantom: core::marker::PhantomData<T>,
 }
 
-pub type ThinHeader<T, Prefix> = Header<T, Prefix, ZeroUsize>;
-pub type VecHeader<T, Prefix> = Header<T, Prefix, Option<NonNull<T>>>;
+pub type ThinHeader<Prefix> = Header<Prefix, ZeroUsize>;
+pub type VecHeader<Prefix> = Header<Prefix, Option<NonNull<u8>>>;
 
-impl<T, Prefix> ThinHeader<T, Prefix> {
-    const DATA_OFFSET: usize = {
-        let layout = Layout::new::<Self>();
-        let Ok(layout) = layout.align_to(align_of::<T>()) else {
-            panic!("invalid alignment");
-        };
-        let layout = layout.pad_to_align();
-        layout.size()
-    };
+impl<Prefix> ThinHeader<Prefix> {
+    /// The bytes follow the header (alignment 1: no padding).
+    const DATA_OFFSET: usize = size_of::<Self>();
 
     pub fn with_capacity(capacity: usize) -> Self
     where
@@ -50,61 +42,44 @@ impl<T, Prefix> ThinHeader<T, Prefix> {
             ptr: ZeroUsize::DEFAULT,
             cap: capacity,
             len: 0,
-            _phantom: core::marker::PhantomData,
         }
     }
 
-    /// Computes a `ThinVec` layout and the effective capacity, given a required capacity.
+    /// The allocation layout for `payload` bytes after the header, and the
+    /// usable capacity (the allocation is rounded up to the header's
+    /// alignment, which the bytes can use).
     #[inline]
     pub const fn layout(payload: usize) -> Option<(Layout, usize)> {
-        let layout = Layout::new::<Self>();
-
-        let Ok(arr) = Layout::array::<T>(payload) else {
+        let Some(size) = Self::DATA_OFFSET.checked_add(payload) else {
             return None;
         };
-        let Ok((layout, offset)) = layout.extend(arr) else {
+        let Ok(layout) = Layout::from_size_align(size, align_of::<Self>()) else {
             return None;
         };
         let layout = layout.pad_to_align();
-
-        #[cfg(not(coverage))]
-        debug_assert!(offset == Self::DATA_OFFSET, "invalid offset");
-
-        // get the payload possibly rounded up to maximize possible occupancy in
-        // closely in the computed layout
-        let round_up_payload = if size_of::<T>() == 0 {
-            usize::MAX
-        } else {
-            (layout.size() - offset) / size_of::<T>()
-        };
-
-        #[cfg(not(coverage))]
-        debug_assert!(payload <= round_up_payload, "invalid roundup");
-
-        Some((layout, round_up_payload))
+        Some((layout, layout.size() - Self::DATA_OFFSET))
     }
 
     /// Returns a pointer to the data, given a pointer to the header.
     #[inline]
-    pub const unsafe fn data(header: NonNull<Self>) -> NonNull<T> {
+    pub const unsafe fn data(header: NonNull<Self>) -> NonNull<u8> {
         unsafe { header.byte_add(Self::DATA_OFFSET).cast() }
     }
 }
 
-impl<T, P: InitPrefix> Header<T, P, Option<NonNull<T>>> {
-    pub(crate) fn from_vec(vec: Vec<T>) -> Box<Self> {
+impl<P: InitPrefix> Header<P, Option<NonNull<u8>>> {
+    pub(crate) fn from_vec(vec: Vec<u8>) -> Box<Self> {
         let (ptr, len, cap) = vec.into_raw_parts();
         Box::new(Self {
             prefix: P::init(),
             ptr: NonNull::new(ptr),
             cap,
             len,
-            _phantom: PhantomData,
         })
     }
 }
 
-impl<T, P> ConstDefault for ThinHeader<T, P>
+impl<P> ConstDefault for ThinHeader<P>
 where
     P: ConstDefault,
 {
@@ -113,11 +88,10 @@ where
         ptr: ZeroUsize::DEFAULT,
         cap: 0,
         len: 0,
-        _phantom: PhantomData,
     };
 }
 
-impl<T, P> ConstDefault for VecHeader<T, P>
+impl<P> ConstDefault for VecHeader<P>
 where
     P: ConstDefault,
 {
@@ -126,7 +100,6 @@ where
         ptr: None,
         cap: 0,
         len: 0,
-        _phantom: core::marker::PhantomData,
     };
 }
 
@@ -137,46 +110,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn thin_data_offset() {
-        type HU8 = ThinHeader<u8, ()>;
-        type HU64 = ThinHeader<u64, ()>;
-        type HU128 = ThinHeader<u128, ()>;
-
-        assert_eq!(HU8::DATA_OFFSET, size_of::<HU8>());
-        assert!(HU64::DATA_OFFSET >= size_of::<HU64>());
-        assert!(HU64::DATA_OFFSET.is_multiple_of(align_of::<u64>()));
-        assert!(HU128::DATA_OFFSET >= size_of::<HU128>());
-        assert!(HU128::DATA_OFFSET.is_multiple_of(align_of::<u128>()));
-    }
-
-    #[test]
     fn thin_layout() {
-        type HU8 = ThinHeader<u8, ()>;
-        type HU64 = ThinHeader<u64, ()>;
-        type HU128 = ThinHeader<u128, ()>;
-
-        for payload in [0, 1, 2, 3, 4, 7, 8, 15, 16, 31, 32] {
-            let (layout, round_up_payload) = HU8::layout(payload).unwrap();
-            assert!(round_up_payload >= payload);
-            assert!(layout.size().is_multiple_of(align_of::<u8>()));
-            assert_eq!(layout.align(), align_of::<HU8>().max(align_of::<u8>()));
-
-            let (layout, round_up_payload) = HU64::layout(payload).unwrap();
-            assert!(round_up_payload >= payload);
-            assert!(layout.size().is_multiple_of(align_of::<u64>()));
-            assert_eq!(layout.align(), align_of::<HU64>().max(align_of::<u64>()));
-
-            let (layout, round_up_payload) = HU128::layout(payload).unwrap();
-            assert!(round_up_payload >= payload);
-            assert!(layout.size().is_multiple_of(align_of::<u128>()));
-            assert_eq!(layout.align(), align_of::<HU128>().max(align_of::<u128>()));
+        type H = ThinHeader<()>;
+        assert_eq!(H::DATA_OFFSET, size_of::<H>());
+        for payload in [0, 1, 2, 3, 4, 7, 8, 15, 16, 31, 32, 100] {
+            let (layout, capacity) = H::layout(payload).unwrap();
+            assert!(capacity >= payload, "{payload}");
+            assert_eq!(
+                layout.size(),
+                H::DATA_OFFSET + capacity,
+                "rounding is usable"
+            );
+            assert!(layout.size().is_multiple_of(align_of::<H>()));
+            assert_eq!(layout.align(), align_of::<H>());
         }
+        assert!(H::layout(usize::MAX).is_none());
+        assert!(H::layout(isize::MAX as usize).is_none());
     }
 
     #[test]
     fn common() {
-        type THU8 = ThinHeader<u8, ()>;
-        type FHU8 = VecHeader<u8, ()>;
+        type THU8 = ThinHeader<()>;
+        type FHU8 = VecHeader<()>;
         assert_eq!(offset_of!(THU8, prefix), offset_of!(FHU8, prefix));
         assert_eq!(offset_of!(THU8, ptr), offset_of!(FHU8, ptr));
         assert_eq!(offset_of!(THU8, len), offset_of!(FHU8, len));

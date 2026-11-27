@@ -1,8 +1,8 @@
 //! The generic type behind every public alias: [`Hip<E, R>`].
 //!
 //! `E` is the [encoding](super::enc) (bytes, UTF-8, OS string, path) and `R`
-//! the concrete [representation](super::repr) (`Wide<'a, u8, B>`,
-//! `Small<'a, u8, B>` or `Tiny<u8, B>`). Taking the concrete representation,
+//! the concrete [representation](super::repr) (`Wide<'a, B>`,
+//! `Small<'a, B>` or `Tiny<B>`). Taking the concrete representation,
 //! rather than a layout marker plus a lifetime, keeps the type covariant in
 //! the borrow lifetime.
 //!
@@ -33,7 +33,7 @@ pub struct Hip<E: Encoding, R> {
 
 // ----- constructors that must be `const`, per representation -----
 
-impl<'a, E: Encoding, B: Backend> Hip<E, Wide<'a, u8, B>> {
+impl<'a, E: Encoding, B: Backend> Hip<E, Wide<'a, B>> {
     /// Creates an empty `HipStr`.
     ///
     /// Function provided for `String::new` replacement.
@@ -57,7 +57,7 @@ impl<'a, E: Encoding, B: Backend> Hip<E, Wide<'a, u8, B>> {
         Self::from_repr_const(Wide::inline_copy(E::EMPTY))
     }
 
-    pub(crate) const fn from_repr_const(repr: Wide<'a, u8, B>) -> Self {
+    pub(crate) const fn from_repr_const(repr: Wide<'a, B>) -> Self {
         Self {
             repr,
             enc: PhantomData,
@@ -65,7 +65,7 @@ impl<'a, E: Encoding, B: Backend> Hip<E, Wide<'a, u8, B>> {
     }
 }
 
-impl<'a, E: Encoding, B: Backend> Hip<E, Small<'a, u8, B>> {
+impl<'a, E: Encoding, B: Backend> Hip<E, Small<'a, B>> {
     /// Creates an empty `HipStr`.
     ///
     /// Function provided for `String::new` replacement.
@@ -89,7 +89,7 @@ impl<'a, E: Encoding, B: Backend> Hip<E, Small<'a, u8, B>> {
         Self::from_repr_const(Small::inline_copy(E::EMPTY))
     }
 
-    pub(crate) const fn from_repr_const(repr: Small<'a, u8, B>) -> Self {
+    pub(crate) const fn from_repr_const(repr: Small<'a, B>) -> Self {
         Self {
             repr,
             enc: PhantomData,
@@ -97,7 +97,7 @@ impl<'a, E: Encoding, B: Backend> Hip<E, Small<'a, u8, B>> {
     }
 }
 
-impl<E: Encoding, B: Backend> Hip<E, Tiny<u8, B>> {
+impl<E: Encoding, B: Backend> Hip<E, Tiny<B>> {
     /// Creates an empty `HipStr`.
     ///
     /// Function provided for `String::new` replacement.
@@ -121,7 +121,7 @@ impl<E: Encoding, B: Backend> Hip<E, Tiny<u8, B>> {
         Self::from_repr_const(Tiny::inline_copy(E::EMPTY))
     }
 
-    pub(crate) const fn from_repr_const(repr: Tiny<u8, B>) -> Self {
+    pub(crate) const fn from_repr_const(repr: Tiny<B>) -> Self {
         Self {
             repr,
             enc: PhantomData,
@@ -288,13 +288,13 @@ macro_rules! impl_const_accessors {
             #[must_use]
             pub const fn is_normalized(&self) -> bool {
                 !self.repr.is_heap()
-                    || self.repr.len() > <$repr as Repr<'_, u8>>::INLINE_CAPACITY
+                    || self.repr.len() > <$repr as Repr<'_>>::INLINE_CAPACITY
             }
         }
     )*};
 }
 
-impl_const_accessors!(['a] Wide<'a, u8, B>, ['a] Small<'a, u8, B>, [] Tiny<u8, B>);
+impl_const_accessors!(['a] Wide<'a, B>, ['a] Small<'a, B>, [] Tiny<B>);
 
 /// Implements the `const` typed accessors of an encoding whose byte
 /// conversion is `const` (bytes and UTF-8), for every representation.
@@ -303,9 +303,9 @@ impl_const_accessors!(['a] Wide<'a, u8, B>, ['a] Small<'a, u8, B>, [] Tiny<u8, B
 /// `$to` converts `&$slice` to `&[u8]`.
 macro_rules! impl_const_typed_accessors {
     ($enc:ty, $slice:ty, |$b:ident| $from:expr, |$v:ident| $to:expr) => {
-        $crate::hip::impl_const_typed_accessors!(@one $enc, $slice, |$b| $from, |$v| $to, ['a] $crate::repr::Wide<'a, u8, B>, 'a);
-        $crate::hip::impl_const_typed_accessors!(@one $enc, $slice, |$b| $from, |$v| $to, ['a] $crate::repr::Small<'a, u8, B>, 'a);
-        $crate::hip::impl_const_typed_accessors!(@one $enc, $slice, |$b| $from, |$v| $to, ['a] $crate::repr::Tiny<u8, B>, 'a);
+        $crate::hip::impl_const_typed_accessors!(@one $enc, $slice, |$b| $from, |$v| $to, ['a] $crate::repr::Wide<'a, B>, 'a);
+        $crate::hip::impl_const_typed_accessors!(@one $enc, $slice, |$b| $from, |$v| $to, ['a] $crate::repr::Small<'a, B>, 'a);
+        $crate::hip::impl_const_typed_accessors!(@one $enc, $slice, |$b| $from, |$v| $to, ['a] $crate::repr::Tiny<B>, 'a);
     };
     (@one $enc:ty, $slice:ty, |$b:ident| $from:expr, |$v:ident| $to:expr, [$($lt:lifetime)?] $repr:ty, $blt:lifetime) => {
         // the conversion is safe for bytes (identity), unsafe otherwise
@@ -387,7 +387,7 @@ macro_rules! impl_const_typed_accessors {
                 let bytes: &[u8] = $to;
                 // no `match` on an `Option` holding a value with drop glue:
                 // const evaluation cannot prove the `None` arm drops nothing
-                if bytes.len() <= <$repr as $crate::repr::Repr<'_, u8>>::INLINE_CAPACITY {
+                if bytes.len() <= <$repr as $crate::repr::Repr<'_>>::INLINE_CAPACITY {
                     Some(Self::from_repr_const(<$repr>::inline_copy(bytes)))
                 } else {
                     None
@@ -407,7 +407,7 @@ pub(crate) use impl_const_typed_accessors;
 
 // ----- everything else, once -----
 
-impl<'a, E: Encoding, R: Repr<'a, u8>> Hip<E, R> {
+impl<'a, E: Encoding, R: Repr<'a>> Hip<E, R> {
     /// # Safety
     ///
     /// The bytes must satisfy `E`'s invariant.
@@ -730,7 +730,7 @@ impl<'a, E: Encoding, R: Repr<'a, u8>> Hip<E, R> {
     }
 }
 
-impl<'a, E: Encoding, R: Repr<'a, u8>> Hip<E, R> {
+impl<'a, E: Encoding, R: Repr<'a>> Hip<E, R> {
     /// Reserves capacity for at least `additional` more bytes, making the
     /// value uniquely owned (copying it first if borrowed or shared).
     ///
@@ -855,13 +855,13 @@ impl<'a, E: Encoding, R: Repr<'a, u8>> Hip<E, R> {
 /// Mutation guard returned by [`Hip::mutate`].
 ///
 /// Dereferences to the std owned form; writes back on drop.
-pub struct RefMut<'h, 'a, E: Encoding, R: Repr<'a, u8>> {
+pub struct RefMut<'h, 'a, E: Encoding, R: Repr<'a>> {
     target: &'h mut Hip<E, R>,
     owned: Option<E::Owned>,
     borrow: PhantomData<&'a ()>,
 }
 
-impl<'a, E: Encoding, R: Repr<'a, u8>> Drop for RefMut<'_, 'a, E, R> {
+impl<'a, E: Encoding, R: Repr<'a>> Drop for RefMut<'_, 'a, E, R> {
     fn drop(&mut self) {
         if let Some(owned) = self.owned.take() {
             *self.target = Hip::from_owned(owned);
@@ -869,7 +869,7 @@ impl<'a, E: Encoding, R: Repr<'a, u8>> Drop for RefMut<'_, 'a, E, R> {
     }
 }
 
-impl<'a, E: Encoding, R: Repr<'a, u8>> fmt::Debug for RefMut<'_, 'a, E, R>
+impl<'a, E: Encoding, R: Repr<'a>> fmt::Debug for RefMut<'_, 'a, E, R>
 where
     E::Owned: fmt::Debug,
 {
@@ -878,7 +878,7 @@ where
     }
 }
 
-impl<'a, E: Encoding, R: Repr<'a, u8>> Deref for RefMut<'_, 'a, E, R> {
+impl<'a, E: Encoding, R: Repr<'a>> Deref for RefMut<'_, 'a, E, R> {
     type Target = E::Owned;
 
     #[inline]
@@ -887,7 +887,7 @@ impl<'a, E: Encoding, R: Repr<'a, u8>> Deref for RefMut<'_, 'a, E, R> {
     }
 }
 
-impl<'a, E: Encoding, R: Repr<'a, u8>> DerefMut for RefMut<'_, 'a, E, R> {
+impl<'a, E: Encoding, R: Repr<'a>> DerefMut for RefMut<'_, 'a, E, R> {
     #[inline]
     fn deref_mut(&mut self) -> &mut E::Owned {
         self.owned.as_mut().unwrap()
@@ -896,7 +896,7 @@ impl<'a, E: Encoding, R: Repr<'a, u8>> DerefMut for RefMut<'_, 'a, E, R> {
 
 // ----- traits, once -----
 
-impl<'a, E: Encoding, R: Repr<'a, u8>> Default for Hip<E, R> {
+impl<'a, E: Encoding, R: Repr<'a>> Default for Hip<E, R> {
     #[inline]
     fn default() -> Self {
         // SAFETY: empty
@@ -904,7 +904,7 @@ impl<'a, E: Encoding, R: Repr<'a, u8>> Default for Hip<E, R> {
     }
 }
 
-impl<'a, E: Encoding, R: Repr<'a, u8>> Clone for Hip<E, R> {
+impl<'a, E: Encoding, R: Repr<'a>> Clone for Hip<E, R> {
     #[inline]
     fn clone(&self) -> Self {
         // SAFETY: same bytes
@@ -912,7 +912,7 @@ impl<'a, E: Encoding, R: Repr<'a, u8>> Clone for Hip<E, R> {
     }
 }
 
-impl<'a, E: Encoding, R: Repr<'a, u8>> Deref for Hip<E, R> {
+impl<'a, E: Encoding, R: Repr<'a>> Deref for Hip<E, R> {
     type Target = E::Slice;
 
     #[inline]
@@ -921,14 +921,14 @@ impl<'a, E: Encoding, R: Repr<'a, u8>> Deref for Hip<E, R> {
     }
 }
 
-impl<'a, E: Encoding, R: Repr<'a, u8>> AsRef<E::Slice> for Hip<E, R> {
+impl<'a, E: Encoding, R: Repr<'a>> AsRef<E::Slice> for Hip<E, R> {
     #[inline]
     fn as_ref(&self) -> &E::Slice {
         self.as_inner()
     }
 }
 
-impl<'a, E: Encoding, R: Repr<'a, u8>> Hash for Hip<E, R>
+impl<'a, E: Encoding, R: Repr<'a>> Hash for Hip<E, R>
 where
     E::Slice: Hash,
 {
@@ -938,7 +938,7 @@ where
     }
 }
 
-impl<'a, E: Encoding, R: Repr<'a, u8>> fmt::Debug for Hip<E, R>
+impl<'a, E: Encoding, R: Repr<'a>> fmt::Debug for Hip<E, R>
 where
     E::Slice: fmt::Debug,
 {
@@ -948,7 +948,7 @@ where
     }
 }
 
-impl<'a, 'b, E: Encoding, R1: Repr<'a, u8>, R2: Repr<'b, u8>> PartialEq<Hip<E, R2>> for Hip<E, R1>
+impl<'a, 'b, E: Encoding, R1: Repr<'a>, R2: Repr<'b>> PartialEq<Hip<E, R2>> for Hip<E, R1>
 where
     E::Slice: PartialEq,
 {
@@ -962,9 +962,9 @@ where
     }
 }
 
-impl<'a, E: Encoding, R: Repr<'a, u8>> Eq for Hip<E, R> where E::Slice: Eq {}
+impl<'a, E: Encoding, R: Repr<'a>> Eq for Hip<E, R> where E::Slice: Eq {}
 
-impl<'a, 'b, E: Encoding, R1: Repr<'a, u8>, R2: Repr<'b, u8>> PartialOrd<Hip<E, R2>> for Hip<E, R1>
+impl<'a, 'b, E: Encoding, R1: Repr<'a>, R2: Repr<'b>> PartialOrd<Hip<E, R2>> for Hip<E, R1>
 where
     E::Slice: PartialOrd,
 {
@@ -974,7 +974,7 @@ where
     }
 }
 
-impl<'a, E: Encoding, R: Repr<'a, u8>> Ord for Hip<E, R>
+impl<'a, E: Encoding, R: Repr<'a>> Ord for Hip<E, R>
 where
     E::Slice: Ord,
 {
@@ -984,7 +984,7 @@ where
     }
 }
 
-impl<'a, E: Encoding, R: Repr<'a, u8>> From<&E::Slice> for Hip<E, R> {
+impl<'a, E: Encoding, R: Repr<'a>> From<&E::Slice> for Hip<E, R> {
     /// Copies the value (inline when it fits); see `borrowed` to borrow it.
     #[inline]
     fn from(value: &E::Slice) -> Self {
@@ -992,7 +992,7 @@ impl<'a, E: Encoding, R: Repr<'a, u8>> From<&E::Slice> for Hip<E, R> {
     }
 }
 
-impl<'a, E: Encoding, R: Repr<'a, u8>> From<Cow<'a, E::Slice>> for Hip<E, R>
+impl<'a, E: Encoding, R: Repr<'a>> From<Cow<'a, E::Slice>> for Hip<E, R>
 where
     E::Slice: alloc::borrow::ToOwned<Owned = E::Owned>,
 {
@@ -1007,7 +1007,7 @@ where
     }
 }
 
-impl<'a, E: Encoding, R: Repr<'a, u8>> From<Hip<E, R>> for Cow<'a, E::Slice>
+impl<'a, E: Encoding, R: Repr<'a>> From<Hip<E, R>> for Cow<'a, E::Slice>
 where
     E::Slice: alloc::borrow::ToOwned<Owned = E::Owned>,
 {

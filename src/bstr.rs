@@ -100,16 +100,16 @@ macro_rules! impl_const_bstr {
 }
 
 impl_const_bstr!(
-    ['a] super::repr::Wide<'a, u8, B>,
-    ['a] super::repr::Small<'a, u8, B>,
-    [] super::repr::Tiny<u8, B>,
+    ['a] super::repr::Wide<'a, B>,
+    ['a] super::repr::Small<'a, B>,
+    [] super::repr::Tiny<B>,
 );
 
 /// `const` borrowing from plain bytes (byte string literals), for the
 /// borrowing representations.
 macro_rules! impl_borrowed_bytes {
     ($($repr:ident),*) => {$(
-        impl<'a, B: super::backend::Backend> Hip<enc::BStr, super::repr::$repr<'a, u8, B>> {
+        impl<'a, B: super::backend::Backend> Hip<enc::BStr, super::repr::$repr<'a, B>> {
             /// Borrows bytes without copying, in a `const` context too.
             #[inline]
             #[must_use]
@@ -122,7 +122,7 @@ macro_rules! impl_borrowed_bytes {
 
 impl_borrowed_bytes!(Wide, Small);
 
-impl<'a, R: Repr<'a, u8>> Hip<enc::BStr, R> {
+impl<'a, R: Repr<'a>> Hip<enc::BStr, R> {
     /// Adopts a byte vector (inline if it fits).
     #[cfg(feature = "borsh")]
     #[inline]
@@ -216,7 +216,7 @@ impl<'a, R: Repr<'a, u8>> Hip<enc::BStr, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> fmt::Display for Hip<enc::BStr, R> {
+impl<'a, R: Repr<'a>> fmt::Display for Hip<enc::BStr, R> {
     /// Lossy UTF-8, like `BStr`'s `Display`.
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -224,7 +224,7 @@ impl<'a, R: Repr<'a, u8>> fmt::Display for Hip<enc::BStr, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> fmt::Write for Hip<enc::BStr, R> {
+impl<'a, R: Repr<'a>> fmt::Write for Hip<enc::BStr, R> {
     #[inline]
     fn write_str(&mut self, s: &str) -> fmt::Result {
         self.push_slice(s);
@@ -232,14 +232,14 @@ impl<'a, R: Repr<'a, u8>> fmt::Write for Hip<enc::BStr, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> AsRef<[u8]> for Hip<enc::BStr, R> {
+impl<'a, R: Repr<'a>> AsRef<[u8]> for Hip<enc::BStr, R> {
     #[inline]
     fn as_ref(&self) -> &[u8] {
         self.bytes()
     }
 }
 
-impl<'a, R: Repr<'a, u8>> core::borrow::Borrow<[u8]> for Hip<enc::BStr, R> {
+impl<'a, R: Repr<'a>> core::borrow::Borrow<[u8]> for Hip<enc::BStr, R> {
     /// Consistent with `Hash`: `BStr` hashes like `[u8]`.
     #[inline]
     fn borrow(&self) -> &[u8] {
@@ -251,7 +251,7 @@ impl<'a, R: Repr<'a, u8>> core::borrow::Borrow<[u8]> for Hip<enc::BStr, R> {
 /// [`HipByt`](crate::HipByt).
 macro_rules! impl_from_plain {
     ($($t:ty => |$v:ident| $e:expr),* $(,)?) => {$(
-        impl<'a, R: Repr<'a, u8>> From<$t> for Hip<enc::BStr, R> {
+        impl<'a, R: Repr<'a>> From<$t> for Hip<enc::BStr, R> {
             #[inline]
             fn from($v: $t) -> Self {
                 $e
@@ -268,14 +268,14 @@ impl_from_plain!(
     Box<[u8]> => |v| Self::from_owned(BString::new(v.into_vec())),
 );
 
-impl<'a, R: Repr<'a, u8>, const N: usize> From<&[u8; N]> for Hip<enc::BStr, R> {
+impl<'a, R: Repr<'a>, const N: usize> From<&[u8; N]> for Hip<enc::BStr, R> {
     #[inline]
     fn from(value: &[u8; N]) -> Self {
         Self::from_inner(bstr_from_bytes(value))
     }
 }
 
-impl<'a, R: Repr<'a, u8>> From<Hip<Bytes, R>> for Hip<enc::BStr, R> {
+impl<'a, R: Repr<'a>> From<Hip<Bytes, R>> for Hip<enc::BStr, R> {
     /// Keeps the representation (no copy).
     #[inline]
     fn from(value: Hip<Bytes, R>) -> Self {
@@ -284,7 +284,7 @@ impl<'a, R: Repr<'a, u8>> From<Hip<Bytes, R>> for Hip<enc::BStr, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> From<Hip<Utf8, R>> for Hip<enc::BStr, R> {
+impl<'a, R: Repr<'a>> From<Hip<Utf8, R>> for Hip<enc::BStr, R> {
     /// Keeps the representation (no copy).
     #[inline]
     fn from(value: Hip<Utf8, R>) -> Self {
@@ -293,7 +293,7 @@ impl<'a, R: Repr<'a, u8>> From<Hip<Utf8, R>> for Hip<enc::BStr, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> From<Hip<enc::BStr, R>> for Hip<Bytes, R> {
+impl<'a, R: Repr<'a>> From<Hip<enc::BStr, R>> for Hip<Bytes, R> {
     /// Keeps the representation (no copy).
     #[inline]
     fn from(value: Hip<enc::BStr, R>) -> Self {
@@ -301,7 +301,7 @@ impl<'a, R: Repr<'a, u8>> From<Hip<enc::BStr, R>> for Hip<Bytes, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> From<Hip<enc::BStr, R>> for Vec<u8> {
+impl<'a, R: Repr<'a>> From<Hip<enc::BStr, R>> for Vec<u8> {
     /// O(1) when the value uniquely owns an adopted buffer.
     #[inline]
     fn from(value: Hip<enc::BStr, R>) -> Self {
@@ -309,7 +309,7 @@ impl<'a, R: Repr<'a, u8>> From<Hip<enc::BStr, R>> for Vec<u8> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> TryFrom<Hip<enc::BStr, R>> for Hip<Utf8, R> {
+impl<'a, R: Repr<'a>> TryFrom<Hip<enc::BStr, R>> for Hip<Utf8, R> {
     type Error = Hip<enc::BStr, R>;
 
     /// Keeps the representation (no copy); gives the value back if not UTF-8.

@@ -16,55 +16,47 @@ use core::ptr::NonNull;
 use super::owner::Owner;
 use super::{Kind, Repr, capacity_overflow};
 use crate::backend::Backend;
-use crate::inline_buf::base::Base as InlineBase;
-use crate::inline_buf::layouts::TinyLayout;
 use crate::thin::TryReserveError;
 
-type Inline<T> = InlineBase<T, TinyLayout>;
+type Inline = crate::inline_buf::Tiny;
 
 const _: () = {
-    assert!(size_of::<Inline<u8>>() == size_of::<usize>());
-    assert!(size_of::<Owner<u8, crate::backend::Rc>>() == size_of::<usize>());
+    assert!(size_of::<Inline>() == size_of::<usize>());
+    assert!(size_of::<Owner<crate::backend::Rc>>() == size_of::<usize>());
 };
 
 /// 1-word copy-on-write sequence (see the module documentation).
 #[repr(transparent)]
-pub struct Tiny<T: Copy + 'static, B: Backend> {
+pub struct Tiny<B: Backend> {
     word: NonNull<()>,
-    marker: PhantomData<Owner<T, B>>,
+    marker: PhantomData<Owner<B>>,
 }
 
 const _: () = {
-    type W = Tiny<u8, crate::backend::Rc>;
+    type W = Tiny<crate::backend::Rc>;
     assert!(size_of::<W>() == size_of::<usize>());
     assert!(size_of::<Option<W>>() == size_of::<W>());
 };
 
 // SAFETY: see `Wide`
-unsafe impl<T: Copy + Send + Sync + 'static, B: Backend> Send for Tiny<T, B> where
-    B::Counter: Send + Sync
-{
-}
+unsafe impl<B: Backend> Send for Tiny<B> where B::Counter: Send + Sync {}
 // SAFETY: see `Wide`
-unsafe impl<T: Copy + Send + Sync + 'static, B: Backend> Sync for Tiny<T, B> where
-    B::Counter: Send + Sync
-{
-}
+unsafe impl<B: Backend> Sync for Tiny<B> where B::Counter: Send + Sync {}
 
-impl<T: Copy + 'static, B: Backend> Tiny<T, B> {
-    const fn from_inline(inline: Inline<T>) -> Self {
+impl<B: Backend> Tiny<B> {
+    const fn from_inline(inline: Inline) -> Self {
         Self {
             // SAFETY: same size, an inline word is tagged and non-zero
-            word: unsafe { transmute::<Inline<T>, NonNull<()>>(inline) },
+            word: unsafe { transmute::<Inline, NonNull<()>>(inline) },
             marker: PhantomData,
         }
     }
 
-    const fn from_owner(owner: Owner<T, B>) -> Self {
+    const fn from_owner(owner: Owner<B>) -> Self {
         debug_assert!(owner.is_some());
         Self {
             // SAFETY: same size, a non-null owner is a tagged non-null pointer
-            word: unsafe { transmute::<Owner<T, B>, NonNull<()>>(owner) },
+            word: unsafe { transmute::<Owner<B>, NonNull<()>>(owner) },
             marker: PhantomData,
         }
     }
@@ -80,11 +72,8 @@ impl<T: Copy + 'static, B: Backend> Tiny<T, B> {
     ///
     /// Panics if `slice` is longer than the inline capacity.
     #[inline]
-    pub const fn inline_copy(slice: &[T]) -> Self {
-        assert!(
-            slice.len() <= Inline::<T>::CAPACITY,
-            "too long to be inlined"
-        );
+    pub const fn inline_copy(slice: &[u8]) -> Self {
+        assert!(slice.len() <= Inline::CAPACITY, "too long to be inlined");
         Self::from_inline(Inline::from_slice_copy(slice))
     }
 
@@ -106,32 +95,32 @@ impl<T: Copy + 'static, B: Backend> Tiny<T, B> {
 
     /// Always `None`: this representation never borrows.
     #[inline]
-    pub const fn borrowed_slice<'a>(&self) -> Option<&'a [T]> {
+    pub const fn borrowed_slice<'a>(&self) -> Option<&'a [u8]> {
         None
     }
 
     #[inline]
-    const fn inline(&self) -> &Inline<T> {
+    const fn inline(&self) -> &Inline {
         // SAFETY: inline case, same size
-        unsafe { transmute::<&NonNull<()>, &Inline<T>>(&self.word) }
+        unsafe { transmute::<&NonNull<()>, &Inline>(&self.word) }
     }
 
     #[inline]
-    const fn inline_mut(&mut self) -> &mut Inline<T> {
+    const fn inline_mut(&mut self) -> &mut Inline {
         // SAFETY: inline case, same size
-        unsafe { transmute::<&mut NonNull<()>, &mut Inline<T>>(&mut self.word) }
+        unsafe { transmute::<&mut NonNull<()>, &mut Inline>(&mut self.word) }
     }
 
     #[inline]
-    const fn owner(&self) -> Owner<T, B> {
+    const fn owner(&self) -> Owner<B> {
         // SAFETY: heap case, same size
-        unsafe { transmute::<NonNull<()>, Owner<T, B>>(self.word) }
+        unsafe { transmute::<NonNull<()>, Owner<B>>(self.word) }
     }
 
     #[inline]
-    const fn owner_mut(&mut self) -> &mut Owner<T, B> {
+    const fn owner_mut(&mut self) -> &mut Owner<B> {
         // SAFETY: heap case, same size
-        unsafe { transmute::<&mut NonNull<()>, &mut Owner<T, B>>(&mut self.word) }
+        unsafe { transmute::<&mut NonNull<()>, &mut Owner<B>>(&mut self.word) }
     }
 
     #[inline]
@@ -149,7 +138,7 @@ impl<T: Copy + 'static, B: Backend> Tiny<T, B> {
     }
 
     #[inline]
-    pub const fn as_slice(&self) -> &[T] {
+    pub const fn as_slice(&self) -> &[u8] {
         if self.is_inline() {
             self.inline().as_slice()
         } else {
@@ -160,16 +149,16 @@ impl<T: Copy + 'static, B: Backend> Tiny<T, B> {
     /// Copies `slice` to a new heap buffer; kept out of line so that the
     /// inline path of `from_slice` stays small enough to be inlined.
     #[inline(never)]
-    fn heap_from_slice(slice: &[T]) -> Self {
+    fn heap_from_slice(slice: &[u8]) -> Self {
         crate::thin::unwrap_or_oom(Self::try_from_slice(slice, slice.len()))
     }
 
-    fn try_from_slice(slice: &[T], capacity: usize) -> Result<Self, TryReserveError> {
+    fn try_from_slice(slice: &[u8], capacity: usize) -> Result<Self, TryReserveError> {
         debug_assert!(capacity >= slice.len());
-        if capacity <= Inline::<T>::CAPACITY {
+        if capacity <= Inline::CAPACITY {
             return Ok(Self::from_inline(Inline::from_slice_copy(slice)));
         }
-        let owner = Owner::<T, B>::try_with_capacity(capacity)?;
+        let owner = Owner::<B>::try_with_capacity(capacity)?;
         // SAFETY: fresh unique owner with enough capacity
         unsafe {
             owner
@@ -182,13 +171,13 @@ impl<T: Copy + 'static, B: Backend> Tiny<T, B> {
     }
 }
 
-impl<T: Copy + 'static, B: Backend> Default for Tiny<T, B> {
+impl<B: Backend> Default for Tiny<B> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T: Copy + 'static, B: Backend> Clone for Tiny<T, B> {
+impl<B: Backend> Clone for Tiny<B> {
     fn clone(&self) -> Self {
         if !self.is_inline() && self.owner().try_clone().is_none() {
             return Self::try_from_slice(self.as_slice(), self.len())
@@ -201,7 +190,7 @@ impl<T: Copy + 'static, B: Backend> Clone for Tiny<T, B> {
     }
 }
 
-impl<T: Copy + 'static, B: Backend> Drop for Tiny<T, B> {
+impl<B: Backend> Drop for Tiny<B> {
     fn drop(&mut self) {
         if !self.is_inline() {
             // SAFETY: this handle is dropped
@@ -211,10 +200,10 @@ impl<T: Copy + 'static, B: Backend> Drop for Tiny<T, B> {
 }
 
 // SAFETY: see the trait's contract, upheld by `try_reserve`
-unsafe impl<'a, T: Copy + 'static, B: Backend> Repr<'a, T> for Tiny<T, B> {
+unsafe impl<'a, B: Backend> Repr<'a> for Tiny<B> {
     type Owned = Self;
     const WORDS: usize = 1;
-    const INLINE_CAPACITY: usize = Inline::<T>::CAPACITY;
+    const INLINE_CAPACITY: usize = Inline::CAPACITY;
     const MAX_LEN: usize = isize::MAX as usize;
     const BORROWS: bool = false;
 
@@ -224,8 +213,8 @@ unsafe impl<'a, T: Copy + 'static, B: Backend> Repr<'a, T> for Tiny<T, B> {
     }
 
     #[inline]
-    fn from_slice(slice: &[T]) -> Self {
-        if slice.len() <= Inline::<T>::CAPACITY {
+    fn from_slice(slice: &[u8]) -> Self {
+        if slice.len() <= Inline::CAPACITY {
             Self::from_inline(Inline::from_slice_copy(slice))
         } else {
             Self::heap_from_slice(slice)
@@ -233,12 +222,12 @@ unsafe impl<'a, T: Copy + 'static, B: Backend> Repr<'a, T> for Tiny<T, B> {
     }
 
     #[inline]
-    fn from_borrowed(slice: &'a [T]) -> Self {
-        <Self as Repr<'a, T>>::from_slice(slice)
+    fn from_borrowed(slice: &'a [u8]) -> Self {
+        <Self as Repr<'a>>::from_slice(slice)
     }
 
-    fn from_vec(vec: Vec<T>) -> Self {
-        if vec.len() <= Inline::<T>::CAPACITY {
+    fn from_vec(vec: Vec<u8>) -> Self {
+        if vec.len() <= Inline::CAPACITY {
             Self::from_inline(Inline::from_slice_copy(&vec))
         } else {
             Self::from_owner(Owner::from_vec(vec))
@@ -251,7 +240,7 @@ unsafe impl<'a, T: Copy + 'static, B: Backend> Repr<'a, T> for Tiny<T, B> {
     }
 
     #[inline]
-    fn as_borrowed(&self) -> Option<&'a [T]> {
+    fn as_borrowed(&self) -> Option<&'a [u8]> {
         None
     }
 
@@ -264,7 +253,7 @@ unsafe impl<'a, T: Copy + 'static, B: Backend> Repr<'a, T> for Tiny<T, B> {
     }
 
     #[inline]
-    fn as_slice(&self) -> &[T] {
+    fn as_slice(&self) -> &[u8] {
         self.as_slice()
     }
 
@@ -273,7 +262,7 @@ unsafe impl<'a, T: Copy + 'static, B: Backend> Repr<'a, T> for Tiny<T, B> {
         self.len()
     }
 
-    fn into_vec(self) -> Vec<T> {
+    fn into_vec(self) -> Vec<u8> {
         if self.is_inline() {
             return self.as_slice().to_vec();
         }
@@ -289,7 +278,7 @@ unsafe impl<'a, T: Copy + 'static, B: Backend> Repr<'a, T> for Tiny<T, B> {
         let len = self.len();
         let required = len.checked_add(additional).ok_or(capacity_overflow())?;
         if self.is_inline() {
-            if required > Inline::<T>::CAPACITY {
+            if required > Inline::CAPACITY {
                 *self = Self::try_from_slice(self.as_slice(), required)?;
             }
         } else if self.owner().is_unique() {
@@ -311,13 +300,13 @@ unsafe impl<'a, T: Copy + 'static, B: Backend> Repr<'a, T> for Tiny<T, B> {
 
     fn capacity(&self) -> usize {
         if self.is_inline() {
-            Inline::<T>::CAPACITY
+            Inline::CAPACITY
         } else {
             self.owner().capacity()
         }
     }
 
-    unsafe fn as_mut_ptr(&mut self) -> *mut T {
+    unsafe fn as_mut_ptr(&mut self) -> *mut u8 {
         if self.is_inline() {
             self.inline_mut().as_mut_ptr()
         } else {

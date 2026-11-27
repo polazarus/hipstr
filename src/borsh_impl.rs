@@ -21,28 +21,28 @@ use super::enc::{Bytes, Utf8};
 use super::hip::Hip;
 use super::repr::Repr;
 
-impl<'a, R: Repr<'a, u8>> BorshSerialize for Hip<Bytes, R> {
+impl<'a, R: Repr<'a>> BorshSerialize for Hip<Bytes, R> {
     #[inline]
     fn serialize<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
         self.bytes().serialize(writer)
     }
 }
 
-impl<'a, R: Repr<'a, u8>> BorshDeserialize for Hip<Bytes, R> {
+impl<'a, R: Repr<'a>> BorshDeserialize for Hip<Bytes, R> {
     #[inline]
     fn deserialize_reader<Rd: io::Read>(reader: &mut Rd) -> io::Result<Self> {
         Vec::<u8>::deserialize_reader(reader).map(Self::from_owned)
     }
 }
 
-impl<'a, R: Repr<'a, u8>> BorshSerialize for Hip<Utf8, R> {
+impl<'a, R: Repr<'a>> BorshSerialize for Hip<Utf8, R> {
     #[inline]
     fn serialize<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
         self.bytes().serialize(writer)
     }
 }
 
-impl<'a, R: Repr<'a, u8>> BorshDeserialize for Hip<Utf8, R> {
+impl<'a, R: Repr<'a>> BorshDeserialize for Hip<Utf8, R> {
     fn deserialize_reader<Rd: io::Read>(reader: &mut Rd) -> io::Result<Self> {
         let bytes = Vec::<u8>::deserialize_reader(reader)?;
         String::from_utf8(bytes)
@@ -52,7 +52,7 @@ impl<'a, R: Repr<'a, u8>> BorshDeserialize for Hip<Utf8, R> {
 }
 
 #[cfg(feature = "bstr")]
-impl<'a, R: Repr<'a, u8>> BorshSerialize for Hip<crate::enc::BStr, R> {
+impl<'a, R: Repr<'a>> BorshSerialize for Hip<crate::enc::BStr, R> {
     #[inline]
     fn serialize<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
         self.bytes().serialize(writer)
@@ -60,14 +60,14 @@ impl<'a, R: Repr<'a, u8>> BorshSerialize for Hip<crate::enc::BStr, R> {
 }
 
 #[cfg(feature = "bstr")]
-impl<'a, R: Repr<'a, u8>> BorshDeserialize for Hip<crate::enc::BStr, R> {
+impl<'a, R: Repr<'a>> BorshDeserialize for Hip<crate::enc::BStr, R> {
     #[inline]
     fn deserialize_reader<Rd: io::Read>(reader: &mut Rd) -> io::Result<Self> {
         Vec::<u8>::deserialize_reader(reader).map(Self::from_owned_bytes)
     }
 }
 
-impl<'a, R: Repr<'a, u8>> BorshSerialize for Hip<crate::enc::CStr, R> {
+impl<'a, R: Repr<'a>> BorshSerialize for Hip<crate::enc::CStr, R> {
     /// The bytes, without the NUL terminator.
     #[inline]
     fn serialize<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
@@ -75,7 +75,7 @@ impl<'a, R: Repr<'a, u8>> BorshSerialize for Hip<crate::enc::CStr, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> BorshDeserialize for Hip<crate::enc::CStr, R> {
+impl<'a, R: Repr<'a>> BorshDeserialize for Hip<crate::enc::CStr, R> {
     /// Rejects interior NULs (like `CString::new`).
     fn deserialize_reader<Rd: io::Read>(reader: &mut Rd) -> io::Result<Self> {
         let bytes = Vec::<u8>::deserialize_reader(reader)?;

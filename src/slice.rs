@@ -53,7 +53,7 @@ impl<E: Encoding, R> Clone for SliceError<'_, E, R> {
     }
 }
 
-impl<'a, E: Encoding, R: Repr<'a, u8>> PartialEq for SliceError<'_, E, R>
+impl<'a, E: Encoding, R: Repr<'a>> PartialEq for SliceError<'_, E, R>
 where
     E::Slice: PartialEq,
 {
@@ -95,7 +95,7 @@ impl<'s, E: Encoding, R> SliceError<'s, E, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> fmt::Debug for SliceError<'_, Utf8, R> {
+impl<'a, R: Repr<'a>> fmt::Debug for SliceError<'_, Utf8, R> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SliceError")
             .field("kind", &self.kind)
@@ -106,7 +106,7 @@ impl<'a, R: Repr<'a, u8>> fmt::Debug for SliceError<'_, Utf8, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> fmt::Display for SliceError<'_, Utf8, R> {
+impl<'a, R: Repr<'a>> fmt::Display for SliceError<'_, Utf8, R> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let (start, end, string) = (self.range.start, self.range.end, self.source.as_inner());
         match self.kind {
@@ -139,7 +139,7 @@ impl<'a, R: Repr<'a, u8>> fmt::Display for SliceError<'_, Utf8, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> fmt::Debug for SliceError<'_, Bytes, R> {
+impl<'a, R: Repr<'a>> fmt::Debug for SliceError<'_, Bytes, R> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SliceError")
             .field("kind", &self.kind)
@@ -150,7 +150,7 @@ impl<'a, R: Repr<'a, u8>> fmt::Debug for SliceError<'_, Bytes, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> fmt::Display for SliceError<'_, Bytes, R> {
+impl<'a, R: Repr<'a>> fmt::Display for SliceError<'_, Bytes, R> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let (start, end, len) = (
             self.range.start,
@@ -181,8 +181,8 @@ impl<'a, R: Repr<'a, u8>> fmt::Display for SliceError<'_, Bytes, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> core::error::Error for SliceError<'_, Utf8, R> {}
-impl<'a, R: Repr<'a, u8>> core::error::Error for SliceError<'_, Bytes, R> {}
+impl<'a, R: Repr<'a>> core::error::Error for SliceError<'_, Utf8, R> {}
+impl<'a, R: Repr<'a>> core::error::Error for SliceError<'_, Bytes, R> {}
 
 /// Resolves `range` against `len`.
 pub(crate) fn simplify(
@@ -232,7 +232,7 @@ pub(crate) fn range_or_panic(range: impl RangeBounds<usize>, len: usize) -> Rang
     }
 }
 
-impl<'a, E: Encoding, B: Backend> Hip<E, Wide<'a, u8, B>> {
+impl<'a, E: Encoding, B: Backend> Hip<E, Wide<'a, B>> {
     /// # Safety
     ///
     /// `range` must be in bounds and cut at valid boundaries for `E`.
@@ -317,7 +317,7 @@ impl<'a, E: Encoding, B: Backend> Hip<E, Wide<'a, u8, B>> {
     }
 }
 
-impl<'a, B: Backend> Hip<Bytes, Wide<'a, u8, B>> {
+impl<'a, B: Backend> Hip<Bytes, Wide<'a, B>> {
     /// Extracts a slice as its own `HipByt`.
     ///
     /// # Panics
@@ -361,7 +361,7 @@ impl<'a, B: Backend> Hip<Bytes, Wide<'a, u8, B>> {
     pub fn try_slice(
         &self,
         range: impl RangeBounds<usize>,
-    ) -> Result<Self, SliceError<'_, Bytes, Wide<'a, u8, B>>> {
+    ) -> Result<Self, SliceError<'_, Bytes, Wide<'a, B>>> {
         let range = simplify(range, self.len()).map_err(|(kind, range)| SliceError {
             kind,
             range,
@@ -388,7 +388,7 @@ impl<'a, B: Backend> Hip<Bytes, Wide<'a, u8, B>> {
     }
 }
 
-impl<'a, B: Backend> Hip<Utf8, Wide<'a, u8, B>> {
+impl<'a, B: Backend> Hip<Utf8, Wide<'a, B>> {
     /// Extracts a slice as its own `HipStr`.
     ///
     /// # Panics
@@ -433,7 +433,7 @@ impl<'a, B: Backend> Hip<Utf8, Wide<'a, u8, B>> {
     pub fn try_slice(
         &self,
         range: impl RangeBounds<usize>,
-    ) -> Result<Self, SliceError<'_, Utf8, Wide<'a, u8, B>>> {
+    ) -> Result<Self, SliceError<'_, Utf8, Wide<'a, B>>> {
         let error = |kind, range| SliceError {
             kind,
             range,

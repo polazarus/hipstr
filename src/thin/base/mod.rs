@@ -18,43 +18,25 @@ use crate::common::tagged_pointer::TaggedPointer;
 /// optimisations.
 const TAG: usize = 0b10;
 
-/// Returns the minimum non-zero capacity for a given element size.
-///
-/// The implementation is purely heuristic based on the following observations:
-/// - for small element sizes, the header is relatively large compared to the
-///   elements, so we need a larger minimum capacity to avoid wasting too much
-///   memory
-/// - for larger element sizes, the header is relatively smaller, so we can
-///   afford a smaller minimum capacity.
-const fn min_non_zero_cap(size: usize) -> usize {
-    if size == 1 {
-        // the header is 3 machine words, let's round up the allocation to 4 machine words
-        // efficient if the allocator rounds up to powers of two, and still small enough to avoid wasting too much memory
-        size_of::<usize>()
-    } else if size <= 1024 {
-        // for larger element sizes, the header is relatively smaller, so we can
-        // afford to have a smaller minimum capacity
-        size_of::<usize>() / 2
-    } else {
-        // for very large element sizes, the header is negligible, so we can allow a minimum capacity of 1
-        1
-    }
-}
+/// Minimal non-zero capacity: one word of bytes, so that the smallest
+/// allocation is 4 words with the 3-word header (allocators round up to
+/// powers of two).
+const MIN_CAPACITY: usize = size_of::<usize>();
 
-/// Internal representation of a thin vector.
+/// A thin heap byte buffer: one allocation, the header then the bytes.
 #[derive(Debug)]
 #[repr(transparent)]
-pub struct Base<T, P>(pub(crate) TaggedPointer<Header<T, P>, TAG>);
+pub struct Base<P>(pub(crate) TaggedPointer<Header<P>, TAG>);
 
-impl<T, P> ConstDefault for Base<T, P> {
+impl<P> ConstDefault for Base<P> {
     const DEFAULT: Self = Self::new();
 }
 
-impl<T, P> Base<T, P> {
+impl<P> Base<P> {
     /// Returns a reference to the header if the pointer is non-null, or `None`
     /// if the pointer is null, that is, if the vector is empty.
     #[inline]
-    const fn header(&self) -> Option<&Header<T, P>> {
+    const fn header(&self) -> Option<&Header<P>> {
         if let Some(header) = self.0.as_non_null() {
             unsafe { Some(header.as_ref()) }
         } else {
@@ -69,7 +51,7 @@ impl<T, P> Base<T, P> {
         clippy::needless_pass_by_ref_mut,
         reason = "type invariant requires mutable access to get mutable reference to header"
     )]
-    const fn header_mut(&mut self) -> Option<&mut Header<T, P>> {
+    const fn header_mut(&mut self) -> Option<&mut Header<P>> {
         if let Some(mut header) = self.0.as_non_null() {
             unsafe { Some(header.as_mut()) }
         } else {
@@ -125,7 +107,7 @@ impl<T, P> Base<T, P> {
     ///
     /// Note that the pointer is guaranteed to be non-null.
     #[inline]
-    pub const fn as_ptr(&self) -> *const T {
+    pub const fn as_ptr(&self) -> *const u8 {
         if let Some(header) = self.0.as_non_null() {
             unsafe { Header::data(header).as_ptr().cast_const() }
         } else {
@@ -138,7 +120,7 @@ impl<T, P> Base<T, P> {
     ///
     /// Note that the pointer is guaranteed to be non-null.
     #[inline]
-    pub const fn as_mut_ptr(&mut self) -> *mut T {
+    pub const fn as_mut_ptr(&mut self) -> *mut u8 {
         if let Some(header) = self.0.as_non_null() {
             unsafe { Header::data(header).as_ptr() }
         } else {
@@ -155,7 +137,7 @@ impl<T, P> Base<T, P> {
     #[inline]
     pub unsafe fn drop_container(&mut self) {
         if let Some(header) = self.0.as_non_null()
-            && let Some((layout, _)) = Header::<T, P>::layout(unsafe { header.as_ref().cap })
+            && let Some((layout, _)) = Header::<P>::layout(unsafe { header.as_ref().cap })
         {
             // SAFETY: type invariant says the pointer is valid and properly aligned, and the layout is correct
             unsafe {
@@ -172,7 +154,7 @@ impl<T, P> Base<T, P> {
     }
 }
 
-impl<T, P> Base<T, P>
+impl<P> Base<P>
 where
     P: InitPrefix,
 {
@@ -181,7 +163,7 @@ where
             return Ok(Self::new());
         }
 
-        let Some((layout, capacity)) = Header::<T, P>::layout(capacity) else {
+        let Some((layout, capacity)) = Header::<P>::layout(capacity) else {
             return Err(TryReserveError(TryReserveErrorKind::CapacityOverflow));
         };
 
@@ -189,15 +171,13 @@ where
         let Some(ptr) = NonNull::new(ptr) else {
             return Err(TryReserveError(TryReserveErrorKind::AllocError { layout }));
         };
-        let header_ptr = ptr.cast::<Header<T, P>>();
+        let header_ptr = ptr.cast::<Header<P>>();
         unsafe {
             header_ptr.write(Header::with_capacity(capacity));
         }
 
         Ok(Self(header_ptr.into()))
     }
-
-    const MIN_CAPACITY: usize = const { min_non_zero_cap(size_of::<T>()) };
 
     pub fn try_reserve(&mut self, additional: usize) -> Result<(), TryReserveError> {
         let old_cap = self.capacity();
@@ -211,7 +191,7 @@ where
         if req_cap > old_cap {
             // Exponential growth to avoid frequent reallocations.
             // The doubling cannot overflow because the old cap is less than isize::MAX
-            let floor_cap = cmp::max(old_cap * 2, Self::MIN_CAPACITY);
+            let floor_cap = cmp::max(old_cap * 2, MIN_CAPACITY);
 
             let new_cap = cmp::max(req_cap, floor_cap);
             unsafe {
@@ -228,15 +208,15 @@ where
         }
 
         let old_cap = self.capacity();
-        let old_layout = Header::<T, P>::layout(old_cap)
+        let old_layout = Header::<P>::layout(old_cap)
             .ok_or(TryReserveError(TryReserveErrorKind::CapacityOverflow))?
             .0;
-        let (new_layout, new_cap) = Header::<T, P>::layout(new_cap)
+        let (new_layout, new_cap) = Header::<P>::layout(new_cap)
             .ok_or(TryReserveError(TryReserveErrorKind::CapacityOverflow))?;
 
         if new_cap != old_cap {
             if let Some(ptr) = self.0.as_non_null() {
-                let ptr: *mut Header<T, P> = unsafe {
+                let ptr: *mut Header<P> = unsafe {
                     alloc::alloc::realloc(ptr.as_ptr().cast(), old_layout, new_layout.size()).cast()
                 };
                 let Some(mut ptr) = NonNull::new(ptr) else {
@@ -256,9 +236,8 @@ where
     }
 
     /// Copies `slice` into a new allocation (none when empty).
-    pub fn from_slice_copy(slice: &[T]) -> Self
+    pub fn from_slice_copy(slice: &[u8]) -> Self
     where
-        T: Copy,
         P: InitPrefix,
     {
         let mut this = unwrap_or_oom(Self::try_with_capacity(slice.len()));
@@ -281,8 +260,8 @@ mod tests {
 
     #[test]
     fn new() {
-        TaggedPointer::<Header<u8, ()>, TAG>::debug_check();
-        let repr: Base<u8, ()> = Base::new();
+        TaggedPointer::<Header<()>, TAG>::debug_check();
+        let repr: Base<()> = Base::new();
         assert_eq!(repr.len(), 0);
         assert_eq!(repr.capacity(), 0);
         assert_eq!(repr.as_ptr(), ptr::dangling());

@@ -18,7 +18,7 @@ use crate::hip::Hip;
 use crate::repr::Repr;
 use crate::slice::range_or_panic;
 
-impl<'a, E: Unconstrained, R: Repr<'a, u8>> Hip<E, R> {
+impl<'a, E: Unconstrained, R: Repr<'a>> Hip<E, R> {
     /// Creates a value of `length` bytes, the byte at index `i` being `f(i)`
     /// (see `Vec::from_fn`).
     ///
@@ -323,14 +323,14 @@ impl<'a, E: Unconstrained, R: Repr<'a, u8>> Hip<E, R> {
         write: usize,
         mut keep: impl FnMut(&mut [u8], &mut u8) -> bool,
     ) {
-        struct Guard<'g, 'a, E: Unconstrained, R: Repr<'a, u8>> {
+        struct Guard<'g, 'a, E: Unconstrained, R: Repr<'a>> {
             hip: &'g mut Hip<E, R>,
             read: usize,
             write: usize,
             len: usize,
             borrow: PhantomData<&'a ()>,
         }
-        impl<'a, E: Unconstrained, R: Repr<'a, u8>> Drop for Guard<'_, 'a, E, R> {
+        impl<'a, E: Unconstrained, R: Repr<'a>> Drop for Guard<'_, 'a, E, R> {
             fn drop(&mut self) {
                 if self.read != self.write {
                     let bytes = self.hip.raw_mut();
@@ -574,7 +574,7 @@ impl<'a, E: Unconstrained, R: Repr<'a, u8>> Hip<E, R> {
 }
 
 /// Draining iterator returned by [`Hip::drain`] on byte strings.
-pub struct Drain<'h, 'a, E: Unconstrained, R: Repr<'a, u8>> {
+pub struct Drain<'h, 'a, E: Unconstrained, R: Repr<'a>> {
     hip: &'h mut Hip<E, R>,
     range: Range<usize>,
     front: usize,
@@ -582,7 +582,7 @@ pub struct Drain<'h, 'a, E: Unconstrained, R: Repr<'a, u8>> {
     borrow: PhantomData<&'a ()>,
 }
 
-impl<'a, E: Unconstrained, R: Repr<'a, u8>> Drain<'_, 'a, E, R> {
+impl<'a, E: Unconstrained, R: Repr<'a>> Drain<'_, 'a, E, R> {
     /// The bytes not yet yielded.
     #[must_use]
     pub fn as_slice(&self) -> &[u8] {
@@ -590,13 +590,13 @@ impl<'a, E: Unconstrained, R: Repr<'a, u8>> Drain<'_, 'a, E, R> {
     }
 }
 
-impl<'a, E: Unconstrained, R: Repr<'a, u8>> fmt::Debug for Drain<'_, 'a, E, R> {
+impl<'a, E: Unconstrained, R: Repr<'a>> fmt::Debug for Drain<'_, 'a, E, R> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("Drain").field(&self.as_slice()).finish()
     }
 }
 
-impl<'a, E: Unconstrained, R: Repr<'a, u8>> Iterator for Drain<'_, 'a, E, R> {
+impl<'a, E: Unconstrained, R: Repr<'a>> Iterator for Drain<'_, 'a, E, R> {
     type Item = u8;
 
     #[inline]
@@ -616,7 +616,7 @@ impl<'a, E: Unconstrained, R: Repr<'a, u8>> Iterator for Drain<'_, 'a, E, R> {
     }
 }
 
-impl<'a, E: Unconstrained, R: Repr<'a, u8>> DoubleEndedIterator for Drain<'_, 'a, E, R> {
+impl<'a, E: Unconstrained, R: Repr<'a>> DoubleEndedIterator for Drain<'_, 'a, E, R> {
     #[inline]
     fn next_back(&mut self) -> Option<u8> {
         if self.front == self.back {
@@ -627,10 +627,10 @@ impl<'a, E: Unconstrained, R: Repr<'a, u8>> DoubleEndedIterator for Drain<'_, 'a
     }
 }
 
-impl<'a, E: Unconstrained, R: Repr<'a, u8>> ExactSizeIterator for Drain<'_, 'a, E, R> {}
-impl<'a, E: Unconstrained, R: Repr<'a, u8>> FusedIterator for Drain<'_, 'a, E, R> {}
+impl<'a, E: Unconstrained, R: Repr<'a>> ExactSizeIterator for Drain<'_, 'a, E, R> {}
+impl<'a, E: Unconstrained, R: Repr<'a>> FusedIterator for Drain<'_, 'a, E, R> {}
 
-impl<'a, E: Unconstrained, R: Repr<'a, u8>> Drop for Drain<'_, 'a, E, R> {
+impl<'a, E: Unconstrained, R: Repr<'a>> Drop for Drain<'_, 'a, E, R> {
     fn drop(&mut self) {
         let range = core::mem::replace(&mut self.range, 0..0);
         self.hip.splice_raw(range, &[]);
@@ -638,12 +638,12 @@ impl<'a, E: Unconstrained, R: Repr<'a, u8>> Drop for Drain<'_, 'a, E, R> {
 }
 
 /// Splicing iterator returned by [`Hip::splice`] on byte strings.
-pub struct Splice<'h, 'a, E: Unconstrained, R: Repr<'a, u8>, I: Iterator<Item = u8>> {
+pub struct Splice<'h, 'a, E: Unconstrained, R: Repr<'a>, I: Iterator<Item = u8>> {
     drain: Drain<'h, 'a, E, R>,
     replace_with: I,
 }
 
-impl<'a, E: Unconstrained, R: Repr<'a, u8>, I: Iterator<Item = u8> + fmt::Debug> fmt::Debug
+impl<'a, E: Unconstrained, R: Repr<'a>, I: Iterator<Item = u8> + fmt::Debug> fmt::Debug
     for Splice<'_, 'a, E, R, I>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -654,7 +654,7 @@ impl<'a, E: Unconstrained, R: Repr<'a, u8>, I: Iterator<Item = u8> + fmt::Debug>
     }
 }
 
-impl<'a, E: Unconstrained, R: Repr<'a, u8>, I: Iterator<Item = u8>> Iterator
+impl<'a, E: Unconstrained, R: Repr<'a>, I: Iterator<Item = u8>> Iterator
     for Splice<'_, 'a, E, R, I>
 {
     type Item = u8;
@@ -670,7 +670,7 @@ impl<'a, E: Unconstrained, R: Repr<'a, u8>, I: Iterator<Item = u8>> Iterator
     }
 }
 
-impl<'a, E: Unconstrained, R: Repr<'a, u8>, I: Iterator<Item = u8>> DoubleEndedIterator
+impl<'a, E: Unconstrained, R: Repr<'a>, I: Iterator<Item = u8>> DoubleEndedIterator
     for Splice<'_, 'a, E, R, I>
 {
     #[inline]
@@ -679,14 +679,12 @@ impl<'a, E: Unconstrained, R: Repr<'a, u8>, I: Iterator<Item = u8>> DoubleEndedI
     }
 }
 
-impl<'a, E: Unconstrained, R: Repr<'a, u8>, I: Iterator<Item = u8>> ExactSizeIterator
+impl<'a, E: Unconstrained, R: Repr<'a>, I: Iterator<Item = u8>> ExactSizeIterator
     for Splice<'_, 'a, E, R, I>
 {
 }
 
-impl<'a, E: Unconstrained, R: Repr<'a, u8>, I: Iterator<Item = u8>> Drop
-    for Splice<'_, 'a, E, R, I>
-{
+impl<'a, E: Unconstrained, R: Repr<'a>, I: Iterator<Item = u8>> Drop for Splice<'_, 'a, E, R, I> {
     fn drop(&mut self) {
         let replacement: Vec<u8> = self.replace_with.by_ref().collect();
         let range = core::mem::replace(&mut self.drain.range, 0..0);
@@ -695,7 +693,7 @@ impl<'a, E: Unconstrained, R: Repr<'a, u8>, I: Iterator<Item = u8>> Drop
 }
 
 /// Iterator returned by [`Hip::extract_if`] on byte strings.
-pub struct ExtractIf<'h, 'a, E: Unconstrained, R: Repr<'a, u8>, F: FnMut(&mut u8) -> bool> {
+pub struct ExtractIf<'h, 'a, E: Unconstrained, R: Repr<'a>, F: FnMut(&mut u8) -> bool> {
     hip: &'h mut Hip<E, R>,
     read: usize,
     write: usize,
@@ -705,7 +703,7 @@ pub struct ExtractIf<'h, 'a, E: Unconstrained, R: Repr<'a, u8>, F: FnMut(&mut u8
     borrow: PhantomData<&'a ()>,
 }
 
-impl<'a, E: Unconstrained, R: Repr<'a, u8>, F: FnMut(&mut u8) -> bool> fmt::Debug
+impl<'a, E: Unconstrained, R: Repr<'a>, F: FnMut(&mut u8) -> bool> fmt::Debug
     for ExtractIf<'_, 'a, E, R, F>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -715,7 +713,7 @@ impl<'a, E: Unconstrained, R: Repr<'a, u8>, F: FnMut(&mut u8) -> bool> fmt::Debu
     }
 }
 
-impl<'a, E: Unconstrained, R: Repr<'a, u8>, F: FnMut(&mut u8) -> bool> Iterator
+impl<'a, E: Unconstrained, R: Repr<'a>, F: FnMut(&mut u8) -> bool> Iterator
     for ExtractIf<'_, 'a, E, R, F>
 {
     type Item = u8;
@@ -741,7 +739,7 @@ impl<'a, E: Unconstrained, R: Repr<'a, u8>, F: FnMut(&mut u8) -> bool> Iterator
     }
 }
 
-impl<'a, E: Unconstrained, R: Repr<'a, u8>, F: FnMut(&mut u8) -> bool> Drop
+impl<'a, E: Unconstrained, R: Repr<'a>, F: FnMut(&mut u8) -> bool> Drop
     for ExtractIf<'_, 'a, E, R, F>
 {
     fn drop(&mut self) {

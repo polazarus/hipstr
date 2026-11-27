@@ -212,11 +212,11 @@ macro_rules! aliases {
 macro_rules! generic_aliases {
     ($enc:ty, $wide:ident, $small:ident, $tiny:ident, $what:literal) => {
         #[doc = concat!("3-word ", $what, ": inline, borrowed or shared, with O(1) slicing.")]
-        pub type $wide<'a, B> = $crate::hip::Hip<$enc, $crate::repr::Wide<'a, u8, B>>;
+        pub type $wide<'a, B> = $crate::hip::Hip<$enc, $crate::repr::Wide<'a, B>>;
         #[doc = concat!("2-word ", $what, ": inline, borrowed or shared.")]
-        pub type $small<'a, B> = $crate::hip::Hip<$enc, $crate::repr::Small<'a, u8, B>>;
+        pub type $small<'a, B> = $crate::hip::Hip<$enc, $crate::repr::Small<'a, B>>;
         #[doc = concat!("1-word ", $what, ": inline or shared (no borrowing).")]
-        pub type $tiny<B> = $crate::hip::Hip<$enc, $crate::repr::Tiny<u8, B>>;
+        pub type $tiny<B> = $crate::hip::Hip<$enc, $crate::repr::Tiny<B>>;
     };
 }
 pub(crate) use generic_aliases;

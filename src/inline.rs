@@ -408,7 +408,7 @@ where
     }
 }
 
-impl<'a, E: Encoding, R: Repr<'a, u8>, const N: usize> From<Inline<E, N>> for Hip<E, R> {
+impl<'a, E: Encoding, R: Repr<'a>, const N: usize> From<Inline<E, N>> for Hip<E, R> {
     /// Copies the value (inline when it fits the representation).
     #[inline]
     fn from(value: Inline<E, N>) -> Self {
@@ -416,7 +416,7 @@ impl<'a, E: Encoding, R: Repr<'a, u8>, const N: usize> From<Inline<E, N>> for Hi
     }
 }
 
-impl<'a, E: Encoding, R: Repr<'a, u8>, const N: usize> TryFrom<&Hip<E, R>> for Inline<E, N> {
+impl<'a, E: Encoding, R: Repr<'a>, const N: usize> TryFrom<&Hip<E, R>> for Inline<E, N> {
     type Error = CapacityError;
 
     #[inline]
@@ -425,7 +425,7 @@ impl<'a, E: Encoding, R: Repr<'a, u8>, const N: usize> TryFrom<&Hip<E, R>> for I
     }
 }
 
-impl<'a, E: Encoding, R: Repr<'a, u8>, const N: usize> PartialEq<Inline<E, N>> for Hip<E, R>
+impl<'a, E: Encoding, R: Repr<'a>, const N: usize> PartialEq<Inline<E, N>> for Hip<E, R>
 where
     E::Slice: PartialEq,
 {
@@ -435,7 +435,7 @@ where
     }
 }
 
-impl<'a, E: Encoding, R: Repr<'a, u8>, const N: usize> PartialEq<Hip<E, R>> for Inline<E, N>
+impl<'a, E: Encoding, R: Repr<'a>, const N: usize> PartialEq<Hip<E, R>> for Inline<E, N>
 where
     E::Slice: PartialEq,
 {

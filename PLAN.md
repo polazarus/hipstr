@@ -210,6 +210,13 @@ src/
    loop timing (ns, 64-bit): `HipStr` 3.3–6.6 (was ~12; 0.8: 3.5–8.4), `SmallStr`
    1.7–3.4, `TinyStr` 1.5–2.0, `CompactString` 1.9–3.4.
 
+9. **u8 specialization** (done) — the element type `T` is gone from the internals: the
+   inline buffer (`inline_buf.rs`: `[usize; WORDS]`, always initialized, a one-byte
+   tagged length at the first or last byte, built word by word), the reprs
+   (`Wide<'a, B>`, `Small<'a, B>`, `Tiny<B>`, `Repr<'a>`), the heap owner, the thin
+   buffer and the header (no alignment arithmetic, no zero-sized-type branch). About
+   450 lines less; the inline buffer went from 617 lines / 34 `unsafe` to 266 / 12.
+
 ## Open questions
 
   Repr names: `Wide` (3 words) / `Small` (2 words) / `Tiny` (1 word).

@@ -19,28 +19,28 @@ use super::repr::Repr;
 /// Comparisons with `BStr`/`&BStr`/`BString` in both directions, on bytes.
 macro_rules! bstr_cmp {
     ($enc:ty: $($other:ty),*) => {$(
-        impl<'a, R: Repr<'a, u8>> PartialEq<$other> for Hip<$enc, R> {
+        impl<'a, R: Repr<'a>> PartialEq<$other> for Hip<$enc, R> {
             #[inline]
             fn eq(&self, other: &$other) -> bool {
                 self.bytes() == <$other as AsRef<[u8]>>::as_ref(other)
             }
         }
 
-        impl<'a, R: Repr<'a, u8>> PartialEq<Hip<$enc, R>> for $other {
+        impl<'a, R: Repr<'a>> PartialEq<Hip<$enc, R>> for $other {
             #[inline]
             fn eq(&self, other: &Hip<$enc, R>) -> bool {
                 <$other as AsRef<[u8]>>::as_ref(self) == other.bytes()
             }
         }
 
-        impl<'a, R: Repr<'a, u8>> PartialOrd<$other> for Hip<$enc, R> {
+        impl<'a, R: Repr<'a>> PartialOrd<$other> for Hip<$enc, R> {
             #[inline]
             fn partial_cmp(&self, other: &$other) -> Option<Ordering> {
                 self.bytes().partial_cmp(<$other as AsRef<[u8]>>::as_ref(other))
             }
         }
 
-        impl<'a, R: Repr<'a, u8>> PartialOrd<Hip<$enc, R>> for $other {
+        impl<'a, R: Repr<'a>> PartialOrd<Hip<$enc, R>> for $other {
             #[inline]
             fn partial_cmp(&self, other: &Hip<$enc, R>) -> Option<Ordering> {
                 <$other as AsRef<[u8]>>::as_ref(self).partial_cmp(other.bytes())
@@ -52,28 +52,28 @@ macro_rules! bstr_cmp {
 bstr_cmp!(Bytes: BStr, &BStr, BString);
 bstr_cmp!(Utf8: BStr, &BStr, BString);
 
-impl<'a, R: Repr<'a, u8>> AsRef<BStr> for Hip<Bytes, R> {
+impl<'a, R: Repr<'a>> AsRef<BStr> for Hip<Bytes, R> {
     #[inline]
     fn as_ref(&self) -> &BStr {
         self.bytes().as_bstr()
     }
 }
 
-impl<'a, R: Repr<'a, u8>> AsRef<BStr> for Hip<Utf8, R> {
+impl<'a, R: Repr<'a>> AsRef<BStr> for Hip<Utf8, R> {
     #[inline]
     fn as_ref(&self) -> &BStr {
         self.bytes().as_bstr()
     }
 }
 
-impl<'a, R: Repr<'a, u8>> Borrow<BStr> for Hip<Bytes, R> {
+impl<'a, R: Repr<'a>> Borrow<BStr> for Hip<Bytes, R> {
     #[inline]
     fn borrow(&self) -> &BStr {
         self.bytes().as_bstr()
     }
 }
 
-impl<'a, R: Repr<'a, u8>> From<&'a BStr> for Hip<Bytes, R> {
+impl<'a, R: Repr<'a>> From<&'a BStr> for Hip<Bytes, R> {
     /// Borrows when the representation supports it, copies otherwise.
     #[inline]
     fn from(value: &'a BStr) -> Self {
@@ -81,7 +81,7 @@ impl<'a, R: Repr<'a, u8>> From<&'a BStr> for Hip<Bytes, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> From<BString> for Hip<Bytes, R> {
+impl<'a, R: Repr<'a>> From<BString> for Hip<Bytes, R> {
     /// Adopts the buffer when it does not fit inline (no copy).
     #[inline]
     fn from(value: BString) -> Self {
@@ -89,7 +89,7 @@ impl<'a, R: Repr<'a, u8>> From<BString> for Hip<Bytes, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> From<Cow<'a, BStr>> for Hip<Bytes, R> {
+impl<'a, R: Repr<'a>> From<Cow<'a, BStr>> for Hip<Bytes, R> {
     #[inline]
     fn from(value: Cow<'a, BStr>) -> Self {
         match value {
@@ -99,7 +99,7 @@ impl<'a, R: Repr<'a, u8>> From<Cow<'a, BStr>> for Hip<Bytes, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> From<Hip<Bytes, R>> for BString {
+impl<'a, R: Repr<'a>> From<Hip<Bytes, R>> for BString {
     /// O(1) when the value uniquely owns an adopted buffer.
     #[inline]
     fn from(value: Hip<Bytes, R>) -> Self {
@@ -107,7 +107,7 @@ impl<'a, R: Repr<'a, u8>> From<Hip<Bytes, R>> for BString {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> TryFrom<&'a BStr> for Hip<Utf8, R> {
+impl<'a, R: Repr<'a>> TryFrom<&'a BStr> for Hip<Utf8, R> {
     type Error = ::bstr::Utf8Error;
 
     /// Borrows when the representation supports it, copies otherwise.
@@ -117,7 +117,7 @@ impl<'a, R: Repr<'a, u8>> TryFrom<&'a BStr> for Hip<Utf8, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> TryFrom<BString> for Hip<Utf8, R> {
+impl<'a, R: Repr<'a>> TryFrom<BString> for Hip<Utf8, R> {
     type Error = ::bstr::FromUtf8Error;
 
     /// Adopts the buffer when it does not fit inline (no copy).

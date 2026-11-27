@@ -28,21 +28,21 @@ use crate::repr::Repr;
 
 macro_rules! into_smart {
     ($enc:ty => $slice:ty) => {
-        impl<'a, R: Repr<'a, u8>> From<Hip<$enc, R>> for Box<$slice> {
+        impl<'a, R: Repr<'a>> From<Hip<$enc, R>> for Box<$slice> {
             #[inline]
             fn from(value: Hip<$enc, R>) -> Self {
                 value.into_owned_std().into()
             }
         }
 
-        impl<'a, R: Repr<'a, u8>> From<Hip<$enc, R>> for Rc<$slice> {
+        impl<'a, R: Repr<'a>> From<Hip<$enc, R>> for Rc<$slice> {
             #[inline]
             fn from(value: Hip<$enc, R>) -> Self {
                 Rc::from(value.as_inner())
             }
         }
 
-        impl<'a, R: Repr<'a, u8>> From<Hip<$enc, R>> for Arc<$slice> {
+        impl<'a, R: Repr<'a>> From<Hip<$enc, R>> for Arc<$slice> {
             #[inline]
             fn from(value: Hip<$enc, R>) -> Self {
                 Arc::from(value.as_inner())
@@ -62,7 +62,7 @@ into_smart!(enc::Path => std::path::Path);
 // ---------------------------------------------------------------------------
 // byte strings (bytes and `BStr`)
 
-impl<'a, E: Unconstrained, R: Repr<'a, u8>> Extend<u8> for Hip<E, R> {
+impl<'a, E: Unconstrained, R: Repr<'a>> Extend<u8> for Hip<E, R> {
     fn extend<I: IntoIterator<Item = u8>>(&mut self, iter: I) {
         let iter = iter.into_iter();
         let (lower, _) = iter.size_hint();
@@ -75,14 +75,14 @@ impl<'a, E: Unconstrained, R: Repr<'a, u8>> Extend<u8> for Hip<E, R> {
     }
 }
 
-impl<'a, 'b, E: Unconstrained, R: Repr<'a, u8>> Extend<&'b u8> for Hip<E, R> {
+impl<'a, 'b, E: Unconstrained, R: Repr<'a>> Extend<&'b u8> for Hip<E, R> {
     #[inline]
     fn extend<I: IntoIterator<Item = &'b u8>>(&mut self, iter: I) {
         self.extend(iter.into_iter().copied());
     }
 }
 
-impl<'a, E: Unconstrained, R: Repr<'a, u8>> FromIterator<u8> for Hip<E, R> {
+impl<'a, E: Unconstrained, R: Repr<'a>> FromIterator<u8> for Hip<E, R> {
     fn from_iter<I: IntoIterator<Item = u8>>(iter: I) -> Self {
         let mut result = Self::default();
         result.extend(iter);
@@ -90,14 +90,14 @@ impl<'a, E: Unconstrained, R: Repr<'a, u8>> FromIterator<u8> for Hip<E, R> {
     }
 }
 
-impl<'a, E: Unconstrained, R: Repr<'a, u8>> AsMut<[u8]> for Hip<E, R> {
+impl<'a, E: Unconstrained, R: Repr<'a>> AsMut<[u8]> for Hip<E, R> {
     #[inline]
     fn as_mut(&mut self) -> &mut [u8] {
         self.to_mut_slice()
     }
 }
 
-impl<'a, R: Repr<'a, u8>> DerefMut for Hip<Bytes, R> {
+impl<'a, R: Repr<'a>> DerefMut for Hip<Bytes, R> {
     /// Copy-on-write: copies a borrowed or shared value first.
     #[inline]
     fn deref_mut(&mut self) -> &mut [u8] {
@@ -105,7 +105,7 @@ impl<'a, R: Repr<'a, u8>> DerefMut for Hip<Bytes, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> BorrowMut<[u8]> for Hip<Bytes, R> {
+impl<'a, R: Repr<'a>> BorrowMut<[u8]> for Hip<Bytes, R> {
     #[inline]
     fn borrow_mut(&mut self) -> &mut [u8] {
         self.to_mut_slice()
@@ -113,7 +113,7 @@ impl<'a, R: Repr<'a, u8>> BorrowMut<[u8]> for Hip<Bytes, R> {
 }
 
 #[cfg(feature = "bstr")]
-impl<'a, R: Repr<'a, u8>> DerefMut for Hip<enc::BStr, R> {
+impl<'a, R: Repr<'a>> DerefMut for Hip<enc::BStr, R> {
     /// Copy-on-write: copies a borrowed or shared value first.
     #[inline]
     fn deref_mut(&mut self) -> &mut ::bstr::BStr {
@@ -122,7 +122,7 @@ impl<'a, R: Repr<'a, u8>> DerefMut for Hip<enc::BStr, R> {
 }
 
 #[cfg(feature = "bstr")]
-impl<'a, R: Repr<'a, u8>> AsMut<::bstr::BStr> for Hip<enc::BStr, R> {
+impl<'a, R: Repr<'a>> AsMut<::bstr::BStr> for Hip<enc::BStr, R> {
     #[inline]
     fn as_mut(&mut self) -> &mut ::bstr::BStr {
         self
@@ -130,7 +130,7 @@ impl<'a, R: Repr<'a, u8>> AsMut<::bstr::BStr> for Hip<enc::BStr, R> {
 }
 
 #[cfg(feature = "bstr")]
-impl<'a, R: Repr<'a, u8>> BorrowMut<[u8]> for Hip<enc::BStr, R> {
+impl<'a, R: Repr<'a>> BorrowMut<[u8]> for Hip<enc::BStr, R> {
     #[inline]
     fn borrow_mut(&mut self) -> &mut [u8] {
         self.to_mut_slice()
@@ -140,7 +140,7 @@ impl<'a, R: Repr<'a, u8>> BorrowMut<[u8]> for Hip<enc::BStr, R> {
 macro_rules! bytes_from {
     ($($(#[$m:meta])* [$($g:tt)*] $t:ty => |$v:ident| $e:expr;)*) => {$(
         $(#[$m])*
-        impl<'a, R: Repr<'a, u8>, $($g)*> From<$t> for Hip<Bytes, R> {
+        impl<'a, R: Repr<'a>, $($g)*> From<$t> for Hip<Bytes, R> {
             #[inline]
             fn from($v: $t) -> Self {
                 $e
@@ -160,7 +160,7 @@ bytes_from! {
     [] CString => |v| Self::from_owned(v.into_bytes());
 }
 
-impl<'a, E: Unconstrained, R: Repr<'a, u8>, const N: usize> TryFrom<Hip<E, R>> for [u8; N] {
+impl<'a, E: Unconstrained, R: Repr<'a>, const N: usize> TryFrom<Hip<E, R>> for [u8; N] {
     type Error = Hip<E, R>;
 
     /// Gives the value back if its length is not `N`.
@@ -171,7 +171,7 @@ impl<'a, E: Unconstrained, R: Repr<'a, u8>, const N: usize> TryFrom<Hip<E, R>> f
 }
 
 #[cfg(feature = "std")]
-impl<'a, E: Unconstrained, R: Repr<'a, u8>> std::io::Write for Hip<E, R> {
+impl<'a, E: Unconstrained, R: Repr<'a>> std::io::Write for Hip<E, R> {
     #[inline]
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         self.extend_from_slice(buf);
@@ -198,7 +198,7 @@ pub struct IntoIter<E: Unconstrained, R> {
     back: usize,
 }
 
-impl<'a, E: Unconstrained, R: Repr<'a, u8>> Clone for IntoIter<E, R> {
+impl<'a, E: Unconstrained, R: Repr<'a>> Clone for IntoIter<E, R> {
     fn clone(&self) -> Self {
         Self {
             hip: self.hip.clone(),
@@ -208,13 +208,13 @@ impl<'a, E: Unconstrained, R: Repr<'a, u8>> Clone for IntoIter<E, R> {
     }
 }
 
-impl<'a, E: Unconstrained, R: Repr<'a, u8>> core::fmt::Debug for IntoIter<E, R> {
+impl<'a, E: Unconstrained, R: Repr<'a>> core::fmt::Debug for IntoIter<E, R> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_tuple("IntoIter").field(&self.as_slice()).finish()
     }
 }
 
-impl<'a, E: Unconstrained, R: Repr<'a, u8>> IntoIter<E, R> {
+impl<'a, E: Unconstrained, R: Repr<'a>> IntoIter<E, R> {
     /// The bytes not yet yielded.
     #[must_use]
     pub fn as_slice(&self) -> &[u8] {
@@ -222,7 +222,7 @@ impl<'a, E: Unconstrained, R: Repr<'a, u8>> IntoIter<E, R> {
     }
 }
 
-impl<'a, E: Unconstrained, R: Repr<'a, u8>> Iterator for IntoIter<E, R> {
+impl<'a, E: Unconstrained, R: Repr<'a>> Iterator for IntoIter<E, R> {
     type Item = u8;
 
     #[inline]
@@ -241,7 +241,7 @@ impl<'a, E: Unconstrained, R: Repr<'a, u8>> Iterator for IntoIter<E, R> {
     }
 }
 
-impl<'a, E: Unconstrained, R: Repr<'a, u8>> DoubleEndedIterator for IntoIter<E, R> {
+impl<'a, E: Unconstrained, R: Repr<'a>> DoubleEndedIterator for IntoIter<E, R> {
     #[inline]
     fn next_back(&mut self) -> Option<u8> {
         if self.front == self.back {
@@ -252,10 +252,10 @@ impl<'a, E: Unconstrained, R: Repr<'a, u8>> DoubleEndedIterator for IntoIter<E, 
     }
 }
 
-impl<'a, E: Unconstrained, R: Repr<'a, u8>> ExactSizeIterator for IntoIter<E, R> {}
-impl<'a, E: Unconstrained, R: Repr<'a, u8>> FusedIterator for IntoIter<E, R> {}
+impl<'a, E: Unconstrained, R: Repr<'a>> ExactSizeIterator for IntoIter<E, R> {}
+impl<'a, E: Unconstrained, R: Repr<'a>> FusedIterator for IntoIter<E, R> {}
 
-impl<'a, E: Unconstrained, R: Repr<'a, u8>> IntoIterator for Hip<E, R> {
+impl<'a, E: Unconstrained, R: Repr<'a>> IntoIterator for Hip<E, R> {
     type Item = u8;
     type IntoIter = IntoIter<E, R>;
 
@@ -269,7 +269,7 @@ impl<'a, E: Unconstrained, R: Repr<'a, u8>> IntoIterator for Hip<E, R> {
     }
 }
 
-impl<'h, 'a, E: Unconstrained, R: Repr<'a, u8>> IntoIterator for &'h Hip<E, R> {
+impl<'h, 'a, E: Unconstrained, R: Repr<'a>> IntoIterator for &'h Hip<E, R> {
     type Item = &'h u8;
     type IntoIter = core::slice::Iter<'h, u8>;
 
@@ -279,7 +279,7 @@ impl<'h, 'a, E: Unconstrained, R: Repr<'a, u8>> IntoIterator for &'h Hip<E, R> {
     }
 }
 
-impl<'h, 'a, E: Unconstrained, R: Repr<'a, u8>> IntoIterator for &'h mut Hip<E, R> {
+impl<'h, 'a, E: Unconstrained, R: Repr<'a>> IntoIterator for &'h mut Hip<E, R> {
     type Item = &'h mut u8;
     type IntoIter = core::slice::IterMut<'h, u8>;
 
@@ -293,7 +293,7 @@ impl<'h, 'a, E: Unconstrained, R: Repr<'a, u8>> IntoIterator for &'h mut Hip<E, 
 // ---------------------------------------------------------------------------
 // strings
 
-impl<'a, R: Repr<'a, u8>> DerefMut for Hip<Utf8, R> {
+impl<'a, R: Repr<'a>> DerefMut for Hip<Utf8, R> {
     /// Copy-on-write: copies a borrowed or shared value first.
     #[inline]
     fn deref_mut(&mut self) -> &mut str {
@@ -301,21 +301,21 @@ impl<'a, R: Repr<'a, u8>> DerefMut for Hip<Utf8, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> AsMut<str> for Hip<Utf8, R> {
+impl<'a, R: Repr<'a>> AsMut<str> for Hip<Utf8, R> {
     #[inline]
     fn as_mut(&mut self) -> &mut str {
         self.to_mut_str()
     }
 }
 
-impl<'a, R: Repr<'a, u8>> BorrowMut<str> for Hip<Utf8, R> {
+impl<'a, R: Repr<'a>> BorrowMut<str> for Hip<Utf8, R> {
     #[inline]
     fn borrow_mut(&mut self) -> &mut str {
         self.to_mut_str()
     }
 }
 
-impl<'a, R: Repr<'a, u8>> Add<&str> for Hip<Utf8, R> {
+impl<'a, R: Repr<'a>> Add<&str> for Hip<Utf8, R> {
     type Output = Self;
 
     /// Appends `other` (see `String + &str`).
@@ -326,28 +326,28 @@ impl<'a, R: Repr<'a, u8>> Add<&str> for Hip<Utf8, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> AddAssign<&str> for Hip<Utf8, R> {
+impl<'a, R: Repr<'a>> AddAssign<&str> for Hip<Utf8, R> {
     #[inline]
     fn add_assign(&mut self, other: &str) {
         self.push_str(other);
     }
 }
 
-impl<'a, R: Repr<'a, u8>> From<&String> for Hip<Utf8, R> {
+impl<'a, R: Repr<'a>> From<&String> for Hip<Utf8, R> {
     #[inline]
     fn from(value: &String) -> Self {
         Self::from_inner(value)
     }
 }
 
-impl<'a, R: Repr<'a, u8>> From<&mut str> for Hip<Utf8, R> {
+impl<'a, R: Repr<'a>> From<&mut str> for Hip<Utf8, R> {
     #[inline]
     fn from(value: &mut str) -> Self {
         Self::from_inner(value)
     }
 }
 
-impl<'a, R: Repr<'a, u8>> TryFrom<CString> for Hip<Utf8, R> {
+impl<'a, R: Repr<'a>> TryFrom<CString> for Hip<Utf8, R> {
     type Error = alloc::ffi::IntoStringError;
 
     /// Reuses the buffer (without the NUL) when valid UTF-8.
@@ -380,17 +380,17 @@ macro_rules! str_extend {
 }
 
 str_extend! {
-    ['c, R: Repr<'a, u8>] &'c char => |s, c| s.push(*c);
-    [R: Repr<'a, u8>] String => |s, v| s.push_str(&v);
-    [R: Repr<'a, u8>] Box<str> => |s, v| s.push_str(&v);
-    ['c, R: Repr<'a, u8>] Cow<'c, str> => |s, v| s.push_str(&v);
-    ['b, R: Repr<'a, u8>, R2: Repr<'b, u8>] Hip<Utf8, R2> => |s, v| s.push_str(v.as_inner());
+    ['c, R: Repr<'a>] &'c char => |s, c| s.push(*c);
+    [R: Repr<'a>] String => |s, v| s.push_str(&v);
+    [R: Repr<'a>] Box<str> => |s, v| s.push_str(&v);
+    ['c, R: Repr<'a>] Cow<'c, str> => |s, v| s.push_str(&v);
+    ['b, R: Repr<'a>, R2: Repr<'b>] Hip<Utf8, R2> => |s, v| s.push_str(v.as_inner());
 }
 
 // ---------------------------------------------------------------------------
 // C strings
 
-impl<'a, R: Repr<'a, u8>> From<Vec<NonZero<u8>>> for Hip<enc::CStr, R> {
+impl<'a, R: Repr<'a>> From<Vec<NonZero<u8>>> for Hip<enc::CStr, R> {
     /// Appends the terminator, reusing the buffer when it does not fit inline.
     #[inline]
     fn from(value: Vec<NonZero<u8>>) -> Self {
@@ -398,7 +398,7 @@ impl<'a, R: Repr<'a, u8>> From<Vec<NonZero<u8>>> for Hip<enc::CStr, R> {
     }
 }
 
-impl<'a, R: Repr<'a, u8>> core::str::FromStr for Hip<enc::CStr, R> {
+impl<'a, R: Repr<'a>> core::str::FromStr for Hip<enc::CStr, R> {
     type Err = alloc::ffi::NulError;
 
     /// Like `CString::from_str`: fails on an interior NUL.
@@ -440,12 +440,12 @@ mod os {
     }
 
     os_extend! {
-        ['c, R: Repr<'a, u8>] &'c OsStr => |s, v| s.push(v);
-        [R: Repr<'a, u8>] OsString => |s, v| s.push(v);
-        ['c, R: Repr<'a, u8>] Cow<'c, OsStr> => |s, v| s.push(v);
+        ['c, R: Repr<'a>] &'c OsStr => |s, v| s.push(v);
+        [R: Repr<'a>] OsString => |s, v| s.push(v);
+        ['c, R: Repr<'a>] Cow<'c, OsStr> => |s, v| s.push(v);
     }
 
-    impl<'a, R: Repr<'a, u8>> core::str::FromStr for Hip<enc::OsStr, R> {
+    impl<'a, R: Repr<'a>> core::str::FromStr for Hip<enc::OsStr, R> {
         type Err = core::convert::Infallible;
 
         #[inline]
@@ -454,7 +454,7 @@ mod os {
         }
     }
 
-    impl<'a, R: Repr<'a, u8>> core::fmt::Write for Hip<enc::OsStr, R> {
+    impl<'a, R: Repr<'a>> core::fmt::Write for Hip<enc::OsStr, R> {
         #[inline]
         fn write_str(&mut self, s: &str) -> core::fmt::Result {
             self.push(s);
@@ -462,7 +462,7 @@ mod os {
         }
     }
 
-    impl<'a, R: Repr<'a, u8>, P: AsRef<Path>> Extend<P> for Hip<enc::Path, R> {
+    impl<'a, R: Repr<'a>, P: AsRef<Path>> Extend<P> for Hip<enc::Path, R> {
         /// Pushes each path (see `PathBuf::push`).
         fn extend<I: IntoIterator<Item = P>>(&mut self, iter: I) {
             let mut path = self.mutate();
@@ -470,13 +470,13 @@ mod os {
         }
     }
 
-    impl<'a, R: Repr<'a, u8>, P: AsRef<Path>> FromIterator<P> for Hip<enc::Path, R> {
+    impl<'a, R: Repr<'a>, P: AsRef<Path>> FromIterator<P> for Hip<enc::Path, R> {
         fn from_iter<I: IntoIterator<Item = P>>(iter: I) -> Self {
             Self::from(iter.into_iter().collect::<PathBuf>())
         }
     }
 
-    impl<'a, R: Repr<'a, u8>> core::str::FromStr for Hip<enc::Path, R> {
+    impl<'a, R: Repr<'a>> core::str::FromStr for Hip<enc::Path, R> {
         type Err = core::convert::Infallible;
 
         #[inline]
@@ -485,7 +485,7 @@ mod os {
         }
     }
 
-    impl<'h, 'a, R: Repr<'a, u8>> IntoIterator for &'h Hip<enc::Path, R> {
+    impl<'h, 'a, R: Repr<'a>> IntoIterator for &'h Hip<enc::Path, R> {
         type Item = &'h OsStr;
         type IntoIter = std::path::Iter<'h>;
 
