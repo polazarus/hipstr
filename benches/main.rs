@@ -114,7 +114,9 @@ mod sizes {
     #[divan::bench(types = [String, HipStr<'static>, SmallStr<'static>, TinyStr], args = LENS)]
     fn read<T: Text>(b: Bencher, n: usize) {
         let s = T::from(&S2[..n]);
-        b.bench_local(|| black_box(&s).len() + black_box(&s).as_bytes().first().map_or(0, |&b| b as usize));
+        b.bench_local(|| {
+            black_box(&s).len() + black_box(&s).as_bytes().first().map_or(0, |&b| b as usize)
+        });
     }
 
     #[divan::bench(types = [String, HipStr<'static>, SmallStr<'static>, TinyStr], args = [1, 8, 64])]
@@ -158,5 +160,10 @@ mod sizes {
         )*};
     }
 
-    vec_like!(Vec<u8>, hipstr::HipByt<'static>, hipstr::SmallByt<'static>, hipstr::TinyByt);
+    vec_like!(
+        Vec<u8>,
+        hipstr::HipByt<'static>,
+        hipstr::SmallByt<'static>,
+        hipstr::TinyByt
+    );
 }

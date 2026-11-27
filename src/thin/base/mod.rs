@@ -1,7 +1,7 @@
 //! Internal representation of thin vectors.
 
-use core::ptr::{self, NonNull};
 use core::cmp;
+use core::ptr::{self, NonNull};
 
 use const_default::ConstDefault;
 
@@ -187,14 +187,6 @@ impl<T, P> Base<T, P> {
         unsafe { core::slice::from_raw_parts_mut(self.as_mut_ptr(), self.len()) }
     }
 
-
-
-
-
-
-
-
-
     /// Drops the allocation if it exists.
     ///
     /// # Safety
@@ -247,7 +239,6 @@ impl<T, P> Base<T, P> {
         // reset the pointer for safety, should be removed by the compiler
         *self = Self::new();
     }
-
 }
 
 impl<T, P> Base<T, P>
@@ -359,11 +350,6 @@ where
         Ok(())
     }
 
-
-
-
-
-
     /// Copies `slice` into a new allocation (none when empty).
     pub fn from_slice_copy(slice: &[T]) -> Self
     where
@@ -382,13 +368,6 @@ where
         }
         this
     }
-
-
-
-
-
-
-
 }
 
 #[cfg(test)]

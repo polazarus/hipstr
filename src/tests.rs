@@ -992,7 +992,10 @@ mod parity {
         assert_eq!(o.clone().into_encoded_bytes(), b"ab1");
         let shared = o.clone();
         o.make_ascii_uppercase();
-        assert_eq!((o.as_os_str(), shared.as_os_str()), (OsStr::new("AB1"), OsStr::new("ab1")));
+        assert_eq!(
+            (o.as_os_str(), shared.as_os_str()),
+            (OsStr::new("AB1"), OsStr::new("ab1"))
+        );
         o.make_ascii_lowercase();
         assert_eq!(o, shared);
 
@@ -1022,5 +1025,176 @@ mod parity {
         write!(b, "{}-{}", 1, 2).unwrap();
         b.flush().unwrap();
         assert_eq!(b, b"1-2");
+    }
+}
+
+/// One call per new std-parity method not reached by the other tests (most
+/// are otherwise only exercised by doctests, which coverage does not count).
+mod parity_coverage {
+    use alloc::format;
+    use core::borrow::BorrowMut;
+
+    use super::*;
+
+    #[test]
+    fn byte_methods() {
+        let mut b = TinyByt::from_fn(4, |i| i as u8);
+        assert_eq!(b, [0, 1, 2, 3]);
+        *b.insert_mut(0, 9) += 1;
+        *b.push_mut(7) += 1;
+        assert_eq!(b, [10, 0, 1, 2, 3, 8]);
+        b.retain_mut(|x| {
+            *x += 1;
+            *x % 2 == 1
+        });
+        assert_eq!(b, [11, 1, 3, 9]);
+        let mut d = SmallByt::from(b"aAbBbc");
+        d.dedup_by_key(|x| x.to_ascii_lowercase());
+        assert_eq!(d, b"abc");
+        let mut d = HipByt::from(b"aab");
+        d.dedup_by(|a, b| a == b);
+        assert_eq!(d, b"ab");
+        let mut n = 0;
+        d.resize_with(4, || {
+            n += 1;
+            n
+        });
+        assert_eq!(d, [b'a', b'b', 1, 2]);
+        d.resize_with(1, || 0);
+        assert_eq!(d, b"a");
+        assert_eq!(&*HipByt::from(b"xy").into_boxed_slice(), b"xy");
+
+        let mut s = HipByt::from(b"abcdef");
+        let mut sp = s.splice(1..4, [b'X']);
+        assert_eq!(sp.next_back(), Some(b'd'));
+        assert!(format!("{sp:?}").contains("Splice"));
+        drop(sp);
+        assert_eq!(s, b"aXef");
+        let d = s.drain(..1);
+        assert!(format!("{d:?}").contains("Drain"));
+        drop(d);
+        let e = s.extract_if(.., |_| false);
+        assert!(format!("{e:?}").contains("ExtractIf"));
+        drop(e);
+        let it = s.clone().into_iter();
+        assert!(format!("{it:?}").contains("IntoIter"));
+        assert_eq!(it.clone().rev().collect::<Vec<_>>(), b"feX");
+    }
+
+    #[test]
+    fn mutable_traits() {
+        let mut b = HipByt::from(b"ab");
+        <HipByt as AsMut<[u8]>>::as_mut(&mut b)[0] = b'x';
+        <HipByt as BorrowMut<[u8]>>::borrow_mut(&mut b)[1] = b'y';
+        assert_eq!(b, b"xy");
+        let mut s = HipStr::from("ab");
+        BorrowMut::<str>::borrow_mut(&mut s).make_ascii_uppercase();
+        (*s).make_ascii_lowercase();
+        assert_eq!(s, "ab");
+        assert_eq!(HipStr::from(&String::from("s")), "s");
+        assert_eq!(HipStr::from(String::from("m").as_mut_str()), "m");
+    }
+
+    #[test]
+    #[cfg(feature = "bstr")]
+    fn bstr_mutable_traits() {
+        let mut b = HipBStr::from("ab");
+        (*b).make_ascii_uppercase();
+        <HipBStr as AsMut<::bstr::BStr>>::as_mut(&mut b)[0] = b'z';
+        <HipBStr as BorrowMut<[u8]>>::borrow_mut(&mut b)[1] = b'q';
+        assert_eq!(b.as_bytes(), b"zq");
+    }
+
+    #[test]
+    fn string_methods() {
+        let le: Vec<u8> = "hé".encode_utf16().flat_map(u16::to_le_bytes).collect();
+        let be: Vec<u8> = "hé".encode_utf16().flat_map(u16::to_be_bytes).collect();
+        assert_eq!(HipStr::from_utf16le(&le).unwrap(), "hé");
+        assert_eq!(SmallStr::from_utf16be(&be).unwrap(), "hé");
+        assert_eq!(TinyStr::from_utf16le_lossy(&le), "hé");
+        assert_eq!(HipStr::from_utf16be_lossy(&be[..3]), "h\u{FFFD}");
+        assert_eq!(
+            HipStr::from_utf8_lossy_owned(b"a\xffb".to_vec()),
+            "a\u{FFFD}b"
+        );
+        let mut s = HipStr::from("aéb");
+        assert_eq!(s.remove(1), 'é');
+        assert_eq!(&*s.clone().into_boxed_str(), "ab");
+        let d = s.drain(..);
+        assert_eq!(<_ as AsRef<str>>::as_ref(&d), "ab");
+        assert_eq!(<_ as AsRef<[u8]>>::as_ref(&d), b"ab");
+        assert!(format!("{d:?}").contains("Drain"));
+        assert_eq!(d.last(), Some('b'));
+        assert!(s.is_empty());
+    }
+
+    #[test]
+    #[should_panic(expected = "cannot remove a char from the end of a string")]
+    fn string_remove_at_end() {
+        HipStr::from("ab").remove(2);
+    }
+
+    #[test]
+    #[cfg(all(feature = "std", not(miri)))] // leaks on purpose
+    fn leaks() {
+        let b: &'static mut [u8] = HipByt::from(LONG.as_bytes()).leak();
+        assert_eq!(b, LONG.as_bytes());
+        let s: &'static mut str = SmallStr::from(LONG).leak();
+        assert_eq!(s, LONG);
+        let o: &'static mut std::ffi::OsStr = TinyOsStr::from(LONG).leak();
+        assert_eq!(o, LONG);
+    }
+
+    #[test]
+    #[cfg(feature = "std")]
+    fn os_and_path_methods() {
+        use std::ffi::{OsStr, OsString};
+        use std::io::Write as _;
+        use std::path::Path;
+
+        let o: HipOsStr = "x".parse().unwrap();
+        assert_eq!(&*o.clone().into_boxed_os_str(), OsStr::new("x"));
+        // SAFETY: bytes from `into_encoded_bytes`
+        let back =
+            unsafe { SmallOsStr::from_encoded_bytes_unchecked(o.clone().into_encoded_bytes()) };
+        assert_eq!(back, o);
+        assert_eq!(
+            HipOsStr::from(Cow::<str>::Owned(String::from("c"))),
+            OsStr::new("c")
+        );
+        let mut cat = HipOsStr::new();
+        cat.extend([OsString::from("a")]);
+        cat.extend([Cow::Borrowed(OsStr::new("b"))]);
+        assert_eq!(cat, OsStr::new("ab"));
+
+        let mut p: HipPath = "/a".parse().unwrap();
+        p.push("b");
+        assert!(p.pop());
+        assert_eq!(p, Path::new("/a"));
+        assert!(!HipPath::from("").add_extension("x"));
+        assert_eq!(p.clone().into_string().unwrap(), "/a");
+        assert_eq!(&*p.clone().into_boxed_path(), Path::new("/a"));
+        assert_eq!(
+            HipPath::from(Cow::<str>::Owned(String::from("q"))),
+            Path::new("q")
+        );
+        assert_eq!(
+            HipPath::from(Cow::<OsStr>::Owned(OsString::from("r"))),
+            Path::new("r")
+        );
+
+        let mut w = HipByt::new();
+        assert_eq!(w.write(b"abc").unwrap(), 3);
+        w.write_all(b"d").unwrap();
+        assert_eq!(w, b"abcd");
+    }
+
+    #[test]
+    #[cfg(all(feature = "std", unix))]
+    fn os_and_path_non_utf8() {
+        use std::os::unix::ffi::OsStrExt;
+        let bad = std::ffi::OsStr::from_bytes(b"\xff");
+        assert!(HipOsStr::from(bad).into_string().is_err());
+        assert!(HipPath::from(bad).into_string().is_err());
     }
 }

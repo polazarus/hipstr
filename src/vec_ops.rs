@@ -638,10 +638,20 @@ impl<'a, E: Unconstrained, R: Repr<'a, u8>> Drop for Drain<'_, 'a, E, R> {
 }
 
 /// Splicing iterator returned by [`Hip::splice`] on byte strings.
-#[derive(Debug)]
 pub struct Splice<'h, 'a, E: Unconstrained, R: Repr<'a, u8>, I: Iterator<Item = u8>> {
     drain: Drain<'h, 'a, E, R>,
     replace_with: I,
+}
+
+impl<'a, E: Unconstrained, R: Repr<'a, u8>, I: Iterator<Item = u8> + fmt::Debug> fmt::Debug
+    for Splice<'_, 'a, E, R, I>
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Splice")
+            .field("drain", &self.drain)
+            .field("replace_with", &self.replace_with)
+            .finish()
+    }
 }
 
 impl<'a, E: Unconstrained, R: Repr<'a, u8>, I: Iterator<Item = u8>> Iterator
