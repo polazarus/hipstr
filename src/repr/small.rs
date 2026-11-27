@@ -276,6 +276,13 @@ impl<'a, T: Copy + 'static, B: Backend> Small<'a, T, B> {
         }
     }
 
+    /// Copies `slice` to a new heap buffer; kept out of line so that the
+    /// inline path of `from_slice` stays small enough to be inlined.
+    #[inline(never)]
+    fn heap_from_slice(slice: &[T]) -> Self {
+        crate::thin::unwrap_or_oom(Self::try_from_slice(slice, slice.len()))
+    }
+
     fn try_from_slice(slice: &[T], capacity: usize) -> Result<Self, TryReserveError> {
         debug_assert!(capacity >= slice.len());
         if capacity <= Inline::<T>::CAPACITY {
@@ -339,7 +346,11 @@ unsafe impl<'a, T: Copy + 'static, B: Backend> Repr<'a, T> for Small<'a, T, B> {
 
     #[inline]
     fn from_slice(slice: &[T]) -> Self {
-        crate::thin::unwrap_or_oom(Self::try_from_slice(slice, slice.len()))
+        if slice.len() <= Inline::<T>::CAPACITY {
+            Self::from_inline(Inline::from_slice_copy(slice))
+        } else {
+            Self::heap_from_slice(slice)
+        }
     }
 
     #[inline]

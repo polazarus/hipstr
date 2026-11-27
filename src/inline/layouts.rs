@@ -71,6 +71,11 @@ const fn encode<T, L: Layout<T>>(len: usize) -> usize {
     }
 }
 
+/// The tagged length as stored in the length field.
+pub(crate) const fn encode_len<T, L: Layout<T>>(len: usize) -> usize {
+    encode::<T, L>(len)
+}
+
 const fn decode<T, L: Layout<T>>(tagged: usize) -> usize {
     if L::HIGH {
         tagged & !L::TAG
@@ -95,9 +100,20 @@ pub(crate) const fn len<T, L: Layout<T>>(layout: &L) -> usize {
 
 /// Sets the length of the vector.
 pub(crate) const unsafe fn set_len<T, L: Layout<T>>(layout: &mut L, len: usize) {
+    // SAFETY: precondition
+    unsafe { set_len_raw(&raw mut *layout, len) }
+}
+
+/// Sets the length through a raw pointer, which may point to a value not yet
+/// valid (e.g. zeroed, before its tag is written).
+///
+/// # Safety
+///
+/// `layout` must be valid for writes, and `len <= L::CAPACITY`.
+pub(crate) const unsafe fn set_len_raw<T, L: Layout<T>>(layout: *mut L, len: usize) {
     debug_assert!(len <= L::CAPACITY);
 
-    let ptr = unsafe { (&raw mut *layout).cast::<u8>().add(L::LEN_OFFSET) };
+    let ptr = unsafe { layout.cast::<u8>().add(L::LEN_OFFSET) };
     let tagged_len = encode::<T, L>(len);
     match L::LEN_SIZE {
         0 => (),
@@ -129,6 +145,17 @@ pub(crate) const fn data_ptr<T, L: Layout<T>>(layout: &L) -> *const T {
         unsafe { (&raw const *layout).byte_add(offset).cast() }
     } else {
         ptr::dangling()
+    }
+}
+
+/// Returns a raw mutable pointer to the buffer of a possibly not yet valid
+/// value (see [`set_len_raw`]).
+pub(crate) const fn data_mut_ptr_raw<T, L: Layout<T>>(layout: *mut L) -> *mut T {
+    if let Some(offset) = L::DATA_OFFSET {
+        // SAFETY: the data lies within the value
+        unsafe { layout.byte_add(offset).cast() }
+    } else {
+        ptr::dangling_mut()
     }
 }
 

@@ -237,6 +237,17 @@ impl<'a, T: Copy + 'static, B: Backend> Wide<'a, T, B> {
         })
     }
 
+    /// Copies `slice` to a new heap buffer; kept out of line so that the
+    /// inline path of `from_slice` stays small enough to be inlined.
+    #[inline(never)]
+    fn heap_from_slice(slice: &[T]) -> Self {
+        let owner = Owner::from_slice(slice);
+        Self::from_sliced(Sliced {
+            owner,
+            slice: NonNull::slice_from_raw_parts(owner.data(), owner.len()),
+        })
+    }
+
     /// Offset of the slice in the owner's buffer.
     fn offset(sliced: &Sliced<T, B>) -> usize {
         // SAFETY: the slice lies within the owner's buffer
@@ -336,11 +347,7 @@ unsafe impl<'a, T: Copy + 'static, B: Backend> Repr<'a, T> for Wide<'a, T, B> {
         if slice.len() <= Inline::<T>::CAPACITY {
             Self::from_inline(Inline::from_slice_copy(slice))
         } else {
-            let owner = Owner::from_slice(slice);
-            Self::from_sliced(Sliced {
-                owner,
-                slice: NonNull::slice_from_raw_parts(owner.data(), owner.len()),
-            })
+            Self::heap_from_slice(slice)
         }
     }
 
