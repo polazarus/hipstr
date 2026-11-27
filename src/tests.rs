@@ -1514,3 +1514,86 @@ mod perf {
         assert_eq!(sm, &bytes(600)[..]);
     }
 }
+
+/// Borrowing iterators (`drain`, `splice`, `extract_if`, `String`-style
+/// `drain`) over every representation, inline and heap, moved between calls.
+///
+/// Inline bytes live in the value itself, so a pointer cached by an iterator
+/// is invalidated when the iterator (holding `&mut` to the value) is moved:
+/// Miri reports that as undefined behaviour. Run under Miri.
+mod moved_iterators {
+    use alloc::borrow::ToOwned;
+    use alloc::vec;
+
+    use super::*;
+
+    const SHORT: &[u8] = b"a1b2c3";
+    const LONG: &[u8] = b"a1b2c3 and enough bytes to be on the heap, every size";
+
+    /// Advances once, moves the iterator through a function, then finishes.
+    fn step_move_finish<I: Iterator>(mut it: I) -> (Option<I::Item>, Vec<I::Item>) {
+        let first = it.next();
+        let moved = core::convert::identity(it);
+        (first, moved.collect())
+    }
+
+    macro_rules! bytes_case {
+        ($name:ident, $t:ty) => {
+            #[test]
+            fn $name() {
+                for src in [SHORT, LONG] {
+                    let expected_rest: Vec<u8> = src
+                        .iter()
+                        .copied()
+                        .filter(|b| !b.is_ascii_digit())
+                        .collect();
+
+                    let mut b = <$t>::from(src);
+                    let (first, rest) = step_move_finish(b.extract_if(.., |x| x.is_ascii_digit()));
+                    assert_eq!(first, Some(b'1'));
+                    assert_eq!(rest, b"23");
+                    assert_eq!(b, &expected_rest[..]);
+
+                    let mut b = <$t>::from(src);
+                    let (first, rest) = step_move_finish(b.drain(1..4));
+                    assert_eq!((first, rest), (Some(b'1'), vec![b'b', b'2']));
+                    assert_eq!(&b[..3], b"ac3");
+
+                    let mut b = <$t>::from(src);
+                    let (first, rest) = step_move_finish(b.splice(0..2, *b"XYZ"));
+                    assert_eq!((first, rest), (Some(b'a'), vec![b'1']));
+                    assert_eq!(&b[..5], b"XYZb2");
+
+                    // shared: unshared by the iterator, the other handle intact
+                    let a = <$t>::from(src);
+                    let mut b = a.clone();
+                    let _ = step_move_finish(b.extract_if(.., |x| x.is_ascii_digit()));
+                    assert_eq!(a, src);
+                    assert_eq!(b, &expected_rest[..]);
+                }
+            }
+        };
+    }
+
+    bytes_case!(hip_byt, HipByt<'_>);
+    bytes_case!(small_byt, SmallByt<'_>);
+    bytes_case!(tiny_byt, TinyByt);
+
+    macro_rules! str_case {
+        ($name:ident, $t:ty) => {
+            #[test]
+            fn $name() {
+                for src in ["aéb", "aéb and enough text to be on the heap, every size"] {
+                    let mut s = <$t>::from(src);
+                    let (first, rest) = step_move_finish(s.drain(1..4));
+                    assert_eq!((first, rest), (Some('é'), vec!['b']));
+                    assert_eq!(s, src[..1].to_owned() + &src[4..]);
+                }
+            }
+        };
+    }
+
+    str_case!(hip_str, HipStr<'_>);
+    str_case!(small_str, SmallStr<'_>);
+    str_case!(tiny_str, TinyStr);
+}
