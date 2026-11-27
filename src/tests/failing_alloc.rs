@@ -8,6 +8,8 @@
 //! arming thread, so that allocations of tests running in parallel (which do
 //! not arm) do not consume the failure.
 
+#![cfg_attr(coverage_nightly, coverage(off))]
+
 extern crate std;
 
 use core::alloc::{GlobalAlloc, Layout};
@@ -119,7 +121,6 @@ unsafe impl GlobalAlloc for FailingAlloc {
 #[global_allocator]
 static GLOBAL: FailingAlloc = FailingAlloc;
 
-#[cfg(test)]
 mod tests {
     use alloc::vec::Vec;
 

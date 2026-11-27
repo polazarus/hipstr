@@ -163,8 +163,6 @@ mod inline_buf;
 mod thin;
 
 #[cfg(test)]
-mod test_alloc;
-#[cfg(test)]
 mod tests;
 
 pub use backend::{Arc, Backend, Rc, Unique};

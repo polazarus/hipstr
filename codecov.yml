@@ -1,5 +1,6 @@
 ignore:
   - "**/tests.rs"
+  - "src/tests/**"
 
 coverage:
   status:

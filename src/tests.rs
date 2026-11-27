@@ -7,6 +7,8 @@ use core::fmt::Write;
 
 use super::*;
 
+mod failing_alloc;
+
 const LONG: &str = "a string that is definitely longer than any inline capacity";
 
 /// Tests shared by every size of a string family.
