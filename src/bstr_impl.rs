@@ -130,7 +130,7 @@ impl<'a, R: Repr<'a, u8>> TryFrom<BString> for Hip<Utf8, R> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{HipByt, HipStr, SmallByt, TinyStr};
+    use crate::{HipStr, SmallByt, TinyStr};
 
     const LONG: &str = "a string that is definitely longer than any inline capacity";
 
@@ -153,7 +153,7 @@ mod tests {
     #[cfg(feature = "std")]
     fn borrow_bstr_hash_consistency() {
         let mut set = std::collections::HashSet::new();
-        set.insert(HipByt::from(LONG.as_bytes()));
+        set.insert(crate::HipByt::from(LONG.as_bytes()));
         assert!(set.contains(LONG.as_bytes().as_bstr()));
     }
 }

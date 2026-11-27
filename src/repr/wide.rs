@@ -17,8 +17,8 @@ use core::ptr::NonNull;
 use super::owner::Owner;
 use super::{Kind, Repr, capacity_overflow};
 use crate::backend::Backend;
-use crate::inline::base::Base as InlineBase;
-use crate::inline::layouts::BasicLayout;
+use crate::inline_buf::base::Base as InlineBase;
+use crate::inline_buf::layouts::BasicLayout;
 use crate::thin::TryReserveError;
 
 type Inline<T> = InlineBase<T, BasicLayout>;

@@ -38,6 +38,10 @@
 //!
 //! Every size has the same niche: `Option<T>` is as large as `T`.
 //!
+//! For values that never allocate, the [`inline`] module has fixed-capacity
+//! types — [`InlineStr`], [`InlineByt`], [`InlineCStr`], … — with a mostly
+//! `const` API and any capacity up to 254 bytes (`inline::InlineStr<N>`).
+//!
 //! # Representations
 //!
 //! A value is either
@@ -130,6 +134,7 @@ pub mod bytes;
 pub mod cstr;
 pub mod enc;
 pub mod hip;
+pub mod inline;
 #[cfg(feature = "std")]
 pub mod os_string;
 #[cfg(feature = "std")]
@@ -154,7 +159,7 @@ mod vec_ops;
 // Internal vector machinery (ported from the `hipvec` branch, copy-only).
 // Its doc examples are `ignore`d: the items are not public.
 mod common;
-mod inline;
+mod inline_buf;
 mod thin;
 
 #[cfg(test)]
@@ -162,6 +167,24 @@ mod tests;
 
 pub use backend::{Arc, Backend, Rc, Unique};
 pub use hip::Hip;
+pub use inline::{CapacityError, Inline};
+
+/// Inline string of up to 23 bytes (24 bytes in all); any capacity with
+/// [`inline::InlineStr<N>`](inline::InlineStr).
+pub type InlineStr = inline::InlineStr;
+/// Inline byte string of up to 23 bytes; see [`inline::InlineByt<N>`](inline::InlineByt).
+pub type InlineByt = inline::InlineByt;
+/// Inline C string of up to 22 bytes and its NUL; see [`inline::InlineCStr<N>`](inline::InlineCStr).
+pub type InlineCStr = inline::InlineCStr;
+/// Inline `bstr` byte string of up to 23 bytes; see [`inline::InlineBStr<N>`](inline::InlineBStr).
+#[cfg(feature = "bstr")]
+pub type InlineBStr = inline::InlineBStr;
+/// Inline OS string of up to 23 bytes; see [`inline::InlineOsStr<N>`](inline::InlineOsStr).
+#[cfg(feature = "std")]
+pub type InlineOsStr = inline::InlineOsStr;
+/// Inline path of up to 23 bytes; see [`inline::InlinePath<N>`](inline::InlinePath).
+#[cfg(feature = "std")]
+pub type InlinePath = inline::InlinePath;
 
 /// Declares the public aliases of one family: 3 sizes × {`Arc`, `Rc`}.
 ///

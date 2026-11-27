@@ -27,6 +27,9 @@ Also byte strings, C strings, OS strings, and paths!
 | paths (`std`) | `HipPath` | `SmallPath` | `TinyPath` | `PathBuf` |
 | `bstr` strings (`bstr`) | `HipBStr` | `SmallBStr` | `TinyBStr` | `BString` |
 
+Fixed-capacity, never-allocating `InlineStr`, `InlineByt`, `InlineCStr`, … (any
+capacity up to 254 bytes, `Copy`, mostly `const` API) complete the set.
+
 The 3-word types slice in O(1); the 2-word ones borrow and inline up to 15
 bytes; the 1-word ones inline up to 7 bytes and never borrow. All are
 thread-safe (`Arc`); `Local*` aliases (`LocalHipStr`, …) use `Rc`.

@@ -260,7 +260,7 @@ impl<T, L: Layout<T>> Clone for Base<T, L> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::inline::layouts::{BasicLayout, SmallLayout, TinyLayout};
+    use crate::inline_buf::layouts::{BasicLayout, SmallLayout, TinyLayout};
 
     #[test]
     fn copy_short_every_length() {

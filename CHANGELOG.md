@@ -12,6 +12,11 @@ representation), with the old names kept as aliases. See
 
 - 2-word (`SmallStr`, `SmallByt`, …) and 1-word (`TinyStr`, `TinyByt`, …)
   types for every family, beside the 3-word `HipStr`, `HipByt`, …
+- fixed-capacity inline types: `InlineStr`, `InlineByt`, `InlineCStr`,
+  `InlineBStr`, `InlineOsStr`, `InlinePath` (`inline::InlineStr<N>` for any
+  capacity up to 254 bytes): `Copy`, never allocating, with a `const` API
+  (construction, accessors, `push`, `push_str`, `pop`, `insert`, `remove`,
+  `truncate`, …) and `try_` versions returning `CapacityError`
 - C strings: `HipCStr`, `SmallCStr`, `TinyCStr` (`no_std`), dereferencing to
   `CStr` without copy
 - `bstr` byte strings: `HipBStr`, `SmallBStr`, `TinyBStr` (`bstr` feature),
@@ -26,6 +31,9 @@ representation), with the old names kept as aliases. See
   strings and `BStr`; `Add`/`AddAssign<&str>`; owning and borrowing
   `IntoIterator`; `io::Write`; more `Extend`/`FromIterator`/`From`/`TryFrom`;
   `From<_>` for `Box`/`Rc`/`Arc` slices
+- faster inline construction: values are built word by word in registers
+  (2–4× faster than the first rewrite, on par with 0.8 for 3 words and faster
+  for 2 and 1 word)
 - `const` accessors (`len`, `is_empty`, `as_ptr`, `as_str`, `as_slice`, …) on
   every type
 - `compat/LEDGER.md`: every stable std method and its status, checked in CI

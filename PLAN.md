@@ -190,6 +190,23 @@ src/
      `drain`) are ~3× slower than `Vec`'s (safe compaction); `reserve_exact` is
      `reserve`.
 
+7. **Inline types** (done) — `inline::Inline<E, N>`: `N ≤ 254` data bytes and a
+   `NonZeroU8` length (`len + 1`, the niche), `Copy`, data fully initialized (zeroes past
+   the length, so equal values have equal bytes). Root aliases fix `N = 23`
+   (`InlineStr` is 24 bytes; alias defaults do not drive inference in expressions),
+   `inline::InlineStr<N>` & co are capacity-generic. `const`: construction (`new`,
+   `inline`, `try_inline`), accessors, and edits for bytes/`str` (`push`, `push_str`,
+   `pop`, `truncate`, `insert`, `remove`, `swap_remove`, ASCII case, `from_utf8`);
+   C strings: `inline`, `as_c_str`, `truncate`; OS strings/paths only get the
+   encoding-agnostic `const` core (std's conversions are not `const`). Follow-ups:
+   serde/borsh, `retain` is not `const` (closures).
+8. **Inline construction speed** (done) — `from_slice` split into an inlinable inline
+   branch and an out-of-line heap path; byte inline values are built in registers
+   (`Base::from_bytes_wordwise`: overlapping little-endian loads, shifted by the data
+   offset, tag OR-ed in, whole-word stores) to avoid a store-forwarding stall. Direct
+   loop timing (ns, 64-bit): `HipStr` 3.3–6.6 (was ~12; 0.8: 3.5–8.4), `SmallStr`
+   1.7–3.4, `TinyStr` 1.5–2.0, `CompactString` 1.9–3.4.
+
 ## Open questions
 
   Repr names: `Wide` (3 words) / `Small` (2 words) / `Tiny` (1 word).

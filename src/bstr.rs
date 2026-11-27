@@ -124,6 +124,7 @@ impl_borrowed_bytes!(Wide, Small);
 
 impl<'a, R: Repr<'a, u8>> Hip<enc::BStr, R> {
     /// Adopts a byte vector (inline if it fits).
+    #[cfg(feature = "borsh")]
     #[inline]
     pub(crate) fn from_owned_bytes(bytes: Vec<u8>) -> Self {
         Self::from_owned(BString::new(bytes))
@@ -326,7 +327,7 @@ mod tests {
 
     use ::bstr::{BString, ByteSlice};
 
-    use crate::{HipBStr, HipByt, HipStr, LocalTinyBStr, SmallBStr, TinyBStr};
+    use crate::{HipBStr, HipByt, HipStr, SmallBStr, TinyBStr};
 
     const LONG: &[u8] = b"a byte string that is definitely longer than any inline capacity";
 
@@ -391,7 +392,7 @@ mod tests {
     #[cfg(feature = "std")]
     fn hash_and_borrow_consistency() {
         let mut set = std::collections::HashSet::new();
-        set.insert(LocalTinyBStr::from(LONG));
+        set.insert(crate::LocalTinyBStr::from(LONG));
         assert!(set.contains(LONG));
         assert!(set.contains(LONG.as_bstr()));
     }
