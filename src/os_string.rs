@@ -161,6 +161,68 @@ impl<'a, R: Repr<'a, u8>> Hip<enc::OsStr, R> {
         unsafe { self.push_bytes(addition.as_ref().as_encoded_bytes()) }
     }
 
+    /// Converts encoded bytes into an OS string, adopting the buffer (see
+    /// `OsString::from_encoded_bytes_unchecked`).
+    ///
+    /// # Safety
+    ///
+    /// Same as `OsString::from_encoded_bytes_unchecked`: the bytes must come
+    /// from `as_encoded_bytes` / `into_encoded_bytes` of OS strings on the
+    /// same platform and Rust version, possibly concatenated or split at
+    /// valid boundaries.
+    #[inline]
+    #[must_use]
+    pub unsafe fn from_encoded_bytes_unchecked(bytes: Vec<u8>) -> Self {
+        // SAFETY: precondition
+        Self::from_owned(unsafe { OsString::from_encoded_bytes_unchecked(bytes) })
+    }
+
+    /// Converts into its encoded bytes (see `OsString::into_encoded_bytes`).
+    ///
+    /// For a conversion keeping the storage, see [`into_bytes`](Self::into_bytes).
+    #[inline]
+    #[must_use]
+    pub fn into_encoded_bytes(self) -> Vec<u8> {
+        self.into_os_string().into_encoded_bytes()
+    }
+
+    /// Converts into a `String` if valid UTF-8 (see `OsString::into_string`).
+    ///
+    /// For a conversion keeping the storage, see [`into_str`](Self::into_str).
+    ///
+    /// # Errors
+    ///
+    /// Returns the value unchanged if it is not valid UTF-8.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::HipOsStr;
+    /// assert_eq!(HipOsStr::from("abc").into_string().unwrap(), "abc");
+    /// ```
+    pub fn into_string(self) -> Result<String, Self> {
+        if self.to_str().is_some() {
+            Ok(self.into_os_string().into_string().unwrap_or_default())
+        } else {
+            Err(self)
+        }
+    }
+
+    /// Converts into a boxed OS string.
+    #[inline]
+    #[must_use]
+    pub fn into_boxed_os_str(self) -> Box<OsStr> {
+        self.into_os_string().into_boxed_os_str()
+    }
+
+    /// Leaks the OS string, returning a mutable reference to it (see
+    /// `OsString::leak`).
+    #[inline]
+    #[must_use]
+    pub fn leak<'b>(self) -> &'b mut OsStr {
+        self.into_os_string().leak()
+    }
+
     /// The string slice, if valid UTF-8.
     #[inline]
     #[must_use]

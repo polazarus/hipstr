@@ -3,7 +3,6 @@
 use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
-use core::mem::MaybeUninit;
 
 use super::enc::Bytes;
 use super::family::{impl_borrowed_ctors, impl_cmp, impl_std_glue};
@@ -11,6 +10,8 @@ use super::hip::Hip;
 use super::repr::Repr;
 pub use crate::hip::RefMut;
 pub use crate::slice::{SliceError, SliceErrorKind};
+pub use crate::std_traits::IntoIter;
+pub use crate::vec_ops::{Drain, ExtractIf, Splice};
 
 /// `serde` helpers.
 #[cfg(feature = "serde")]
@@ -74,54 +75,6 @@ impl_const_bytes!(
 );
 
 impl<'a, R: Repr<'a, u8>> Hip<Bytes, R> {
-    /// Extracts a mutable slice of the entire `HipByt` if possible.
-    ///
-    /// # Examples
-    ///
-    /// Basic usage:
-    ///
-    /// ```
-    /// # use hipstr::HipByt;
-    /// let mut s = HipByt::from(b"foo");
-    /// let slice = s.as_mut_slice().unwrap();
-    /// slice.copy_from_slice(b"bar");
-    /// assert_eq!(b"bar", slice);
-    /// ```
-    #[inline]
-    pub fn as_mut_slice(&mut self) -> Option<&mut [u8]> {
-        if self.repr().is_unique() {
-            Some(self.to_mut_slice())
-        } else {
-            None
-        }
-    }
-
-    /// Mutable access, copying first if borrowed or shared.
-    #[inline]
-    #[allow(
-        clippy::wrong_self_convention,
-        reason = "same name as on the current types"
-    )]
-    /// Extracts a mutable slice of the entire `HipByt` changing the
-    /// representation (and thus _potentially reallocating_) if the current
-    /// representation cannot be mutated.
-    ///
-    /// # Examples
-    ///
-    /// Basic usage:
-    ///
-    /// ```
-    /// # use hipstr::HipByt;
-    /// let mut s = HipByt::borrowed(b"foo");
-    /// let slice = s.to_mut_slice(); // change the representation to inline
-    /// slice.copy_from_slice(b"bar");
-    /// assert_eq!(b"bar", slice);
-    /// ```
-    pub fn to_mut_slice(&mut self) -> &mut [u8] {
-        // SAFETY: no invariant on bytes
-        unsafe { self.repr_mut() }.to_mut_slice()
-    }
-
     /// Converts into a `Vec`, in O(1) when the value uniquely owns an
     /// adopted buffer, by copying otherwise.
     #[inline]
@@ -164,12 +117,6 @@ impl<'a, R: Repr<'a, u8>> Hip<Bytes, R> {
         unsafe { self.push_bytes(addition) }
     }
 
-    /// Alias of [`push_slice`](Self::push_slice), as on `Vec`.
-    #[inline]
-    pub fn extend_from_slice(&mut self, addition: &[u8]) {
-        self.push_slice(addition);
-    }
-
     /// Removes the last element from this `HipByt` and returns it, or [`None`]
     /// if it is empty.
     ///
@@ -206,52 +153,6 @@ impl<'a, R: Repr<'a, u8>> Hip<Bytes, R> {
     pub fn truncate(&mut self, new_len: usize) {
         // SAFETY: no invariant on bytes
         unsafe { self.truncate_bytes(new_len) }
-    }
-
-    /// The spare capacity: empty if the value is borrowed or shared (writing
-    /// would need a copy first, see [`reserve`](Self::reserve)).
-    #[inline]
-    pub fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<u8>] {
-        if !self.repr().is_unique() {
-            return &mut [];
-        }
-        // SAFETY: no invariant on bytes
-        let repr = unsafe { self.repr_mut() };
-        repr.reserve(0);
-        let (len, cap) = (repr.len(), repr.capacity());
-        // SAFETY: unique after `reserve`, `cap - len` slots after the elements
-        unsafe { core::slice::from_raw_parts_mut(repr.as_mut_ptr().add(len).cast(), cap - len) }
-    }
-
-    /// Sets the length.
-    ///
-    /// # Safety
-    ///
-    /// Shrinking is always allowed (O(1) for borrowed and shared values). When
-    /// growing, `new_len` must not exceed [`capacity`](Self::capacity), the
-    /// bytes up to `new_len` must be initialized, and the value must be inline
-    /// or uniquely owned (e.g. after writing through
-    /// [`spare_capacity_mut`](Self::spare_capacity_mut)).
-    #[inline]
-    pub unsafe fn set_len(&mut self, new_len: usize) {
-        if new_len <= self.bytes().len() {
-            self.truncate(new_len);
-        } else {
-            debug_assert!(
-                self.repr().is_unique(),
-                "growing a borrowed or shared value"
-            );
-            // SAFETY: precondition
-            unsafe { self.repr_mut().set_len(new_len) }
-        }
-    }
-
-    /// Reserves room for at least `additional` more bytes, making the value
-    /// uniquely owned (copy-on-write).
-    #[inline]
-    pub fn reserve(&mut self, additional: usize) {
-        // SAFETY: reserving does not change the content
-        unsafe { self.repr_mut() }.reserve(additional);
     }
 
     /// Creates a new `HipByt` by copying this one `n` times.
@@ -531,30 +432,5 @@ impl<'a, R: Repr<'a, u8>, const N: usize> From<&[u8; N]> for Hip<Bytes, R> {
     #[inline]
     fn from(value: &[u8; N]) -> Self {
         Self::from_inner(value)
-    }
-}
-
-impl<'a, R: Repr<'a, u8>> Extend<u8> for Hip<Bytes, R> {
-    fn extend<I: IntoIterator<Item = u8>>(&mut self, iter: I) {
-        let iter = iter.into_iter();
-        // SAFETY: no invariant on bytes
-        unsafe { self.repr_mut() }.reserve(iter.size_hint().0);
-        for b in iter {
-            self.push(b);
-        }
-    }
-}
-
-impl<'a, 'b, R: Repr<'a, u8>> Extend<&'b u8> for Hip<Bytes, R> {
-    fn extend<I: IntoIterator<Item = &'b u8>>(&mut self, iter: I) {
-        self.extend(iter.into_iter().copied());
-    }
-}
-
-impl<'a, R: Repr<'a, u8>> FromIterator<u8> for Hip<Bytes, R> {
-    fn from_iter<I: IntoIterator<Item = u8>>(iter: I) -> Self {
-        let mut result = Self::default();
-        result.extend(iter);
-        result
     }
 }

@@ -30,6 +30,8 @@ use super::family::{impl_borrowed_ctors, impl_cmp, impl_std_glue};
 use super::hip::Hip;
 use super::repr::Repr;
 pub use crate::hip::RefMut;
+pub use crate::std_traits::IntoIter;
+pub use crate::vec_ops::{Drain, ExtractIf, Splice};
 
 super::generic_aliases!(
     enc::BStr,
@@ -84,6 +86,13 @@ macro_rules! impl_const_b_str {
             #[inline]
             #[must_use]
             pub const fn as_bytes(&self) -> &[u8] {
+                self.repr().as_slice()
+            }
+
+            /// The bytes (same as [`as_bytes`](Self::as_bytes), as on `Vec`).
+            #[inline]
+            #[must_use]
+            pub const fn as_slice(&self) -> &[u8] {
                 self.repr().as_slice()
             }
         }
@@ -306,25 +315,6 @@ impl<'a, R: Repr<'a, u8>> TryFrom<Hip<enc::BStr, R>> for Hip<Utf8, R> {
     #[inline]
     fn try_from(value: Hip<enc::BStr, R>) -> Result<Self, Self::Error> {
         value.into_str()
-    }
-}
-
-impl<'a, R: Repr<'a, u8>> Extend<u8> for Hip<enc::BStr, R> {
-    fn extend<I: IntoIterator<Item = u8>>(&mut self, iter: I) {
-        let iter = iter.into_iter();
-        // SAFETY: no invariant on bytes
-        unsafe { self.repr_mut() }.reserve(iter.size_hint().0);
-        for b in iter {
-            self.push(b);
-        }
-    }
-}
-
-impl<'a, R: Repr<'a, u8>> FromIterator<u8> for Hip<enc::BStr, R> {
-    fn from_iter<I: IntoIterator<Item = u8>>(iter: I) -> Self {
-        let mut result = Self::default();
-        result.extend(iter);
-        result
     }
 }
 

@@ -129,7 +129,10 @@ mod bstr_impl;
 mod family;
 #[cfg(feature = "serde")]
 mod serde_impl;
+mod std_traits;
+mod string_ops;
 mod string_pattern;
+mod vec_ops;
 
 // Internal vector machinery (ported from the `hipvec` branch, copy-only).
 // Its doc examples are `ignore`d: the items are not public.

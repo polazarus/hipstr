@@ -47,6 +47,12 @@ pub unsafe trait Encoding: seal::Sealed + 'static {
     unsafe fn owned_from_bytes_unchecked(bytes: Vec<u8>) -> Self::Owned;
 }
 
+/// Encodings without invariant on their bytes ([`Bytes`] and, with the
+/// `bstr` feature, `BStr`): they get the full `Vec<u8>` API.
+pub trait Unconstrained: Encoding {}
+
+impl Unconstrained for Bytes {}
+
 /// Raw bytes, no invariant.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct Bytes;
@@ -156,6 +162,9 @@ pub struct BStr;
 
 #[cfg(feature = "bstr")]
 impl seal::Sealed for BStr {}
+
+#[cfg(feature = "bstr")]
+impl Unconstrained for BStr {}
 
 // SAFETY: no invariant
 #[cfg(feature = "bstr")]

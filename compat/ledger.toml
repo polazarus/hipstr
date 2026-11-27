@@ -1,0 +1,46 @@
+# Std items hipstr deliberately does not mirror, with the reason.
+#
+# Checked by `compat/ledger.py` against std's rustdoc JSON: a stable std method
+# (at the crate's MSRV) that hipstr lacks and that is not listed here fails CI.
+# Methods of the borrowed types (`[u8]`, `str`, `CStr`, `OsStr`, `Path`) are
+# reached through `Deref` and need no entry.
+
+[bytes."n/a"]
+allocator = "no allocator parameter: storage is chosen by the representation and backend"
+new_in = "no allocator parameter"
+with_capacity_in = "no allocator parameter"
+from_parts = "the storage is not a bare `Vec` buffer; use `From<Vec<u8>>` (O(1))"
+from_parts_in = "no allocator parameter"
+from_raw_parts = "the storage is not a bare `Vec` buffer; use `From<Vec<u8>>` (O(1))"
+from_raw_parts_in = "no allocator parameter"
+into_parts = "the storage may be inline, borrowed or shared; use `into_vec` (O(1) when possible)"
+into_parts_with_allocator = "no allocator parameter"
+into_raw_parts = "the storage may be inline, borrowed or shared; use `into_vec` (O(1) when possible)"
+into_raw_parts_with_allocator = "no allocator parameter"
+into_flattened = "only for `Vec<[T; N]>`"
+
+[b_str."n/a"]
+allocator = "no allocator parameter: storage is chosen by the representation and backend"
+new_in = "no allocator parameter"
+with_capacity_in = "no allocator parameter"
+from_parts = "the storage is not a bare `Vec` buffer; use `From<BString>` (O(1))"
+from_parts_in = "no allocator parameter"
+from_raw_parts = "the storage is not a bare `Vec` buffer; use `From<BString>` (O(1))"
+from_raw_parts_in = "no allocator parameter"
+into_parts = "the storage may be inline, borrowed or shared; use `into_bstring` (O(1) when possible)"
+into_parts_with_allocator = "no allocator parameter"
+into_raw_parts = "the storage may be inline, borrowed or shared; use `into_bstring` (O(1) when possible)"
+into_raw_parts_with_allocator = "no allocator parameter"
+into_flattened = "only for `Vec<[T; N]>`"
+
+[str."n/a"]
+as_mut_vec = "there is no `Vec` inside; use `mutate()` for a `&mut String`, or `to_mut_str`"
+from_raw_parts = "the storage is not a bare `String` buffer; use `From<String>` (O(1))"
+into_raw_parts = "the storage may be inline, borrowed or shared; use `into_string` (O(1) when possible)"
+
+[c_str."n/a"]
+from_raw = "takes back a pointer from `CString::into_raw`: use `CString::from_raw`, then `From<CString>` (O(1))"
+into_raw = "use `into_c_string().into_raw()`: the pointer must be released by `CString::from_raw`"
+
+[path."n/a"]
+as_mut_os_string = "there is no `OsString` inside; use `mutate()` for a `&mut PathBuf`"

@@ -730,6 +730,128 @@ impl<'a, E: Encoding, R: Repr<'a, u8>> Hip<E, R> {
     }
 }
 
+impl<'a, E: Encoding, R: Repr<'a, u8>> Hip<E, R> {
+    /// Reserves capacity for at least `additional` more bytes, making the
+    /// value uniquely owned (copying it first if borrowed or shared).
+    ///
+    /// Like `Vec::reserve`, the capacity grows geometrically.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new capacity overflows.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::HipStr;
+    /// let mut s = HipStr::borrowed("borrowed");
+    /// s.reserve(100);
+    /// assert!(!s.is_borrowed());
+    /// assert!(s.capacity() >= 108);
+    /// ```
+    #[inline]
+    pub fn reserve(&mut self, additional: usize) {
+        self.repr.reserve(additional);
+    }
+
+    /// Reserves capacity for at least `additional` more bytes, making the
+    /// value uniquely owned.
+    ///
+    /// Like `Vec::reserve_exact`, it does not deliberately over-allocate, but
+    /// the representation may still round the capacity up.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new capacity overflows.
+    #[inline]
+    pub fn reserve_exact(&mut self, additional: usize) {
+        crate::thin::unwrap_or_oom(self.repr.try_reserve(additional));
+    }
+
+    /// Tries to reserve capacity for at least `additional` more bytes,
+    /// making the value uniquely owned.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the capacity overflows or the allocator fails;
+    /// the value is then unchanged.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::HipByt;
+    /// let mut b = HipByt::from(b"abc");
+    /// assert!(b.try_reserve(10).is_ok());
+    /// assert!(b.try_reserve(usize::MAX).is_err());
+    /// assert_eq!(b, b"abc");
+    /// ```
+    #[inline]
+    pub fn try_reserve(
+        &mut self,
+        additional: usize,
+    ) -> Result<(), alloc::collections::TryReserveError> {
+        self.repr
+            .try_reserve(additional)
+            .map_err(crate::thin::TryReserveError::into_std)
+    }
+
+    /// Tries to reserve capacity for at least `additional` more bytes
+    /// (see [`reserve_exact`](Self::reserve_exact)).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the capacity overflows or the allocator fails;
+    /// the value is then unchanged.
+    #[inline]
+    pub fn try_reserve_exact(
+        &mut self,
+        additional: usize,
+    ) -> Result<(), alloc::collections::TryReserveError> {
+        self.try_reserve(additional)
+    }
+
+    /// Mutable bytes, copying first if borrowed or shared.
+    ///
+    /// # Safety
+    ///
+    /// Writes must preserve `E`'s invariant.
+    #[inline]
+    pub(crate) unsafe fn bytes_mut(&mut self) -> &mut [u8] {
+        self.repr.to_mut_slice()
+    }
+
+    /// Replaces the bytes in `range` by `with`.
+    ///
+    /// Leaves the value as is (possibly borrowed or shared) when nothing
+    /// changes.
+    ///
+    /// # Safety
+    ///
+    /// `range` must be in bounds and the result must satisfy `E`'s invariant.
+    pub(crate) unsafe fn splice_bytes(&mut self, range: core::ops::Range<usize>, with: &[u8]) {
+        let len = self.repr.len();
+        let core::ops::Range { start, end } = range;
+        debug_assert!(start <= end && end <= len);
+        if start == end && with.is_empty() {
+            return;
+        }
+        if end == len {
+            self.repr.truncate(start);
+            self.repr.extend_from_slice(with);
+            return;
+        }
+        let new_len = len - (end - start) + with.len();
+        if new_len > len {
+            // fill first, so that every byte up to `new_len` is initialized
+            self.repr.resize(new_len, 0);
+        }
+        let bytes = self.repr.to_mut_slice();
+        bytes.copy_within(end..len, start + with.len());
+        bytes[start..start + with.len()].copy_from_slice(with);
+        self.repr.truncate(new_len);
+    }
+}
+
 /// Mutation guard returned by [`Hip::mutate`].
 ///
 /// Dereferences to the std owned form; writes back on drop.

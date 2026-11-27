@@ -172,6 +172,25 @@ pub unsafe trait Repr<'a, T: Copy + 'static>: Clone + Sized {
         }
     }
 
+    /// Resizes to `new_len`, filling with `value` when growing.
+    fn resize(&mut self, new_len: usize, value: T) {
+        let len = self.len();
+        if new_len <= len {
+            self.truncate(new_len);
+            return;
+        }
+        self.reserve(new_len - len);
+        // SAFETY: unique with room for `new_len` elements; the new ones are
+        // written before the length covers them
+        unsafe {
+            let tail = self.as_mut_ptr().add(len);
+            for i in 0..new_len - len {
+                tail.add(i).write(value);
+            }
+            self.set_len(new_len);
+        }
+    }
+
     #[inline]
     fn push(&mut self, value: T) {
         self.extend_from_slice(core::slice::from_ref(&value));

@@ -211,6 +211,27 @@ pub(crate) fn simplify(
     Err((kind, start..end))
 }
 
+/// Resolves `range` against `len`, panicking like slice indexing.
+#[track_caller]
+pub(crate) fn range_or_panic(range: impl RangeBounds<usize>, len: usize) -> Range<usize> {
+    match simplify(range, len) {
+        Ok(range) => range,
+        Err((SliceErrorKind::StartOutOfBounds, r)) => {
+            panic!(
+                "range start index {} out of range for slice of length {len}",
+                r.start
+            )
+        }
+        Err((SliceErrorKind::EndOutOfBounds, r)) => {
+            panic!(
+                "range end index {} out of range for slice of length {len}",
+                r.end
+            )
+        }
+        Err((_, r)) => panic!("slice index starts at {} but ends at {}", r.start, r.end),
+    }
+}
+
 impl<'a, E: Encoding, B: Backend> Hip<E, Wide<'a, u8, B>> {
     /// # Safety
     ///

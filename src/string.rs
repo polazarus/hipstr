@@ -13,6 +13,7 @@ use super::repr::Repr;
 pub use crate::hip::RefMut;
 pub use crate::pattern::{DoubleEndedPattern, IterWrapper, Pattern, ReversePattern};
 pub use crate::slice::{SliceError, SliceErrorKind};
+pub use crate::string_ops::Drain;
 
 /// `serde` helpers.
 #[cfg(feature = "serde")]

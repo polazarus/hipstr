@@ -198,6 +198,111 @@ impl<'a, R: Repr<'a, u8>> Hip<enc::Path, R> {
         self.into_owned_std()
     }
 
+    /// Extends the path with `path` (see `PathBuf::push`: an absolute `path`
+    /// replaces the current one).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::HipPath;
+    /// # use std::path::Path;
+    /// let mut p = HipPath::borrowed("/tmp");
+    /// p.push("file.bk");
+    /// assert_eq!(p, Path::new("/tmp/file.bk"));
+    /// p.push("/etc");
+    /// assert_eq!(p, Path::new("/etc"));
+    /// ```
+    pub fn push(&mut self, path: impl AsRef<Path>) {
+        self.mutate().push(path);
+    }
+
+    /// Truncates to the parent (see `PathBuf::pop`), in O(1) and without
+    /// copying a borrowed or shared value.
+    ///
+    /// Returns `false` and does nothing if there is no parent.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::HipPath;
+    /// # use std::path::Path;
+    /// let mut p = HipPath::borrowed("/spirited/away.rs");
+    /// assert!(p.pop());
+    /// assert_eq!(p, Path::new("/spirited"));
+    /// assert!(p.is_borrowed());
+    /// assert!(p.pop());
+    /// assert!(!p.pop());
+    /// assert_eq!(p, Path::new("/"));
+    /// ```
+    pub fn pop(&mut self) -> bool {
+        let Some(parent) = self.as_path().parent() else {
+            return false;
+        };
+        let len = parent.as_os_str().len();
+        // SAFETY: the parent is a prefix of the path
+        unsafe { self.truncate_bytes(len) };
+        true
+    }
+
+    /// Replaces the file name (see `PathBuf::set_file_name`).
+    pub fn set_file_name(&mut self, file_name: impl AsRef<OsStr>) {
+        self.mutate().set_file_name(file_name);
+    }
+
+    /// Replaces the extension (see `PathBuf::set_extension`).
+    ///
+    /// Returns `false` and does nothing if there is no file name.
+    pub fn set_extension(&mut self, extension: impl AsRef<OsStr>) -> bool {
+        if self.as_path().file_name().is_none() {
+            return false;
+        }
+        self.mutate().set_extension(extension)
+    }
+
+    /// Appends an extension (see `PathBuf::add_extension`).
+    ///
+    /// Returns `false` and does nothing if there is no file name.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the extension contains a path separator.
+    pub fn add_extension(&mut self, extension: impl AsRef<OsStr>) -> bool {
+        if self.as_path().file_name().is_none() {
+            return false;
+        }
+        self.mutate().add_extension(extension)
+    }
+
+    /// Converts into a `String` if valid UTF-8 (see `PathBuf::into_string`).
+    ///
+    /// For a conversion keeping the storage, see [`into_str`](Self::into_str).
+    ///
+    /// # Errors
+    ///
+    /// Returns the value unchanged if it is not valid UTF-8.
+    pub fn into_string(self) -> Result<String, Self> {
+        if self.as_path().to_str().is_some() {
+            Ok(self.into_path_buf().into_string().unwrap_or_default())
+        } else {
+            Err(self)
+        }
+    }
+
+    /// Converts into a boxed path.
+    #[inline]
+    #[must_use]
+    pub fn into_boxed_path(self) -> Box<Path> {
+        self.into_path_buf().into_boxed_path()
+    }
+
+    /// Leaks the path, returning a mutable reference to it (see
+    /// `PathBuf::leak`).
+    #[inline]
+    #[must_use]
+    pub fn leak<'b>(self) -> &'b mut Path {
+        self.into_path_buf().leak()
+    }
+
     /// Converts into an `OsString` (see [`into_path_buf`](Self::into_path_buf)).
     #[inline]
     #[must_use]

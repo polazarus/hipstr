@@ -270,7 +270,7 @@ impl<T: Copy, B: Backend> Owner<T, B> {
                 });
                 let result = vec
                     .try_reserve(additional)
-                    .map_err(|_| TryReserveError(TryReserveErrorKind::CapacityOverflow));
+                    .map_err(|e| TryReserveError(TryReserveErrorKind::Std(e)));
                 header.ptr = NonNull::new(vec.as_mut_ptr());
                 header.cap = vec.capacity();
                 result

@@ -91,6 +91,71 @@ impl<'a, R: Repr<'a, u8>> Hip<enc::CStr, R> {
         self.into_owned_std()
     }
 
+    /// Takes a vector without interior NUL and appends the terminator (see
+    /// `CString::from_vec_unchecked`).
+    ///
+    /// # Safety
+    ///
+    /// `v` must not contain any NUL byte.
+    #[inline]
+    #[must_use]
+    pub unsafe fn from_vec_unchecked(v: Vec<u8>) -> Self {
+        // SAFETY: precondition
+        Self::from_owned(unsafe { CString::from_vec_unchecked(v) })
+    }
+
+    /// Takes a vector ending with its only NUL, reusing its buffer (see
+    /// `CString::from_vec_with_nul`).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the vector has an interior NUL or does not end
+    /// with NUL.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use hipstr::HipCStr;
+    /// let c = HipCStr::from_vec_with_nul(b"abc\0".to_vec()).unwrap();
+    /// assert_eq!(c, c"abc");
+    /// assert!(HipCStr::from_vec_with_nul(b"a\0bc\0".to_vec()).is_err());
+    /// ```
+    #[inline]
+    pub fn from_vec_with_nul(v: Vec<u8>) -> Result<Self, alloc::ffi::FromVecWithNulError> {
+        CString::from_vec_with_nul(v).map(Self::from_owned)
+    }
+
+    /// Takes a vector ending with its only NUL (see
+    /// `CString::from_vec_with_nul_unchecked`).
+    ///
+    /// # Safety
+    ///
+    /// `v` must end with a NUL byte and contain no other.
+    #[inline]
+    #[must_use]
+    pub unsafe fn from_vec_with_nul_unchecked(v: Vec<u8>) -> Self {
+        // SAFETY: precondition
+        Self::from_owned(unsafe { CString::from_vec_with_nul_unchecked(v) })
+    }
+
+    /// Converts into a `String` if valid UTF-8 (see `CString::into_string`).
+    ///
+    /// # Errors
+    ///
+    /// Returns std's error, which gives the C string back, if the bytes are
+    /// not valid UTF-8.
+    #[inline]
+    pub fn into_string(self) -> Result<String, alloc::ffi::IntoStringError> {
+        self.into_c_string().into_string()
+    }
+
+    /// Converts into a boxed C string.
+    #[inline]
+    #[must_use]
+    pub fn into_boxed_c_str(self) -> Box<CStr> {
+        self.into_c_string().into_boxed_c_str()
+    }
+
     /// Converts into bytes with the NUL terminator, keeping the
     /// representation (no copy).
     #[inline]
