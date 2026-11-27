@@ -1,7 +1,6 @@
 use core::mem::MaybeUninit;
 use core::num::NonZeroUsize;
 use core::ptr;
-use core::ptr::NonNull;
 
 /// Memory layout of an inline vector.
 ///
@@ -139,14 +138,6 @@ pub(crate) const fn data_mut_ptr<T, L: Layout<T>>(layout: &mut L) -> *mut T {
         unsafe { (&raw mut *layout).byte_add(offset).cast() }
     } else {
         ptr::dangling_mut()
-    }
-}
-
-pub(crate) const fn data_non_null<T, L: Layout<T>>(layout: &mut L) -> NonNull<T> {
-    if let Some(offset) = L::DATA_OFFSET {
-        unsafe { NonNull::from_mut(layout).byte_add(offset).cast() }
-    } else {
-        NonNull::dangling()
     }
 }
 

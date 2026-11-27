@@ -1,19 +1,10 @@
-//! Thin vectors.
-//!
-//! Thin vectors are heap-allocated vectors with a pointer-sized handle on stack. The handle is a
-//! pointer to the heap allocation, but it is masked to be non-null even when the vector is empty.
+//! Thin heap buffers: the elements follow the header in one allocation.
 
 use alloc::fmt;
 
 mod base;
-mod generic;
-
-#[cfg(test)]
-mod copy_tests;
 
 pub(crate) use base::Base;
-
-pub use self::generic::ThinVec;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 #[non_exhaustive]
@@ -73,18 +64,3 @@ pub(crate) fn unwrap_or_oom<T>(result: Result<T, TryReserveError>) -> T {
         Err(TryReserveError(TryReserveErrorKind::Std(e))) => panic!("{e}"),
     }
 }
-
-/// Creates a [`ThinVec`] containing the arguments, with array-expression syntax.
-macro_rules! thin_vec {
-    () => {
-        $crate::common::__vector!( $crate::thin::ThinVec<_> : )
-    };
-    ($e:expr; $n:expr) => {
-        $crate::common::__vector!( $crate::thin::ThinVec<_> : $e; $n )
-    };
-    ($($e:expr),* $(,)?) => {
-        $crate::common::__vector!( $crate::thin::ThinVec<_> : $($e),* )
-    };
-}
-
-pub(crate) use thin_vec;

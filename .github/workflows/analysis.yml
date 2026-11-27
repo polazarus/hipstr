@@ -72,3 +72,20 @@ jobs:
             -Zmiri-permissive-provenance
             -Zmiri-many-seeds
         run: cargo +nightly miri test --verbose --target ${{matrix.platform}} --all-features
+
+  std-parity:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup nightly toolchain with std's rustdoc JSON
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-docs-json
+
+      - name: Build hipstr's rustdoc JSON
+        run: cargo +nightly rustdoc --all-features --lib -- -Zunstable-options --output-format json
+
+      - name: Check std method parity (compat/ledger.toml)
+        run: python3 compat/ledger.py

@@ -990,6 +990,11 @@ mod parity {
         assert_eq!(o, OsStr::new("ab1"));
         assert_eq!(o.clone().into_string().unwrap(), "ab1");
         assert_eq!(o.clone().into_encoded_bytes(), b"ab1");
+        let shared = o.clone();
+        o.make_ascii_uppercase();
+        assert_eq!((o.as_os_str(), shared.as_os_str()), (OsStr::new("AB1"), OsStr::new("ab1")));
+        o.make_ascii_lowercase();
+        assert_eq!(o, shared);
 
         let mut p: SmallPath = ["/usr", "lib"].iter().collect();
         assert_eq!(p, Path::new("/usr/lib"));

@@ -44,3 +44,4 @@ into_raw = "use `into_c_string().into_raw()`: the pointer must be released by `C
 
 [path."n/a"]
 as_mut_os_string = "there is no `OsString` inside; use `mutate()` for a `&mut PathBuf`"
+as_mut_os_str = "no mutable dereference to `Path`; use `mutate()` for a `&mut PathBuf`"

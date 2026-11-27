@@ -1,17 +1,15 @@
 //! Internal representation of thin vectors.
 
 use core::ptr::{self, NonNull};
-use core::{cmp, fmt};
+use core::cmp;
 
 use const_default::ConstDefault;
 
 use super::{TryReserveError, TryReserveErrorKind, unwrap_or_oom};
 use crate::backend::InitPrefix;
 pub use crate::common::header::ThinHeader as Header;
-use crate::common::methods;
 use crate::common::tagged_pointer::TaggedPointer;
 use crate::common::utils::drop_raw_slice;
-use crate::traits::MutableVector;
 
 /// Tag for the tagged pointer in `Base`.
 ///
@@ -189,83 +187,13 @@ impl<T, P> Base<T, P> {
         unsafe { core::slice::from_raw_parts_mut(self.as_mut_ptr(), self.len()) }
     }
 
-    /// Returns a slice of the uninitialized elements in the vector, that is, the spare capacity.
-    #[inline]
-    pub const fn spare_capacity_mut(&mut self) -> &mut [core::mem::MaybeUninit<T>] {
-        methods::spare_capacity_mut!(self)
-    }
 
-    /// Removes and returns the last element of the vector, or `None` if it is empty.
-    pub const fn pop(&mut self) -> Option<T> {
-        methods::pop!(self)
-    }
 
-    /// Removes and returns the last element of the vector if it satisfies the
-    /// given predicate, or `None` if it is empty or if the last element does
-    /// not satisfy the predicate.
-    pub fn pop_if(&mut self, predicate: impl FnOnce(&mut T) -> bool) -> Option<T> {
-        methods::pop_if!(self, predicate)
-    }
 
-    /// Removes and returns the element at the given index, shifting all elements after it to the left.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `index` is out of bounds, that is, if `index >= self.len()`.
-    pub fn remove(&mut self, index: usize) -> T {
-        methods::remove!(self, index)
-    }
 
-    /// Removes and returns the element at the given index, replacing it with the last element of the vector.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `index` is out of bounds, that is, if `index >= self.len()`.
-    pub fn swap_remove(&mut self, index: usize) -> T {
-        methods::swap_remove!(self, index)
-    }
 
-    /// Truncates the vector to the given length, dropping the elements that are removed.
-    ///
-    /// If `new_len` is greater than the current length, this method does nothing.
-    /// If `new_len` is less than the current length, this method drops the elements in the range `[new_len, self.len())` and sets the length to `new_len`.
-    pub fn truncate(&mut self, new_len: usize) {
-        methods::truncate!(self, new_len);
-    }
 
-    /// Clears the vector by truncating it to zero, dropping all elements.
-    #[inline]
-    pub fn clear(&mut self) {
-        self.truncate(0);
-    }
 
-    /// Truncates the vector to the given length.
-    ///
-    /// If `new_len` is greater than the current length, this method does nothing.
-    /// If `new_len` is less than the current length, this method and sets the length to `new_len`.
-    pub const fn truncate_copy(&mut self, new_len: usize)
-    where
-        T: Copy,
-    {
-        methods::truncate_copy!(self, new_len);
-    }
-
-    /// Clears the vector by truncating it to zero.
-    #[inline]
-    pub const fn clear_copy(&mut self)
-    where
-        T: Copy,
-    {
-        self.truncate_copy(0);
-    }
-
-    /// Appends all elements from another vector to the end of this vector, consuming the other vector.
-    pub fn append(&mut self, other: &mut impl MutableVector<Item = T>)
-    where
-        P: InitPrefix,
-    {
-        methods::append!(self, other);
-    }
 
     /// Drops the allocation if it exists.
     ///
@@ -320,28 +248,6 @@ impl<T, P> Base<T, P> {
         *self = Self::new();
     }
 
-    pub fn with_fresh_prefix<P2>(mut self) -> Base<T, P2>
-    where
-        P2: InitPrefix,
-    {
-        if let Some(header) = self.0.as_non_null() {
-            if size_of::<P>() == size_of::<P2>() && align_of::<P>() == align_of::<P2>() {
-                let prefix = unsafe { &raw mut (*header.as_ptr()).prefix };
-                let prefix: *mut P2 = prefix.cast();
-                unsafe {
-                    prefix.write(P2::init());
-                }
-                Base(self.0.cast())
-            } else {
-                let len = self.len();
-                let mut base: Base<T, P2> = Base::with_capacity(len);
-                methods::append!(&mut base, &mut self);
-                base
-            }
-        } else {
-            Base::new()
-        }
-    }
 }
 
 impl<T, P> Base<T, P>
@@ -453,111 +359,36 @@ where
         Ok(())
     }
 
-    #[inline]
-    pub fn push(&mut self, value: T) {
-        let _ = self.push_mut(value);
-    }
 
-    pub fn push_mut(&mut self, value: T) -> &mut T {
-        methods::push_mut!(self, value)
-    }
 
-    pub fn push_within_capacity(&mut self, value: T) -> Result<&mut T, T> {
-        methods::push_within_capacity!(self, value)
-    }
 
-    pub fn insert(&mut self, index: usize, value: T) {
-        let _ = self.insert_mut(index, value);
-    }
 
-    pub fn insert_mut(&mut self, index: usize, value: T) -> &mut T {
-        methods::insert_mut!(self, index, value)
-    }
 
-    pub fn from_array<const N: usize>(array: [T; N]) -> Self {
-        methods::from_array!(array)
-    }
-
-    pub fn from_slice(slice: &[T]) -> Self
-    where
-        T: Clone,
-    {
-        methods::from_slice!(slice)
-    }
-
+    /// Copies `slice` into a new allocation (none when empty).
     pub fn from_slice_copy(slice: &[T]) -> Self
     where
         T: Copy,
+        P: InitPrefix,
     {
-        methods::from_slice_copy!(slice)
+        let mut this = unwrap_or_oom(Self::try_with_capacity(slice.len()));
+        if !slice.is_empty() {
+            // SAFETY: room for `slice.len()` elements, copyable elements, and
+            // the fresh allocation cannot overlap `slice`
+            unsafe {
+                this.as_mut_ptr()
+                    .copy_from_nonoverlapping(slice.as_ptr(), slice.len());
+                this.set_len(slice.len());
+            }
+        }
+        this
     }
 
-    pub fn extend_from_array<const N: usize>(&mut self, array: [T; N]) {
-        methods::extend_from_array!(self, array);
-    }
 
-    pub fn extend_from_slice(&mut self, slice: &[T])
-    where
-        T: Clone,
-    {
-        methods::extend_from_slice!(self, slice);
-    }
 
-    pub fn extend_from_slice_copy(&mut self, slice: &[T])
-    where
-        T: Copy,
-    {
-        methods::extend_from_slice_copy!(self, slice);
-    }
 
-    #[track_caller]
-    pub fn split_off(&mut self, at: usize) -> Self {
-        methods::split_off!(self, at)
-    }
 
-    pub fn resize(&mut self, new_len: usize, value: T)
-    where
-        T: Clone,
-    {
-        methods::resize!(self, new_len, value);
-    }
 
-    pub fn resize_copy(&mut self, new_len: usize, value: T)
-    where
-        T: Copy,
-    {
-        methods::resize_copy!(self, new_len, value);
-    }
 
-    pub fn resize_with(&mut self, new_len: usize, f: impl FnMut() -> T) {
-        methods::resize_with!(self, new_len, f);
-    }
-}
-
-#[repr(transparent)]
-pub struct Reserved(#[allow(unused)] usize);
-
-impl Default for Reserved {
-    fn default() -> Self {
-        Self::DEFAULT
-    }
-}
-
-impl ConstDefault for Reserved {
-    const DEFAULT: Self = Self(0);
-}
-
-impl InitPrefix for Reserved {
-    #[inline]
-    fn init() -> Self {
-        Self::DEFAULT
-    }
-}
-
-impl fmt::Debug for Reserved {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("Reserved")
-    }
 }
 
 #[cfg(test)]

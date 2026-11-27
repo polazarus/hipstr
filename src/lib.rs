@@ -71,6 +71,23 @@
 //! Each family module also has backend-generic aliases, e.g.
 //! [`string::HipStr<'a, B>`](string::HipStr).
 //!
+//! # Std Compatibility
+//!
+//! Each family mirrors the API of its std counterpart: `Vec<u8>`, `String`,
+//! `CString`, `OsString`, `PathBuf` (and `bstr`'s `BString`). Inherent methods
+//! have the same names and signatures (`insert`, `drain`, `splice`, `retain`,
+//! `split_off`, `try_reserve`, `push` on paths, …), the borrowed type's
+//! methods are reached through `Deref`, and the std trait impls (comparisons,
+//! `Extend`, `FromIterator`, `From`/`TryFrom`, `fmt::Write`, `io::Write`,
+//! `IntoIterator`, `Add`, …) are provided. Mutating methods are
+//! copy-on-write: a borrowed or shared value is copied first. Bytes, `str` and
+//! `BStr` values also dereference mutably, with the same copy-on-write
+//! semantics.
+//!
+//! The few std methods that cannot apply (raw parts, allocator parameters,
+//! `String::as_mut_vec`, …) are listed with the reason in the crate's
+//! `compat/LEDGER.md`, which CI checks against std's rustdoc.
+//!
 //! # Platform Support
 //!
 //! This crate is only supported on platforms where:
@@ -136,14 +153,9 @@ mod vec_ops;
 
 // Internal vector machinery (ported from the `hipvec` branch, copy-only).
 // Its doc examples are `ignore`d: the items are not public.
-#[allow(dead_code, unused_imports, unused_macros, unreachable_pub)]
 mod common;
-#[allow(dead_code, unused_imports, unused_macros, unreachable_pub)]
 mod inline;
-#[allow(dead_code, unused_imports, unused_macros, unreachable_pub)]
 mod thin;
-#[allow(dead_code, unused_imports, unused_macros, unreachable_pub)]
-mod traits;
 
 #[cfg(test)]
 mod tests;

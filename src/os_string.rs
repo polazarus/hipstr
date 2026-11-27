@@ -223,6 +223,25 @@ impl<'a, R: Repr<'a, u8>> Hip<enc::OsStr, R> {
         self.into_os_string().leak()
     }
 
+    /// Converts ASCII letters to lowercase in place (see
+    /// `OsStr::make_ascii_lowercase`), copying a borrowed or shared value
+    /// first.
+    #[inline]
+    pub fn make_ascii_lowercase(&mut self) {
+        // SAFETY: ASCII bytes stand alone in the platform encoding (as in
+        // std's own implementation): changing their case keeps it valid
+        unsafe { self.bytes_mut() }.make_ascii_lowercase();
+    }
+
+    /// Converts ASCII letters to uppercase in place (see
+    /// `OsStr::make_ascii_uppercase`), copying a borrowed or shared value
+    /// first.
+    #[inline]
+    pub fn make_ascii_uppercase(&mut self) {
+        // SAFETY: see `make_ascii_lowercase`
+        unsafe { self.bytes_mut() }.make_ascii_uppercase();
+    }
+
     /// The string slice, if valid UTF-8.
     #[inline]
     #[must_use]

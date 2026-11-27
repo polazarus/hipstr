@@ -21,13 +21,25 @@ static POOL: &str = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, se
 static UPOOL: &str = "Ça été l'été — ünïcödé ✓ 𝄞 musique, naïve façade, smörgåsbord, \
     jalapeño, crème brûlée, Ελληνικά, Русский, 日本語のテキスト, 한국어 텍스트";
 
+/// No failure files: Miri runs isolated from the file system.
+fn config() -> ProptestConfig {
+    ProptestConfig {
+        cases: cases(),
+        failure_persistence: None,
+        ..ProptestConfig::default()
+    }
+}
+
 /// Cases per test; `PROPTEST_CASES` overrides the default.
 fn cases() -> u32 {
     std::env::var("PROPTEST_CASES")
         .ok()
         .and_then(|n| n.parse().ok())
-        .unwrap_or(if cfg!(miri) { 4 } else { 256 })
+        .unwrap_or(if cfg!(miri) { 1 } else { 256 })
 }
+
+/// Maximal number of operations per case (Miri is slow).
+const OPS: usize = if cfg!(miri) { 8 } else { 48 };
 
 /// Maps a raw index to `0..=len`.
 fn idx(raw: usize, len: usize) -> usize {
@@ -117,9 +129,9 @@ fn byte_op() -> impl Strategy<Value = ByteOp> {
 macro_rules! byte_differential {
     ($name:ident, $t:ty, $borrow:ident) => {
         proptest! {
-            #![proptest_config(ProptestConfig::with_cases(cases()))]
+            #![proptest_config(config())]
             #[test]
-            fn $name(start in start(), ops in prop::collection::vec(byte_op(), 0..48)) {
+            fn $name(start in start(), ops in prop::collection::vec(byte_op(), 0..OPS)) {
                 type H = $t;
                 let (mut h, mut v): (H, Vec<u8>) = match start {
                     Start::Slice(d) => (H::from(d.as_slice()), d),
@@ -324,9 +336,9 @@ fn str_op() -> impl Strategy<Value = StrOp> {
 macro_rules! str_differential {
     ($name:ident, $t:ty, $borrow:ident) => {
         proptest! {
-            #![proptest_config(ProptestConfig::with_cases(cases()))]
+            #![proptest_config(config())]
             #[test]
-            fn $name(start in str_start(), ops in prop::collection::vec(str_op(), 0..40)) {
+            fn $name(start in str_start(), ops in prop::collection::vec(str_op(), 0..OPS)) {
                 type H = $t;
                 let (mut h, mut v): (H, String) = match start {
                     StrStart::Str(d) => (H::from(d.as_str()), d),
@@ -430,11 +442,11 @@ mod slices {
     use super::*;
 
     proptest! {
-        #![proptest_config(ProptestConfig::with_cases(cases()))]
+        #![proptest_config(config())]
         #[test]
         fn slice_then_mutate(d in prop::collection::vec(any::<u8>(), 0..100),
                              a in any::<usize>(), b in any::<usize>(),
-                             ops in prop::collection::vec(byte_op(), 0..16)) {
+                             ops in prop::collection::vec(byte_op(), 0..OPS)) {
             let h = hipstr::HipByt::from(d.clone());
             let r = range(a, b, d.len());
             let mut s = h.slice(r.clone());

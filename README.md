@@ -11,10 +11,27 @@ Yet another string type for Rust 🦀
 - no copy **borrow** via `borrowed` (a `const` constructor) or `from_static`
 - no alloc **small strings** (_23 bytes_ on 64-bit platform)
 - no copy **owned slices**
+- **three sizes**: 3 words (`HipStr`), 2 words (`SmallStr`) or 1 word (`TinyStr`)
 - a niche: `Option<HipStr>` and `HipStr` have the same size
-- **zero dependency** and compatible `no_std` with `alloc`
+- the **std API**: same methods and traits as `String`, `Vec<u8>`, … (copy-on-write)
+- compatible `no_std` with `alloc`
 
-Also byte strings, OS strings, and paths!
+Also byte strings, C strings, OS strings, and paths!
+
+| Family | 3 words | 2 words | 1 word | Mirrors |
+|---|---|---|---|---|
+| strings | `HipStr` | `SmallStr` | `TinyStr` | `String` |
+| byte strings | `HipByt` | `SmallByt` | `TinyByt` | `Vec<u8>` |
+| C strings | `HipCStr` | `SmallCStr` | `TinyCStr` | `CString` |
+| OS strings (`std`) | `HipOsStr` | `SmallOsStr` | `TinyOsStr` | `OsString` |
+| paths (`std`) | `HipPath` | `SmallPath` | `TinyPath` | `PathBuf` |
+| `bstr` strings (`bstr`) | `HipBStr` | `SmallBStr` | `TinyBStr` | `BString` |
+
+The 3-word types slice in O(1); the 2-word ones borrow and inline up to 15
+bytes; the 1-word ones inline up to 7 bytes and never borrow. All are
+thread-safe (`Arc`); `Local*` aliases (`LocalHipStr`, …) use `Rc`.
+
+Upgrading from 0.8? See [MIGRATION.md](MIGRATION.md).
 
 ## ⚡ Examples
 
@@ -30,6 +47,11 @@ let user = greetings.slice(6..); // no copy
 drop(greetings); // the slice is owned, it exists even if greetings disappear
 
 let chars = user.chars().count(); // "inherits" `&str` methods
+
+// `String`'s API, copy-on-write
+let mut s = hipstr::SmallStr::borrowed("hello world");
+s.replace_range(..5, "goodbye");
+assert_eq!(s, "goodbye world");
 ```
 
 ## ✏️ Features
@@ -45,9 +67,12 @@ let chars = user.chars().count(); // "inherits" `&str` methods
 
 ## ☣️ Safety of `hipstr`
 
-This crate makes extensive use of `unsafe` code blocks. 🤷
+This crate uses `unsafe` code for its compact representations: tagged
+pointers and bit-packed inline buffers. The `unsafe` code is confined to the
+representation layer (`repr`) and the heap buffers; the std-compatible API
+on top of it is mostly safe code.
 
-It leverages the 2-bit alignment niche present in pointers across most platforms (all platforms currently supported by the Rust compiler?) to discriminate between the three possible representations.
+It leverages the 2-bit alignment niche present in pointers across most platforms (all platforms currently supported by the Rust compiler?) to discriminate between the possible representations.
 
 To make things safer, Rust is tested thoroughly on multiple platforms, normally and with [Miri] (the MIR interpreter).
 
@@ -56,6 +81,9 @@ To make things safer, Rust is tested thoroughly on multiple platforms, normally 
 To ensure safety and reliability, this crate undergoes thorough testing:
 
 - Near 100% test coverage
+- Differential tests: random operation sequences ([`proptest`]) run on every
+  size × backend and on `Vec<u8>` / `String`, compared step by step
+- Std parity ledger ([`compat/LEDGER.md`](compat/LEDGER.md)), checked in CI
 - Cross-platform validation:
   - 32-bit and 64-bit architectures
   - little and big endian
@@ -114,7 +142,7 @@ RUSTFLAGS='--cfg loom' cargo test --release loom
 This crate runs successfully with Miri:
 
 ```bash
-MIRIFLAGS='-Zmiri-symbolic-alignment-check -Zmiri-permissive-provenance' cargo +nightly miri test
+MIRIFLAGS='-Zmiri-symbolic-alignment-check -Zmiri-strict-provenance' cargo +nightly miri test
 
 for SEED in $(seq 0 10); do
   echo "Trying seed: $SEED"
@@ -126,14 +154,12 @@ To check with different word size and endianness:
 
 ```bash
 # Big endian, 64-bit
-cargo +nightly miri test --target mips64-unknown-linux-gnuabi64
+cargo +nightly miri test --target powerpc64-unknown-linux-gnu
 # Little endian, 32-bit
 cargo +nightly miri test --target i686-unknown-linux-gnu
 ```
 
-Note: this crate leverages the "exposed provenance" semantics.
-`MIRIFLAGS=-Zmiri-permissive-provenance` silences the warning related to the use
-of exposed provenance.
+The crate passes Miri's strict provenance checks.
 
 ## 📦 Similar crates
 
@@ -181,4 +207,5 @@ MIT + Apache
 [miri]: https://github.com/rust-lang/miri
 [`cross`]: https://github.com/cross-rs/cross
 [loom]: https://github.com/tokio-rs/loom
+[`proptest`]: https://github.com/proptest-rs/proptest
 [Rust's String Rosetta]: https://github.com/rosetta-rs/string-rosetta-rs

@@ -138,16 +138,32 @@ src/
        for strings and `Borrow<OsStr>` for paths dropped (hash mismatch).
      - Removed public modules: `vecs`, `smart`, `common`, and the deprecated
        `Local`/`ThreadSafe` backend aliases.
-4. **Std compatibility**
-   - Ledger generated from std's rustdoc JSON (`rust-docs-json` component) listing every
-     stable inherent method and trait impl of `Vec<u8>`, `String`, `OsString`, `PathBuf`
-     (+ `[u8]`, `str`, `OsStr`, `Path`) → `compat/ledger.toml` with status
-     (done / n/a / planned); a test fails on unlisted std items.
-   - Method parity: same names and signatures, including mutating ones (COW when shared).
-   - Trait parity: macro-generated `PartialEq`/`PartialOrd` grid vs. all std counterparts,
-     `Extend`, `FromIterator`, `fmt::Write`/`io::Write`, `Index`, `Borrow`, `Hash`, …
-5. **Differential tests** — same operations on std and on every alias
-   (3 sizes × Rc/Arc/Unique), handwritten scenarios + `proptest` op sequences.
+4. **Std compatibility** (done)
+   - `compat/ledger.py` reads std's rustdoc JSON (`rust-docs-json`, nightly) and
+     hipstr's, and lists every stable-at-MSRV inherent method of `Vec<u8>`, `String`,
+     `CString`, `OsString`, `PathBuf` (+ `[u8]`, `str`, `CStr`, `OsStr`, `Path`; `BString`
+     as `Vec<u8>`) with its status → committed `compat/LEDGER.md`. Deliberate gaps (raw
+     parts, allocators, `as_mut_vec`, …) carry a reason in `compat/ledger.toml`. CI job
+     `std-parity` fails on a gap or a stale ledger.
+   - Methods: Vec API for byte strings (`vec_ops.rs`, shared by `HipByt` and `HipBStr`
+     through `enc::Unconstrained`), String API (`string_ops.rs`), CString/OsString/PathBuf
+     methods; `reserve*`/`try_reserve*` on every type (std's `TryReserveError`). Written
+     in safe code over three repr primitives (`to_mut_slice`, `truncate`, `resize`) and
+     `Hip::splice_bytes`. Values left unchanged by `retain`/`dedup`/empty ranges stay
+     borrowed or shared. Iterators (`Drain`, `Splice`, `ExtractIf`) apply on drop and
+     leave the value unchanged if leaked; `retain` is panic-safe.
+   - Traits (`std_traits.rs`): copy-on-write `DerefMut`/`AsMut`/`BorrowMut` for bytes,
+     `str`, `BStr`; `Add`/`AddAssign`; `IntoIterator` (owned, `&`, `&mut`); `io::Write`;
+     the remaining `Extend`/`FromIterator`/`From`/`TryFrom`/`FromStr` impls; `From<Hip>`
+     for `Box`/`Rc`/`Arc` slices. Trait parity is reviewed by hand (`ledger.py --traits`
+     lists std's impls), not automated.
+   - Modules renamed `bstr` / `cstr` (the crate's own `bstr` module shadows the `bstr`
+     crate inside hipstr: external paths are written `::bstr::`).
+5. **Differential tests** (done) — `tests/differential.rs`: `proptest` op sequences on
+   `Vec<u8>`/`String` vs every size × Rc/Arc/Unique, starting owned, adopted or
+   borrowed, with clones held to check copy-on-write; `PROPTEST_CASES` overrides the
+   256 default (1 case of ≤ 8 ops under Miri). Panics, panic safety and leaks in
+   `src/tests.rs::parity`.
 3½. **C strings** (done) — `HipCStr`/`SmallCStr`/`TinyCStr` (+ `Local*`), `no_std` (`CStr` is
    in `core`, `CString` in `alloc`). Stored with the NUL terminator so they deref to
    `CStr` without copying; encodings now declare `EMPTY` and `TERMINATOR`, and `len`,
@@ -163,7 +179,13 @@ src/
    across `HipByt`/`HipStr` conversions; comparisons with `BStr`/`BString`/bytes/`str`;
    `Borrow<[u8]>` (hashes match); serde and borsh as bytes. Replaces `main`'s
    feature-dependent `Deref` of `HipByt` to `BStr` (non-additive).
-6. **Finish** — serde/bstr/borsh, benches across sizes, docs, migration guide.
+6. **Finish** (done) — benches across sizes (`benches/main.rs::sizes`), crate docs,
+   README, CHANGELOG (Unreleased), `MIGRATION.md`. The unused vendored `hipvec` code
+   (`ThinVec`, `InlineVec`, generic drain/splice, method macros, vector traits) was
+   removed: about 4,700 lines, most of the remaining `unsafe` outside the reprs.
+   - Follow-ups: version number for the release; bulk byte operations (`retain`,
+     `drain`) are ~3× slower than `Vec`'s (safe compaction); `reserve_exact` is
+     `reserve`.
 
 ## Open questions
 

@@ -2,6 +2,58 @@
 
 Notable changes only.
 
+## [Unreleased]
+
+A rewrite of the crate around one generic type, `Hip<E, R>` (encoding ×
+representation), with the old names kept as aliases. See
+[MIGRATION.md](MIGRATION.md).
+
+### Added
+
+- 2-word (`SmallStr`, `SmallByt`, …) and 1-word (`TinyStr`, `TinyByt`, …)
+  types for every family, beside the 3-word `HipStr`, `HipByt`, …
+- C strings: `HipCStr`, `SmallCStr`, `TinyCStr` (`no_std`), dereferencing to
+  `CStr` without copy
+- `bstr` byte strings: `HipBStr`, `SmallBStr`, `TinyBStr` (`bstr` feature),
+  dereferencing to `bstr::BStr`
+- std method parity: the `Vec<u8>` API on byte strings (`insert`, `remove`,
+  `drain`, `splice`, `extract_if`, `retain`, `dedup`, `resize`, `split_off`,
+  `append`, …), the `String` API on strings (`insert_str`, `replace_range`,
+  `retain`, `drain`, `split_off`, `from_utf16le`, …), `try_reserve`,
+  `reserve_exact`, `into_boxed_*`, `leak`, and the `CString`, `OsString`,
+  `PathBuf` methods (`push`/`pop`/`set_extension` on paths, …)
+- std trait parity: `DerefMut`/`AsMut`/`BorrowMut` (copy-on-write) for bytes,
+  strings and `BStr`; `Add`/`AddAssign<&str>`; owning and borrowing
+  `IntoIterator`; `io::Write`; more `Extend`/`FromIterator`/`From`/`TryFrom`;
+  `From<_>` for `Box`/`Rc`/`Arc` slices
+- `const` accessors (`len`, `is_empty`, `as_ptr`, `as_str`, `as_slice`, …) on
+  every type
+- `compat/LEDGER.md`: every stable std method and its status, checked in CI
+- differential tests against `Vec<u8>` and `String`
+
+### Changed
+
+- **breaking**: `into_vec`, `into_string`, `into_os_string`, `into_path_buf`
+  are infallible (O(1) when the value uniquely owns an adopted buffer)
+- **breaking**: `HipOsStr::to_str` returns `Option<&str>` like std (the sharing
+  conversion is `into_str`)
+- **breaking**: `capacity()` of a shared value is its length; heap capacities
+  may be rounded up
+- **breaking**: with the `bstr` feature, `HipByt` no longer dereferences to
+  `BStr` (feature-dependent `Deref` was not additive): use `HipBStr`, or
+  `AsRef<BStr>`
+- **breaking**: public modules `vecs`, `smart`, `common` and the deprecated
+  `Local`/`ThreadSafe` backend aliases removed; new public modules `bstr`,
+  `cstr`, `enc`, `hip`, `repr`
+- MSRV 1.100, edition 2024; no more exposed provenance (Miri strict
+  provenance clean)
+
+### Fixed
+
+- `HipStr: Borrow<BStr>` and `HipPath: Borrow<OsStr>` violated `Borrow`'s
+  contract (different hashes): removed
+- borsh deserialization pre-allocated the untrusted length prefix
+
 ## [0.8.0] - 2025-02-10
 
 ### Added
