@@ -1281,3 +1281,46 @@ mod gaps {
         assert_eq!(b, &b"acdef"[..]);
     }
 }
+
+/// Regressions from the soundness review.
+mod review {
+    use alloc::vec;
+
+    use super::*;
+
+    #[test]
+    #[should_panic(expected = "capacity")]
+    fn resize_max_on_narrowed_slice() {
+        let a = HipByt::from(vec![0u8; 100]);
+        let mut b = a.slice(10..100);
+        drop(a);
+        // used to reserve nothing (`offset + required` wrapped), then write
+        // past the buffer
+        b.resize(usize::MAX, 0);
+    }
+
+    #[test]
+    fn reserve_exact_does_not_double() {
+        for mut b in [
+            HipByt::from(vec![1u8; 1000]),  // adopted vector
+            HipByt::from(&[1u8; 1000][..]), // thin buffer
+        ] {
+            b.shrink_to_fit();
+            let cap = b.capacity();
+            b.reserve_exact(1);
+            assert!(
+                b.capacity() < cap + 2 * size_of::<usize>(),
+                "{cap} -> {}",
+                b.capacity()
+            );
+            assert!(b.capacity() >= 1001);
+            assert!(b.try_reserve_exact(10).is_ok());
+            assert!(b.capacity() < 1011 + 2 * size_of::<usize>());
+        }
+        // the geometric one still doubles
+        let mut b = HipByt::from(&[1u8; 1000][..]);
+        b.shrink_to_fit();
+        b.reserve(1);
+        assert!(b.capacity() >= 2000);
+    }
+}

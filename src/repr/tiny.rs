@@ -273,7 +273,7 @@ unsafe impl<'a, B: Backend> Repr<'a> for Tiny<B> {
         self.is_inline() || self.owner().is_unique()
     }
 
-    fn try_reserve(&mut self, additional: usize) -> Result<(), TryReserveError> {
+    fn try_reserve_with(&mut self, additional: usize, exact: bool) -> Result<(), TryReserveError> {
         let len = self.len();
         let required = len.checked_add(additional).ok_or(capacity_overflow())?;
         if self.is_inline() {
@@ -283,7 +283,7 @@ unsafe impl<'a, B: Backend> Repr<'a> for Tiny<B> {
         } else if self.owner().is_unique() {
             if required > self.owner().capacity() {
                 // SAFETY: unique owner, the updated handle is stored back in place
-                unsafe { self.owner_mut().try_grow(required)? };
+                unsafe { self.owner_mut().try_grow(required, exact)? };
             }
         } else {
             *self = Self::try_from_slice(self.as_slice(), required)?;

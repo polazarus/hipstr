@@ -415,7 +415,7 @@ unsafe impl<'a, B: Backend> Repr<'a> for Wide<'a, B> {
         owner.is_some() && owner.is_unique()
     }
 
-    fn try_reserve(&mut self, additional: usize) -> Result<(), TryReserveError> {
+    fn try_reserve_with(&mut self, additional: usize, exact: bool) -> Result<(), TryReserveError> {
         let len = self.len();
         let required = len.checked_add(additional).ok_or(capacity_overflow())?;
 
@@ -429,7 +429,11 @@ unsafe impl<'a, B: Backend> Repr<'a> for Wide<'a, B> {
         let sliced = self.sliced_mut();
         if sliced.owner.is_some() && sliced.owner.is_unique() {
             let offset = Self::offset(sliced);
-            if offset + required <= sliced.owner.capacity() {
+            // (checked: `required` may be close to `usize::MAX`)
+            if offset
+                .checked_add(required)
+                .is_some_and(|end| end <= sliced.owner.capacity())
+            {
                 // room after the slice: drop the owned tail, keep the slice in place
                 // SAFETY: unique owner, the first `offset + len` elements are initialized
                 unsafe { sliced.owner.set_len(offset + len) };
@@ -437,7 +441,7 @@ unsafe impl<'a, B: Backend> Repr<'a> for Wide<'a, B> {
                 Self::normalize(sliced);
                 if required > sliced.owner.capacity() {
                     // SAFETY: unique owner, the updated handle is stored back
-                    unsafe { sliced.owner.try_grow(required)? };
+                    unsafe { sliced.owner.try_grow(required, exact)? };
                     sliced.slice = NonNull::slice_from_raw_parts(sliced.owner.data(), len);
                 }
             }
@@ -529,6 +533,21 @@ mod tests {
         assert_eq!(
             w.as_slice(),
             &(100..140u8).collect::<alloc::vec::Vec<_>>()[..]
+        );
+    }
+
+    /// `offset + required` must not wrap: reserving close to `usize::MAX`
+    /// from a narrowed unique slice fails instead of reserving nothing.
+    #[test]
+    fn reserve_near_max_from_offset() {
+        let whole = W::from_vec((0..100u8).collect());
+        let mut w = whole.slice(10..100);
+        drop(whole);
+        assert!(w.try_reserve(usize::MAX - 90).is_err());
+        assert!(w.try_reserve(usize::MAX - 100).is_err());
+        assert_eq!(
+            w.as_slice(),
+            &(10..100u8).collect::<alloc::vec::Vec<_>>()[..]
         );
     }
 

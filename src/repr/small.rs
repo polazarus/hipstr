@@ -237,8 +237,10 @@ impl<'a, B: Backend> Small<'a, B> {
     pub const fn len(&self) -> usize {
         match self.tag() {
             Tag::Inline => self.inline().len(),
-            // heap length is masked, borrowed length has a clear top bit
-            Tag::Heap | Tag::Borrowed => self.pivot.msw.get() & LEN_MASK,
+            Tag::Heap => self.pivot.msw.get() & LEN_MASK,
+            // the whole word (top bit clear): borrowed lengths may use the
+            // bit below it, part of the tag for heap lengths
+            Tag::Borrowed => self.pivot.msw.get(),
         }
     }
 
@@ -409,7 +411,7 @@ unsafe impl<'a, B: Backend> Repr<'a> for Small<'a, B> {
         }
     }
 
-    fn try_reserve(&mut self, additional: usize) -> Result<(), TryReserveError> {
+    fn try_reserve_with(&mut self, additional: usize, exact: bool) -> Result<(), TryReserveError> {
         let len = self.len();
         let required = len.checked_add(additional).ok_or(capacity_overflow())?;
         match self.tag() {
@@ -424,7 +426,7 @@ unsafe impl<'a, B: Backend> Repr<'a> for Small<'a, B> {
                 unsafe { heap.w0.set_len(len) };
                 if required > heap.w0.capacity() {
                     // SAFETY: unique owner, the updated handle is stored back
-                    unsafe { heap.w0.try_grow(required)? };
+                    unsafe { heap.w0.try_grow(required, exact)? };
                 }
             }
             _ => *self = Self::try_from_slice(self.as_slice(), required)?,
@@ -452,7 +454,16 @@ unsafe impl<'a, B: Backend> Repr<'a> for Small<'a, B> {
     fn capacity(&self) -> usize {
         match self.tag() {
             Tag::Inline => Inline::CAPACITY,
-            Tag::Heap => self.heap().w0.capacity(),
+            // no more than the length word can hold (an adopted vector, or a
+            // geometric growth, may have more on 32-bit targets)
+            Tag::Heap => {
+                let capacity = self.heap().w0.capacity();
+                if capacity > MAX_HEAP_LEN {
+                    MAX_HEAP_LEN
+                } else {
+                    capacity
+                }
+            }
             Tag::Borrowed => 0,
         }
     }
@@ -470,6 +481,8 @@ unsafe impl<'a, B: Backend> Repr<'a> for Small<'a, B> {
             // SAFETY: precondition
             Tag::Inline => unsafe { self.inline_mut().set_len(len) },
             Tag::Heap => {
+                // the tag must survive (precondition: `len <= capacity()`)
+                debug_assert!(len <= MAX_HEAP_LEN);
                 let heap = self.heap_mut();
                 // SAFETY: precondition, unique owner
                 unsafe { heap.w0.set_len(len) };
@@ -496,6 +509,44 @@ mod tests {
         assert!(!S::from_slice(b"ab").is_empty());
         assert_eq!(S::from_slice(b"ab").borrowed_slice(), None);
         assert_eq!(S::borrowed(b"ab").borrowed_slice(), Some(&b"ab"[..]));
+    }
+
+    /// A borrowed length with the bit below the top one set (≥ 1 GiB on
+    /// 32-bit targets): that bit belongs to the length, not to a tag.
+    #[test]
+    fn long_borrowed_len() {
+        let len = (1 << SHIFT) + 5;
+        assert!(len <= MAX_BORROWED_LEN);
+        let borrowed = Borrowed {
+            w0: NonNull::dangling(),
+            msw: len,
+        };
+        // only the words are read, never the bytes
+        let s = S {
+            // SAFETY: same layout, non-zero length word
+            pivot: unsafe { transmute::<Borrowed, Pivot>(borrowed) },
+            marker: PhantomData,
+        };
+        assert!(s.is_borrowed());
+        assert_eq!(s.len(), len);
+        assert!(!s.is_empty());
+    }
+
+    /// A heap capacity beyond what the length word holds (an adopted vector
+    /// on 32-bit targets) is reported clamped.
+    #[test]
+    fn huge_capacity_is_clamped() {
+        // a fake vector header on the stack, never dereferenced as bytes
+        let mut header = super::super::owner::VecHeader::<Rc> {
+            prefix: crate::backend::Count(core::cell::Cell::new(0)),
+            ptr: Some(NonNull::dangling()),
+            cap: usize::MAX >> 1,
+            len: 100,
+        };
+        let owner = Owner::<Rc>::from_header_for_tests(NonNull::from(&mut header));
+        let s = core::mem::ManuallyDrop::new(S::from_heap(owner, 100));
+        assert!(s.is_heap());
+        assert_eq!(s.capacity(), MAX_HEAP_LEN.min(usize::MAX >> 1));
     }
 
     // the contract excludes these (a reserve unborrows): checked anyway

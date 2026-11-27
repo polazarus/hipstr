@@ -246,19 +246,26 @@ impl<B: Backend> Owner<B> {
         }
     }
 
-    /// Ensures room for `required` elements in total.
+    /// Ensures room for `required` elements in total; `exact` asks for no
+    /// more than that, otherwise the capacity grows geometrically.
     ///
     /// # Safety
     ///
-    /// The owner must be unique. The handle may move: the caller must store
-    /// the updated `self` back.
-    pub unsafe fn try_grow(&mut self, required: usize) -> Result<(), TryReserveError> {
-        let additional = required.saturating_sub(self.len());
+    /// The owner must be unique, and `required` more than its capacity. The
+    /// handle may move: the caller must store the updated `self` back.
+    pub unsafe fn try_grow(&mut self, required: usize, exact: bool) -> Result<(), TryReserveError> {
+        debug_assert!(required > self.capacity());
+        let additional = required - self.len();
         match self.kind() {
             HeapKind::Thin => {
                 // SAFETY: same representation, unique access
                 let thin = unsafe { transmute::<&mut Self, &mut ThinBase<B>>(self) };
-                thin.try_reserve(additional)
+                if exact {
+                    // SAFETY: `required > capacity >= len`
+                    unsafe { thin.try_realloc(required) }
+                } else {
+                    thin.try_reserve(additional)
+                }
             }
             HeapKind::Vec => {
                 let mut header = self.header_ptr();
@@ -268,14 +275,25 @@ impl<B: Backend> Owner<B> {
                 let mut vec = ManuallyDrop::new(unsafe {
                     Vec::from_raw_parts(header.ptr.unwrap().as_ptr(), header.len, header.cap)
                 });
-                let result = vec
-                    .try_reserve(additional)
-                    .map_err(|e| TryReserveError(TryReserveErrorKind::Std(e)));
+                let result = if exact {
+                    vec.try_reserve_exact(additional)
+                } else {
+                    vec.try_reserve(additional)
+                }
+                .map_err(|e| TryReserveError(TryReserveErrorKind::Std(e)));
                 header.ptr = NonNull::new(vec.as_mut_ptr());
                 header.cap = vec.capacity();
                 result
             }
         }
+    }
+}
+
+#[cfg(test)]
+impl<B: Backend> Owner<B> {
+    /// An owner over a header built by a test (vector kind).
+    pub(crate) fn from_header_for_tests(header: NonNull<VecHeader<B>>) -> Self {
+        Self(header.into(), PhantomData)
     }
 }
 

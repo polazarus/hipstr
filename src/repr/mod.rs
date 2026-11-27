@@ -108,8 +108,36 @@ pub unsafe trait Repr<'a>: Clone + Sized {
     /// Whether the value can be mutated in place (inline or unique heap).
     fn is_unique(&self) -> bool;
 
-    /// Makes the value uniquely owned with room for `additional` more elements.
-    fn try_reserve(&mut self, additional: usize) -> Result<(), TryReserveError>;
+    /// Makes the value uniquely owned with room for `additional` more
+    /// elements; when growing, `exact` asks for no more than needed
+    /// (otherwise the capacity may grow geometrically).
+    ///
+    /// # Errors
+    ///
+    /// On capacity overflow or allocation failure; the value is unchanged.
+    fn try_reserve_with(&mut self, additional: usize, exact: bool) -> Result<(), TryReserveError>;
+
+    /// Makes the value uniquely owned with room for `additional` more
+    /// elements, growing geometrically.
+    ///
+    /// # Errors
+    ///
+    /// On capacity overflow or allocation failure; the value is unchanged.
+    #[inline]
+    fn try_reserve(&mut self, additional: usize) -> Result<(), TryReserveError> {
+        self.try_reserve_with(additional, false)
+    }
+
+    /// Makes the value uniquely owned with room for `additional` more
+    /// elements, without deliberate over-allocation.
+    ///
+    /// # Errors
+    ///
+    /// On capacity overflow or allocation failure; the value is unchanged.
+    #[inline]
+    fn try_reserve_exact(&mut self, additional: usize) -> Result<(), TryReserveError> {
+        self.try_reserve_with(additional, true)
+    }
 
     /// Capacity of the owned storage.
     ///

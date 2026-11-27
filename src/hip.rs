@@ -758,15 +758,16 @@ impl<'a, E: Encoding, R: Repr<'a>> Hip<E, R> {
     /// Reserves capacity for at least `additional` more bytes, making the
     /// value uniquely owned.
     ///
-    /// Like `Vec::reserve_exact`, it does not deliberately over-allocate, but
-    /// the representation may still round the capacity up.
+    /// Like `Vec::reserve_exact`, it does not deliberately over-allocate
+    /// (no geometric growth), but the allocation may still be rounded up to
+    /// a word.
     ///
     /// # Panics
     ///
     /// Panics if the new capacity overflows.
     #[inline]
     pub fn reserve_exact(&mut self, additional: usize) {
-        crate::thin::unwrap_or_oom(self.repr.try_reserve(additional));
+        crate::thin::unwrap_or_oom(self.repr.try_reserve_exact(additional));
     }
 
     /// Tries to reserve capacity for at least `additional` more bytes,
@@ -808,7 +809,9 @@ impl<'a, E: Encoding, R: Repr<'a>> Hip<E, R> {
         &mut self,
         additional: usize,
     ) -> Result<(), alloc::collections::TryReserveError> {
-        self.try_reserve(additional)
+        self.repr
+            .try_reserve_exact(additional)
+            .map_err(crate::thin::TryReserveError::into_std)
     }
 
     /// Mutable bytes, copying first if borrowed or shared.
