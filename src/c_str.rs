@@ -210,7 +210,7 @@ mod tests {
     use alloc::ffi::CString;
     use alloc::vec;
 
-    use crate::{HipCStr, LocalTinyCStr, SmallCStr, TinyCStr};
+    use crate::{HipCStr, SmallCStr, TinyCStr};
 
     const LONG: &core::ffi::CStr = c"a C string that is definitely longer than any inline capacity";
 
@@ -291,7 +291,7 @@ mod tests {
     #[cfg(feature = "std")]
     fn hash_and_borrow_consistency() {
         let mut set = std::collections::HashSet::new();
-        set.insert(LocalTinyCStr::from(LONG));
+        set.insert(crate::LocalTinyCStr::from(LONG));
         assert!(set.contains(LONG));
     }
 }

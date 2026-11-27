@@ -242,6 +242,49 @@ fn differential<R: Repr<'static, u8>>(seed: u64) {
     }
 }
 
+/// One value of each kind the representation supports, with its content.
+fn kinds<R: Repr<'static, u8>>() -> Vec<(R, &'static [u8])> {
+    let c = R::INLINE_CAPACITY;
+    let mut v = vec![
+        (R::from_slice(&POOL[..c]), &POOL[..c]),
+        (R::from_slice(&POOL[..c + 10]), &POOL[..c + 10]),
+        (R::from_vec(data(c + 10)), &POOL[..c + 10]),
+    ];
+    if R::BORROWS {
+        v.push((R::from_borrowed(&POOL[..c + 10]), &POOL[..c + 10]));
+    }
+    v
+}
+
+fn capacity_and_reserve<R: Repr<'static, u8>>() {
+    for (mut r, d) in kinds::<R>() {
+        match r.kind() {
+            Kind::Inline => assert_eq!(r.capacity(), R::INLINE_CAPACITY),
+            Kind::Borrowed => assert_eq!(r.capacity(), 0),
+            Kind::Heap(_) => assert!(r.capacity() >= r.len()),
+        }
+        assert!(r.try_reserve(usize::MAX).is_err(), "{:?}", r.kind());
+        assert!(r.try_reserve(usize::MAX - r.len()).is_err());
+        assert_eq!(r.as_slice(), d, "unchanged after a failed reserve");
+        r.try_reserve(5).unwrap();
+        assert!(r.is_unique() && r.capacity() >= d.len() + 5);
+        assert_eq!(r.as_slice(), d);
+    }
+}
+
+fn into_owned_keeps_content<R: Repr<'static, u8>>() {
+    for (r, d) in kinds::<R>() {
+        let kind = r.kind();
+        let ptr = r.as_slice().as_ptr();
+        let o = r.into_owned();
+        assert_eq!(o.as_slice(), d);
+        if matches!(kind, Kind::Heap(_)) {
+            assert_eq!(o.as_slice().as_ptr(), ptr, "heap values are not copied");
+        }
+        assert_ne!(o.kind(), Kind::Borrowed);
+    }
+}
+
 macro_rules! suite {
     ($name:ident, $r:ty, shares = $shares:expr) => {
         mod $name {
@@ -290,6 +333,16 @@ macro_rules! suite {
             #[test]
             fn truncate_and_pop() {
                 super::truncate_and_pop::<$r>();
+            }
+
+            #[test]
+            fn capacity_and_reserve() {
+                super::capacity_and_reserve::<$r>();
+            }
+
+            #[test]
+            fn into_owned_keeps_content() {
+                super::into_owned_keeps_content::<$r>();
             }
 
             #[test]
@@ -395,4 +448,19 @@ fn wide_slicing() {
     let s = a.slice(50..150);
     assert_ne!(s.as_slice().as_ptr(), a.as_slice()[50..].as_ptr());
     assert_eq!(s.as_slice(), &d[50..150]);
+}
+
+#[test]
+fn wide_unique_view_moves_to_the_front_on_growth() {
+    // a unique view past the start of its buffer, without room to grow in place
+    let d = data(200);
+    let a: WideRc<'_> = Repr::from_slice(&d);
+    let mut s = a.slice(50..200);
+    drop(a);
+    assert!(s.is_unique());
+    let cap = s.capacity();
+    s.try_reserve(cap + 1).unwrap();
+    assert_eq!(s.as_slice(), &d[50..]);
+    s.extend_from_slice(&d[..10]);
+    assert_eq!(&s.as_slice()[150..], &d[..10]);
 }

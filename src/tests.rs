@@ -550,3 +550,222 @@ mod loom_threads {
     threads_suite!(small_str, SmallStr<'static>, as_mut_str);
     threads_suite!(tiny_str, TinyStr, as_mut_str);
 }
+
+/// Conversion and comparison glue, family by family (one call per impl).
+mod glue {
+    use alloc::boxed::Box;
+
+    use super::*;
+
+    #[test]
+    fn str_glue() {
+        let s: SmallStr = SmallStr::from('é');
+        assert_eq!(s, "é");
+        assert_eq!(<SmallStr as AsRef<[u8]>>::as_ref(&s), "é".as_bytes());
+        let parsed: TinyStr = LONG.parse().unwrap();
+        assert_eq!(parsed, LONG);
+
+        let mut e = HipStr::new();
+        e.extend(["ab", "cd"]);
+        assert_eq!(e, "abcd");
+        let c: SmallStr = ["x", "y", LONG].into_iter().collect();
+        assert_eq!(c.len(), LONG.len() + 2);
+
+        assert_eq!(HipStr::try_from(b"ok".as_slice()).unwrap(), "ok");
+        assert!(HipStr::try_from(b"\xff".as_slice()).is_err());
+        let bytes = HipByt::from(LONG.as_bytes());
+        assert_eq!(HipStr::try_from(&bytes).unwrap(), LONG);
+        let ptr = bytes.as_ptr();
+        let s = HipStr::try_from(bytes).unwrap();
+        assert_eq!(s.as_ptr(), ptr, "no copy");
+        let bad = HipStr::try_from(HipByt::from(b"\xffbad")).unwrap_err();
+        assert_eq!(bad.as_bytes(), b"\xffbad");
+
+        let b: HipByt = s.clone().into();
+        assert_eq!(b.as_ptr(), ptr);
+        let v: Vec<u8> = s.clone().into();
+        assert_eq!(v, LONG.as_bytes());
+        assert_eq!(s.cmp(&HipStr::from("b")), "a".cmp("b"));
+        assert!(Some(core::cmp::Ordering::Less) == s.partial_cmp(&HipStr::from("b")));
+        let owned: Cow<'_, str> = Cow::Owned(LONG.to_string());
+        assert_eq!(HipStr::from(owned), LONG);
+        let boxed: Box<str> = LONG.into();
+        assert_eq!(SmallStr::from(boxed), LONG);
+        assert_eq!(HipStr::new().repeat(0), "");
+        assert_eq!(HipStr::from("ab").repeat(0), "");
+    }
+
+    #[test]
+    #[cfg(feature = "std")]
+    fn str_std_glue() {
+        use std::net::ToSocketAddrs;
+
+        let s = SmallStr::from("dir/file");
+        let os: &std::ffi::OsStr = s.as_ref();
+        let p: &std::path::Path = s.as_ref();
+        assert_eq!(os, "dir/file");
+        assert_eq!(p.file_name(), Some(std::ffi::OsStr::new("file")));
+        assert_eq!(std::ffi::OsString::from(s), "dir/file");
+        let addr = HipStr::from("127.0.0.1:80")
+            .to_socket_addrs()
+            .unwrap()
+            .next();
+        assert_eq!(addr.unwrap().port(), 80);
+    }
+
+    #[test]
+    fn bytes_glue() {
+        let mut b = TinyByt::new();
+        b.reserve(100);
+        assert!(b.capacity() >= 100);
+        b.extend_from_slice(b"abc");
+        b.extend(b"def");
+        assert_eq!(b, b"abcdef");
+        assert_eq!(b.repeat(0), b"");
+    }
+
+    #[test]
+    fn c_str_glue() {
+        let c = HipCStr::try_from(String::from(LONG)).unwrap();
+        assert_eq!(c.len(), LONG.len());
+        let b: HipByt = c.clone().into();
+        assert_eq!(b, LONG.as_bytes());
+        let v: Vec<u8> = c.into();
+        assert_eq!(v, LONG.as_bytes());
+        let latin1 = SmallCStr::try_from(b"caf\xe9".as_slice()).unwrap();
+        let back = latin1.into_str().unwrap_err();
+        assert_eq!(back.as_bytes(), b"caf\xe9");
+    }
+
+    #[test]
+    #[cfg(feature = "std")]
+    fn os_str_glue() {
+        use std::ffi::{OsStr, OsString};
+        use std::path::Path;
+
+        const S: HipOsStr<'static> = HipOsStr::from_static("static");
+        assert!(S.is_borrowed());
+        let b = SmallOsStr::borrowed("borrowed");
+        assert!(b.is_borrowed());
+        assert_eq!(
+            <SmallOsStr as AsRef<Path>>::as_ref(&b),
+            Path::new("borrowed")
+        );
+
+        let boxed: Box<str> = LONG.into();
+        assert_eq!(HipOsStr::from(boxed), OsStr::new(LONG));
+        assert_eq!(HipOsStr::from(Cow::Borrowed(LONG)), OsStr::new(LONG));
+        assert_eq!(HipOsStr::from(&HipStr::from(LONG)), OsStr::new(LONG));
+
+        let os = TinyOsStr::from(LONG);
+        assert_eq!(os.to_string_lossy(), LONG);
+        let bytes: TinyByt = os.clone().into();
+        assert_eq!(bytes, LONG.as_bytes());
+        let v: Vec<u8> = os.clone().into();
+        assert_eq!(v, LONG.as_bytes());
+        assert_eq!(os.into_os_string(), OsString::from(LONG));
+    }
+
+    #[test]
+    #[cfg(feature = "std")]
+    fn path_glue() {
+        use std::ffi::{OsStr, OsString};
+        use std::path::Path;
+
+        const P: HipPath<'static> = HipPath::from_static("/static");
+        assert!(P.is_borrowed());
+        let b = SmallPath::borrowed("borrowed");
+        assert!(b.is_borrowed());
+        assert_eq!(<SmallPath as AsRef<OsStr>>::as_ref(&b), "borrowed");
+
+        let p = HipPath::from(OsString::from(LONG));
+        let os = HipOsStr::from(LONG);
+        assert!(p == os && os == p);
+        let boxed: Box<str> = LONG.into();
+        assert_eq!(HipPath::from(boxed), p);
+        assert_eq!(HipPath::from(Cow::Borrowed(LONG)), p);
+        assert_eq!(HipPath::from(Cow::Borrowed(OsStr::new(LONG))), p);
+        assert_eq!(HipPath::from(&HipStr::from(LONG)), p);
+        assert_eq!(HipPath::from(&os), p);
+
+        assert_eq!(HipOsStr::from(&p), os);
+        assert_eq!(OsString::from(p.clone()), OsString::from(LONG));
+        assert_eq!(HipOsStr::from(p.clone()), os);
+        assert_eq!(p.into_os_str(), os);
+        assert_eq!(SmallPath::from(LONG).as_path(), Path::new(LONG));
+    }
+
+    #[test]
+    #[cfg(feature = "bstr")]
+    fn b_str_glue() {
+        use bstr::{BStr, BString, ByteSlice};
+
+        const B: SmallBStr<'static> = SmallBStr::borrowed_bytes(b"bytes");
+        assert!(B.is_borrowed());
+        let mut s = HipBStr::from(LONG);
+        assert!(s.as_mut_bytes().is_some(), "unique");
+        let shared = s.clone();
+        let mut s2 = shared.clone();
+        assert!(s2.as_mut_bytes().is_none(), "shared");
+        s2.to_mut_bytes()[0] = b'A';
+        assert_eq!(s2[0], b'A');
+        assert_eq!(s.pop(), Some(b'y'));
+        s.truncate(3);
+        assert_eq!(s, b"a s".as_bstr());
+
+        let b: HipByt = shared.clone().into();
+        assert_eq!(b, LONG.as_bytes());
+        let v: Vec<u8> = shared.clone().into();
+        assert_eq!(v, LONG.as_bytes());
+        assert_eq!(HipStr::try_from(shared).unwrap(), LONG);
+        assert!(HipStr::try_from(HipBStr::from(b"\xff")).is_err());
+
+        // bstr glue on bytes and strings
+        let bs = BString::from(LONG);
+        let hb = HipByt::from(bs.clone());
+        let hs = HipStr::from(LONG);
+        assert!(hb == bs && bs == hb && hs == bs && bs == hs);
+        let r: &BStr = bs.as_ref();
+        assert!(hb <= r && r <= hb && hs >= bs && bs >= hs);
+        assert_eq!(<HipStr as AsRef<BStr>>::as_ref(&hs), r);
+        assert_eq!(HipByt::from(Cow::Borrowed(r)), hb);
+        assert_eq!(HipByt::from(Cow::<BStr>::Owned(bs.clone())), hb);
+        assert_eq!(BString::from(hb), bs);
+    }
+
+    #[test]
+    fn slice_error_formats() {
+        let s = HipStr::from("abc");
+        let e = s.try_slice(1..10).unwrap_err();
+        let dbg = alloc::format!("{e:?}");
+        assert!(dbg.contains("SliceError"), "{dbg}");
+        let b = HipByt::from(b"abc");
+        let e = b.try_slice(4..).unwrap_err();
+        assert!(!alloc::format!("{e}").is_empty());
+        assert!(!alloc::format!("{e:?}").is_empty());
+        for kind in [
+            slice::SliceErrorKind::StartGreaterThanEnd,
+            slice::SliceErrorKind::StartOutOfBounds,
+            slice::SliceErrorKind::EndOutOfBounds,
+            slice::SliceErrorKind::StartNotACharBoundary,
+            slice::SliceErrorKind::EndNotACharBoundary,
+        ] {
+            assert!(alloc::format!("{kind}").contains("index"));
+        }
+    }
+
+    #[test]
+    fn into_std_owned_and_reverse_order() {
+        let s = HipStr::from(LONG);
+        assert!("a" < s && s > "a" && String::from("a") < s);
+        assert_eq!(String::from(s.clone()), LONG);
+        assert_eq!(
+            Vec::<u8>::from(HipByt::from(LONG.as_bytes())),
+            LONG.as_bytes()
+        );
+        assert_eq!(
+            alloc::ffi::CString::from(TinyCStr::from(c"c")).as_c_str(),
+            c"c"
+        );
+    }
+}
