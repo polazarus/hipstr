@@ -34,6 +34,7 @@ serde_json = { version = "1.0.45", default-features = false, features = [
     "alloc",
 ] }
 divan = "0.1.17"
+proptest = { version = "1.12.0", default-features = false, features = ["std"] }
 
 [dependencies.const-default]
 version = "1.0.0"

@@ -106,11 +106,11 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
-#[cfg(feature = "bstr")]
-pub mod b_str;
 pub mod backend;
+#[cfg(feature = "bstr")]
+pub mod bstr;
 pub mod bytes;
-pub mod c_str;
+pub mod cstr;
 pub mod enc;
 pub mod hip;
 #[cfg(feature = "std")]
@@ -206,7 +206,7 @@ aliases!(
 );
 #[cfg(feature = "bstr")]
 aliases!(
-    b_str,
+    bstr,
     HipBStr,
     SmallBStr,
     TinyBStr,
@@ -215,7 +215,7 @@ aliases!(
     LocalTinyBStr
 );
 aliases!(
-    c_str,
+    cstr,
     HipCStr,
     SmallCStr,
     TinyCStr,

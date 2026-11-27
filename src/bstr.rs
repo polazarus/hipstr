@@ -23,7 +23,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::fmt;
 
-use bstr::{BStr, BString};
+use ::bstr::{BStr, BString};
 
 use super::enc::{self, Bytes, Utf8};
 use super::family::{impl_borrowed_ctors, impl_cmp, impl_std_glue};
@@ -72,7 +72,7 @@ impl_cmp!(enc::BStr as [u8];
 );
 
 /// `const` accessors and constructors, per representation.
-macro_rules! impl_const_b_str {
+macro_rules! impl_const_bstr {
     ($([$($lt:lifetime)?] $repr:ty),* $(,)?) => {$(
         impl<$($lt,)? B: super::backend::Backend> Hip<enc::BStr, $repr> {
             /// The `BStr` slice.
@@ -99,7 +99,7 @@ macro_rules! impl_const_b_str {
     )*};
 }
 
-impl_const_b_str!(
+impl_const_bstr!(
     ['a] super::repr::Wide<'a, u8, B>,
     ['a] super::repr::Small<'a, u8, B>,
     [] super::repr::Tiny<u8, B>,
@@ -324,7 +324,7 @@ mod tests {
     use alloc::vec::Vec;
     use core::fmt::Write;
 
-    use bstr::{BString, ByteSlice};
+    use ::bstr::{BString, ByteSlice};
 
     use crate::{HipBStr, HipByt, HipStr, LocalTinyBStr, SmallBStr, TinyBStr};
 

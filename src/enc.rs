@@ -169,27 +169,27 @@ impl Unconstrained for BStr {}
 // SAFETY: no invariant
 #[cfg(feature = "bstr")]
 unsafe impl Encoding for BStr {
-    type Slice = bstr::BStr;
-    type Owned = bstr::BString;
+    type Slice = ::bstr::BStr;
+    type Owned = ::bstr::BString;
 
     #[inline]
-    fn as_bytes(slice: &bstr::BStr) -> &[u8] {
+    fn as_bytes(slice: &::bstr::BStr) -> &[u8] {
         slice
     }
 
     #[inline]
-    unsafe fn from_bytes_unchecked(bytes: &[u8]) -> &bstr::BStr {
-        crate::b_str::bstr_from_bytes(bytes)
+    unsafe fn from_bytes_unchecked(bytes: &[u8]) -> &::bstr::BStr {
+        crate::bstr::bstr_from_bytes(bytes)
     }
 
     #[inline]
-    fn owned_into_bytes(owned: bstr::BString) -> Vec<u8> {
+    fn owned_into_bytes(owned: ::bstr::BString) -> Vec<u8> {
         owned.into()
     }
 
     #[inline]
-    unsafe fn owned_from_bytes_unchecked(bytes: Vec<u8>) -> bstr::BString {
-        bstr::BString::new(bytes)
+    unsafe fn owned_from_bytes_unchecked(bytes: Vec<u8>) -> ::bstr::BString {
+        ::bstr::BString::new(bytes)
     }
 }
 

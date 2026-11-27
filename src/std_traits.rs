@@ -116,15 +116,15 @@ impl<'a, R: Repr<'a, u8>> BorrowMut<[u8]> for Hip<Bytes, R> {
 impl<'a, R: Repr<'a, u8>> DerefMut for Hip<enc::BStr, R> {
     /// Copy-on-write: copies a borrowed or shared value first.
     #[inline]
-    fn deref_mut(&mut self) -> &mut bstr::BStr {
-        bstr::ByteSlice::as_bstr_mut(self.to_mut_slice())
+    fn deref_mut(&mut self) -> &mut ::bstr::BStr {
+        ::bstr::ByteSlice::as_bstr_mut(self.to_mut_slice())
     }
 }
 
 #[cfg(feature = "bstr")]
-impl<'a, R: Repr<'a, u8>> AsMut<bstr::BStr> for Hip<enc::BStr, R> {
+impl<'a, R: Repr<'a, u8>> AsMut<::bstr::BStr> for Hip<enc::BStr, R> {
     #[inline]
-    fn as_mut(&mut self) -> &mut bstr::BStr {
+    fn as_mut(&mut self) -> &mut ::bstr::BStr {
         self
     }
 }

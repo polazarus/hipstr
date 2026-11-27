@@ -10,7 +10,7 @@ use alloc::vec::Vec;
 use core::borrow::Borrow;
 use core::cmp::Ordering;
 
-use bstr::{BStr, BString, ByteSlice, ByteVec};
+use ::bstr::{BStr, BString, ByteSlice, ByteVec};
 
 use super::enc::{Bytes, Utf8};
 use super::hip::Hip;
@@ -108,7 +108,7 @@ impl<'a, R: Repr<'a, u8>> From<Hip<Bytes, R>> for BString {
 }
 
 impl<'a, R: Repr<'a, u8>> TryFrom<&'a BStr> for Hip<Utf8, R> {
-    type Error = bstr::Utf8Error;
+    type Error = ::bstr::Utf8Error;
 
     /// Borrows when the representation supports it, copies otherwise.
     #[inline]
@@ -118,7 +118,7 @@ impl<'a, R: Repr<'a, u8>> TryFrom<&'a BStr> for Hip<Utf8, R> {
 }
 
 impl<'a, R: Repr<'a, u8>> TryFrom<BString> for Hip<Utf8, R> {
-    type Error = bstr::FromUtf8Error;
+    type Error = ::bstr::FromUtf8Error;
 
     /// Adopts the buffer when it does not fit inline (no copy).
     #[inline]

@@ -281,6 +281,8 @@ impl<'a, E: Unconstrained, R: Repr<'a, u8>> Hip<E, R> {
 
     /// Removes consecutive repeated bytes.
     ///
+    /// Borrowed and shared values are not copied when there is no repeat.
+    ///
     /// # Examples
     ///
     /// ```
@@ -290,7 +292,12 @@ impl<'a, E: Unconstrained, R: Repr<'a, u8>> Hip<E, R> {
     /// assert_eq!(b, b"abca");
     /// ```
     pub fn dedup(&mut self) {
-        self.dedup_by(|a, b| a == b);
+        // first repeat, without touching the storage
+        let Some(first) = self.bytes().windows(2).position(|w| w[0] == w[1]) else {
+            return;
+        };
+        // the byte at `first + 1` repeats the last kept one
+        self.compact(first + 2, first + 1, |kept, b| *b != *kept.last().unwrap());
     }
 
     /// Removes consecutive bytes that map to the same key.

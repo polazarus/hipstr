@@ -49,7 +49,7 @@ impl_cmp!(enc::CStr as CStr;
 );
 
 /// `const` C string accessors, per representation.
-macro_rules! impl_const_c_str {
+macro_rules! impl_const_cstr {
     ($([$($lt:lifetime)?] $repr:ty),* $(,)?) => {$(
         impl<$($lt,)? B: super::backend::Backend> Hip<enc::CStr, $repr> {
             /// The C string slice.
@@ -76,7 +76,7 @@ macro_rules! impl_const_c_str {
     )*};
 }
 
-impl_const_c_str!(
+impl_const_cstr!(
     ['a] super::repr::Wide<'a, u8, B>,
     ['a] super::repr::Small<'a, u8, B>,
     [] super::repr::Tiny<u8, B>,

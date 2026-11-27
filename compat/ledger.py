@@ -26,19 +26,19 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FAMILIES = {
     "bytes": [("alloc", "Vec"), ("core", "[u8]")],
     "str": [("alloc", "String"), ("core", "str")],
-    "c_str": [("alloc", "CString"), ("core", "CStr")],
+    "cstr": [("alloc", "CString"), ("core", "CStr")],
     "os_str": [("std", "OsString"), ("std", "OsStr")],
     "path": [("std", "PathBuf"), ("std", "Path")],
     # `BString` dereferences to `Vec<u8>`
-    "b_str": [("alloc", "Vec"), ("core", "[u8]")],
+    "bstr": [("alloc", "Vec"), ("core", "[u8]")],
 }
 HIP = {
     "bytes": "Bytes",
     "str": "Utf8",
-    "c_str": "CStr",
+    "cstr": "CStr",
     "os_str": "OsStr",
     "path": "Path",
-    "b_str": "BStr",
+    "bstr": "BStr",
 }
 
 

@@ -290,7 +290,7 @@ mod const_accessors {
         let b = SmallBStr::borrowed_bytes(b"bytes, longer than any inline capacity!");
         assert!(b.is_borrowed() && b.as_bytes().len() == 39);
         assert!(b.as_borrowed().is_some() && !b.as_ptr().is_null());
-        let _: &bstr::BStr = b.as_bstr();
+        let _: &::bstr::BStr = b.as_bstr();
         let bytes = b.into_bytes();
         assert!(bytes.as_slice().len() == 39);
         forget(bytes);
@@ -305,7 +305,7 @@ mod const_accessors {
     };
 
     /// C string accessors, every size.
-    macro_rules! c_str_accessors {
+    macro_rules! cstr_accessors {
         ($($t:ty),* $(,)?) => {$(
             const _: () = {
                 // 2 characters + NUL: fits the 1-word inline buffer on 32-bit too
@@ -328,7 +328,7 @@ mod const_accessors {
         )*};
     }
 
-    c_str_accessors!(HipCStr<'static>, SmallCStr<'static>, TinyCStr);
+    cstr_accessors!(HipCStr<'static>, SmallCStr<'static>, TinyCStr);
 
     const _: () = {
         let c = HipCStr::borrowed(c"borrowed C string, longer than inline");
@@ -625,7 +625,7 @@ mod glue {
     }
 
     #[test]
-    fn c_str_glue() {
+    fn cstr_glue() {
         let c = HipCStr::try_from(String::from(LONG)).unwrap();
         assert_eq!(c.len(), LONG.len());
         let b: HipByt = c.clone().into();
@@ -697,8 +697,8 @@ mod glue {
 
     #[test]
     #[cfg(feature = "bstr")]
-    fn b_str_glue() {
-        use bstr::{BStr, BString, ByteSlice};
+    fn bstr_glue() {
+        use ::bstr::{BStr, BString, ByteSlice};
 
         const B: SmallBStr<'static> = SmallBStr::borrowed_bytes(b"bytes");
         assert!(B.is_borrowed());
@@ -767,5 +767,255 @@ mod glue {
             alloc::ffi::CString::from(TinyCStr::from(c"c")).as_c_str(),
             c"c"
         );
+    }
+}
+
+/// Std parity details the differential tests do not reach: panics, panic
+/// safety, leaked iterators, trait impls.
+mod parity {
+    use alloc::boxed::Box;
+    use alloc::rc::Rc;
+    use alloc::sync::Arc;
+    use alloc::vec;
+
+    use super::*;
+
+    #[test]
+    #[should_panic(expected = "insertion index (is 4) should be <= len (is 3)")]
+    fn insert_out_of_bounds() {
+        HipByt::from(b"abc").insert(4, 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "removal index (is 3) should be < len (is 3)")]
+    fn remove_out_of_bounds() {
+        SmallByt::from(b"abc").remove(3);
+    }
+
+    #[test]
+    #[should_panic(expected = "range end index 5 out of range for slice of length 3")]
+    fn drain_out_of_bounds() {
+        let _ = TinyByt::from(b"abc").drain(1..5);
+    }
+
+    #[test]
+    #[should_panic(expected = "slice index starts at 2 but ends at 1")]
+    #[allow(clippy::reversed_empty_ranges, reason = "tests the panic")]
+    fn drain_reversed() {
+        let _ = HipByt::from(b"abc").drain(2..1);
+    }
+
+    #[test]
+    #[should_panic(expected = "is not a char boundary")]
+    fn str_insert_not_on_boundary() {
+        HipStr::from("é").insert(1, 'x');
+    }
+
+    #[test]
+    #[should_panic(expected = "is not a char boundary")]
+    fn str_drain_not_on_boundary() {
+        let _ = SmallStr::from("é").drain(..1);
+    }
+
+    #[test]
+    #[cfg(feature = "std")]
+    fn retain_is_panic_safe() {
+        let mut b = HipByt::from(LONG.as_bytes());
+        let mut seen = 0;
+        let r = std::panic::catch_unwind(core::panic::AssertUnwindSafe(|| {
+            b.retain(|&x| {
+                seen += 1;
+                assert!(seen < 10, "boom");
+                x != b' '
+            });
+        }));
+        assert!(r.is_err());
+        // the first 9 bytes were filtered, the rest kept as is
+        let mut expected: Vec<u8> = LONG.as_bytes()[..9]
+            .iter()
+            .copied()
+            .filter(|&x| x != b' ')
+            .collect();
+        expected.extend_from_slice(&LONG.as_bytes()[9..]);
+        assert_eq!(b, expected.as_slice());
+
+        let mut s = HipStr::from("é a é b é c");
+        let mut n = 0;
+        let r = std::panic::catch_unwind(core::panic::AssertUnwindSafe(|| {
+            s.retain(|c| {
+                n += 1;
+                assert!(n < 5, "boom");
+                c != ' '
+            });
+        }));
+        assert!(r.is_err());
+        assert_eq!(s, "éaé b é c", "valid UTF-8, unvisited part kept");
+    }
+
+    #[test]
+    fn leaked_iterators_leave_the_value_unchanged() {
+        let mut b = HipByt::from(LONG.as_bytes());
+        core::mem::forget(b.drain(1..10));
+        assert_eq!(b, LONG.as_bytes());
+        let mut s = HipStr::from(LONG);
+        core::mem::forget(s.drain(..5));
+        assert_eq!(s, LONG);
+    }
+
+    #[test]
+    fn untouched_borrowed_values_stay_borrowed() {
+        let mut b = HipByt::borrowed(LONG.as_bytes());
+        b.retain(|_| true);
+        b.dedup();
+        drop(b.drain(3..3));
+        assert!(b.is_borrowed());
+        let mut s = SmallStr::borrowed(LONG);
+        s.retain(|_| true);
+        s.replace_range(2..2, "");
+        assert!(s.is_borrowed());
+    }
+
+    #[test]
+    fn drain_both_ends() {
+        let mut b = HipByt::from(b"abcdef");
+        let mut d = b.drain(1..5);
+        assert_eq!(d.len(), 4);
+        assert_eq!((d.next(), d.next_back()), (Some(b'b'), Some(b'e')));
+        assert_eq!(d.as_slice(), b"cd");
+        drop(d);
+        assert_eq!(b, b"af");
+
+        let mut s = HipStr::from("αβγδ");
+        let mut d = s.drain(2..6);
+        assert_eq!(d.as_str(), "βγ");
+        assert_eq!(d.next_back(), Some('γ'));
+        drop(d);
+        assert_eq!(s, "αδ");
+    }
+
+    #[test]
+    fn try_reserve_errors_are_std() {
+        let mut b = TinyByt::from(b"x");
+        let e: alloc::collections::TryReserveError = b.try_reserve(usize::MAX).unwrap_err();
+        assert!(!alloc::format!("{e}").is_empty());
+        b.try_reserve_exact(10).unwrap();
+        assert!(b.capacity() >= 11);
+        b.reserve_exact(100);
+        assert!(b.capacity() >= 101);
+    }
+
+    #[test]
+    fn mutable_access_is_copy_on_write() {
+        let a = HipByt::from(LONG.as_bytes());
+        let mut b = a.clone();
+        b[0] = b'A';
+        assert_eq!(a[0], b'a');
+        assert_eq!(b[0], b'A');
+        for x in &mut b {
+            *x = x.to_ascii_uppercase();
+        }
+        assert_eq!(a, LONG.as_bytes());
+        let mut s = HipStr::from(LONG);
+        let t = s.clone();
+        s.make_ascii_uppercase();
+        <HipStr as AsMut<str>>::as_mut(&mut s).make_ascii_lowercase();
+        assert_eq!(s, t);
+    }
+
+    #[test]
+    fn iterators_and_arrays() {
+        let b = SmallByt::from(b"abc");
+        assert_eq!((&b).into_iter().count(), 3);
+        let mut it = b.clone().into_iter();
+        assert_eq!(it.next_back(), Some(b'c'));
+        assert_eq!(it.as_slice(), b"ab");
+        assert_eq!(it.collect::<Vec<_>>(), b"ab");
+        let arr: [u8; 3] = b.clone().try_into().unwrap();
+        assert_eq!(&arr, b"abc");
+        assert!(<[u8; 2]>::try_from(b).is_err());
+        assert_eq!(HipByt::from([1u8, 2]), [1, 2]);
+        assert_eq!(HipByt::from("str"), b"str");
+        assert_eq!(HipByt::from(String::from(LONG)), LONG.as_bytes());
+    }
+
+    #[test]
+    fn string_operators_and_collections() {
+        let s = HipStr::from("a") + "b";
+        let mut s = s;
+        s += "c";
+        assert_eq!(s, "abc");
+        let parts = vec![String::from("x"), String::from("y")];
+        assert_eq!(parts.into_iter().collect::<TinyStr>(), "xy");
+        let mut e = SmallStr::new();
+        e.extend([Cow::Borrowed("1"), Cow::Owned(String::from("2"))]);
+        e.extend([HipStr::from("3")]);
+        e.extend(['4', '5'].iter());
+        assert_eq!(e, "12345");
+        let boxed: Box<str> = e.clone().into();
+        let rc: Rc<str> = e.clone().into();
+        let arc: Arc<str> = e.into();
+        assert!(&*boxed == "12345" && &*rc == "12345" && &*arc == "12345");
+        let c = HipStr::try_from(alloc::ffi::CString::new("c").unwrap()).unwrap();
+        assert_eq!(c, "c");
+    }
+
+    #[test]
+    fn c_strings() {
+        let c: HipCStr = "abc".parse().unwrap();
+        assert_eq!(c, c"abc");
+        assert!("a\0b".parse::<HipCStr>().is_err());
+        let nz: Vec<core::num::NonZero<u8>> =
+            b"xy".iter().map(|&b| b.try_into().unwrap()).collect();
+        assert_eq!(TinyCStr::from(nz), c"xy");
+        assert_eq!(c.clone().into_string().unwrap(), "abc");
+        assert_eq!(&*c.clone().into_boxed_c_str(), c"abc");
+        let v = HipCStr::from_vec_with_nul(b"z\0".to_vec()).unwrap();
+        assert_eq!(v, c"z");
+        // SAFETY: no NUL
+        assert_eq!(
+            unsafe { SmallCStr::from_vec_unchecked(b"q".to_vec()) },
+            c"q"
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "std")]
+    fn os_strings_and_paths() {
+        use std::ffi::OsStr;
+        use std::fmt::Write as _;
+        use std::path::Path;
+
+        let mut o: HipOsStr = ["a", "b"].iter().map(OsStr::new).collect();
+        write!(o, "{}", 1).unwrap();
+        assert_eq!(o, OsStr::new("ab1"));
+        assert_eq!(o.clone().into_string().unwrap(), "ab1");
+        assert_eq!(o.clone().into_encoded_bytes(), b"ab1");
+
+        let mut p: SmallPath = ["/usr", "lib"].iter().collect();
+        assert_eq!(p, Path::new("/usr/lib"));
+        p.extend(["x.tar"]);
+        assert!(p.add_extension("gz"));
+        assert_eq!(p, Path::new("/usr/lib/x.tar.gz"));
+        assert!(p.set_extension("zst"));
+        p.set_file_name("y");
+        assert_eq!(p, Path::new("/usr/lib/y"));
+        assert_eq!((&p).into_iter().count(), 4);
+        assert!(HipPath::from("").pop() == false);
+        assert!(!HipPath::from("/").set_extension("x"));
+        #[cfg(not(miri))] // leaks on purpose
+        {
+            let leaked: &'static mut Path = TinyPath::from("leak").leak();
+            assert_eq!(leaked, Path::new("leak"));
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "std")]
+    fn io_write() {
+        use std::io::Write as _;
+        let mut b = TinyByt::new();
+        write!(b, "{}-{}", 1, 2).unwrap();
+        b.flush().unwrap();
+        assert_eq!(b, b"1-2");
     }
 }
