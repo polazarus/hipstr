@@ -198,8 +198,11 @@ src/
    `inline`, `try_inline`), accessors, and edits for bytes/`str` (`push`, `push_str`,
    `pop`, `truncate`, `insert`, `remove`, `swap_remove`, ASCII case, `from_utf8`);
    C strings: `inline`, `as_c_str`, `truncate`; OS strings/paths only get the
-   encoding-agnostic `const` core (std's conversions are not `const`). Follow-ups:
-   serde/borsh, `retain` is not `const` (closures).
+   encoding-agnostic `const` core (std's conversions are not `const`). serde and
+   borsh in the formats of the `Hip` types, decoding into a fixed buffer (no allocation,
+   length checked before reading). borsh also covers C strings now; OS strings and paths
+   have no portable byte encoding (no borsh, as in borsh itself). Follow-up: `retain` is
+   not `const` (closures).
 8. **Inline construction speed** (done) — `from_slice` split into an inlinable inline
    branch and an out-of-line heap path; byte inline values are built in registers
    (`Base::from_bytes_wordwise`: overlapping little-endian loads, shifted by the data

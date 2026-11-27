@@ -302,6 +302,210 @@ pub mod path {
     }
 }
 
+// ----- inline values -----
+
+/// Inline values serialize like the matching `Hip` types and deserialize
+/// without allocating: input longer than the capacity is an error.
+mod inline {
+    use super::*;
+    use crate::enc::{self, Encoding};
+    use crate::inline::Inline;
+
+    /// What deserialization accepts for each encoding.
+    trait Check: Encoding {
+        const WHAT: &'static str;
+
+        /// Whether `bytes` (terminator excluded) are valid.
+        fn valid(bytes: &[u8]) -> bool;
+    }
+
+    impl Check for Utf8 {
+        const WHAT: &'static str = "a string";
+
+        fn valid(bytes: &[u8]) -> bool {
+            core::str::from_utf8(bytes).is_ok()
+        }
+    }
+
+    impl Check for Bytes {
+        const WHAT: &'static str = "a byte array";
+
+        fn valid(_: &[u8]) -> bool {
+            true
+        }
+    }
+
+    #[cfg(feature = "bstr")]
+    impl Check for enc::BStr {
+        const WHAT: &'static str = "a byte array";
+
+        fn valid(_: &[u8]) -> bool {
+            true
+        }
+    }
+
+    impl Check for enc::CStr {
+        const WHAT: &'static str = "a byte array without NUL";
+
+        fn valid(bytes: &[u8]) -> bool {
+            !bytes.contains(&0)
+        }
+    }
+
+    struct InlineVisitor<E, const N: usize>(PhantomData<E>);
+
+    impl<E: Check, const N: usize> InlineVisitor<E, N> {
+        fn build<Er: Error>(
+            &self,
+            bytes: &[u8],
+            unexpected: Unexpected<'_>,
+        ) -> Result<Inline<E, N>, Er> {
+            if !E::valid(bytes) {
+                return Err(Er::invalid_value(unexpected, self));
+            }
+            // SAFETY: checked for `E`
+            unsafe { Inline::<E, N>::try_from_bytes(bytes) }
+                .ok_or_else(|| Er::invalid_length(bytes.len(), self))
+        }
+    }
+
+    impl<'de, E: Check, const N: usize> Visitor<'de> for InlineVisitor<E, N> {
+        type Value = Inline<E, N>;
+
+        fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(
+                f,
+                "{} of at most {} bytes",
+                E::WHAT,
+                Inline::<E, N>::capacity()
+            )
+        }
+
+        fn visit_str<Er: Error>(self, v: &str) -> Result<Self::Value, Er> {
+            self.build(v.as_bytes(), Unexpected::Str(v))
+        }
+
+        fn visit_bytes<Er: Error>(self, v: &[u8]) -> Result<Self::Value, Er> {
+            self.build(v, Unexpected::Bytes(v))
+        }
+
+        fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+            // `N <= 254`: a fixed buffer, no allocation
+            let mut buf = [0u8; 255];
+            let mut len = 0;
+            while let Some(b) = seq.next_element::<u8>()? {
+                if len == Inline::<E, N>::capacity() {
+                    return Err(Error::invalid_length(len + 1, &self));
+                }
+                buf[len] = b;
+                len += 1;
+            }
+            self.build(&buf[..len], Unexpected::Bytes(&buf[..len]))
+        }
+    }
+
+    impl<const N: usize> Serialize for Inline<Utf8, N> {
+        #[inline]
+        fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            serializer.serialize_str(self.as_str())
+        }
+    }
+
+    impl<'de, const N: usize> Deserialize<'de> for Inline<Utf8, N> {
+        #[inline]
+        fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+            deserializer.deserialize_str(InlineVisitor::<Utf8, N>(PhantomData))
+        }
+    }
+
+    impl<const N: usize> Serialize for Inline<Bytes, N> {
+        #[inline]
+        fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            serializer.serialize_bytes(self.as_slice())
+        }
+    }
+
+    impl<'de, const N: usize> Deserialize<'de> for Inline<Bytes, N> {
+        #[inline]
+        fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+            deserializer.deserialize_bytes(InlineVisitor::<Bytes, N>(PhantomData))
+        }
+    }
+
+    #[cfg(feature = "bstr")]
+    impl<const N: usize> Serialize for Inline<enc::BStr, N> {
+        #[inline]
+        fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            serializer.serialize_bytes(self.as_bytes())
+        }
+    }
+
+    #[cfg(feature = "bstr")]
+    impl<'de, const N: usize> Deserialize<'de> for Inline<enc::BStr, N> {
+        #[inline]
+        fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+            deserializer.deserialize_bytes(InlineVisitor::<enc::BStr, N>(PhantomData))
+        }
+    }
+
+    /// Like `CStr` / `CString`: bytes without the terminator.
+    impl<const N: usize> Serialize for Inline<enc::CStr, N> {
+        #[inline]
+        fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.as_c_str().serialize(serializer)
+        }
+    }
+
+    impl<'de, const N: usize> Deserialize<'de> for Inline<enc::CStr, N> {
+        #[inline]
+        fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+            deserializer.deserialize_byte_buf(InlineVisitor::<enc::CStr, N>(PhantomData))
+        }
+    }
+
+    #[cfg(feature = "std")]
+    mod os {
+        use std::ffi::OsString;
+        use std::path::Path;
+
+        use super::*;
+
+        /// Like `OsStr` (the platform's own format).
+        impl<const N: usize> Serialize for Inline<enc::OsStr, N> {
+            #[inline]
+            fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                self.as_os_str().serialize(serializer)
+            }
+        }
+
+        /// Goes through an `OsString` (std's format is not a plain string).
+        impl<'de, const N: usize> Deserialize<'de> for Inline<enc::OsStr, N> {
+            fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+                let os = OsString::deserialize(deserializer)?;
+                Self::try_from_inner(&os).map_err(|_| {
+                    Error::invalid_length(os.len(), &"an OS string that fits the capacity")
+                })
+            }
+        }
+
+        /// Like `Path`: as a string.
+        impl<const N: usize> Serialize for Inline<enc::Path, N> {
+            #[inline]
+            fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                self.as_path().serialize(serializer)
+            }
+        }
+
+        impl<'de, const N: usize> Deserialize<'de> for Inline<enc::Path, N> {
+            fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+                let s = Inline::<Utf8, N>::deserialize(deserializer)?;
+                // same bytes, so it fits
+                Ok(Self::try_from_inner(Path::new(s.as_str())).expect("same length"))
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use alloc::string::ToString;
@@ -380,5 +584,74 @@ mod tests {
         let os = TinyOsStr::from("x");
         let back: TinyOsStr = serde_json::from_str(&serde_json::to_string(&os).unwrap()).unwrap();
         assert_eq!(back, os);
+    }
+
+    #[test]
+    fn inline_values() {
+        use crate::inline::{InlineByt, InlineCStr, InlineStr};
+
+        let s = InlineStr::<8>::inline("héllo");
+        let json = serde_json::to_string(&s).unwrap();
+        assert_eq!(
+            json,
+            serde_json::to_string("héllo").unwrap(),
+            "same format as str"
+        );
+        assert_eq!(serde_json::from_str::<InlineStr<8>>(&json).unwrap(), s);
+        let e = serde_json::from_str::<InlineStr<4>>(&json)
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("at most 4 bytes"), "{e}");
+
+        // bytes: JSON arrays go through `visit_seq`, without allocating
+        let b = InlineByt::<4>::inline(b"ab");
+        let json = serde_json::to_string(&b).unwrap();
+        assert_eq!(json, "[97,98]");
+        assert_eq!(serde_json::from_str::<InlineByt<4>>(&json).unwrap(), b);
+        assert!(serde_json::from_str::<InlineByt<4>>("[1,2,3,4,5]").is_err());
+        assert_eq!(serde_json::from_str::<InlineByt<4>>("\"ab\"").unwrap(), b);
+
+        let c = InlineCStr::<8>::inline(c"abc");
+        let json = serde_json::to_string(&c).unwrap();
+        assert_eq!(
+            json,
+            serde_json::to_string(c"abc").unwrap(),
+            "same format as CStr"
+        );
+        assert_eq!(serde_json::from_str::<InlineCStr<8>>(&json).unwrap(), c);
+        assert!(
+            serde_json::from_str::<InlineCStr<8>>("[97,0,98]").is_err(),
+            "NUL"
+        );
+        assert!(
+            serde_json::from_str::<InlineCStr<3>>(&json).is_err(),
+            "too long with its NUL"
+        );
+
+        assert!(
+            serde_json::from_str::<InlineStr<8>>("[255]").is_err(),
+            "not UTF-8"
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "std")]
+    fn inline_os_and_path() {
+        use crate::inline::{InlineOsStr, InlinePath};
+
+        let p = InlinePath::<16>::try_from_inner(std::path::Path::new("/a/b")).unwrap();
+        let json = serde_json::to_string(&p).unwrap();
+        assert_eq!(json, "\"/a/b\"");
+        assert_eq!(serde_json::from_str::<InlinePath<16>>(&json).unwrap(), p);
+        assert!(serde_json::from_str::<InlinePath<2>>(&json).is_err());
+
+        let o = InlineOsStr::<16>::try_from_inner(std::ffi::OsStr::new("os")).unwrap();
+        let json = serde_json::to_string(&o).unwrap();
+        assert_eq!(
+            json,
+            serde_json::to_string(std::ffi::OsStr::new("os")).unwrap()
+        );
+        assert_eq!(serde_json::from_str::<InlineOsStr<16>>(&json).unwrap(), o);
+        assert!(serde_json::from_str::<InlineOsStr<1>>(&json).is_err());
     }
 }
