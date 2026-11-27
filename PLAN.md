@@ -165,7 +165,7 @@ src/
 5. **Differential tests** (done) — `tests/differential.rs`: `proptest` op sequences on
    `Vec<u8>`/`String` vs every size × Rc/Arc/Unique, starting owned, adopted or
    borrowed, with clones held to check copy-on-write; `PROPTEST_CASES` overrides the
-   256 default (1 case of ≤ 8 ops under Miri). Panics, panic safety and leaks in
+   256 default; not run under Miri (too slow, half of it checks std). Panics, panic safety and leaks in
    `src/tests.rs::parity`.
 3½. **C strings** (done) — `HipCStr`/`SmallCStr`/`TinyCStr` (+ `Local*`), `no_std` (`CStr` is
    in `core`, `CString` in `alloc`). Stored with the NUL terminator so they deref to

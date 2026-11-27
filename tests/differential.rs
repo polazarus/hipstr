@@ -5,6 +5,11 @@
 //! Values start owned, adopted (from a `Vec`/`String`) or borrowed, and clones
 //! are taken and dropped along the way, so that copy-on-write paths are
 //! exercised: a mutation must never be visible through a clone.
+//!
+//! Not run under Miri: too slow, and half of the work would be checking std.
+//! The unit tests cover the same code under Miri.
+
+#![cfg(not(miri))]
 
 use std::ops::Range;
 
@@ -21,7 +26,7 @@ static POOL: &str = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, se
 static UPOOL: &str = "Ça été l'été — ünïcödé ✓ 𝄞 musique, naïve façade, smörgåsbord, \
     jalapeño, crème brûlée, Ελληνικά, Русский, 日本語のテキスト, 한국어 텍스트";
 
-/// No failure files: Miri runs isolated from the file system.
+/// No failure files (keeps the repository clean).
 fn config() -> ProptestConfig {
     ProptestConfig {
         cases: cases(),
@@ -35,11 +40,11 @@ fn cases() -> u32 {
     std::env::var("PROPTEST_CASES")
         .ok()
         .and_then(|n| n.parse().ok())
-        .unwrap_or(if cfg!(miri) { 1 } else { 256 })
+        .unwrap_or(256)
 }
 
-/// Maximal number of operations per case (Miri is slow).
-const OPS: usize = if cfg!(miri) { 8 } else { 48 };
+/// Maximal number of operations per case.
+const OPS: usize = 48;
 
 /// Maps a raw index to `0..=len`.
 fn idx(raw: usize, len: usize) -> usize {
