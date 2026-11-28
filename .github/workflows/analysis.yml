@@ -3,8 +3,8 @@ name: analysis
 on:
   push:
     branches: ["main", "ng"]
+  # every pull request, stacked ones included
   pull_request:
-    branches: ["main", "ng"]
   schedule:
     - cron: "34 5 * * 1"
 

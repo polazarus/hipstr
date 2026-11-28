@@ -7,7 +7,7 @@
 //!   (`header.ptr` is `None`), or
 //! - **vec**: the header is boxed separately and points to the buffer of an
 //!   adopted [`Vec`] (`header.ptr` is `Some`), which keeps `From<Vec<u8>>` and
-//!   [`Owner::into_vec`] in O(1).
+//!   [`Owner::into_vec_prefix`] in O(1).
 //!
 //! The pointer is tagged with `0b10`: bit 0 is always clear so the word can
 //! share its slot with a "low" inline layout, and the word is never zero, which

@@ -26,7 +26,7 @@ borsh = ["dep:borsh"]
 [dev-dependencies]
 fastrand = "2.3.0"
 serde_test = "1.0.177"
-serde = { version = "1.0.100", default-features = false, features = [
+serde = { version = "1.0.155", default-features = false, features = [
     "derive",
     "alloc",
 ] }
@@ -47,7 +47,7 @@ default-features = false
 features = ["alloc"]
 
 [dependencies.serde]
-version = "1.0.100"
+version = "1.0.155"
 optional = true
 default-features = false
 features = ["alloc"]
