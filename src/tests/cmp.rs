@@ -104,6 +104,8 @@ fn strings_and_os_strings() {
     let shared: HipOsStr = long.to_converted();
     assert_eq!(shared.as_encoded_bytes().as_ptr(), long.as_ptr());
     assert!(long == shared);
+    assert_eq!(long.partial_cmp(&shared), Some(Ordering::Equal));
+    assert_eq!(shared.partial_cmp(&long), Some(Ordering::Equal));
 }
 
 #[cfg(feature = "bstr")]
