@@ -85,43 +85,6 @@ macro_rules! impl_std_glue {
     };
 }
 
-/// Implements `PartialEq`/`PartialOrd` between `Hip<$enc, R>` and each listed
-/// type, in both directions, comparing both sides as `&$view` (through
-/// `AsRef<$view>`).
-///
-/// Each type may carry extra generics in brackets, e.g. `[const N: usize] [u8; N]`.
-macro_rules! impl_cmp {
-    ($enc:ty as $view:ty; $([$($g:tt)*] $other:ty),* $(,)?) => {$(
-        impl<'a, R: $crate::repr::Repr<'a>, $($g)*> PartialEq<$other> for $crate::hip::Hip<$enc, R> {
-            #[inline]
-            fn eq(&self, other: &$other) -> bool {
-                <Self as AsRef<$view>>::as_ref(self) == <$other as AsRef<$view>>::as_ref(other)
-            }
-        }
-
-        impl<'a, R: $crate::repr::Repr<'a>, $($g)*> PartialEq<$crate::hip::Hip<$enc, R>> for $other {
-            #[inline]
-            fn eq(&self, other: &$crate::hip::Hip<$enc, R>) -> bool {
-                <$other as AsRef<$view>>::as_ref(self) == <$crate::hip::Hip<$enc, R> as AsRef<$view>>::as_ref(other)
-            }
-        }
-
-        impl<'a, R: $crate::repr::Repr<'a>, $($g)*> PartialOrd<$other> for $crate::hip::Hip<$enc, R> {
-            #[inline]
-            fn partial_cmp(&self, other: &$other) -> Option<core::cmp::Ordering> {
-                <Self as AsRef<$view>>::as_ref(self).partial_cmp(<$other as AsRef<$view>>::as_ref(other))
-            }
-        }
-
-        impl<'a, R: $crate::repr::Repr<'a>, $($g)*> PartialOrd<$crate::hip::Hip<$enc, R>> for $other {
-            #[inline]
-            fn partial_cmp(&self, other: &$crate::hip::Hip<$enc, R>) -> Option<core::cmp::Ordering> {
-                <$other as AsRef<$view>>::as_ref(self).partial_cmp(<$crate::hip::Hip<$enc, R> as AsRef<$view>>::as_ref(other))
-            }
-        }
-    )*};
-}
-
 /// Implements the `const` constructors of the borrowing representations.
 ///
 /// `$as_bytes` is a `const`-callable conversion from `&$slice` to `&[u8]`.
@@ -154,5 +117,4 @@ macro_rules! impl_borrowed_ctors {
 }
 
 pub(crate) use impl_borrowed_ctors;
-pub(crate) use impl_cmp;
 pub(crate) use impl_std_glue;

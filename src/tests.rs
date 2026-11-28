@@ -9,6 +9,7 @@ use super::*;
 
 // not under Miri on Windows: a global allocator makes Miri run std's
 // Windows `System` allocator, whose header read breaks Stacked Borrows
+mod cmp;
 mod convert;
 #[cfg(not(all(miri, windows)))]
 pub mod failing_alloc;

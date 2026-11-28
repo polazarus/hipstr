@@ -7,7 +7,7 @@ use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 
 use super::enc::{self, Utf8};
-use super::family::{impl_cmp, impl_std_glue};
+use super::family::impl_std_glue;
 use super::hip::Hip;
 use super::repr::Repr;
 pub use crate::hip::RefMut;
@@ -30,27 +30,6 @@ mod tests;
 super::generic_aliases!(enc::Path, HipPath, SmallPath, TinyPath, "path");
 
 impl_std_glue!(enc::Path, Path, PathBuf);
-
-impl_cmp!(enc::Path as Path;
-    [] Path, [] &Path, [] PathBuf, [] &PathBuf, [] Box<Path>, [] &Box<Path>,
-    [] Cow<'_, Path>, [] &Cow<'_, Path>,
-    [] OsStr, [] &OsStr, [] OsString, [] &OsString, [] Cow<'_, OsStr>, [] &Cow<'_, OsStr>,
-);
-impl_cmp!(enc::Path as OsStr; [] Box<OsStr>, [] &Box<OsStr>);
-
-impl<'a, R1: Repr<'a>, R2: Repr<'a>> PartialEq<Hip<enc::OsStr, R2>> for Hip<enc::Path, R1> {
-    #[inline]
-    fn eq(&self, other: &Hip<enc::OsStr, R2>) -> bool {
-        self.as_path() == <Hip<enc::OsStr, R2> as AsRef<Path>>::as_ref(other)
-    }
-}
-
-impl<'a, R1: Repr<'a>, R2: Repr<'a>> PartialEq<Hip<enc::Path, R2>> for Hip<enc::OsStr, R1> {
-    #[inline]
-    fn eq(&self, other: &Hip<enc::Path, R2>) -> bool {
-        <Self as AsRef<Path>>::as_ref(self) == other.as_path()
-    }
-}
 
 impl<'a, R: Repr<'a>> AsRef<OsStr> for Hip<enc::Path, R> {
     #[inline]

@@ -8,49 +8,12 @@
 use alloc::borrow::Cow;
 use alloc::vec::Vec;
 use core::borrow::Borrow;
-use core::cmp::Ordering;
 
 use ::bstr::{BStr, BString, ByteSlice, ByteVec};
 
 use super::enc::{Bytes, Utf8};
 use super::hip::Hip;
 use super::repr::Repr;
-
-/// Comparisons with `BStr`/`&BStr`/`BString` in both directions, on bytes.
-macro_rules! bstr_cmp {
-    ($enc:ty: $($other:ty),*) => {$(
-        impl<'a, R: Repr<'a>> PartialEq<$other> for Hip<$enc, R> {
-            #[inline]
-            fn eq(&self, other: &$other) -> bool {
-                self.bytes() == <$other as AsRef<[u8]>>::as_ref(other)
-            }
-        }
-
-        impl<'a, R: Repr<'a>> PartialEq<Hip<$enc, R>> for $other {
-            #[inline]
-            fn eq(&self, other: &Hip<$enc, R>) -> bool {
-                <$other as AsRef<[u8]>>::as_ref(self) == other.bytes()
-            }
-        }
-
-        impl<'a, R: Repr<'a>> PartialOrd<$other> for Hip<$enc, R> {
-            #[inline]
-            fn partial_cmp(&self, other: &$other) -> Option<Ordering> {
-                self.bytes().partial_cmp(<$other as AsRef<[u8]>>::as_ref(other))
-            }
-        }
-
-        impl<'a, R: Repr<'a>> PartialOrd<Hip<$enc, R>> for $other {
-            #[inline]
-            fn partial_cmp(&self, other: &Hip<$enc, R>) -> Option<Ordering> {
-                <$other as AsRef<[u8]>>::as_ref(self).partial_cmp(other.bytes())
-            }
-        }
-    )*};
-}
-
-bstr_cmp!(Bytes: BStr, &BStr, BString);
-bstr_cmp!(Utf8: BStr, &BStr, BString);
 
 impl<'a, R: Repr<'a>> AsRef<BStr> for Hip<Bytes, R> {
     #[inline]

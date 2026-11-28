@@ -466,3 +466,29 @@ fn c_string_with_nul() {
     let c = HipCStr::try_from(&b"ab"[..]).unwrap();
     assert_eq!(c.into_bytes_with_nul().as_slice(), b"ab\0");
 }
+
+#[test]
+fn shared_bytes_compare_equal_without_reading() {
+    use core::cmp::Ordering;
+
+    // a thin buffer (an adopted `String` would be copied by `SmallStr`)
+    let a = HipStr::from(core::str::from_utf8(LONG).unwrap());
+    let b = a.clone();
+    let c = SmallStr::from(&a);
+    assert_eq!(a.as_ptr(), c.as_ptr());
+    assert_eq!(a.cmp(&b), Ordering::Equal);
+    assert_eq!(a.partial_cmp(&c), Some(Ordering::Equal));
+    assert!(a == c);
+    // same pointer, different lengths: compared normally
+    let prefix = a.slice(0..10);
+    assert_eq!(prefix.partial_cmp(&a), Some(Ordering::Less));
+    assert_eq!(prefix.cmp(&a.slice(0..10)), Ordering::Equal);
+
+    #[cfg(feature = "std")]
+    {
+        let path: crate::HipPath = a.clone().convert();
+        let os: crate::HipOsStr = path.to_converted();
+        assert_eq!(path.as_os_str().as_encoded_bytes().as_ptr(), a.as_ptr());
+        assert!(path == os && os == path);
+    }
+}

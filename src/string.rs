@@ -7,7 +7,7 @@ use core::fmt;
 use core::str::Utf8Error;
 
 use super::enc::{Bytes, Utf8};
-use super::family::{impl_borrowed_ctors, impl_cmp, impl_std_glue};
+use super::family::{impl_borrowed_ctors, impl_std_glue};
 use super::hip::Hip;
 use super::repr::Repr;
 pub use crate::hip::RefMut;
@@ -40,15 +40,6 @@ super::generic_aliases!(Utf8, HipStr, SmallStr, TinyStr, "string");
 
 impl_std_glue!(Utf8, str, String);
 impl_borrowed_ctors!(Utf8, str, |value| value.as_bytes());
-
-impl_cmp!(Utf8 as str;
-    [] str, [] &str, [] String, [] &String, [] alloc::boxed::Box<str>, [] &alloc::boxed::Box<str>,
-    [] Cow<'_, str>, [] &Cow<'_, str>,
-);
-#[cfg(feature = "std")]
-impl_cmp!(Utf8 as std::ffi::OsStr;
-    [] std::ffi::OsStr, [] &std::ffi::OsStr, [] std::ffi::OsString, [] &std::ffi::OsString,
-);
 
 #[cfg(feature = "std")]
 impl<'a, R: Repr<'a>> AsRef<std::ffi::OsStr> for Hip<Utf8, R> {

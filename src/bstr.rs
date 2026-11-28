@@ -17,7 +17,6 @@
 //! assert_eq!(format!("{GREETING}"), "Hello, 🦀!");
 //! ```
 
-use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -26,7 +25,7 @@ use core::fmt;
 use ::bstr::{BStr, BString};
 
 use super::enc::{self, Bytes, Utf8};
-use super::family::{impl_borrowed_ctors, impl_cmp, impl_std_glue};
+use super::family::{impl_borrowed_ctors, impl_std_glue};
 use super::hip::Hip;
 use super::repr::Repr;
 pub use crate::hip::RefMut;
@@ -62,14 +61,6 @@ impl_borrowed_ctors!(enc::BStr, BStr, |value| bytes_from_bstr(value));
 super::hip::impl_const_typed_accessors!(enc::BStr, BStr, |b| bstr_from_bytes(b), |v| {
     bytes_from_bstr(v)
 });
-
-impl_cmp!(enc::BStr as BStr;
-    [] BStr, [] &BStr, [] BString, [] &BString, [] Cow<'_, BStr>, [] &Cow<'_, BStr>,
-);
-impl_cmp!(enc::BStr as [u8];
-    [] [u8], [] &[u8], [const N: usize] [u8; N], [const N: usize] &[u8; N],
-    [] Vec<u8>, [] &Vec<u8>, [] str, [] &str, [] String, [] &String,
-);
 
 /// `const` accessors and constructors, per representation.
 macro_rules! impl_const_bstr {
