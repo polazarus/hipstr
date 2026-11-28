@@ -1066,17 +1066,21 @@ where
     }
 }
 
+/// Whether two values are the same bytes in memory: clones of one shared
+/// buffer, or borrowed from the same storage. Then they are equal without
+/// comparing, whatever the encoding (paths included).
+#[inline]
+pub(crate) fn same_bytes(a: &[u8], b: &[u8]) -> bool {
+    a.len() == b.len() && core::ptr::eq(a.as_ptr(), b.as_ptr())
+}
+
 impl<'a, 'b, E: Encoding, R1: Repr<'a>, R2: Repr<'b>> PartialEq<Hip<E, R2>> for Hip<E, R1>
 where
     E::Slice: PartialEq,
 {
     #[inline]
     fn eq(&self, other: &Hip<E, R2>) -> bool {
-        let (a, b) = (self.bytes(), other.bytes());
-        // shared or borrowed from the same storage: equal without comparing
-        // (identical bytes, so equal for every encoding, paths included)
-        (a.len() == b.len() && core::ptr::eq(a.as_ptr(), b.as_ptr()))
-            || self.as_inner() == other.as_inner()
+        same_bytes(self.bytes(), other.bytes()) || self.as_inner() == other.as_inner()
     }
 }
 
@@ -1088,6 +1092,9 @@ where
 {
     #[inline]
     fn partial_cmp(&self, other: &Hip<E, R2>) -> Option<Ordering> {
+        if same_bytes(self.bytes(), other.bytes()) {
+            return Some(Ordering::Equal);
+        }
         self.as_inner().partial_cmp(other.as_inner())
     }
 }
@@ -1098,6 +1105,9 @@ where
 {
     #[inline]
     fn cmp(&self, other: &Self) -> Ordering {
+        if same_bytes(self.bytes(), other.bytes()) {
+            return Ordering::Equal;
+        }
         self.as_inner().cmp(other.as_inner())
     }
 }

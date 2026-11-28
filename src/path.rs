@@ -41,14 +41,16 @@ impl_cmp!(enc::Path as OsStr; [] Box<OsStr>, [] &Box<OsStr>);
 impl<'a, R1: Repr<'a>, R2: Repr<'a>> PartialEq<Hip<enc::OsStr, R2>> for Hip<enc::Path, R1> {
     #[inline]
     fn eq(&self, other: &Hip<enc::OsStr, R2>) -> bool {
-        self.as_path() == <Hip<enc::OsStr, R2> as AsRef<Path>>::as_ref(other)
+        crate::hip::same_bytes(self.bytes(), other.bytes())
+            || self.as_path() == <Hip<enc::OsStr, R2> as AsRef<Path>>::as_ref(other)
     }
 }
 
 impl<'a, R1: Repr<'a>, R2: Repr<'a>> PartialEq<Hip<enc::Path, R2>> for Hip<enc::OsStr, R1> {
     #[inline]
     fn eq(&self, other: &Hip<enc::Path, R2>) -> bool {
-        <Self as AsRef<Path>>::as_ref(self) == other.as_path()
+        crate::hip::same_bytes(self.bytes(), other.bytes())
+            || <Self as AsRef<Path>>::as_ref(self) == other.as_path()
     }
 }
 
