@@ -2,6 +2,16 @@
 
 Notable changes only.
 
+## [0.8.1] - 2026-11-28
+
+### Fixed
+
+- **soundness**: values with the thread-local `Local` (`Rc`) backend were
+  `Send`, so a clone sent to another thread could race on the reference
+  count (undefined behavior). They are no longer `Send`; use the default
+  thread-safe types to share across threads. Reported and fixed by
+  Ollie-Pearce in [#54](https://github.com/polazarus/hipstr/pull/54).
+
 ## [0.8.0] - 2025-02-10
 
 ### Added
@@ -174,6 +184,7 @@ Initial release
 
 <!-- [unreleased]: https://github.com/polazarus/hipstr/compare/0.8.0...HEAD -->
 
+[0.8.1]: https://github.com/polazarus/hipstr/compare/0.8.0...0.8.1
 [0.8.0]: https://github.com/polazarus/hipstr/compare/0.7.0...0.8.0
 [0.7.0]: https://github.com/polazarus/hipstr/compare/0.6.0...0.7.0
 [0.6.0]: https://github.com/polazarus/hipstr/compare/0.5.1...0.6.0
