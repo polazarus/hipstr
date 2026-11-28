@@ -5,10 +5,10 @@ use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec::Vec;
 use std::ffi::{OsStr, OsString};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use super::enc::{self, Bytes, Utf8};
-use super::family::{impl_cmp, impl_std_glue};
+use super::family::impl_std_glue;
 use super::hip::Hip;
 use super::repr::Repr;
 pub use crate::hip::RefMut;
@@ -114,15 +114,6 @@ macro_rules! impl_const_os_str {
 }
 
 crate::repr::for_each_repr!(impl_const_os_str);
-
-impl_cmp!(enc::OsStr as OsStr;
-    [] OsStr, [] &OsStr, [] OsString, [] &OsString, [] Box<OsStr>, [] &Box<OsStr>,
-    [] Cow<'_, OsStr>, [] &Cow<'_, OsStr>,
-);
-impl_cmp!(enc::OsStr as Path;
-    [] Path, [] &Path, [] PathBuf, [] &PathBuf, [] Box<Path>, [] &Box<Path>,
-    [] Cow<'_, Path>, [] &Cow<'_, Path>,
-);
 
 impl<'a, R: Repr<'a>> AsRef<Path> for Hip<enc::OsStr, R> {
     #[inline]

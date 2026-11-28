@@ -509,9 +509,30 @@ where
     }
 }
 
-/// `Borrow`, comparisons with the std types, per family.
+impl<'a, E: Encoding, R: Repr<'a>, const N: usize> PartialOrd<Inline<E, N>> for Hip<E, R>
+where
+    E::Slice: PartialOrd,
+{
+    #[inline]
+    fn partial_cmp(&self, other: &Inline<E, N>) -> Option<Ordering> {
+        (**self).partial_cmp(other.as_inner())
+    }
+}
+
+impl<'a, E: Encoding, R: Repr<'a>, const N: usize> PartialOrd<Hip<E, R>> for Inline<E, N>
+where
+    E::Slice: PartialOrd,
+{
+    #[inline]
+    fn partial_cmp(&self, other: &Hip<E, R>) -> Option<Ordering> {
+        self.as_inner().partial_cmp(&**other)
+    }
+}
+
+/// `TryFrom` and `Borrow` with the std borrowed form, per family
+/// (comparisons: see the `cmp` module).
 macro_rules! family_glue {
-    ($enc:ty, $slice:ty; $($other:ty),* $(,)?) => {
+    ($enc:ty, $slice:ty) => {
         impl<const N: usize> TryFrom<&$slice> for Inline<$enc, N> {
             type Error = CapacityError;
 
@@ -527,51 +548,21 @@ macro_rules! family_glue {
                 self.as_inner()
             }
         }
-
-        $(
-            impl<const N: usize> PartialEq<$other> for Inline<$enc, N> {
-                #[inline]
-                fn eq(&self, other: &$other) -> bool {
-                    self.as_inner() == <$other as AsRef<$slice>>::as_ref(other)
-                }
-            }
-
-            impl<const N: usize> PartialEq<Inline<$enc, N>> for $other {
-                #[inline]
-                fn eq(&self, other: &Inline<$enc, N>) -> bool {
-                    <$other as AsRef<$slice>>::as_ref(self) == other.as_inner()
-                }
-            }
-
-            impl<const N: usize> PartialOrd<$other> for Inline<$enc, N> {
-                #[inline]
-                fn partial_cmp(&self, other: &$other) -> Option<Ordering> {
-                    self.as_inner().partial_cmp(<$other as AsRef<$slice>>::as_ref(other))
-                }
-            }
-
-            impl<const N: usize> PartialOrd<Inline<$enc, N>> for $other {
-                #[inline]
-                fn partial_cmp(&self, other: &Inline<$enc, N>) -> Option<Ordering> {
-                    <$other as AsRef<$slice>>::as_ref(self).partial_cmp(other.as_inner())
-                }
-            }
-        )*
     };
 }
 
 #[cfg(feature = "bytes")]
-family_glue!(Bytes, [u8]; [u8], &[u8], alloc::vec::Vec<u8>);
+family_glue!(Bytes, [u8]);
 #[cfg(feature = "str")]
-family_glue!(Utf8, str; str, &str, alloc::string::String);
+family_glue!(Utf8, str);
 #[cfg(feature = "cstr")]
-family_glue!(enc::CStr, core::ffi::CStr; core::ffi::CStr, &core::ffi::CStr, alloc::ffi::CString);
+family_glue!(enc::CStr, core::ffi::CStr);
 #[cfg(feature = "bstr")]
-family_glue!(enc::BStr, ::bstr::BStr; ::bstr::BStr, &::bstr::BStr, ::bstr::BString);
+family_glue!(enc::BStr, ::bstr::BStr);
 #[cfg(feature = "osstr")]
-family_glue!(enc::OsStr, std::ffi::OsStr; std::ffi::OsStr, &std::ffi::OsStr, std::ffi::OsString);
+family_glue!(enc::OsStr, std::ffi::OsStr);
 #[cfg(feature = "path")]
-family_glue!(enc::Path, std::path::Path; std::path::Path, &std::path::Path, std::path::PathBuf);
+family_glue!(enc::Path, std::path::Path);
 
 // ---------------------------------------------------------------------------
 // byte strings (`InlineByt`, `InlineBStr`): the `const` `Vec`-like API

@@ -1,11 +1,9 @@
 //! Byte strings: [`HipByt`], [`SmallByt`], [`TinyByt`].
 
-use alloc::borrow::Cow;
-use alloc::boxed::Box;
 use alloc::vec::Vec;
 
 use super::enc::Bytes;
-use super::family::{impl_borrowed_ctors, impl_cmp, impl_std_glue};
+use super::family::{impl_borrowed_ctors, impl_std_glue};
 use super::hip::Hip;
 use super::repr::Repr;
 pub use crate::hip::RefMut;
@@ -37,10 +35,6 @@ super::generic_aliases!(Bytes, HipByt, SmallByt, TinyByt, "byte string");
 impl_std_glue!(Bytes, [u8], Vec<u8>);
 impl_borrowed_ctors!(Bytes, [u8], |value| value);
 
-impl_cmp!(Bytes as [u8];
-    [] [u8], [] &[u8], [const N: usize] [u8; N], [const N: usize] &[u8; N],
-    [] Vec<u8>, [] &Vec<u8>, [] Box<[u8]>, [] &Box<[u8]>, [] Cow<'_, [u8]>, [] &Cow<'_, [u8]>,
-);
 super::hip::impl_const_typed_accessors!(Bytes, [u8], |b| b, |v| v);
 
 /// `const` byte accessors, per representation.

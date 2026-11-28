@@ -209,6 +209,7 @@ pub mod string;
 mod borsh_impl;
 #[cfg(feature = "bstr")]
 mod bstr_impl;
+mod cmp;
 mod family;
 #[cfg(feature = "serde")]
 mod serde_impl;

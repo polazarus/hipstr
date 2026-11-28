@@ -19,7 +19,6 @@
 //! assert!(HipCStr::try_from("nul\0inside").is_err());
 //! ```
 
-use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::ffi::{CString, NulError};
 use alloc::string::String;
@@ -27,7 +26,7 @@ use alloc::vec::Vec;
 use core::ffi::{CStr, FromBytesWithNulError};
 
 use super::enc::{self, Bytes, Utf8};
-use super::family::{impl_borrowed_ctors, impl_cmp, impl_std_glue};
+use super::family::{impl_borrowed_ctors, impl_std_glue};
 use super::hip::Hip;
 use super::repr::Repr;
 pub use crate::hip::RefMut;
@@ -41,11 +40,6 @@ super::hip::impl_const_typed_accessors!(
     CStr,
     |b| CStr::from_bytes_with_nul_unchecked(b),
     |v| v.to_bytes_with_nul()
-);
-
-impl_cmp!(enc::CStr as CStr;
-    [] CStr, [] &CStr, [] CString, [] &CString, [] Box<CStr>, [] &Box<CStr>,
-    [] Cow<'_, CStr>, [] &Cow<'_, CStr>,
 );
 
 /// `const` C string accessors, per representation.

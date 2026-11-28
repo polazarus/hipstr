@@ -10,6 +10,11 @@ representation), with the old names kept as aliases. See
 
 ### Added
 
+- comparisons generated from one table per family (`==` and `<`, both
+  directions): inline values compare with the same std types as `Hip` values
+  (arrays, `Box`, `Cow`, …); `Hip` and inline values order against each
+  other; strings with OS strings, OS strings with paths, and `bstr` byte
+  strings with bytes and strings, across `Hip` and inline values
 - systematic conversions (`hipstr::convert`): `Hip::convert`/`try_convert`
   (and `to_converted`/`try_to_converted`) change the family, the
   representation and the backend at once, keeping the buffer whenever the
@@ -86,6 +91,7 @@ representation), with the old names kept as aliases. See
 
 ### Fixed
 
+- paths compared with `Box<OsStr>` compared bytes instead of paths
 - `HipStr: Borrow<BStr>` and `HipPath: Borrow<OsStr>` violated `Borrow`'s
   contract (different hashes): removed
 - borsh deserialization pre-allocated the untrusted length prefix
