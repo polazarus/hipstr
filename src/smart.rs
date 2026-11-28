@@ -288,7 +288,7 @@ where
 unsafe impl<T, C> Send for Smart<T, C>
 where
     T: Sync + Send,
-    C: Send + Backend,
+    C: Send + Sync + Backend,
 {
 }
 
