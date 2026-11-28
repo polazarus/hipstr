@@ -2,8 +2,10 @@
 
 use alloc::fmt;
 
+#[cfg(any(feature = "hip", feature = "small", feature = "tiny"))]
 mod base;
 
+#[cfg(any(feature = "hip", feature = "small", feature = "tiny"))]
 pub(crate) use base::Base;
 
 #[derive(Clone, PartialEq, Eq, Debug)]

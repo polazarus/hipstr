@@ -3,10 +3,13 @@
 use core::fmt;
 use core::ops::{Bound, Range, RangeBounds};
 
+#[cfg(feature = "hip")]
 use super::backend::Backend;
 use super::enc::{Bytes, Encoding, Utf8};
 use super::hip::Hip;
-use super::repr::{Repr, Wide};
+use super::repr::Repr;
+#[cfg(feature = "hip")]
+use super::repr::Wide;
 
 /// Kind of slicing error.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -95,6 +98,7 @@ impl<'s, E: Encoding, R> SliceError<'s, E, R> {
     }
 }
 
+#[cfg(feature = "str")]
 impl<'a, R: Repr<'a>> fmt::Debug for SliceError<'_, Utf8, R> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SliceError")
@@ -106,6 +110,7 @@ impl<'a, R: Repr<'a>> fmt::Debug for SliceError<'_, Utf8, R> {
     }
 }
 
+#[cfg(feature = "str")]
 impl<'a, R: Repr<'a>> fmt::Display for SliceError<'_, Utf8, R> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let (start, end, string) = (self.range.start, self.range.end, self.source.as_inner());
@@ -139,6 +144,7 @@ impl<'a, R: Repr<'a>> fmt::Display for SliceError<'_, Utf8, R> {
     }
 }
 
+#[cfg(feature = "bytes")]
 impl<'a, R: Repr<'a>> fmt::Debug for SliceError<'_, Bytes, R> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SliceError")
@@ -150,6 +156,7 @@ impl<'a, R: Repr<'a>> fmt::Debug for SliceError<'_, Bytes, R> {
     }
 }
 
+#[cfg(feature = "bytes")]
 impl<'a, R: Repr<'a>> fmt::Display for SliceError<'_, Bytes, R> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let (start, end, len) = (
@@ -181,7 +188,9 @@ impl<'a, R: Repr<'a>> fmt::Display for SliceError<'_, Bytes, R> {
     }
 }
 
+#[cfg(feature = "str")]
 impl<'a, R: Repr<'a>> core::error::Error for SliceError<'_, Utf8, R> {}
+#[cfg(feature = "bytes")]
 impl<'a, R: Repr<'a>> core::error::Error for SliceError<'_, Bytes, R> {}
 
 /// Resolves `range` against `len`.
@@ -232,6 +241,7 @@ pub(crate) fn range_or_panic(range: impl RangeBounds<usize>, len: usize) -> Rang
     }
 }
 
+#[cfg(feature = "hip")]
 impl<'a, E: Encoding, B: Backend> Hip<E, Wide<'a, B>> {
     /// # Safety
     ///
@@ -317,6 +327,7 @@ impl<'a, E: Encoding, B: Backend> Hip<E, Wide<'a, B>> {
     }
 }
 
+#[cfg(all(feature = "hip", feature = "bytes"))]
 impl<'a, B: Backend> Hip<Bytes, Wide<'a, B>> {
     /// Extracts a slice as its own `HipByt`.
     ///
@@ -388,6 +399,7 @@ impl<'a, B: Backend> Hip<Bytes, Wide<'a, B>> {
     }
 }
 
+#[cfg(all(feature = "hip", feature = "str"))]
 impl<'a, B: Backend> Hip<Utf8, Wide<'a, B>> {
     /// Extracts a slice as its own `HipStr`.
     ///

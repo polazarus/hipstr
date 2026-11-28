@@ -52,19 +52,22 @@ use crate::repr::Repr;
 pub const DEFAULT_CAPACITY: usize = 23;
 
 /// Inline string of up to `N` bytes.
+#[cfg(feature = "str")]
 pub type InlineStr<const N: usize = DEFAULT_CAPACITY> = Inline<Utf8, N>;
 /// Inline byte string of up to `N` bytes.
+#[cfg(feature = "bytes")]
 pub type InlineByt<const N: usize = DEFAULT_CAPACITY> = Inline<Bytes, N>;
 /// Inline C string of up to `N` bytes, NUL included.
+#[cfg(feature = "cstr")]
 pub type InlineCStr<const N: usize = DEFAULT_CAPACITY> = Inline<enc::CStr, N>;
 /// Inline `bstr` byte string of up to `N` bytes.
 #[cfg(feature = "bstr")]
 pub type InlineBStr<const N: usize = DEFAULT_CAPACITY> = Inline<enc::BStr, N>;
 /// Inline OS string of up to `N` bytes.
-#[cfg(feature = "std")]
+#[cfg(feature = "osstr")]
 pub type InlineOsStr<const N: usize = DEFAULT_CAPACITY> = Inline<enc::OsStr, N>;
 /// Inline path of up to `N` bytes.
-#[cfg(feature = "std")]
+#[cfg(feature = "path")]
 pub type InlinePath<const N: usize = DEFAULT_CAPACITY> = Inline<enc::Path, N>;
 
 /// Error of the `try_` methods: the value does not fit.
@@ -238,6 +241,56 @@ impl<E: Encoding, const N: usize> Inline<E, N> {
         // the terminator (NUL) is already there: the data is zeroed
         this.set_stored_len(bytes.len() + E::TERMINATOR);
         Some(this)
+    }
+
+    /// The same value with another capacity, in a `const` context too.
+    ///
+    /// # Errors
+    ///
+    /// If the value is longer than `M` allows.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::inline::InlineStr;
+    ///
+    /// let s = InlineStr::<8>::inline("abc");
+    /// let t: InlineStr<4> = s.try_resize().unwrap();
+    /// assert_eq!(t, "abc");
+    /// assert!(s.try_resize::<2>().is_err());
+    /// ```
+    #[inline]
+    pub const fn try_resize<const M: usize>(self) -> Result<Inline<E, M>, CapacityError> {
+        // SAFETY: the bytes of a valid value
+        match unsafe { Inline::<E, M>::try_from_bytes(self.bytes()) } {
+            Some(value) => Ok(value),
+            None => Err(CapacityError),
+        }
+    }
+
+    /// The same value with a capacity at least as large, in a `const`
+    /// context too; a smaller `M` does not compile.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hipstr::inline::InlineStr;
+    ///
+    /// const S: InlineStr<16> = InlineStr::<4>::inline("abc").widen();
+    /// assert_eq!(S, "abc");
+    /// ```
+    ///
+    /// ```compile_fail
+    /// use hipstr::inline::InlineStr;
+    ///
+    /// const S: InlineStr<2> = InlineStr::<4>::inline("abc").widen();
+    /// ```
+    #[inline]
+    #[must_use]
+    pub const fn widen<const M: usize>(self) -> Inline<E, M> {
+        const { assert!(M >= N, "`widen` cannot reduce the capacity") };
+        // SAFETY: the bytes of a valid value, which fit (`M >= N`)
+        unsafe { Inline::<E, M>::try_from_bytes(self.bytes()) }.expect("fits")
     }
 
     /// Inserts `bytes` at byte `index` (before the terminator).
@@ -416,6 +469,17 @@ impl<'a, E: Encoding, R: Repr<'a>, const N: usize> From<Inline<E, N>> for Hip<E,
     }
 }
 
+impl<'a, E: Encoding, R: Repr<'a>, const N: usize> TryFrom<Hip<E, R>> for Inline<E, N> {
+    type Error = crate::convert::ConvertError<Hip<E, R>, CapacityError>;
+
+    /// Gives the value back if it does not fit.
+    #[inline]
+    fn try_from(value: Hip<E, R>) -> Result<Self, Self::Error> {
+        Self::try_from_inner(value.as_inner())
+            .map_err(|error| crate::convert::ConvertError::new(value, error))
+    }
+}
+
 impl<'a, E: Encoding, R: Repr<'a>, const N: usize> TryFrom<&Hip<E, R>> for Inline<E, N> {
     type Error = CapacityError;
 
@@ -496,14 +560,17 @@ macro_rules! family_glue {
     };
 }
 
+#[cfg(feature = "bytes")]
 family_glue!(Bytes, [u8]; [u8], &[u8], alloc::vec::Vec<u8>);
+#[cfg(feature = "str")]
 family_glue!(Utf8, str; str, &str, alloc::string::String);
+#[cfg(feature = "cstr")]
 family_glue!(enc::CStr, core::ffi::CStr; core::ffi::CStr, &core::ffi::CStr, alloc::ffi::CString);
 #[cfg(feature = "bstr")]
 family_glue!(enc::BStr, ::bstr::BStr; ::bstr::BStr, &::bstr::BStr, ::bstr::BString);
-#[cfg(feature = "std")]
+#[cfg(feature = "osstr")]
 family_glue!(enc::OsStr, std::ffi::OsStr; std::ffi::OsStr, &std::ffi::OsStr, std::ffi::OsString);
-#[cfg(feature = "std")]
+#[cfg(feature = "path")]
 family_glue!(enc::Path, std::path::Path; std::path::Path, &std::path::Path, std::path::PathBuf);
 
 // ---------------------------------------------------------------------------
@@ -1119,7 +1186,7 @@ impl<const N: usize> fmt::Display for Inline<enc::BStr, N> {
 // OS strings and paths (`InlineOsStr`, `InlinePath`): std's conversions are
 // not `const`, so these only have the generic `const` core
 
-#[cfg(feature = "std")]
+#[cfg(feature = "osstr")]
 impl<const N: usize> Inline<enc::OsStr, N> {
     /// The OS string slice.
     #[inline]
@@ -1147,7 +1214,7 @@ impl<const N: usize> Inline<enc::OsStr, N> {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "path")]
 impl<const N: usize> Inline<enc::Path, N> {
     /// The path slice.
     #[inline]

@@ -29,6 +29,7 @@ use core::mem::{MaybeUninit, offset_of, transmute};
 use core::num::NonZeroUsize;
 use core::ptr::NonNull;
 
+use super::parts::{InlineBytes, Parts, ThinView};
 use super::thin_owner::ThinOwner;
 use super::{HeapKind, Kind, Repr, capacity_overflow};
 use crate::backend::Backend;
@@ -327,11 +328,45 @@ impl<B: Backend> Drop for Small<'_, B> {
 // SAFETY: see the trait's contract, upheld by `try_reserve`
 unsafe impl<'a, B: Backend> Repr<'a> for Small<'a, B> {
     type Owned = Small<'static, B>;
+    type Backend = B;
     const WORDS: usize = 2;
     const INLINE_CAPACITY: usize = Inline::CAPACITY;
     const MAX_LEN: usize = MAX_HEAP_LEN;
     const BORROWS: bool = true;
     const ADOPTS_VEC: bool = false;
+
+    fn into_parts(self) -> Parts<'a, B> {
+        let this = core::mem::ManuallyDrop::new(self);
+        match this.tag() {
+            Tag::Inline => Parts::Inline(InlineBytes::new(this.as_slice())),
+            // SAFETY: borrowed case
+            Tag::Borrowed => Parts::Borrowed(unsafe { this.borrowed_slice().unwrap_unchecked() }),
+            // the reference held by `self` moves to the parts
+            Tag::Heap => Parts::Thin(ThinView {
+                base: this.heap().w0.into_base(),
+                start: 0,
+                len: this.len(),
+            }),
+        }
+    }
+
+    fn try_from_parts(parts: Parts<'a, B>) -> Result<Self, Parts<'a, B>> {
+        let len = parts.as_slice().len();
+        let base = match &parts {
+            Parts::Borrowed(slice) if len <= MAX_BORROWED_LEN => return Ok(Self::borrowed(slice)),
+            // inline, or a short heap view: copied inline (normalized), the
+            // parts released
+            Parts::Inline(_) | Parts::Thin(_) if len <= Inline::CAPACITY => {
+                return Ok(Self::from_inline(Inline::from_slice_copy(parts.as_slice())));
+            }
+            Parts::Thin(view) if view.start == 0 && len <= MAX_HEAP_LEN => view.base.0,
+            _ => return Err(parts),
+        };
+        // the reference held by the parts moves to the result
+        core::mem::forget(parts);
+        let owner = ThinOwner::from_base(&crate::thin::Base(base));
+        Ok(Self::from_heap(owner, len))
+    }
 
     #[inline]
     fn new() -> Self {

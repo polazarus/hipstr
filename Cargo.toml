@@ -16,8 +16,18 @@ rust-version = "1.100.0"
 all-features = true
 
 [features]
-default = ["std"]
+default = ["std", "hip", "small", "tiny", "bytes", "str", "cstr", "osstr", "path"]
 std = ["serde?/std"]
+# representations
+hip = []
+small = []
+tiny = []
+# families (encodings)
+bytes = []
+str = []
+cstr = []
+osstr = ["std"]
+path = ["osstr"]
 unstable = []
 serde = ["dep:serde"]
 bstr = ["dep:bstr"]

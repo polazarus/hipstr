@@ -35,22 +35,33 @@ jobs:
       - name: Show version
         run: cargo version
 
-      - name: Check
-        run: cargo hack check -v --feature-powerset --no-dev-deps
+      # Every representation and family can be disabled: check each one
+      # alone and every pair of features (the full powerset is too large).
+      - name: Check (features alone and in pairs)
+        env:
+          RUSTFLAGS: "-D warnings"
+        run: >-
+          cargo hack check -v --lib --no-dev-deps --feature-powerset --depth 2
+          --exclude-features unstable
 
       - name: Build
         run: cargo hack build -v --each-feature
 
+      # The test suite needs the default families and representations.
       - name: Run tests
-        run: cargo hack test -v --each-feature -- --nocapture
+        run: |
+          cargo test -v -- --nocapture
+          cargo test -v --all-features -- --nocapture
 
       - name: Run tests (release)
-        run: cargo hack test -v --each-feature --release -- --nocapture
+        run: |
+          cargo test -v --release -- --nocapture
+          cargo test -v --release --all-features -- --nocapture
 
       - name: Run loom tests
         env:
           RUSTFLAGS: "--cfg loom"
-        run: cargo hack test -v --each-feature --release loom -- --nocapture
+        run: cargo test -v --release --all-features loom -- --nocapture
 
   fmt:
     runs-on: ubuntu-latest

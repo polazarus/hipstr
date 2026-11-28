@@ -20,7 +20,13 @@ use core::ops::{Deref, DerefMut};
 
 use super::backend::Backend;
 use super::enc::Encoding;
-use super::repr::{Kind, Repr, Small, Tiny, Wide};
+#[cfg(feature = "small")]
+use super::repr::Small;
+#[cfg(feature = "tiny")]
+use super::repr::Tiny;
+#[cfg(feature = "hip")]
+use super::repr::Wide;
+use super::repr::{Kind, Repr};
 
 /// Copy-on-write sequence of bytes with encoding `E` stored as `R`.
 ///
@@ -34,6 +40,7 @@ pub struct Hip<E: Encoding, R> {
 
 // ----- constructors that must be `const`, per representation -----
 
+#[cfg(feature = "hip")]
 impl<'a, E: Encoding, B: Backend> Hip<E, Wide<'a, B>> {
     /// Creates an empty `HipStr`.
     ///
@@ -66,6 +73,7 @@ impl<'a, E: Encoding, B: Backend> Hip<E, Wide<'a, B>> {
     }
 }
 
+#[cfg(feature = "small")]
 impl<'a, E: Encoding, B: Backend> Hip<E, Small<'a, B>> {
     /// Creates an empty `HipStr`.
     ///
@@ -98,6 +106,7 @@ impl<'a, E: Encoding, B: Backend> Hip<E, Small<'a, B>> {
     }
 }
 
+#[cfg(feature = "tiny")]
 impl<E: Encoding, B: Backend> Hip<E, Tiny<B>> {
     /// Creates an empty `HipStr`.
     ///
@@ -137,7 +146,8 @@ impl<E: Encoding, B: Backend> Hip<E, Tiny<B>> {
 // representation's own `const` methods.
 
 macro_rules! impl_const_accessors {
-    ($([$($lt:lifetime)?] $repr:ty),* $(,)?) => {$(
+    ($(#[$m:meta] [$($lt:lifetime)?] $repr:ty),* $(,)?) => {$(
+        #[$m]
         impl<$($lt,)? E: Encoding, B: Backend> Hip<E, $repr> {
             /// Returns the length of this `HipStr`, in bytes, not [`char`]s or
             /// graphemes. In other words, it might not be what a human considers the
@@ -291,11 +301,89 @@ macro_rules! impl_const_accessors {
                 !self.repr.is_heap()
                     || self.repr.len() > <$repr as Repr<'_>>::INLINE_CAPACITY
             }
+
+            /// Copies the value into an inline value of capacity `N`, in a
+            /// `const` context too; `None` if it does not fit.
+            ///
+            /// # Examples
+            ///
+            /// ```
+            /// use hipstr::HipStr;
+            /// use hipstr::inline::InlineStr;
+            ///
+            /// const I: Option<InlineStr<4>> = {
+            ///     let s = HipStr::borrowed("abc");
+            ///     let i = s.try_to_inline();
+            ///     // a borrowed value owns nothing (`const` cannot drop)
+            ///     core::mem::forget(s);
+            ///     i
+            /// };
+            /// assert_eq!(I.unwrap(), "abc");
+            /// assert!(HipStr::from("abc").try_to_inline::<2>().is_none());
+            /// ```
+            #[inline]
+            #[must_use]
+            pub const fn try_to_inline<const N: usize>(&self) -> Option<$crate::inline::Inline<E, N>> {
+                let stored = self.repr.as_slice();
+                let content = stored.split_at(stored.len() - E::TERMINATOR).0;
+                // SAFETY: the content of a valid value
+                unsafe { $crate::inline::Inline::<E, N>::try_from_bytes(content) }
+            }
+
+            /// Copies an inline value, inline, in a `const` context too; an
+            /// `N` beyond the inline capacity does not compile (see
+            /// [`try_from_inline`](Self::try_from_inline)).
+            ///
+            /// # Examples
+            ///
+            /// ```
+            /// use hipstr::TinyStr;
+            /// use hipstr::inline::InlineStr;
+            ///
+            /// // 3 bytes fit inline everywhere (1 word on 32-bit targets)
+            /// const S: TinyStr = TinyStr::from_inline(InlineStr::<3>::inline("abc"));
+            /// assert!(S.is_inline());
+            /// ```
+            ///
+            /// ```compile_fail
+            /// use hipstr::TinyStr;
+            /// use hipstr::inline::InlineStr;
+            ///
+            /// // more than 7 bytes: a 1-word string cannot hold it inline
+            /// const S: TinyStr = TinyStr::from_inline(InlineStr::<16>::inline("abc"));
+            /// ```
+            #[inline]
+            #[must_use]
+            pub const fn from_inline<const N: usize>(inline: $crate::inline::Inline<E, N>) -> Self {
+                const {
+                    assert!(
+                        N <= <$repr as Repr<'_>>::INLINE_CAPACITY,
+                        "the inline capacity exceeds the representation's"
+                    );
+                };
+                Self::from_repr_const(<$repr>::inline_copy(inline.stored()))
+            }
+
+            /// Copies an inline value, inline, in a `const` context too;
+            /// `None` if it is too long for the inline storage (`From`
+            /// moves it to the heap instead).
+            #[inline]
+            #[must_use]
+            pub const fn try_from_inline<const N: usize>(
+                inline: &$crate::inline::Inline<E, N>,
+            ) -> Option<Self> {
+                let stored = inline.stored();
+                if stored.len() <= <$repr as Repr<'_>>::INLINE_CAPACITY {
+                    Some(Self::from_repr_const(<$repr>::inline_copy(stored)))
+                } else {
+                    None
+                }
+            }
         }
     )*};
 }
 
-impl_const_accessors!(['a] Wide<'a, B>, ['a] Small<'a, B>, [] Tiny<B>);
+crate::repr::for_each_repr!(impl_const_accessors);
 
 /// Implements the `const` typed accessors of an encoding whose byte
 /// conversion is `const` (bytes and UTF-8), for every representation.
@@ -304,8 +392,11 @@ impl_const_accessors!(['a] Wide<'a, B>, ['a] Small<'a, B>, [] Tiny<B>);
 /// `$to` converts `&$slice` to `&[u8]`.
 macro_rules! impl_const_typed_accessors {
     ($enc:ty, $slice:ty, |$b:ident| $from:expr, |$v:ident| $to:expr) => {
+        #[cfg(feature = "hip")]
         $crate::hip::impl_const_typed_accessors!(@one $enc, $slice, |$b| $from, |$v| $to, ['a] $crate::repr::Wide<'a, B>, 'a);
+        #[cfg(feature = "small")]
         $crate::hip::impl_const_typed_accessors!(@one $enc, $slice, |$b| $from, |$v| $to, ['a] $crate::repr::Small<'a, B>, 'a);
+        #[cfg(feature = "tiny")]
         $crate::hip::impl_const_typed_accessors!(@one $enc, $slice, |$b| $from, |$v| $to, ['a] $crate::repr::Tiny<B>, 'a);
     };
     (@one $enc:ty, $slice:ty, |$b:ident| $from:expr, |$v:ident| $to:expr, [$($lt:lifetime)?] $repr:ty, $blt:lifetime) => {

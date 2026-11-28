@@ -111,43 +111,11 @@ impl<'a, R: Repr<'a>> From<Cow<'a, OsStr>> for Hip<enc::Path, R> {
     }
 }
 
-impl<'a, R: Repr<'a>> From<&Hip<Utf8, R>> for Hip<enc::Path, R> {
-    /// Shares the storage (no copy).
-    #[inline]
-    fn from(value: &Hip<Utf8, R>) -> Self {
-        Self::from(value.clone())
-    }
-}
-
-impl<'a, R: Repr<'a>> From<&Hip<enc::OsStr, R>> for Hip<enc::Path, R> {
-    /// Shares the storage (no copy).
-    #[inline]
-    fn from(value: &Hip<enc::OsStr, R>) -> Self {
-        Self::from(value.clone())
-    }
-}
-
 impl<'a, R: Repr<'a>> From<Hip<enc::Path, R>> for OsString {
     /// O(1) when the value uniquely owns an adopted buffer.
     #[inline]
     fn from(value: Hip<enc::Path, R>) -> Self {
         value.into_os_string()
-    }
-}
-
-impl<'a, R: Repr<'a>> From<Hip<enc::Path, R>> for Hip<enc::OsStr, R> {
-    /// Keeps the representation (no copy).
-    #[inline]
-    fn from(value: Hip<enc::Path, R>) -> Self {
-        value.into_os_str()
-    }
-}
-
-impl<'a, R: Repr<'a>> From<&Hip<enc::Path, R>> for Hip<enc::OsStr, R> {
-    /// Shares the storage (no copy).
-    #[inline]
-    fn from(value: &Hip<enc::Path, R>) -> Self {
-        value.clone().into_os_str()
     }
 }
 
@@ -416,24 +384,7 @@ impl<'a, R: Repr<'a>> From<&str> for Hip<enc::Path, R> {
     }
 }
 
-impl<'a, R: Repr<'a>> From<Hip<Utf8, R>> for Hip<enc::Path, R> {
-    /// Keeps the representation (no copy).
-    #[inline]
-    fn from(value: Hip<Utf8, R>) -> Self {
-        // SAFETY: UTF-8 bytes are valid encoded OS string bytes
-        unsafe { Self::from_repr(value.into_repr()) }
-    }
-}
-
-impl<'a, R: Repr<'a>> From<Hip<enc::OsStr, R>> for Hip<enc::Path, R> {
-    /// Keeps the representation (no copy).
-    #[inline]
-    fn from(value: Hip<enc::OsStr, R>) -> Self {
-        // SAFETY: same encoding of bytes
-        unsafe { Self::from_repr(value.into_repr()) }
-    }
-}
-
+#[cfg(feature = "hip")]
 impl<'a, B: super::backend::Backend> Hip<enc::Path, super::repr::Wide<'a, B>> {
     /// Creates a new `HipPath` from a static string slice without copying the slice.
     ///
@@ -487,6 +438,7 @@ impl<'a, B: super::backend::Backend> Hip<enc::Path, super::repr::Wide<'a, B>> {
     }
 }
 
+#[cfg(feature = "small")]
 impl<'a, B: super::backend::Backend> Hip<enc::Path, super::repr::Small<'a, B>> {
     /// Creates a new `HipPath` from a static string slice without copying the slice.
     ///

@@ -7,20 +7,20 @@
 //! needed only to clone, drop or mutate, is one subtraction away.
 //!
 //! The pointer always derives from the allocation's base pointer (through
-//! [`ThinBase`]), never from a slice reference: walking back to the header
+//! `ThinBase`), never from a slice reference: walking back to the header
 //! needs the provenance of the whole allocation.
 
 use alloc::vec::Vec;
 use core::marker::PhantomData;
 use core::ptr::NonNull;
 
-use super::owner::ThinBase;
 use crate::backend::{Backend, Counter, UpdateResult};
 use crate::common::header::ThinHeader;
 use crate::common::tagged_pointer::TaggedPointer;
 use crate::thin::TryReserveError;
 
 type Header<B> = ThinHeader<<B as Backend>::Counter>;
+type ThinBase<B> = crate::thin::Base<<B as Backend>::Counter>;
 
 /// Thin-only heap handle (see the module documentation).
 ///
@@ -45,14 +45,14 @@ const _: () = {
 #[allow(clippy::len_without_is_empty, reason = "a handle, never empty")]
 impl<B: Backend> ThinOwner<B> {
     /// Wraps an allocated thin buffer.
-    const fn from_base(base: &ThinBase<B>) -> Self {
+    pub(crate) const fn from_base(base: &ThinBase<B>) -> Self {
         let header = base.0.as_non_null().expect("allocated thin buffer");
         // SAFETY: an allocated header is followed by its data
         Self(unsafe { Header::<B>::data(header) }, PhantomData)
     }
 
     /// The thin buffer, to grow, shrink or free it.
-    fn into_base(self) -> ThinBase<B> {
+    pub(crate) fn into_base(self) -> ThinBase<B> {
         crate::thin::Base(TaggedPointer::from(self.header_ptr()))
     }
 

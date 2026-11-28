@@ -10,6 +10,21 @@ representation), with the old names kept as aliases. See
 
 ### Added
 
+- systematic conversions (`hipstr::convert`): `Hip::convert`/`try_convert`
+  (and `to_converted`/`try_to_converted`) change the family, the
+  representation and the backend at once, keeping the buffer whenever the
+  target can hold it (a uniquely owned buffer changes backend in place);
+  generated `From`/`TryFrom` impls between every pair of families and of
+  representations, by value and by reference; `ConvertError` gives the value
+  back on failure
+- `From<&Owned>`, `From<&mut Slice>`, `From<Rc<Slice>>` and `From<Arc<Slice>>`
+  for every family
+- inline values: `const` `try_resize` and `widen`, `convert`/`try_convert`
+  between families; `const` `Hip::try_to_inline`, `Hip::from_inline` and
+  `Hip::try_from_inline`, and `TryFrom<Hip>` by value
+- one Cargo feature per representation (`hip`, `small`, `tiny`) and per
+  family (`bytes`, `str`, `cstr`, `osstr`, `path`, and the existing `bstr`),
+  all enabled by default except `bstr`
 - 2-word (`SmallStr`, `SmallByt`, …) and 1-word (`TinyStr`, `TinyByt`, …)
   types for every family, beside the 3-word `HipStr`, `HipByt`, …
 - fixed-capacity inline types: `InlineStr`, `InlineByt`, `InlineCStr`,

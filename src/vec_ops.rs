@@ -559,18 +559,14 @@ impl<'a, E: Unconstrained, R: Repr<'a>> Hip<E, R> {
     /// adopted buffer of the exact size).
     #[must_use]
     pub fn into_boxed_slice(self) -> Box<[u8]> {
-        // SAFETY: no invariant
-        let bytes: Hip<crate::enc::Bytes, R> = unsafe { Hip::from_repr(self.into_repr()) };
-        bytes.into_vec().into_boxed_slice()
+        self.into_repr().into_vec().into_boxed_slice()
     }
 
     /// Leaks the bytes, returning a mutable reference to them (see
     /// `Vec::leak`).
     #[must_use]
     pub fn leak<'b>(self) -> &'b mut [u8] {
-        // SAFETY: no invariant
-        let bytes: Hip<crate::enc::Bytes, R> = unsafe { Hip::from_repr(self.into_repr()) };
-        bytes.into_vec().leak()
+        self.into_repr().into_vec().leak()
     }
 }
 

@@ -21,6 +21,7 @@ use super::enc::{Bytes, Utf8};
 use super::hip::Hip;
 use super::repr::Repr;
 
+#[cfg(feature = "bytes")]
 impl<'a, R: Repr<'a>> BorshSerialize for Hip<Bytes, R> {
     #[inline]
     fn serialize<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
@@ -28,6 +29,7 @@ impl<'a, R: Repr<'a>> BorshSerialize for Hip<Bytes, R> {
     }
 }
 
+#[cfg(feature = "bytes")]
 impl<'a, R: Repr<'a>> BorshDeserialize for Hip<Bytes, R> {
     #[inline]
     fn deserialize_reader<Rd: io::Read>(reader: &mut Rd) -> io::Result<Self> {
@@ -35,6 +37,7 @@ impl<'a, R: Repr<'a>> BorshDeserialize for Hip<Bytes, R> {
     }
 }
 
+#[cfg(feature = "str")]
 impl<'a, R: Repr<'a>> BorshSerialize for Hip<Utf8, R> {
     #[inline]
     fn serialize<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
@@ -42,6 +45,7 @@ impl<'a, R: Repr<'a>> BorshSerialize for Hip<Utf8, R> {
     }
 }
 
+#[cfg(feature = "str")]
 impl<'a, R: Repr<'a>> BorshDeserialize for Hip<Utf8, R> {
     fn deserialize_reader<Rd: io::Read>(reader: &mut Rd) -> io::Result<Self> {
         let bytes = Vec::<u8>::deserialize_reader(reader)?;
@@ -67,6 +71,7 @@ impl<'a, R: Repr<'a>> BorshDeserialize for Hip<crate::enc::BStr, R> {
     }
 }
 
+#[cfg(feature = "cstr")]
 impl<'a, R: Repr<'a>> BorshSerialize for Hip<crate::enc::CStr, R> {
     /// The bytes, without the NUL terminator.
     #[inline]
@@ -75,6 +80,7 @@ impl<'a, R: Repr<'a>> BorshSerialize for Hip<crate::enc::CStr, R> {
     }
 }
 
+#[cfg(feature = "cstr")]
 impl<'a, R: Repr<'a>> BorshDeserialize for Hip<crate::enc::CStr, R> {
     /// Rejects interior NULs (like `CString::new`).
     fn deserialize_reader<Rd: io::Read>(reader: &mut Rd) -> io::Result<Self> {

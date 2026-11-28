@@ -20,6 +20,7 @@ use core::marker::PhantomData;
 use core::mem::{ManuallyDrop, transmute};
 use core::ptr::NonNull;
 
+use super::HeapKind;
 use crate::backend::{Backend, Counter, UpdateResult};
 use crate::common::header::{Header, ThinHeader};
 use crate::common::tagged_pointer::TaggedPointer;
@@ -33,13 +34,6 @@ pub type VecHeader<B> = Header<<B as Backend>::Counter, Option<NonNull<u8>>>;
 
 /// Thin vector base with the backend's counter as prefix.
 pub type ThinBase<B> = thin::Base<<B as Backend>::Counter>;
-
-/// Heap kind of an owner.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum HeapKind {
-    Thin,
-    Vec,
-}
 
 /// Shared heap handle (see the module documentation).
 ///
@@ -77,6 +71,32 @@ impl<B: Backend> Owner<B> {
         let this = unsafe { transmute::<ThinBase<B>, Self>(thin) };
         debug_assert!(this.is_some(), "thin owner must be allocated");
         this
+    }
+
+    /// The thin buffer of a thin owner: the same handle, holding the same
+    /// reference.
+    pub(crate) fn into_thin(self) -> ThinBase<B> {
+        debug_assert!(self.is_some() && self.kind() == HeapKind::Thin);
+        // SAFETY: same tagged-pointer representation (see `from_thin`)
+        unsafe { transmute::<Self, ThinBase<B>>(self) }
+    }
+
+    /// The same adopted vector with the counter of another backend, set to
+    /// a fresh (unique) count.
+    ///
+    /// # Safety
+    ///
+    /// A unique vec owner, and `ThinBase::<B>::can_recount::<B2::Counter>()`.
+    pub(crate) unsafe fn recount_vec<B2: Backend>(self) -> Owner<B2> {
+        debug_assert!(self.kind() == HeapKind::Vec && self.is_unique());
+        debug_assert!(ThinBase::<B>::can_recount::<B2::Counter>());
+        // same prefix size and alignment: same boxed header layout
+        let header = self.header_ptr().cast::<VecHeader<B2>>();
+        // SAFETY: unique, live header; the old prefix needs no drop
+        unsafe {
+            (&raw mut (*header.as_ptr()).prefix).write(crate::backend::InitPrefix::init());
+        }
+        Owner(TaggedPointer::from(header), PhantomData)
     }
 
     /// Adopts the buffer of a vector, without copying.

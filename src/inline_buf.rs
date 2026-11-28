@@ -21,10 +21,13 @@
 pub struct Inline<const WORDS: usize, const HIGH: bool>([usize; WORDS]);
 
 /// The 3-word buffer (23 bytes on 64-bit).
+#[cfg(feature = "hip")]
 pub type Basic = Inline<3, false>;
 /// The 2-word buffer, its tag in the top bits (15 bytes on 64-bit).
+#[cfg(feature = "small")]
 pub type Small = Inline<2, true>;
 /// The 1-word buffer (7 bytes on 64-bit).
+#[cfg(feature = "tiny")]
 pub type Tiny = Inline<1, false>;
 
 const W: usize = size_of::<usize>();
