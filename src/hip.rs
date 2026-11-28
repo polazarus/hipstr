@@ -1,7 +1,7 @@
 //! The generic type behind every public alias: [`Hip<E, R>`].
 //!
 //! `E` is the [encoding](super::enc) (bytes, UTF-8, OS string, path) and `R`
-//! the concrete [representation](super::repr) (`Wide<'a, B>`,
+//! the concrete [representation](crate::Repr) (`Wide<'a, B>`,
 //! `Small<'a, B>` or `Tiny<B>`). Taking the concrete representation,
 //! rather than a layout marker plus a lifetime, keeps the type covariant in
 //! the borrow lifetime.

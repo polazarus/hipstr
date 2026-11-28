@@ -20,7 +20,9 @@ provides smaller sizes and std's full API.
 | `try_reserve` on the old internal vectors | `try_reserve` on every type, returning std's `TryReserveError` |
 
 Writing generic code over the old types: name the generic type
-`Hip<E, R>` with `E: hipstr::enc::Encoding` and `R: hipstr::repr::Repr<'a>`.
+`Hip<E, R>` with `E: hipstr::enc::Encoding` and `R: hipstr::Repr<'a>`. The
+representations themselves are not public: name them through the aliases
+(`string::HipStr<'a, B>`, `string::SmallStr<'a, B>`, …), and `Repr` is sealed.
 
 ## Things that behave differently
 

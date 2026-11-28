@@ -142,7 +142,7 @@ pub mod os_string;
 #[cfg(feature = "std")]
 pub mod path;
 pub mod pattern;
-pub mod repr;
+mod repr;
 pub mod slice;
 pub mod string;
 
@@ -174,6 +174,7 @@ mod thread_safety;
 pub use backend::{Arc, Backend, Rc, Unique};
 pub use hip::Hip;
 pub use inline::{CapacityError, Inline};
+pub use repr::Repr;
 
 /// Inline string of up to 23 bytes (24 bytes in all); any capacity with
 /// [`inline::InlineStr<N>`](inline::InlineStr).
