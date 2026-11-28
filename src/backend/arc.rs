@@ -1,9 +1,9 @@
-#[cfg(not(loom))]
+#[cfg(not(all(loom, feature = "loom")))]
 use core::sync::atomic::{AtomicUsize, Ordering, fence};
 
-#[cfg(not(loom))]
+#[cfg(not(all(loom, feature = "loom")))]
 use const_default::ConstDefault;
-#[cfg(loom)]
+#[cfg(all(loom, feature = "loom"))]
 use loom::sync::atomic::{AtomicUsize, Ordering, fence};
 
 use super::{Counter, UpdateResult};
@@ -56,7 +56,7 @@ impl super::InitPrefix for AtomicCount {
     }
 }
 
-#[cfg(not(loom))]
+#[cfg(not(all(loom, feature = "loom")))]
 impl ConstDefault for AtomicCount {
     #[allow(clippy::declare_interior_mutable_const)]
     const DEFAULT: Self = Self(AtomicUsize::new(0));

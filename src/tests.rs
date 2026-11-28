@@ -506,20 +506,20 @@ fn str_patterns_share_storage() {
 
 /// Reference counting across threads, for every size. Run under loom with
 /// `RUSTFLAGS="--cfg loom" cargo test --release loom`.
-#[cfg(any(loom, feature = "std"))]
+#[cfg(any(all(loom, feature = "loom"), feature = "std"))]
 mod loom_threads {
-    #[cfg(not(loom))]
+    #[cfg(not(all(loom, feature = "loom")))]
     use std::{sync, thread};
 
-    #[cfg(loom)]
+    #[cfg(all(loom, feature = "loom"))]
     use loom::{sync, thread};
 
     use super::*;
 
     fn model(f: impl Fn() + Send + Sync + 'static) {
-        #[cfg(loom)]
+        #[cfg(all(loom, feature = "loom"))]
         loom::model(f);
-        #[cfg(not(loom))]
+        #[cfg(not(all(loom, feature = "loom")))]
         f();
     }
 
