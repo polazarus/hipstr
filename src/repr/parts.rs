@@ -144,14 +144,18 @@ impl<'a, B: Backend> Parts<'a, B> {
         }
     }
 
-    /// Moves a unique thin view to the start of its buffer and makes it the
-    /// whole buffer (no allocation). Returns whether the parts changed.
+    /// Moves a unique thin view that starts past the beginning of its
+    /// buffer to the start, and makes it the whole buffer (no allocation).
+    /// Returns whether the parts changed.
+    ///
+    /// Views at the start need no compaction: every representation takes a
+    /// unique one as it is.
     pub(crate) fn compact(&mut self) -> bool {
         let unique = self.is_unique_heap();
         let Parts::Thin(view) = self else {
             return false;
         };
-        if !unique || (view.start == 0 && view.len == view.base.len()) {
+        if !unique || view.start == 0 {
             return false;
         }
         let data = view.base.as_mut_ptr();
