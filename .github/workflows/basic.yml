@@ -42,7 +42,7 @@ jobs:
           RUSTFLAGS: "-D warnings"
         run: >-
           cargo hack check -v --lib --no-dev-deps --feature-powerset --depth 2
-          --exclude-features unstable
+          --exclude-features unstable,loom
 
       - name: Build
         run: cargo hack build -v --each-feature

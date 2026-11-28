@@ -91,6 +91,8 @@ representation), with the old names kept as aliases. See
 
 ### Fixed
 
+- loom is an optional dependency (`loom` feature, testing only): it no
+  longer appears in the lock files of dependent crates (#52)
 - paths compared with `Box<OsStr>` compared bytes instead of paths
 - `HipStr: Borrow<BStr>` and `HipPath: Borrow<OsStr>` violated `Borrow`'s
   contract (different hashes): removed

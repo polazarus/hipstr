@@ -155,6 +155,9 @@
 //!   `SmallBStr` and `TinyBStr` byte strings, which dereference to
 //!   `bstr::BStr`
 //! * `unstable`: do nothing, used to reveal unstable implementation details
+//! * `loom`: testing only, for the [loom](https://docs.rs/loom) tests, run
+//!   with `RUSTFLAGS="--cfg loom"`; without that flag it has no effect and
+//!   builds nothing
 
 #![no_std]
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
@@ -233,6 +236,9 @@ mod tests;
 // compile-time thread-safety checks (doctests and a unit test)
 #[cfg(any(test, doctest))]
 mod thread_safety;
+
+#[cfg(all(loom, not(feature = "loom")))]
+compile_error!("`--cfg loom` needs the `loom` feature (`--features loom`)");
 
 #[cfg(all(
     test,

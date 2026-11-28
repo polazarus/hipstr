@@ -29,6 +29,9 @@ cstr = []
 osstr = ["std"]
 path = ["osstr"]
 unstable = []
+# testing only: the loom model checker, with `RUSTFLAGS="--cfg loom"`
+# (without the flag, the feature has no effect and builds nothing)
+loom = ["dep:loom"]
 serde = ["dep:serde"]
 bstr = ["dep:bstr"]
 borsh = ["dep:borsh"]
@@ -69,7 +72,7 @@ default-features = false
 features = []
 
 [target.'cfg(loom)'.dependencies]
-loom = "0.7"
+loom = { version = "0.7", optional = true }
 
 [target.'cfg(not(loom))'.dev-dependencies]
 arcstr = "1.2.0"
