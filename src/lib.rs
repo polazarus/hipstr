@@ -165,6 +165,10 @@ mod thin;
 #[cfg(test)]
 mod tests;
 
+// compile-time thread-safety checks (doctests and a unit test)
+#[cfg(any(test, doctest))]
+mod thread_safety;
+
 pub use backend::{Arc, Backend, Rc, Unique};
 pub use hip::Hip;
 pub use inline::{CapacityError, Inline};
