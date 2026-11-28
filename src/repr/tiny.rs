@@ -124,14 +124,28 @@ impl<B: Backend> Tiny<B> {
     }
 
     /// Runs `f` on the handle (heap case), then stores it back: it may
-    /// move, whatever `f` returns.
+    /// move, whatever `f` returns, even if `f` panics (the guard stores it
+    /// back while unwinding, so the word never points to a moved buffer).
     #[inline]
     fn with_owner<T>(&mut self, f: impl FnOnce(&mut ThinOwner<B>) -> T) -> T {
-        let mut owner = self.owner();
-        let result = f(&mut owner);
-        // the word only: the old value is not dropped (same buffer)
-        self.word = core::mem::ManuallyDrop::new(Self::from_owner(owner)).word;
-        result
+        /// Stores the handle back into the word when dropped.
+        struct StoreBack<'t, B: Backend> {
+            tiny: &'t mut Tiny<B>,
+            owner: ThinOwner<B>,
+        }
+
+        impl<B: Backend> Drop for StoreBack<'_, B> {
+            fn drop(&mut self) {
+                // the word only: the old value is not dropped (same buffer)
+                self.tiny.word = core::mem::ManuallyDrop::new(Tiny::from_owner(self.owner)).word;
+            }
+        }
+
+        let mut guard = StoreBack {
+            owner: self.owner(),
+            tiny: self,
+        };
+        f(&mut guard.owner)
     }
 
     #[inline]
@@ -362,5 +376,23 @@ mod tests {
         let b = a.clone();
         assert_eq!(b.as_slice(), &long[..]);
         assert_ne!(a.as_slice().as_ptr(), b.as_slice().as_ptr());
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn with_owner_stores_back_on_panic() {
+        let mut t = Tiny::<crate::backend::Rc>::from_slice(&[7; 32]);
+        let result = std::panic::catch_unwind(core::panic::AssertUnwindSafe(|| {
+            t.with_owner(|owner| {
+                // moves the buffer, then panics before returning
+                // SAFETY: unique, more than the capacity
+                unsafe { owner.try_grow(4096, true) }.unwrap();
+                panic!("after moving the buffer");
+            })
+        }));
+        assert!(result.is_err());
+        // the word follows the moved buffer
+        assert_eq!(t.as_slice(), &[7; 32]);
+        assert!(t.capacity() >= 4096);
     }
 }
