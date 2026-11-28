@@ -61,6 +61,24 @@
 //!
 //! [`Vec`]: alloc::vec::Vec
 //!
+//! # Conversions
+//!
+//! Every family, representation and backend converts to every other one with
+//! [`Hip::convert`] (or [`Hip::try_convert`] when the bytes must be checked,
+//! e.g. bytes to a string), and with the matching `From`/`TryFrom` impls. The
+//! buffer is kept whenever the target can hold it: see the [`convert`] module
+//! for the rules.
+//!
+//! ```rust
+//! use hipstr::{HipByt, HipStr, TinyStr};
+//!
+//! let s = HipStr::from("a string long enough to live on the heap");
+//! let tiny = TinyStr::from(s.clone()); // shares the buffer
+//! assert_eq!(tiny.as_ptr(), s.as_ptr());
+//! let bytes: HipByt = s.into(); // same bytes, same buffer
+//! assert_eq!(bytes.as_ptr(), tiny.as_ptr());
+//! ```
+//!
 //! # Three Backends
 //!
 //! The crate provides three backends:
@@ -107,13 +125,33 @@
 //!
 //! # Features
 //!
+//! Each representation and each family can be disabled. All are enabled by
+//! default; with `default-features = false`, enable the ones you use:
+//!
+//! | Feature | Enables | Implies |
+//! |---------|---------|---------|
+//! | `hip`   | 3-word types (`HipStr`, `HipByt`, …) and O(1) slicing | |
+//! | `small` | 2-word types (`SmallStr`, …) | |
+//! | `tiny`  | 1-word types (`TinyStr`, …) | |
+//! | `bytes` | byte strings (`HipByt`, `InlineByt`, …) | |
+//! | `str`   | strings (`HipStr`, `InlineStr`, …) | |
+//! | `cstr`  | C strings (`HipCStr`, `InlineCStr`, …) | |
+//! | `osstr` | OS strings (`HipOsStr`, `InlineOsStr`, …) | `std` |
+//! | `path`  | paths (`HipPath`, `InlinePath`, …) | `osstr` |
+//! | `bstr` (not default) | `bstr` byte strings (`HipBStr`, …), see below | |
+//!
+//! A family's types exist in each enabled representation, and conversions
+//! between two families need both. The fixed-capacity inline types are always
+//! available for the enabled families.
+//!
+//! Other features:
+//!
 //! * `std` (default): uses `std` rather than `core` and `alloc`, and also
-//!   provides more trait implementations (for comparison, conversions) and the
-//!   OS string and path types
+//!   provides more trait implementations (for comparison, conversions)
 //! * `serde`: provides serialization/deserialization support with [`serde`](https://serde.rs)
 //! * `borsh`: provides serialization/deserialization support with [`borsh`](https://borsh.io)
 //! * `bstr`: provides compatibility with [BurntSushi's bstr
-//!   crate](https://github.com/BurntSushi/bstr), and the [`HipBStr`],
+//!   crate](https://github.com/BurntSushi/bstr), and the `HipBStr`,
 //!   `SmallBStr` and `TinyBStr` byte strings, which dereference to
 //!   `bstr::BStr`
 //! * `unstable`: do nothing, used to reveal unstable implementation details
@@ -124,6 +162,21 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![warn(clippy::pedantic, clippy::nursery, clippy::cargo)]
 #![warn(unsafe_op_in_unsafe_fn)]
+// Narrower feature sets leave internal helpers unused; the full set (the
+// default) keeps every warning.
+#![cfg_attr(
+    not(all(
+        feature = "hip",
+        feature = "small",
+        feature = "tiny",
+        feature = "bytes",
+        feature = "str",
+        feature = "cstr",
+        feature = "osstr",
+        feature = "path",
+    )),
+    allow(dead_code, unused_imports, unused_macros)
+)]
 
 extern crate alloc;
 #[cfg(feature = "std")]
@@ -132,18 +185,24 @@ extern crate std;
 pub mod backend;
 #[cfg(feature = "bstr")]
 pub mod bstr;
+#[cfg(feature = "bytes")]
 pub mod bytes;
+pub mod convert;
+#[cfg(feature = "cstr")]
 pub mod cstr;
 pub mod enc;
 pub mod hip;
 pub mod inline;
-#[cfg(feature = "std")]
+#[cfg(feature = "osstr")]
 pub mod os_string;
-#[cfg(feature = "std")]
+#[cfg(feature = "path")]
 pub mod path;
+#[cfg(all(feature = "str", feature = "hip"))]
 pub mod pattern;
 mod repr;
+#[cfg(any(feature = "bytes", feature = "str", feature = "bstr"))]
 pub mod slice;
+#[cfg(feature = "str")]
 pub mod string;
 
 #[cfg(feature = "borsh")]
@@ -154,8 +213,11 @@ mod family;
 #[cfg(feature = "serde")]
 mod serde_impl;
 mod std_traits;
+#[cfg(feature = "str")]
 mod string_ops;
+#[cfg(all(feature = "str", feature = "hip"))]
 mod string_pattern;
+#[cfg(any(feature = "bytes", feature = "bstr"))]
 mod vec_ops;
 
 // Internal vector machinery (ported from the `hipvec` branch, copy-only).
@@ -171,6 +233,21 @@ mod tests;
 #[cfg(any(test, doctest))]
 mod thread_safety;
 
+#[cfg(all(
+    test,
+    not(all(
+        feature = "hip",
+        feature = "small",
+        feature = "tiny",
+        feature = "bytes",
+        feature = "str",
+        feature = "cstr",
+        feature = "osstr",
+        feature = "path",
+    ))
+))]
+compile_error!("the test suite needs the default features (narrower sets are only checked)");
+
 pub use backend::{Arc, Backend, Rc, Unique};
 pub use hip::Hip;
 pub use inline::{CapacityError, Inline};
@@ -178,19 +255,22 @@ pub use repr::Repr;
 
 /// Inline string of up to 23 bytes (24 bytes in all); any capacity with
 /// [`inline::InlineStr<N>`](inline::InlineStr).
+#[cfg(feature = "str")]
 pub type InlineStr = inline::InlineStr;
+#[cfg(feature = "bytes")]
 /// Inline byte string of up to 23 bytes; see [`inline::InlineByt<N>`](inline::InlineByt).
 pub type InlineByt = inline::InlineByt;
+#[cfg(feature = "cstr")]
 /// Inline C string of up to 22 bytes and its NUL; see [`inline::InlineCStr<N>`](inline::InlineCStr).
 pub type InlineCStr = inline::InlineCStr;
 /// Inline `bstr` byte string of up to 23 bytes; see [`inline::InlineBStr<N>`](inline::InlineBStr).
 #[cfg(feature = "bstr")]
 pub type InlineBStr = inline::InlineBStr;
 /// Inline OS string of up to 23 bytes; see [`inline::InlineOsStr<N>`](inline::InlineOsStr).
-#[cfg(feature = "std")]
+#[cfg(feature = "osstr")]
 pub type InlineOsStr = inline::InlineOsStr;
 /// Inline path of up to 23 bytes; see [`inline::InlinePath<N>`](inline::InlinePath).
-#[cfg(feature = "std")]
+#[cfg(feature = "path")]
 pub type InlinePath = inline::InlinePath;
 
 /// Declares the public aliases of one family: 3 sizes × {`Arc`, `Rc`}.
@@ -201,16 +281,22 @@ pub type InlinePath = inline::InlinePath;
 macro_rules! aliases {
     ($m:ident, $wide:ident, $small:ident, $tiny:ident, $lwide:ident, $lsmall:ident, $ltiny:ident) => {
         #[doc = concat!("Thread-safe [`", stringify!($m), "::", stringify!($wide), "`] (`Arc` backend).")]
+        #[cfg(feature = "hip")]
         pub type $wide<'a> = $m::$wide<'a, Arc>;
         #[doc = concat!("Thread-safe [`", stringify!($m), "::", stringify!($small), "`] (`Arc` backend).")]
+        #[cfg(feature = "small")]
         pub type $small<'a> = $m::$small<'a, Arc>;
         #[doc = concat!("Thread-safe [`", stringify!($m), "::", stringify!($tiny), "`] (`Arc` backend).")]
+        #[cfg(feature = "tiny")]
         pub type $tiny = $m::$tiny<Arc>;
         #[doc = concat!("Thread-local [`", stringify!($m), "::", stringify!($wide), "`] (`Rc` backend).")]
+        #[cfg(feature = "hip")]
         pub type $lwide<'a> = $m::$wide<'a, Rc>;
         #[doc = concat!("Thread-local [`", stringify!($m), "::", stringify!($small), "`] (`Rc` backend).")]
+        #[cfg(feature = "small")]
         pub type $lsmall<'a> = $m::$small<'a, Rc>;
         #[doc = concat!("Thread-local [`", stringify!($m), "::", stringify!($tiny), "`] (`Rc` backend).")]
+        #[cfg(feature = "tiny")]
         pub type $ltiny = $m::$tiny<Rc>;
     };
 }
@@ -219,15 +305,19 @@ macro_rules! aliases {
 macro_rules! generic_aliases {
     ($enc:ty, $wide:ident, $small:ident, $tiny:ident, $what:literal) => {
         #[doc = concat!("3-word ", $what, ": inline, borrowed or shared, with O(1) slicing.")]
+        #[cfg(feature = "hip")]
         pub type $wide<'a, B> = $crate::hip::Hip<$enc, $crate::repr::Wide<'a, B>>;
         #[doc = concat!("2-word ", $what, ": inline, borrowed or shared.")]
+        #[cfg(feature = "small")]
         pub type $small<'a, B> = $crate::hip::Hip<$enc, $crate::repr::Small<'a, B>>;
         #[doc = concat!("1-word ", $what, ": inline or shared (no borrowing).")]
+        #[cfg(feature = "tiny")]
         pub type $tiny<B> = $crate::hip::Hip<$enc, $crate::repr::Tiny<B>>;
     };
 }
 pub(crate) use generic_aliases;
 
+#[cfg(feature = "str")]
 aliases!(
     string,
     HipStr,
@@ -237,6 +327,7 @@ aliases!(
     LocalSmallStr,
     LocalTinyStr
 );
+#[cfg(feature = "bytes")]
 aliases!(
     bytes,
     HipByt,
@@ -256,6 +347,7 @@ aliases!(
     LocalSmallBStr,
     LocalTinyBStr
 );
+#[cfg(feature = "cstr")]
 aliases!(
     cstr,
     HipCStr,
@@ -265,7 +357,7 @@ aliases!(
     LocalSmallCStr,
     LocalTinyCStr
 );
-#[cfg(feature = "std")]
+#[cfg(feature = "osstr")]
 aliases!(
     os_string,
     HipOsStr,
@@ -275,7 +367,7 @@ aliases!(
     LocalSmallOsStr,
     LocalTinyOsStr
 );
-#[cfg(feature = "std")]
+#[cfg(feature = "path")]
 aliases!(
     path,
     HipPath,

@@ -19,22 +19,52 @@
 
 use alloc::vec::Vec;
 
-pub use owner::HeapKind;
-
 use crate::thin::TryReserveError;
 
+#[cfg(feature = "hip")]
 pub(crate) mod owner;
+#[cfg(any(feature = "hip", feature = "small", feature = "tiny"))]
+pub(crate) mod parts;
+#[cfg(feature = "small")]
 pub(crate) mod small;
+#[cfg(any(feature = "small", feature = "tiny"))]
 pub(crate) mod thin_owner;
+#[cfg(feature = "tiny")]
 pub(crate) mod tiny;
+#[cfg(feature = "hip")]
 pub(crate) mod wide;
 
 #[cfg(test)]
 mod tests;
 
+#[cfg(feature = "small")]
 pub use small::Small;
+#[cfg(feature = "tiny")]
 pub use tiny::Tiny;
+#[cfg(feature = "hip")]
 pub use wide::Wide;
+
+/// Invokes `$m!` with every enabled representation, each as
+/// `#[cfg(..)] [lifetime] type` (the lifetime parameter, if any, and the type
+/// generic over a backend `B`).
+macro_rules! for_each_repr {
+    ($m:ident) => {
+        $m! {
+            #[cfg(feature = "hip")] ['a] $crate::repr::Wide<'a, B>,
+            #[cfg(feature = "small")] ['a] $crate::repr::Small<'a, B>,
+            #[cfg(feature = "tiny")] [] $crate::repr::Tiny<B>,
+        }
+    };
+}
+pub(crate) use for_each_repr;
+
+/// Heap kind of a value: a thin buffer (header and bytes in one allocation)
+/// or an adopted vector.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HeapKind {
+    Thin,
+    Vec,
+}
 
 /// Current case of a representation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -48,8 +78,11 @@ mod sealed {
     /// Only the crate's representations implement [`Repr`](super::Repr).
     pub trait Sealed {}
 
+    #[cfg(feature = "hip")]
     impl<B: crate::backend::Backend> Sealed for super::Wide<'_, B> {}
+    #[cfg(feature = "small")]
     impl<B: crate::backend::Backend> Sealed for super::Small<'_, B> {}
+    #[cfg(feature = "tiny")]
     impl<B: crate::backend::Backend> Sealed for super::Tiny<B> {}
 }
 
@@ -74,7 +107,10 @@ pub unsafe trait Repr<'a>: Clone + Sized + sealed::Sealed {
     const WORDS: usize;
 
     /// The same representation, without the borrow lifetime.
-    type Owned: Repr<'static, Owned = Self::Owned>;
+    type Owned: Repr<'static, Owned = Self::Owned> + 'static;
+
+    /// The backend of the heap buffers.
+    type Backend: crate::backend::Backend;
 
     /// Maximal number of elements stored inline.
     const INLINE_CAPACITY: usize;
@@ -101,6 +137,24 @@ pub unsafe trait Repr<'a>: Clone + Sized + sealed::Sealed {
     fn from_vec(vec: Vec<u8>) -> Self;
 
     fn kind(&self) -> Kind;
+
+    /// Takes the value apart, without copying a heap buffer (see
+    /// [`parts`]).
+    #[doc(hidden)]
+    #[cfg(any(feature = "hip", feature = "small", feature = "tiny"))]
+    fn into_parts(self) -> parts::Parts<'a, Self::Backend>;
+
+    /// Rebuilds a value from parts it can hold as they are (see
+    /// [`parts`]).
+    ///
+    /// # Errors
+    ///
+    /// Gives the parts back if they need a copy.
+    #[doc(hidden)]
+    #[cfg(any(feature = "hip", feature = "small", feature = "tiny"))]
+    fn try_from_parts(
+        parts: parts::Parts<'a, Self::Backend>,
+    ) -> Result<Self, parts::Parts<'a, Self::Backend>>;
 
     fn as_slice(&self) -> &[u8];
 

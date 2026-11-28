@@ -161,3 +161,52 @@ mod from_string {
             .bench_values(HipStr::from);
     }
 }
+
+/// Conversions that keep the buffer, against the copy they replace.
+mod convert {
+    use hipstr::{HipByt, HipCStr, LocalHipStr};
+
+    use super::*;
+
+    #[divan::bench]
+    fn wide_to_tiny(bencher: Bencher) {
+        bencher
+            .with_inputs(|| HipStr::from(LONG))
+            .bench_values(|s| -> TinyStr { s.convert() });
+    }
+
+    #[divan::bench]
+    fn wide_to_tiny_copy(bencher: Bencher) {
+        bencher
+            .with_inputs(|| HipStr::from(LONG))
+            .bench_values(|s| TinyStr::from(s.as_str()));
+    }
+
+    #[divan::bench]
+    fn arc_to_rc(bencher: Bencher) {
+        bencher
+            .with_inputs(|| HipStr::from(LONG))
+            .bench_values(|s| -> LocalHipStr { s.convert() });
+    }
+
+    #[divan::bench]
+    fn arc_to_rc_copy(bencher: Bencher) {
+        bencher
+            .with_inputs(|| HipStr::from(LONG))
+            .bench_values(|s| LocalHipStr::from(s.as_str()));
+    }
+
+    #[divan::bench]
+    fn cstr_to_bytes(bencher: Bencher) {
+        bencher
+            .with_inputs(|| HipCStr::try_from(LONG).unwrap())
+            .bench_values(|c| -> HipByt { c.convert() });
+    }
+
+    #[divan::bench]
+    fn cstr_to_bytes_copy(bencher: Bencher) {
+        bencher
+            .with_inputs(|| HipCStr::try_from(LONG).unwrap())
+            .bench_values(|c| HipByt::from(c.to_bytes()));
+    }
+}

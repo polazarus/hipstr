@@ -100,7 +100,8 @@ impl_std_glue!(enc::OsStr, OsStr, OsString);
 /// std's conversions from bytes are not, and `OsStr`'s layout is not
 /// guaranteed).
 macro_rules! impl_const_os_str {
-    ($([$($lt:lifetime)?] $repr:ty),* $(,)?) => {$(
+    ($(#[$m:meta] [$($lt:lifetime)?] $repr:ty),* $(,)?) => {$(
+        #[$m]
         impl<$($lt,)? B: super::backend::Backend> Hip<enc::OsStr, $repr> {
             /// The encoded bytes (see [`OsStr::as_encoded_bytes`]).
             #[inline]
@@ -112,11 +113,7 @@ macro_rules! impl_const_os_str {
     )*};
 }
 
-impl_const_os_str!(
-    ['a] super::repr::Wide<'a, B>,
-    ['a] super::repr::Small<'a, B>,
-    [] super::repr::Tiny<B>,
-);
+crate::repr::for_each_repr!(impl_const_os_str);
 
 impl_cmp!(enc::OsStr as OsStr;
     [] OsStr, [] &OsStr, [] OsString, [] &OsString, [] Box<OsStr>, [] &Box<OsStr>,
@@ -157,22 +154,6 @@ impl<'a, R: Repr<'a>> From<Cow<'a, str>> for Hip<enc::OsStr, R> {
             Cow::Borrowed(s) => Self::from_inner_borrowed(OsStr::new(s)),
             Cow::Owned(s) => Self::from(s),
         }
-    }
-}
-
-impl<'a, R: Repr<'a>> From<&Hip<Utf8, R>> for Hip<enc::OsStr, R> {
-    /// Shares the storage (no copy).
-    #[inline]
-    fn from(value: &Hip<Utf8, R>) -> Self {
-        Self::from(value.clone())
-    }
-}
-
-impl<'a, R: Repr<'a>> From<Hip<enc::OsStr, R>> for Hip<Bytes, R> {
-    /// The encoded bytes, keeping the representation (no copy).
-    #[inline]
-    fn from(value: Hip<enc::OsStr, R>) -> Self {
-        value.into_bytes()
     }
 }
 
@@ -468,7 +449,8 @@ impl<'a, R: Repr<'a>> Hip<enc::OsStr, R> {
         match self.as_os_str().to_string_lossy() {
             // SAFETY: valid UTF-8
             Cow::Borrowed(_) => unsafe { Hip::from_repr(self.repr().clone()) },
-            Cow::Owned(s) => Hip::from(s),
+            // SAFETY: valid UTF-8
+            Cow::Owned(s) => unsafe { Hip::from_repr(R::from_vec(s.into_bytes())) },
         }
     }
 
@@ -504,15 +486,7 @@ impl<'a, R: Repr<'a>> From<&str> for Hip<enc::OsStr, R> {
     }
 }
 
-impl<'a, R: Repr<'a>> From<Hip<Utf8, R>> for Hip<enc::OsStr, R> {
-    /// Keeps the representation (no copy): UTF-8 is a valid encoded OS string.
-    #[inline]
-    fn from(value: Hip<Utf8, R>) -> Self {
-        // SAFETY: UTF-8 bytes are valid encoded OS string bytes
-        unsafe { Self::from_repr(value.into_repr()) }
-    }
-}
-
+#[cfg(feature = "hip")]
 impl<'a, B: super::backend::Backend> Hip<enc::OsStr, super::repr::Wide<'a, B>> {
     /// Creates a new `HipOsStr` from a `'static` string slice without copying
     /// the slice.
@@ -565,6 +539,7 @@ impl<'a, B: super::backend::Backend> Hip<enc::OsStr, super::repr::Wide<'a, B>> {
     }
 }
 
+#[cfg(feature = "small")]
 impl<'a, B: super::backend::Backend> Hip<enc::OsStr, super::repr::Small<'a, B>> {
     /// Creates a new `HipOsStr` from a `'static` string slice without copying
     /// the slice.

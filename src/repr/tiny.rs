@@ -15,6 +15,7 @@ use core::marker::PhantomData;
 use core::mem::transmute;
 use core::ptr::NonNull;
 
+use super::parts::{InlineBytes, Parts, ThinView};
 use super::thin_owner::ThinOwner;
 use super::{HeapKind, Kind, Repr, capacity_overflow};
 use crate::backend::Backend;
@@ -226,11 +227,53 @@ impl<B: Backend> Drop for Tiny<B> {
 // SAFETY: see the trait's contract, upheld by `try_reserve`
 unsafe impl<'a, B: Backend> Repr<'a> for Tiny<B> {
     type Owned = Self;
+    type Backend = B;
     const WORDS: usize = 1;
     const INLINE_CAPACITY: usize = Inline::CAPACITY;
     const MAX_LEN: usize = isize::MAX as usize;
     const BORROWS: bool = false;
     const ADOPTS_VEC: bool = false;
+
+    fn into_parts(self) -> Parts<'a, B> {
+        let this = core::mem::ManuallyDrop::new(self);
+        if this.is_inline() {
+            return Parts::Inline(InlineBytes::new(this.as_slice()));
+        }
+        // the reference held by `self` moves to the parts
+        let owner = this.owner();
+        Parts::Thin(ThinView {
+            base: owner.into_base(),
+            start: 0,
+            len: owner.len(),
+        })
+    }
+
+    fn try_from_parts(parts: Parts<'a, B>) -> Result<Self, Parts<'a, B>> {
+        let len = parts.as_slice().len();
+        // the length lives in the header: the view must be the whole
+        // buffer, or a prefix of a unique one (then truncated)
+        let base = match &parts {
+            // inline, or a short heap view: copied inline (normalized), the
+            // parts released
+            _ if len <= Inline::CAPACITY => {
+                return Ok(Self::from_inline(Inline::from_slice_copy(parts.as_slice())));
+            }
+            Parts::Thin(view)
+                if view.start == 0
+                    && (len == view.base.len()
+                        || crate::backend::Counter::is_unique(view.base.prefix())) =>
+            {
+                view.base.0
+            }
+            _ => return Err(parts),
+        };
+        // the reference held by the parts moves to the result
+        core::mem::forget(parts);
+        let owner = ThinOwner::from_base(&crate::thin::Base(base));
+        // SAFETY: unique (or unchanged length), shorter initialized prefix
+        unsafe { owner.set_len(len) };
+        Ok(Self::from_owner(owner))
+    }
 
     #[inline]
     fn new() -> Self {

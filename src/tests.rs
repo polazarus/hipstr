@@ -9,6 +9,7 @@ use super::*;
 
 // not under Miri on Windows: a global allocator makes Miri run std's
 // Windows `System` allocator, whose header read breaks Stacked Borrows
+mod convert;
 #[cfg(not(all(miri, windows)))]
 pub mod failing_alloc;
 
@@ -600,7 +601,8 @@ mod glue {
         let s = HipStr::try_from(bytes).unwrap();
         assert_eq!(s.as_ptr(), ptr, "no copy");
         let bad = HipStr::try_from(HipByt::from(b"\xffbad")).unwrap_err();
-        assert_eq!(bad.as_bytes(), b"\xffbad");
+        assert_eq!(bad.as_source().as_slice(), b"\xffbad");
+        assert_eq!(bad.reason().valid_up_to(), 0);
 
         let b: HipByt = s.clone().into();
         assert_eq!(b.as_ptr(), ptr);

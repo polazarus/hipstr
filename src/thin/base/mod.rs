@@ -58,6 +58,41 @@ impl<P> Base<P> {
         }
     }
 
+    /// The header prefix (e.g. the reference counter) of an allocated buffer.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the buffer is not allocated.
+    #[inline]
+    pub(crate) const fn prefix(&self) -> &P {
+        &self.header().expect("allocated buffer").prefix
+    }
+
+    /// Whether `P2` can replace `P` in place (see [`recount`](Self::recount)).
+    pub(crate) const fn can_recount<P2>() -> bool {
+        size_of::<P>() == size_of::<P2>()
+            && align_of::<P>() == align_of::<P2>()
+            && !core::mem::needs_drop::<P>()
+            && !core::mem::needs_drop::<P2>()
+    }
+
+    /// The same allocation with another prefix type, set to `P2::init()`.
+    ///
+    /// # Safety
+    ///
+    /// The buffer must be allocated and uniquely owned (no other handle reads
+    /// the old prefix), and [`can_recount::<P2>()`](Self::can_recount).
+    pub(crate) unsafe fn recount<P2: InitPrefix>(self) -> Base<P2> {
+        debug_assert!(Self::can_recount::<P2>());
+        let header = self.0.as_non_null().expect("allocated buffer");
+        // same size and alignment of the prefixes: same header layout, so
+        // the allocation's layout is unchanged
+        let header = header.cast::<Header<P2>>();
+        // SAFETY: unique, allocated; the old prefix needs no drop
+        unsafe { (&raw mut (*header.as_ptr()).prefix).write(P2::init()) };
+        Base(TaggedPointer::from(header))
+    }
+
     /// Returns a new empty thin vector, with no actual allocation, that is, the
     /// underlying pointer is null.
     #[inline]

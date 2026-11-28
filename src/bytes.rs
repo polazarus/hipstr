@@ -45,7 +45,8 @@ super::hip::impl_const_typed_accessors!(Bytes, [u8], |b| b, |v| v);
 
 /// `const` byte accessors, per representation.
 macro_rules! impl_const_bytes {
-    ($([$($lt:lifetime)?] $repr:ty),* $(,)?) => {$(
+    ($(#[$m:meta] [$($lt:lifetime)?] $repr:ty),* $(,)?) => {$(
+        #[$m]
         impl<$($lt,)? B: super::backend::Backend> Hip<Bytes, $repr> {
             /// Extracts a slice of the entire `HipByt`.
             ///
@@ -68,11 +69,7 @@ macro_rules! impl_const_bytes {
     )*};
 }
 
-impl_const_bytes!(
-    ['a] super::repr::Wide<'a, B>,
-    ['a] super::repr::Small<'a, B>,
-    [] super::repr::Tiny<B>,
-);
+crate::repr::for_each_repr!(impl_const_bytes);
 
 impl<'a, R: Repr<'a>> Hip<Bytes, R> {
     /// Converts into a `Vec`, in O(1) when the value uniquely owns an

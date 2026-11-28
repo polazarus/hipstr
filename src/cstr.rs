@@ -50,7 +50,8 @@ impl_cmp!(enc::CStr as CStr;
 
 /// `const` C string accessors, per representation.
 macro_rules! impl_const_cstr {
-    ($([$($lt:lifetime)?] $repr:ty),* $(,)?) => {$(
+    ($(#[$m:meta] [$($lt:lifetime)?] $repr:ty),* $(,)?) => {$(
+        #[$m]
         impl<$($lt,)? B: super::backend::Backend> Hip<enc::CStr, $repr> {
             /// The C string slice.
             #[inline]
@@ -76,11 +77,7 @@ macro_rules! impl_const_cstr {
     )*};
 }
 
-impl_const_cstr!(
-    ['a] super::repr::Wide<'a, B>,
-    ['a] super::repr::Small<'a, B>,
-    [] super::repr::Tiny<B>,
-);
+crate::repr::for_each_repr!(impl_const_cstr);
 
 impl<'a, R: Repr<'a>> Hip<enc::CStr, R> {
     /// Converts into a `CString`, in O(1) when the value uniquely owns an
@@ -171,9 +168,10 @@ impl<'a, R: Repr<'a>> Hip<enc::CStr, R> {
     /// types copy when shared.
     #[must_use]
     pub fn into_bytes(self) -> Hip<Bytes, R> {
-        let mut bytes = self.into_bytes_with_nul();
-        bytes.pop();
-        bytes
+        let mut repr = self.into_repr();
+        repr.pop();
+        // SAFETY: no invariant on bytes
+        unsafe { Hip::from_repr(repr) }
     }
 
     /// Converts bytes ending with the only NUL into a C string, keeping the
@@ -251,14 +249,6 @@ impl<'a, R: Repr<'a>> TryFrom<String> for Hip<enc::CStr, R> {
     #[inline]
     fn try_from(s: String) -> Result<Self, Self::Error> {
         Self::try_from(s.into_bytes())
-    }
-}
-
-impl<'a, R: Repr<'a>> From<Hip<enc::CStr, R>> for Hip<Bytes, R> {
-    /// The bytes without the NUL terminator (see [`Hip::into_bytes`]).
-    #[inline]
-    fn from(value: Hip<enc::CStr, R>) -> Self {
-        value.into_bytes()
     }
 }
 

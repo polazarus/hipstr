@@ -18,6 +18,26 @@ macro_rules! impl_std_glue {
                 Self::from_owned(<$owned>::from(value))
             }
         }
+
+        impl<'a, R: $crate::repr::Repr<'a>> From<alloc::rc::Rc<$slice>>
+            for $crate::hip::Hip<$enc, R>
+        {
+            /// Copies the value (std's shared pointers cannot be adopted).
+            #[inline]
+            fn from(value: alloc::rc::Rc<$slice>) -> Self {
+                Self::from_inner(&value)
+            }
+        }
+
+        impl<'a, R: $crate::repr::Repr<'a>> From<alloc::sync::Arc<$slice>>
+            for $crate::hip::Hip<$enc, R>
+        {
+            /// Copies the value (std's shared pointers cannot be adopted).
+            #[inline]
+            fn from(value: alloc::sync::Arc<$slice>) -> Self {
+                Self::from_inner(&value)
+            }
+        }
     };
 
     // without `From<Box<$slice>>`, for owned types lacking `From<Box<$slice>>`
@@ -27,6 +47,22 @@ macro_rules! impl_std_glue {
             #[inline]
             fn from(value: $owned) -> Self {
                 Self::from_owned(value)
+            }
+        }
+
+        impl<'a, 'o, R: $crate::repr::Repr<'a>> From<&'o $owned> for $crate::hip::Hip<$enc, R> {
+            /// Copies the value.
+            #[inline]
+            fn from(value: &'o $owned) -> Self {
+                Self::from_inner(core::borrow::Borrow::<$slice>::borrow(value))
+            }
+        }
+
+        impl<'a, 's, R: $crate::repr::Repr<'a>> From<&'s mut $slice> for $crate::hip::Hip<$enc, R> {
+            /// Copies the value.
+            #[inline]
+            fn from(value: &'s mut $slice) -> Self {
+                Self::from_inner(value)
             }
         }
 
@@ -91,7 +127,9 @@ macro_rules! impl_cmp {
 /// `$as_bytes` is a `const`-callable conversion from `&$slice` to `&[u8]`.
 macro_rules! impl_borrowed_ctors {
     ($enc:ty, $slice:ty, |$v:ident| $as_bytes:expr) => {
+        #[cfg(feature = "hip")]
         $crate::family::impl_borrowed_ctors!(@one Wide, $enc, $slice, |$v| $as_bytes);
+        #[cfg(feature = "small")]
         $crate::family::impl_borrowed_ctors!(@one Small, $enc, $slice, |$v| $as_bytes);
     };
     (@one $repr:ident, $enc:ty, $slice:ty, |$v:ident| $as_bytes:expr) => {

@@ -20,6 +20,7 @@ use super::repr::Repr;
 
 // ----- strings -----
 
+#[cfg(feature = "str")]
 impl<'a, R: Repr<'a>> Serialize for Hip<Utf8, R> {
     #[inline]
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -81,6 +82,7 @@ impl<'de: 'a, 'a, R: Repr<'a>> Visitor<'de> for StrVisitor<(R, &'a ()), true> {
     }
 }
 
+#[cfg(feature = "str")]
 impl<'de, 'a, R: Repr<'a>> Deserialize<'de> for Hip<Utf8, R> {
     #[inline]
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
@@ -110,6 +112,7 @@ pub mod string {
 
 // ----- bytes -----
 
+#[cfg(feature = "bytes")]
 impl<'a, R: Repr<'a>> Serialize for Hip<Bytes, R> {
     #[inline]
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -176,6 +179,7 @@ impl<'de: 'a, 'a, R: Repr<'a>> Visitor<'de> for BytesVisitor<(R, &'a ()), true> 
     }
 }
 
+#[cfg(feature = "bytes")]
 impl<'de, 'a, R: Repr<'a>> Deserialize<'de> for Hip<Bytes, R> {
     #[inline]
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
@@ -217,7 +221,10 @@ impl<'a, R: Repr<'a>> Serialize for Hip<crate::enc::BStr, R> {
 impl<'de, 'a, R: Repr<'a>> Deserialize<'de> for Hip<crate::enc::BStr, R> {
     #[inline]
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        Hip::<Bytes, R>::deserialize(deserializer).map(Self::from)
+        deserializer
+            .deserialize_bytes(BytesVisitor::<R, false>(PhantomData))
+            // SAFETY: no invariant on `BStr` bytes
+            .map(|bytes| unsafe { Self::from_repr(bytes.into_repr()) })
     }
 }
 
@@ -225,6 +232,7 @@ impl<'de, 'a, R: Repr<'a>> Deserialize<'de> for Hip<crate::enc::BStr, R> {
 
 /// C strings serialize like `CStr` (bytes without the terminator) and
 /// deserialize like `CString` (rejecting interior NULs).
+#[cfg(feature = "cstr")]
 impl<'a, R: Repr<'a>> Serialize for Hip<crate::enc::CStr, R> {
     #[inline]
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -232,6 +240,7 @@ impl<'a, R: Repr<'a>> Serialize for Hip<crate::enc::CStr, R> {
     }
 }
 
+#[cfg(feature = "cstr")]
 impl<'de, 'a, R: Repr<'a>> Deserialize<'de> for Hip<crate::enc::CStr, R> {
     #[inline]
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
@@ -241,7 +250,7 @@ impl<'de, 'a, R: Repr<'a>> Deserialize<'de> for Hip<crate::enc::CStr, R> {
 
 // ----- OS strings and paths -----
 
-#[cfg(feature = "std")]
+#[cfg(feature = "osstr")]
 mod os {
     use std::ffi::OsString;
 
@@ -263,6 +272,7 @@ mod os {
     }
 
     /// Paths go through strings, as `std::path::Path`'s own impls do.
+    #[cfg(feature = "path")]
     impl<'a, R: Repr<'a>> Serialize for Hip<enc::Path, R> {
         #[inline]
         fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -270,16 +280,20 @@ mod os {
         }
     }
 
+    #[cfg(feature = "path")]
     impl<'de, 'a, R: Repr<'a>> Deserialize<'de> for Hip<enc::Path, R> {
         #[inline]
         fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-            Hip::<Utf8, R>::deserialize(deserializer).map(Self::from)
+            deserializer
+                .deserialize_str(StrVisitor::<R, false>(PhantomData))
+                // SAFETY: UTF-8 bytes are valid path bytes
+                .map(|s| unsafe { Self::from_repr(s.into_repr()) })
         }
     }
 }
 
 /// `serde` helpers for paths.
-#[cfg(feature = "std")]
+#[cfg(feature = "path")]
 pub mod path {
     use super::*;
     use crate::enc;
@@ -298,7 +312,9 @@ pub mod path {
         D: Deserializer<'de>,
         R: Repr<'a>,
     {
-        super::string::borrow_deserialize(deserializer).map(Hip::from)
+        super::string::borrow_deserialize(deserializer)
+            // SAFETY: UTF-8 bytes are valid path bytes
+            .map(|s| unsafe { Hip::from_repr(s.into_repr()) })
     }
 }
 
@@ -404,6 +420,7 @@ mod inline {
         }
     }
 
+    #[cfg(feature = "str")]
     impl<const N: usize> Serialize for Inline<Utf8, N> {
         #[inline]
         fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -411,6 +428,7 @@ mod inline {
         }
     }
 
+    #[cfg(feature = "str")]
     impl<'de, const N: usize> Deserialize<'de> for Inline<Utf8, N> {
         #[inline]
         fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
@@ -418,6 +436,7 @@ mod inline {
         }
     }
 
+    #[cfg(feature = "bytes")]
     impl<const N: usize> Serialize for Inline<Bytes, N> {
         #[inline]
         fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -425,6 +444,7 @@ mod inline {
         }
     }
 
+    #[cfg(feature = "bytes")]
     impl<'de, const N: usize> Deserialize<'de> for Inline<Bytes, N> {
         #[inline]
         fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
@@ -449,6 +469,7 @@ mod inline {
     }
 
     /// Like `CStr` / `CString`: bytes without the terminator.
+    #[cfg(feature = "cstr")]
     impl<const N: usize> Serialize for Inline<enc::CStr, N> {
         #[inline]
         fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -456,6 +477,7 @@ mod inline {
         }
     }
 
+    #[cfg(feature = "cstr")]
     impl<'de, const N: usize> Deserialize<'de> for Inline<enc::CStr, N> {
         #[inline]
         fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
@@ -463,7 +485,7 @@ mod inline {
         }
     }
 
-    #[cfg(feature = "std")]
+    #[cfg(feature = "osstr")]
     mod os {
         use std::ffi::OsString;
         use std::path::Path;
@@ -489,6 +511,7 @@ mod inline {
         }
 
         /// Like `Path`: as a string.
+        #[cfg(feature = "path")]
         impl<const N: usize> Serialize for Inline<enc::Path, N> {
             #[inline]
             fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -496,9 +519,10 @@ mod inline {
             }
         }
 
+        #[cfg(feature = "path")]
         impl<'de, const N: usize> Deserialize<'de> for Inline<enc::Path, N> {
             fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-                let s = Inline::<Utf8, N>::deserialize(deserializer)?;
+                let s = deserializer.deserialize_str(InlineVisitor::<Utf8, N>(PhantomData))?;
                 // same bytes, so it fits
                 Ok(Self::try_from_inner(Path::new(s.as_str())).expect("same length"))
             }

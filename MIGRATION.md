@@ -18,11 +18,18 @@ provides smaller sizes and std's full API.
 | `HipPath: Borrow<OsStr>` | `AsRef<OsStr>`, comparisons (same reason) |
 | backend-generic `string::HipStr<'a, B>` | unchanged; also `string::SmallStr<'a, B>`, `string::TinyStr<B>` |
 | `try_reserve` on the old internal vectors | `try_reserve` on every type, returning std's `TryReserveError` |
+| `HipStr::try_from(bytes)` error: `FromUtf8Error` (bytes back with `into_bytes`) | `ConvertError<HipByt, Utf8Error>` (`into_source()`, `reason()`); same for every `TryFrom` between families. `HipStr::from_utf8` keeps `FromUtf8Error` |
 
 Writing generic code over the old types: name the generic type
 `Hip<E, R>` with `E: hipstr::enc::Encoding` and `R: hipstr::Repr<'a>`. The
 representations themselves are not public: name them through the aliases
 (`string::HipStr<'a, B>`, `string::SmallStr<'a, B>`, …), and `Repr` is sealed.
+
+With `default-features = false`, enable the representations (`hip`, `small`,
+`tiny`) and families (`bytes`, `str`, `cstr`, `osstr`, `path`) you use: in
+0.8, `default-features = false` only turned `std` off. For example,
+`features = ["hip", "str"]` gives `HipStr` without `std`. `osstr` and `path`
+imply `std`.
 
 ## Things that behave differently
 

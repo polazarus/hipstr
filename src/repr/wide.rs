@@ -14,7 +14,9 @@ use core::marker::PhantomData;
 use core::mem::{MaybeUninit, offset_of, transmute};
 use core::ptr::NonNull;
 
+use super::HeapKind;
 use super::owner::Owner;
+use super::parts::{InlineBytes, Parts, ThinView, VecView, view_ptr};
 use super::{Kind, Repr, capacity_overflow};
 use crate::backend::Backend;
 use crate::thin::TryReserveError;
@@ -321,11 +323,63 @@ impl<B: Backend> Drop for Wide<'_, B> {
 // SAFETY: see the trait's contract, upheld by `try_reserve`
 unsafe impl<'a, B: Backend> Repr<'a> for Wide<'a, B> {
     type Owned = Wide<'static, B>;
+    type Backend = B;
     const WORDS: usize = 3;
     const INLINE_CAPACITY: usize = Inline::CAPACITY;
     const MAX_LEN: usize = isize::MAX as usize;
     const BORROWS: bool = true;
     const ADOPTS_VEC: bool = true;
+
+    fn into_parts(self) -> Parts<'a, B> {
+        let this = core::mem::ManuallyDrop::new(self);
+        if this.is_inline() {
+            return Parts::Inline(InlineBytes::new(this.as_slice()));
+        }
+        let sliced = *this.sliced();
+        if sliced.owner.is_none() {
+            // SAFETY: borrowed case, the slice is valid for `'a`
+            return Parts::Borrowed(unsafe { sliced.slice.as_ref() });
+        }
+        let start = Self::offset(&sliced);
+        let len = sliced.slice.len();
+        // the reference held by `self` moves to the parts
+        match sliced.owner.kind() {
+            HeapKind::Thin => Parts::Thin(ThinView {
+                base: sliced.owner.into_thin(),
+                start,
+                len,
+            }),
+            HeapKind::Vec => Parts::Vec(VecView {
+                owner: sliced.owner,
+                start,
+                len,
+            }),
+        }
+    }
+
+    fn try_from_parts(parts: Parts<'a, B>) -> Result<Self, Parts<'a, B>> {
+        let len = parts.as_slice().len();
+        let (owner, ptr) = match &parts {
+            Parts::Borrowed(slice) => return Ok(Self::borrowed(slice)),
+            Parts::Thin(view) if len > Inline::CAPACITY => (
+                Owner::from_thin(crate::thin::Base(view.base.0)),
+                view_ptr(view),
+            ),
+            // SAFETY: the view lies within the vector's buffer
+            Parts::Vec(view) if len > Inline::CAPACITY => {
+                (view.owner, unsafe { view.owner.data().add(view.start) })
+            }
+            // inline, or a short heap view: copied inline (normalized), the
+            // parts released
+            _ => return Ok(Self::from_inline(Inline::from_slice_copy(parts.as_slice()))),
+        };
+        // the reference held by the parts moves to the result
+        core::mem::forget(parts);
+        Ok(Self::from_sliced(Sliced {
+            owner,
+            slice: NonNull::slice_from_raw_parts(ptr, len),
+        }))
+    }
 
     #[inline]
     fn new() -> Self {

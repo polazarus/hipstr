@@ -11,6 +11,7 @@ use super::family::{impl_borrowed_ctors, impl_cmp, impl_std_glue};
 use super::hip::Hip;
 use super::repr::Repr;
 pub use crate::hip::RefMut;
+#[cfg(feature = "hip")]
 pub use crate::pattern::{DoubleEndedPattern, IterWrapper, Pattern, ReversePattern};
 pub use crate::slice::{SliceError, SliceErrorKind};
 pub use crate::string_ops::Drain;
@@ -84,21 +85,13 @@ impl<'a, R: Repr<'a>> std::net::ToSocketAddrs for Hip<Utf8, R> {
     }
 }
 
-impl<'a, R: Repr<'a>> TryFrom<&Hip<Bytes, R>> for Hip<Utf8, R> {
-    type Error = FromUtf8Error<R>;
-
-    /// Shares the storage of `bytes` (no copy).
-    #[inline]
-    fn try_from(bytes: &Hip<Bytes, R>) -> Result<Self, Self::Error> {
-        Self::from_utf8_generic(bytes.clone())
-    }
-}
 super::hip::impl_const_typed_accessors!(Utf8, str, |b| core::str::from_utf8_unchecked(b), |v| v
     .as_bytes());
 
 /// `const` string accessors and UTF-8 conversions, per representation.
 macro_rules! impl_const_str {
-    ($([$($lt:lifetime)?] $repr:ty),* $(,)?) => {$(
+    ($(#[$m:meta] [$($lt:lifetime)?] $repr:ty),* $(,)?) => {$(
+        #[$m]
         impl<$($lt,)? B: super::backend::Backend> Hip<Utf8, $repr> {
             /// Extracts a string slice of the entire `HipStr`.
             ///
@@ -233,22 +226,9 @@ macro_rules! impl_const_str {
     )*};
 }
 
-impl_const_str!(
-    ['a] super::repr::Wide<'a, B>,
-    ['a] super::repr::Small<'a, B>,
-    [] super::repr::Tiny<B>,
-);
+crate::repr::for_each_repr!(impl_const_str);
 
 impl<'a, R: Repr<'a>> Hip<Utf8, R> {
-    /// Generic version of `from_utf8` (the public one is `const`, per repr).
-    pub(crate) fn from_utf8_generic(bytes: Hip<Bytes, R>) -> Result<Self, FromUtf8Error<R>> {
-        match core::str::from_utf8(bytes.as_inner()) {
-            // SAFETY: checked
-            Ok(_) => Ok(unsafe { Self::from_repr(bytes.into_repr()) }),
-            Err(error) => Err(FromUtf8Error { bytes, error }),
-        }
-    }
-
     /// Converts a `HipStr` into a `HipByt`.
     ///
     /// It consumes the `HipStr` without copying the content
@@ -923,15 +903,6 @@ impl<'a, R: Repr<'a>> From<char> for Hip<Utf8, R> {
     }
 }
 
-impl<'a, R: Repr<'a>> TryFrom<Hip<Bytes, R>> for Hip<Utf8, R> {
-    type Error = FromUtf8Error<R>;
-
-    #[inline]
-    fn try_from(bytes: Hip<Bytes, R>) -> Result<Self, Self::Error> {
-        Self::from_utf8_generic(bytes)
-    }
-}
-
 impl<'a, R: Repr<'a>> TryFrom<Vec<u8>> for Hip<Utf8, R> {
     type Error = alloc::string::FromUtf8Error;
 
@@ -947,13 +918,6 @@ impl<'a, R: Repr<'a>> TryFrom<&[u8]> for Hip<Utf8, R> {
     #[inline]
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
         core::str::from_utf8(bytes).map(Self::from_inner)
-    }
-}
-
-impl<'a, R: Repr<'a>> From<Hip<Utf8, R>> for Hip<Bytes, R> {
-    #[inline]
-    fn from(s: Hip<Utf8, R>) -> Self {
-        s.into_bytes()
     }
 }
 
