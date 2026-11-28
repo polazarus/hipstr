@@ -369,7 +369,7 @@ where
 unsafe impl<T, C> Send for Smart<T, C>
 where
     T: Sync + Send + Clone,
-    C: Send + Kind,
+    C: Send + Sync + Kind,
 {
 }
 
