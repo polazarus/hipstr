@@ -17,7 +17,7 @@ fn test_union() {
     let _: R = union.into_raw();
 
     let union = Union {
-        allocated: Allocated::new([42].repeat(42)),
+        allocated: Allocated::from_vec([42].repeat(42)),
     };
     let _: R = union.into_raw();
 
@@ -28,10 +28,12 @@ fn test_union() {
 }
 
 #[cfg(debug_assertions)]
-#[should_panic]
+#[should_panic(expected = "mutable slice of borrowed string")]
 #[test]
 fn test_to_mut_slice_unchecked_panic() {
     let mut r = R::borrowed(b"abc");
+    assert!(r.is_borrowed());
+    assert!(!r.is_allocated());
     unsafe {
         let _sl = r.as_mut_slice_unchecked();
     }

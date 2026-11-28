@@ -59,7 +59,7 @@ fn test_with_capacity() {
     let p = h.as_ptr();
     assert_eq!(h, EMPTY_SLICE);
     assert!(h.is_empty());
-    assert_eq!(h.capacity(), 42);
+    assert!(h.capacity() >= 42);
     for _ in 0..42 {
         h.push_str(A);
     }

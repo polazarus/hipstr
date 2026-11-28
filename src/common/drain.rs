@@ -4,7 +4,7 @@ use core::iter::FusedIterator;
 use core::ops::{Range, RangeBounds};
 use core::{fmt, mem, ptr, slice};
 
-use super::traits::MutVector;
+use super::traits::{MutVector, MutVectorExt};
 use super::RangeError;
 
 /// A draining iterator for vectors.

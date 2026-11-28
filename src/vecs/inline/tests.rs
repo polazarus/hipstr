@@ -7,7 +7,7 @@ use core::mem::size_of;
 use core::ptr;
 
 use super::*;
-use crate::common::traits::MutVector;
+use crate::common::traits::{MutVector, MutVectorExt, VectorExt};
 use crate::{inline_vec, thin_vec};
 
 const SMALL_CAP: usize = 7;

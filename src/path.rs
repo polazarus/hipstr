@@ -73,7 +73,7 @@ mod tests;
 /// [`String`]: std::string::String
 /// [Box]: std::boxed::Box
 /// [`HipStr`]: crate::string::HipStr
-/// [`HipOsStr``]: crate::string::HipOsStr
+/// [`HipOsStr``]: crate::os_string::HipOsStr
 #[repr(transparent)]
 #[allow(clippy::module_name_repetitions)]
 pub struct HipPath<'borrow, B>(HipOsStr<'borrow, B>)
