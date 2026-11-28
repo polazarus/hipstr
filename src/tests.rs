@@ -16,7 +16,7 @@ const LONG: &str = "a string that is definitely longer than any inline capacity"
 
 /// Tests shared by every size of a string family.
 macro_rules! string_suite {
-    ($name:ident, $t:ty, borrows = $borrows:expr) => {
+    ($name:ident, $t:ty, borrows = $borrows:expr, adopts = $adopts:expr) => {
         mod $name {
             use super::*;
 
@@ -42,12 +42,18 @@ macro_rules! string_suite {
 
             #[test]
             fn string_round_trip_is_zero_copy() {
+                // zero-copy where the representation adopts vectors (3
+                // words), a copy into a thin buffer otherwise
                 let string = String::from(LONG);
                 let ptr = string.as_ptr();
                 let s = S::from(string);
-                assert_eq!(s.as_str().as_ptr(), ptr);
+                assert_eq!(s.as_str().as_ptr() == ptr, $adopts);
                 let back: String = s.into_string();
-                assert_eq!(back.as_ptr(), ptr);
+                // (a copy may land at the freed address)
+                if $adopts {
+                    assert_eq!(back.as_ptr(), ptr);
+                }
+                assert_eq!(back, LONG);
             }
 
             #[test]
@@ -145,11 +151,21 @@ macro_rules! string_suite {
     };
 }
 
-string_suite!(hip_str, HipStr<'static>, borrows = true);
-string_suite!(small_str, SmallStr<'static>, borrows = true);
-string_suite!(tiny_str, TinyStr, borrows = false);
-string_suite!(local_hip_str, LocalHipStr<'static>, borrows = true);
-string_suite!(local_tiny_str, LocalTinyStr, borrows = false);
+string_suite!(hip_str, HipStr<'static>, borrows = true, adopts = true);
+string_suite!(small_str, SmallStr<'static>, borrows = true, adopts = false);
+string_suite!(tiny_str, TinyStr, borrows = false, adopts = false);
+string_suite!(
+    local_hip_str,
+    LocalHipStr<'static>,
+    borrows = true,
+    adopts = true
+);
+string_suite!(
+    local_tiny_str,
+    LocalTinyStr,
+    borrows = false,
+    adopts = false
+);
 
 #[test]
 fn sizes() {
@@ -1407,14 +1423,18 @@ mod perf {
         let v = s.into_vec();
         assert_eq!(v, bytes(100));
         assert_eq!(v.capacity(), 100, "only the view copied");
-        // unique adopted vector: O(1), truncated
+        // unique adopted vector (3 words): O(1), truncated
         let mut vec = bytes(1000);
         vec.reserve(24);
         let ptr = vec.as_ptr();
-        let mut s = SmallByt::from(vec);
+        let mut s = HipByt::from(vec);
         s.truncate(100);
         let v = s.into_vec();
         assert_eq!((v.as_ptr(), v.len()), (ptr, 100));
+        // a 2-word value copies vectors into a thin buffer: a copy back
+        let mut s = SmallByt::from(bytes(1000));
+        s.truncate(100);
+        assert_eq!(s.into_vec().capacity(), 100);
         // unique thin buffer (wide, tiny): a copy of the elements only
         let mut w = HipByt::from(&bytes(1000)[..]);
         w.truncate(100);

@@ -30,11 +30,11 @@
 //! Each family (strings, byte strings, C strings, OS strings, paths) comes in
 //! three sizes:
 //!
-//! | Size    | Types                              | Inline (64-bit) | Borrowed | O(1) slicing |
-//! |---------|------------------------------------|-----------------|----------|--------------|
-//! | 3 words | [`HipStr`], [`HipByt`], …          | 23 bytes        | yes      | yes          |
-//! | 2 words | [`SmallStr`], [`SmallByt`], …      | 15 bytes        | yes      | no           |
-//! | 1 word  | [`TinyStr`], [`TinyByt`], …        | 7 bytes         | no       | no           |
+//! | Size    | Types                              | Inline (64-bit) | Borrowed | O(1) slicing | Adopts `String`/`Vec` |
+//! |---------|------------------------------------|-----------------|----------|--------------|-----------------------|
+//! | 3 words | [`HipStr`], [`HipByt`], …          | 23 bytes        | yes      | yes          | yes                   |
+//! | 2 words | [`SmallStr`], [`SmallByt`], …      | 15 bytes        | yes      | no           | no (copies)           |
+//! | 1 word  | [`TinyStr`], [`TinyByt`], …        | 7 bytes         | no       | no           | no (copies)           |
 //!
 //! Every size has the same niche: `Option<T>` is as large as `T`.
 //!
@@ -48,8 +48,10 @@
 //!
 //! - an inline sequence (up to `inline_capacity()` bytes),
 //! - a borrowed slice (3- and 2-word types),
-//! - or a shared heap buffer (cheaply clonable), which may be a [`Vec`]
-//!   adopted without copying (`From<String>`, `From<Vec<u8>>`, …).
+//! - or a shared heap buffer (cheaply clonable). The 3-word types may adopt a
+//!   [`Vec`] without copying (`From<String>`, `From<Vec<u8>>`, …, and back with
+//!   `into_string`, `into_vec`, …); the 2- and 1-word types always copy into
+//!   their own buffer, which keeps their reads to a pointer and a length.
 //!
 //! The shared reference can be thread-safe or not, depending on the backend.
 //!
@@ -140,7 +142,7 @@ pub mod os_string;
 #[cfg(feature = "std")]
 pub mod path;
 pub mod pattern;
-pub mod repr;
+mod repr;
 pub mod slice;
 pub mod string;
 
@@ -172,6 +174,7 @@ mod thread_safety;
 pub use backend::{Arc, Backend, Rc, Unique};
 pub use hip::Hip;
 pub use inline::{CapacityError, Inline};
+pub use repr::Repr;
 
 /// Inline string of up to 23 bytes (24 bytes in all); any capacity with
 /// [`inline::InlineStr<N>`](inline::InlineStr).

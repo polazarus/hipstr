@@ -23,10 +23,11 @@ pub use owner::HeapKind;
 
 use crate::thin::TryReserveError;
 
-pub mod owner;
-pub mod small;
-pub mod tiny;
-pub mod wide;
+pub(crate) mod owner;
+pub(crate) mod small;
+pub(crate) mod thin_owner;
+pub(crate) mod tiny;
+pub(crate) mod wide;
 
 #[cfg(test)]
 mod tests;
@@ -41,6 +42,15 @@ pub enum Kind {
     Inline,
     Borrowed,
     Heap(HeapKind),
+}
+
+mod sealed {
+    /// Only the crate's representations implement [`Repr`](super::Repr).
+    pub trait Sealed {}
+
+    impl<B: crate::backend::Backend> Sealed for super::Wide<'_, B> {}
+    impl<B: crate::backend::Backend> Sealed for super::Small<'_, B> {}
+    impl<B: crate::backend::Backend> Sealed for super::Tiny<B> {}
 }
 
 /// A representation of a copy-on-write sequence of `u8`.
@@ -59,7 +69,7 @@ pub enum Kind {
 /// [`len`]: Repr::len
 /// [`set_len`]: Repr::set_len
 /// [`as_slice`]: Repr::as_slice
-pub unsafe trait Repr<'a>: Clone + Sized {
+pub unsafe trait Repr<'a>: Clone + Sized + sealed::Sealed {
     /// Size in words.
     const WORDS: usize;
 
@@ -74,6 +84,11 @@ pub unsafe trait Repr<'a>: Clone + Sized {
 
     /// Whether borrowed slices are kept as is (otherwise they are copied).
     const BORROWS: bool;
+
+    /// Whether vectors are adopted without copying (`from_vec`, and
+    /// `into_vec` of a unique adopted vector); otherwise they are copied
+    /// into a thin buffer.
+    const ADOPTS_VEC: bool;
 
     fn new() -> Self;
 

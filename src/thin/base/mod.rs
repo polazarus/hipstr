@@ -106,6 +106,7 @@ impl<P> Base<P> {
     ///
     /// Note that the pointer is guaranteed to be non-null.
     #[inline]
+    #[allow(dead_code, reason = "the read-only twin of `as_mut_ptr`")]
     pub const fn as_ptr(&self) -> *const u8 {
         if let Some(header) = self.0.as_non_null() {
             unsafe { Header::data(header).as_ptr().cast_const() }
